@@ -199,3 +199,7 @@ permission dialogs):
 8. **Reboot** (or log out/in) with a Claude session open: after login, opening
    ADE shows the session resumed with the conversation intact.
 9. Settings → Appearance → *Import from Ghostty*, Apply; check fonts/theme.
+
+## Credits
+
+Agent brand marks (Claude, OpenAI/Codex, Gemini) come from [Simple Icons](https://simpleicons.org) (CC0-1.0), embedded in `app/Sources/ADE/UI/BrandIcons.swift`. The marks are trademarks of their owners.

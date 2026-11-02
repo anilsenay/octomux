@@ -103,6 +103,8 @@ enum DebugActions {
                     m.addProject(path: path, onExtraHost: h, workspaceId: ws)
                 }
             case "move_project": if let id, let ws = p["value"] as? String { m.moveProject(id, toWorkspace: ws) }
+            case "move_tab": if let id, let to = p["value"] as? String { m.moveTab(id, to: to) }
+            case "move_project_before": if let id, let to = p["value"] as? String { m.moveProject(id, before: to) }
             case "sidebar_peek": m.sidebarPeek = (p["value"] as? Bool) ?? true
             case "dock_position": UserDefaults.standard.set(p["value"] as? String ?? "bottom", forKey: "ade.dockPosition")
             case "hover_project": m.debugHoverProject = id

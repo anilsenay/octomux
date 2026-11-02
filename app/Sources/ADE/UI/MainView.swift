@@ -258,6 +258,7 @@ struct TopBar: View {
             HStack(spacing: m.tabStyle == .underline ? 0 : 4) {
                 ForEach(shown, id: \.1.id) { i, t in
                     TabChip(tab: t, index: i, maxChars: fit.chars, width: m.tabStyle == .underline ? nil : fit.tabW)
+                        .reorderable("tab", id: t.id) { model.moveTab($0, to: $1) }
                 }
                 let hidden = Array(model.currentTabs.enumerated()).filter { e in !shown.contains { $0.1.id == e.element.id } }
                 if !hidden.isEmpty {
@@ -439,6 +440,35 @@ struct NewSessionItems: View {
     }
 }
 
+/// AppKit version of `NewSessionItems` (for `PopupMenuButton`).
+func newSessionMenu(model: AppModel, projectId: String?, remember: Bool) -> NSMenu {
+    let menu = NSMenu()
+    func start(_ id: String?) {
+        if remember { model.lastNewSessionProfile = id }
+        model.newSession(profileId: id, projectId: projectId)
+    }
+    menu.addItem(ClosureMenuItem("Terminal", image: NSImage(systemSymbolName: "apple.terminal", accessibilityDescription: nil)) { start(nil) })
+    menu.addItem(.separator())
+    for group in model.profileGroups(forProject: projectId) {
+        let icon = BrandIcons.image(group[0].icon).map { img -> NSImage in
+            let i = img.copy() as! NSImage; i.size = NSSize(width: 14, height: 14); return i
+        }
+        if group.count == 1 {
+            menu.addItem(ClosureMenuItem(group[0].name, image: icon) { start(group[0].id) })
+        } else {
+            let parent = NSMenuItem(title: group[0].name, action: nil, keyEquivalent: "")
+            parent.image = icon
+            let sub = NSMenu()
+            for p in group { sub.addItem(ClosureMenuItem(p.name) { start(p.id) }) }
+            parent.submenu = sub
+            menu.addItem(parent)
+        }
+    }
+    menu.addItem(.separator())
+    menu.addItem(ClosureMenuItem("Manage Agents…") { SettingsWindow.show(section: .agents) })
+    return menu
+}
+
 /// Tab bar: one button that starts the last used kind of session, with a menu for the others.
 /// The two halves highlight and explain themselves separately.
 struct NewSessionButton: View {
@@ -461,14 +491,10 @@ struct NewSessionButton: View {
             .pointerCursor()
             .onTapGesture { model.newSession(profileId: last?.id) }
             .help("New \(last?.name ?? "Terminal") tab  \(last == nil ? "⌘T" : "⌘⇧T")")
-            Menu {
-                NewSessionItems(projectId: model.currentProject?.id, remember: true)
-            } label: {
+            PopupMenuButton(menu: { newSessionMenu(model: model, projectId: model.currentProject?.id, remember: true) }) {
                 Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold)).foregroundStyle(hoverMenu ? T.text : T.text3)
                     .frame(width: 16, height: 26)
             }
-            .plainMenu()
-            .frame(width: 16, height: 26)
             .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(hoverMenu ? T.hover : .clear))
             .onHover { hoverMenu = $0 }
             .pointerCursor()

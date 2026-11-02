@@ -23,11 +23,15 @@ struct SidebarView: View {
                             if collapsed.contains(p.id) { collapsed.remove(p.id) } else { collapsed.insert(p.id) }
                             UserDefaults.standard.set(Array(collapsed), forKey: "ade.collapsed")
                         }
+                        .reorderable("project", id: p.id) { model.moveProject($0, before: $1) }
                         .padding(.top, i == 0 ? 0 : 6)
                         if !collapsed.contains(p.id) {
                             let all = model.sessions(ofProject: p.id)
                             ForEach(all.filter { $0.worktree == nil }) { s in
                                 SessionRow(session: s)
+                                    .reorderable("session:\(p.id)", id: s.id) { a, b in
+                                        if let ta = model.tab(containing: a), let tb = model.tab(containing: b) { model.moveTab(ta.id, to: tb.id) }
+                                    }
                             }
                             ForEach((model.setting("features.worktrees")?.bool ?? true) ? worktreeGroups(p, all) : [], id: \.path) { g in
                                 WorktreeRow(project: p, path: g.path, branch: g.branch, sessions: g.sessions)
@@ -71,7 +75,7 @@ struct SidebarView: View {
 
     private var header: some View {
         VStack(spacing: 8) {
-            Spacer().frame(height: floating ? 6 : 38)  // traffic lights
+            WindowDragArea().frame(height: floating ? 6 : 38)  // traffic lights row: drags the window
             Menu {
                 ForEach(model.state.workspaces.sorted { $0.sort < $1.sort }) { w in
                     Button((w.id == model.selectedWorkspaceId ? "✓ " : "") + w.name) { model.selectWorkspace(w.id) }
@@ -165,8 +169,8 @@ struct WorkspaceSwitcher: View {
 
     var body: some View {
         HStack(spacing: 2) {
-            ForEach(model.state.workspaces.sorted { $0.sort < $1.sort }) { w in
-                WorkspaceButton(workspace: w, selected: w.id == model.selectedWorkspaceId)
+            ForEach(Array(model.state.workspaces.sorted { $0.sort < $1.sort }.enumerated()), id: \.element.id) { i, w in
+                WorkspaceButton(workspace: w, selected: w.id == model.selectedWorkspaceId, index: i + 1)
             }
         }
         .background(WindowRectReporter { win, rect in WorkspaceScroller.shared.rects[ObjectIdentifier(win)] = rect.insetBy(dx: -6, dy: -6) })
@@ -232,6 +236,7 @@ struct WorkspaceButton: View {
     @EnvironmentObject var model: AppModel
     let workspace: Workspace
     let selected: Bool
+    var index = 0
     @State private var hover = false
 
     var body: some View {
@@ -243,7 +248,7 @@ struct WorkspaceButton: View {
             .onHover { hover = $0 }
             .pointerCursor()
             .onTapGesture { model.selectWorkspace(workspace.id) }
-            .help(workspace.name)
+            .help(index >= 1 && index <= 9 ? "\(workspace.name)  ⌃\(index)   (⌃⌘← → or scroll to switch)" : workspace.name)
             .contextMenu { WorkspaceMenu(workspace: workspace) }
             .animation(.easeOut(duration: 0.12), value: selected)
     }

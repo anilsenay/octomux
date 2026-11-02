@@ -18,60 +18,6 @@ enum Palette {
     static var selection: Color { T.selection }
 }
 
-/// Claude's spark: tapered rays of uneven length around a small core.
-struct ClaudeSpark: Shape {
-    static let rays: [(angle: Double, length: Double)] = [
-        (0, 1.0), (31, 0.86), (62, 0.97), (90, 0.8), (118, 0.98), (151, 0.84),
-        (180, 1.0), (209, 0.88), (241, 0.96), (270, 0.82), (299, 0.99), (330, 0.86),
-    ]
-    func path(in r: CGRect) -> Path {
-        var p = Path()
-        let c = CGPoint(x: r.midX, y: r.midY), R = min(r.width, r.height) / 2
-        for ray in Self.rays {
-            let t = ray.angle * .pi / 180
-            let len = R * ray.length, base = R * 0.15, inner = 0.0
-            let dir = CGPoint(x: cos(t), y: sin(t)), n = CGPoint(x: -sin(t), y: cos(t))
-            let b0 = CGPoint(x: c.x + dir.x * inner + n.x * base, y: c.y + dir.y * inner + n.y * base)
-            let b1 = CGPoint(x: c.x + dir.x * inner - n.x * base, y: c.y + dir.y * inner - n.y * base)
-            let tip = CGPoint(x: c.x + dir.x * len, y: c.y + dir.y * len)
-            let tipW = R * 0.06
-            p.move(to: b0)
-            p.addLine(to: CGPoint(x: tip.x + n.x * tipW, y: tip.y + n.y * tipW))
-            p.addQuadCurve(to: CGPoint(x: tip.x - n.x * tipW, y: tip.y - n.y * tipW),
-                           control: CGPoint(x: tip.x + dir.x * tipW * 1.6, y: tip.y + dir.y * tipW * 1.6))
-            p.addLine(to: b1)
-            p.closeSubpath()
-        }
-        return p
-    }
-}
-
-/// Four-point star with concave sides (Gemini-style sparkle).
-struct FourPointStar: Shape {
-    func path(in r: CGRect) -> Path {
-        var p = Path()
-        let c = CGPoint(x: r.midX, y: r.midY), R = min(r.width, r.height) / 2
-        let pts = [CGPoint(x: c.x, y: c.y - R), CGPoint(x: c.x + R, y: c.y), CGPoint(x: c.x, y: c.y + R), CGPoint(x: c.x - R, y: c.y)]
-        p.move(to: pts[0])
-        for i in 1...4 { p.addQuadCurve(to: pts[i % 4], control: c) }
-        p.closeSubpath()
-        return p
-    }
-}
-
-/// Three crossed capsules forming a six-petal knot (OpenAI/Codex-style).
-struct Rosette: Shape {
-    func path(in r: CGRect) -> Path {
-        var p = Path()
-        let c = CGPoint(x: r.midX, y: r.midY), R = min(r.width, r.height) / 2
-        for i in 0..<3 {
-            let link = Path(roundedRect: CGRect(x: -R * 0.3, y: -R * 0.92, width: R * 0.6, height: R * 1.84), cornerRadius: R * 0.3)
-            p.addPath(link, transform: CGAffineTransform(translationX: c.x, y: c.y).rotated(by: Double(i) * .pi / 3))
-        }
-        return p
-    }
-}
-
 /// Icon for an agent profile / session kind.
 struct AgentIcon: View {
     let icon: String
@@ -80,13 +26,12 @@ struct AgentIcon: View {
     var body: some View {
         switch icon {
         case "claude":
-            ClaudeSpark().fill(T.claude).frame(width: size, height: size)
+            brand("claude", AnyShapeStyle(Color(hex: "#D97757")))
         case "codex":
-            Rosette().stroke(T.text, style: StrokeStyle(lineWidth: max(1.1, size / 10)))
-                .frame(width: size, height: size)
+            brand("codex", AnyShapeStyle(T.text))
         case "gemini":
-            FourPointStar().fill(LinearGradient(colors: [Color(hex: "#4F8DF7"), Color(hex: "#A06CF0")], startPoint: .topLeading, endPoint: .bottomTrailing))
-                .frame(width: size, height: size)
+            brand("gemini", AnyShapeStyle(LinearGradient(colors: [Color(hex: "#4796E3"), Color(hex: "#9177C7"), Color(hex: "#CA6673")],
+                                                         startPoint: .topLeading, endPoint: .bottomTrailing)))
         case "terminal":
             Image(systemName: "apple.terminal").font(.system(size: size * 0.92, weight: .regular)).foregroundStyle(T.text2)
                 .frame(width: size + 2, height: size)
@@ -94,6 +39,16 @@ struct AgentIcon: View {
             Image(systemName: "play.fill").font(.system(size: size - 2)).foregroundStyle(T.text3)
         default:
             Image(systemName: "chevron.left.forwardslash.chevron.right").font(.system(size: size - 1)).foregroundStyle(T.text3)
+        }
+    }
+
+    @ViewBuilder private func brand(_ key: String, _ style: AnyShapeStyle) -> some View {
+        if let img = BrandIcons.image(key, size: size) {
+            Rectangle().fill(style)
+                .mask(Image(nsImage: img).resizable().renderingMode(.template).interpolation(.high).aspectRatio(contentMode: .fit))
+                .frame(width: size, height: size)
+        } else {
+            Circle().fill(style).frame(width: size * 0.7, height: size * 0.7)
         }
     }
 }
@@ -408,4 +363,75 @@ struct MiddleClick: NSViewRepresentable {
     }
     func makeNSView(context: Context) -> V { let v = V(); v.action = action; return v }
     func updateNSView(_ v: V, context: Context) { v.action = action }
+}
+
+/// NSMenuItem that runs a closure.
+final class ClosureMenuItem: NSMenuItem {
+    private let handler: () -> Void
+    init(_ title: String, image: NSImage? = nil, _ handler: @escaping () -> Void) {
+        self.handler = handler
+        super.init(title: title, action: #selector(run), keyEquivalent: "")
+        self.target = self
+        self.image = image
+    }
+    required init(coder: NSCoder) { fatalError() }
+    @objc private func run() { handler() }
+}
+
+/// A button that opens an AppKit menu right below itself on the first click (SwiftUI `Menu` in the title-bar
+/// area can miss clicks).
+struct PopupMenuButton<Label: View>: View {
+    let menu: () -> NSMenu
+    @ViewBuilder let label: () -> Label
+    @State private var anchor = AnchorBox()
+
+    final class AnchorBox { weak var view: NSView? }
+
+    var body: some View {
+        label()
+            .contentShape(Rectangle())
+            .background(AnchorView(box: anchor))
+            .onTapGesture {
+                guard let v = anchor.view else { return }
+                menu().popUp(positioning: nil, at: NSPoint(x: 0, y: v.isFlipped ? v.bounds.height + 4 : -4), in: v)
+            }
+    }
+
+    struct AnchorView: NSViewRepresentable {
+        let box: AnchorBox
+        func makeNSView(context: Context) -> NSView { let v = NSView(); box.view = v; return v }
+        func updateNSView(_ v: NSView, context: Context) { box.view = v }
+    }
+}
+
+/// What is being dragged inside the app (tab / project / session reordering).
+enum DragItem {
+    static var current: (kind: String, id: String)?
+}
+
+/// Live reordering: as the dragged item enters a target of the same kind, `move` runs.
+struct ReorderDrop: DropDelegate {
+    let kind: String
+    let targetId: String
+    let move: (String, String) -> Void
+
+    func validateDrop(info: DropInfo) -> Bool { DragItem.current?.kind == kind }
+    func dropEntered(info: DropInfo) {
+        guard let d = DragItem.current, d.kind == kind, d.id != targetId else { return }
+        move(d.id, targetId)
+    }
+    func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: .move) }
+    func performDrop(info: DropInfo) -> Bool { DragItem.current = nil; return true }
+}
+
+extension View {
+    /// Makes the view draggable and a drop target for items of the same `kind`.
+    func reorderable(_ kind: String, id: String, move: @escaping (String, String) -> Void) -> some View {
+        self
+            .onDrag {
+                DragItem.current = (kind, id)
+                return NSItemProvider(object: "ade-\(kind):\(id)" as NSString)
+            }
+            .onDrop(of: [.text], delegate: ReorderDrop(kind: kind, targetId: id, move: move))
+    }
 }

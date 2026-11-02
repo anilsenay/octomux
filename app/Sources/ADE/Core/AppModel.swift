@@ -234,8 +234,45 @@ final class AppModel: ObservableObject {
         return currentProject?.path
     }
 
+    /// The project's tab sessions in tab order (then pane order), so the sidebar matches the tab bar.
     func sessions(ofProject id: String) -> [Session] {
-        state.sessions.filter { $0.projectId == id && $0.placement == .tab }.sorted { $0.createdAt < $1.createdAt }
+        var rank: [String: Int] = [:]
+        for (ti, t) in tabs(ofProject: id).enumerated() {
+            for (pi, sid) in t.layout.sessions.enumerated() { rank[sid] = ti * 100 + pi }
+        }
+        return state.sessions.filter { $0.projectId == id && $0.placement == .tab }
+            .sorted { (rank[$0.id] ?? Int.max, $0.createdAt) < (rank[$1.id] ?? Int.max, $1.createdAt) }
+    }
+
+    // MARK: Reordering (drag and drop)
+
+    /// Moves `tabId` to `targetTabId`'s place among its project's tabs.
+    func moveTab(_ tabId: String, to targetTabId: String) {
+        guard tabId != targetTabId, let t = state.tabs.first(where: { $0.id == tabId }),
+              state.tabs.first(where: { $0.id == targetTabId })?.projectId == t.projectId else { return }
+        var order = tabs(ofProject: t.projectId).map(\.id)
+        guard let from = order.firstIndex(of: tabId), let to = order.firstIndex(of: targetTabId) else { return }
+        order.remove(at: from)
+        order.insert(tabId, at: to)
+        applyOrder(order, current: tabs(ofProject: t.projectId).map { ($0.id, $0.sort) }, method: "tab.update")
+    }
+
+    /// Moves `projectId` to `targetId`'s place in the current workspace.
+    func moveProject(_ projectId: String, before targetId: String) {
+        guard projectId != targetId else { return }
+        var order = projects.map(\.id)
+        guard let from = order.firstIndex(of: projectId), let to = order.firstIndex(of: targetId) else { return }
+        order.remove(at: from)
+        order.insert(projectId, at: to)
+        applyOrder(order, current: projects.map { ($0.id, $0.sort) }, method: "project.update")
+    }
+
+    /// Writes sort = index for items whose position changed (each to the daemon that owns it).
+    private func applyOrder(_ order: [String], current: [(String, Int)], method: String) {
+        let old = Dictionary(uniqueKeysWithValues: current)
+        for (i, id) in order.enumerated() where old[id] != i {
+            client(for: id).call(method, ["id": id, "sort": i])
+        }
     }
 
     func tabs(ofProject id: String?) -> [Tab] {

@@ -50,7 +50,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         w.title = "ADE"
         w.isReleasedWhenClosed = false
         w.setFrameAutosaveName("ADE.main")
-        w.contentView = NSHostingView(rootView: MainView().environmentObject(AppModel.shared))
+        w.contentView = ContentHostingView(rootView: MainView().environmentObject(AppModel.shared))
         w.minSize = NSSize(width: 640, height: 400)
         if !w.setFrameUsingName("ADE.main") { w.center() }
         w.delegate = self
@@ -259,4 +259,10 @@ enum ProtoWindow {
         if let first = split.arrangedSubviews.first { win.makeFirstResponder(first) }
         windows.append(win)
     }
+}
+
+/// Root hosting view: clicks never move the window by themselves (the top bar's empty space does that
+/// through `WindowDragArea`), so tabs and rows can be dragged and title-bar buttons get every click.
+final class ContentHostingView<Content: View>: NSHostingView<Content> {
+    override var mouseDownCanMoveWindow: Bool { false }
 }
