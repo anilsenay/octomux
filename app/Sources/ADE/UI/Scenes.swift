@@ -58,7 +58,7 @@ enum Scenes {
              surface: "#0D1622", frame: "#09111A", raised: "#18263A", accent: "#5BF0A6"),
         make("night-sky", "Nightfall", .nightSky, dark: true, top: "#070B1F", bottom: "#1C1F4A",
              surface: "#11142C", frame: "#0C0F24", raised: "#1F2346", accent: "#A99BFF",
-             art: ["moon": "#F1E7C8", "moonInk": "#9A8F66", "cloud": "#2E356E", "cloudInk": "#4F5AA8"]),
+             art: ["moon": "#F1E7C8", "moonEdge": "#8D8770", "moonInk": "#9A8F66", "cloud": "#2E356E", "cloudInk": "#4F5AA8"]),
         make("dusk-kites", "Dusk Kites", .kites, dark: true, top: "#1A1238", bottom: "#5A2E4A",
              surface: "#191329", frame: "#130E20", raised: "#271E3C", accent: "#C49BFF",
              art: ["sun": "#FF9E7A", "cloud": "#3B2E5A", "cloudInk": "#5A4A80", "string": "#C9B8E8"]),
@@ -435,15 +435,22 @@ private enum Sprites {
         " ####################",
         "##########################",
     ]
+    /// A crescent from two circles (lit side lower left); `+` cells are the partly covered edge, drawn dimmer.
     static let moon = [
-        "   ##",
+        "     +",
+        "   +#+",
         "  ###",
-        " ###",
-        " ###",
-        " ####",
-        "  #####   #",
-        "   ########",
-        "     ####",
+        " +##+",
+        " ###+",
+        "+###+",
+        "+####",
+        "+####",
+        "+#####",
+        " ######",
+        " +##########+",
+        "  ##########",
+        "   +######+",
+        "     ++++",
     ]
     static let fish = [
         "#   ####",
@@ -671,12 +678,13 @@ private struct SceneBuilder {
         }
         let halo = CAGradientLayer()
         halo.type = .radial
-        halo.frame = CGRect(x: W * 0.16 + 30 - 110, y: H - H * 0.09 - 48 - 110, width: 220, height: 220)
+        halo.frame = CGRect(x: W * 0.16 + 70 - 150, y: H - H * 0.09 - 90 - 150, width: 300, height: 300)
         halo.colors = [cg(a("moon", "#E9E1C4"), 0.16), cg(a("moon", "#E9E1C4"), 0)]
         halo.startPoint = CGPoint(x: 0.5, y: 0.5); halo.endPoint = CGPoint(x: 1, y: 1)
         root.addSublayer(halo)
         pulse(halo, 0.6, 1, period: 12, phase: 0)
-        let moon = add(Art.sprite(Sprites.moon, ["#": a("moon", "#E9E1C4")], ink: a("moonInk", "#8F855F"), seed: 3), x: W * 0.16, y: H * 0.09)
+        let moon = add(Art.sprite(Sprites.moon, ["#": a("moon", "#E9E1C4"), "+": a("moonEdge", "#8C8670")], ink: a("moonInk", "#8F855F"), seed: 3),
+                       x: W * 0.16, y: H * 0.09)
         swing(moon, "transform.translation.y", 3, period: 18, phase: 0)
         for i in 0..<2 {
             let l = add(Art.sprite(i == 0 ? Sprites.flatCloud : Sprites.smallCloud, ["#": a("cloud", "#33417F")], ink: a("cloudInk", "#5B6BB5"), seed: 10 + i),
