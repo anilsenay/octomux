@@ -217,10 +217,12 @@ final class PaneContainerView: NSView {
     }
 
     func showEmpty() {
-        let v = NSHostingView(rootView: EmptyStateView().environmentObject(AppModel.shared))
-        empty = v
-        setRoot(v)
-        empty = v
+        // Same rounded card as a terminal pane, so the empty state sits in the layout like one.
+        let card = PaneView(sessionId: "")
+        card.setContent(NSHostingView(rootView: EmptyStateView().environmentObject(AppModel.shared)))
+        empty = card
+        setRoot(card)
+        empty = card
     }
 }
 
