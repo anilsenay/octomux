@@ -729,17 +729,36 @@ extension AppModel {
         state.usage.filter { $0.profileId == profileId }.sorted { UsageReading.order($0.window) < UsageReading.order($1.window) }
     }
 
-    func usageAlwaysShown(_ profileId: String) -> Bool {
-        if case .array(let a)? = settingValue("usage.always_show", scope: "global") { return a.contains(.string(profileId)) }
-        return false
+    /// "Always show" profile ids of a scope ("global" or "workspace:<id>"); nil when the scope has no list
+    /// of its own (a workspace then uses the global one; an empty list means "none" there).
+    func alwaysShowList(scope: String) -> [String]? {
+        guard case .array(let a)? = settingValue("usage.always_show", scope: scope) else { return nil }
+        return a.compactMap { $0.string }
     }
 
-    func setUsageAlwaysShown(_ profileId: String, _ on: Bool) {
-        var ids: [String] = []
-        if case .array(let a)? = settingValue("usage.always_show", scope: "global") { ids = a.compactMap { $0.string } }
+    /// The list in effect: the current workspace's own, else the global one.
+    var effectiveAlwaysShow: [String] {
+        selectedWorkspaceId.flatMap { alwaysShowList(scope: "workspace:\($0)") } ?? alwaysShowList(scope: "global") ?? []
+    }
+
+    var workspaceOverridesAlwaysShow: Bool { selectedWorkspaceId.flatMap { alwaysShowList(scope: "workspace:\($0)") } != nil }
+
+    func usageAlwaysShown(_ profileId: String) -> Bool { effectiveAlwaysShow.contains(profileId) }
+
+    /// Changes the list the current workspace uses: its own when it has one (or `scope` says so), else global.
+    func setUsageAlwaysShown(_ profileId: String, _ on: Bool, scope: String? = nil) {
+        let target = scope ?? (workspaceOverridesAlwaysShow ? "workspace:\(selectedWorkspaceId ?? "")" : "global")
+        var ids = alwaysShowList(scope: target) ?? (target == "global" ? [] : alwaysShowList(scope: "global") ?? [])
         ids.removeAll { $0 == profileId }
         if on { ids.append(profileId) }
-        setSetting("usage.always_show", ids.isEmpty ? nil : ids)
+        // A workspace keeps its (even empty) list; the global one is cleared when empty.
+        setSetting("usage.always_show", target == "global" && ids.isEmpty ? nil : ids, scope: target)
+    }
+
+    /// Gives the current workspace its own copy of the global list, or drops it (back to global).
+    func setWorkspaceAlwaysShowOverride(_ on: Bool) {
+        guard let ws = selectedWorkspaceId else { return }
+        setSetting("usage.always_show", on ? (alwaysShowList(scope: "global") ?? []) : nil, scope: "workspace:\(ws)")
     }
 
     /// Profiles whose limits the status bar shows, with their readings.

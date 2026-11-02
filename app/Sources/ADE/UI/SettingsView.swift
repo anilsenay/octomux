@@ -306,9 +306,9 @@ struct ProfileEditor: View {
                     Toggle("Read usage limits through Claude's status line (runs your own status line too)", isOn: $profile.statusline)
                 }
                 if !profile.id.isEmpty {
-                    Toggle("Always show usage limits in the status bar", isOn: Binding(
-                        get: { AppModel.shared.usageAlwaysShown(profile.id) },
-                        set: { AppModel.shared.setUsageAlwaysShown(profile.id, $0) }))
+                    Toggle("Always show usage limits in the status bar (workspaces without their own list)", isOn: Binding(
+                        get: { AppModel.shared.alwaysShowList(scope: "global")?.contains(profile.id) ?? false },
+                        set: { AppModel.shared.setUsageAlwaysShown(profile.id, $0, scope: "global") }))
                 }
                 if profile.kind == .generic {
                     TextField("Resume command after reboot (optional)", text: $profile.resumeTemplate).font(.system(.body, design: .monospaced))
