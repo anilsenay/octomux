@@ -78,6 +78,14 @@ impl vt100::Callbacks for Callbacks {
     }
 }
 
+/// Environment variables that belong to an enclosing agent process, not to the user.
+pub fn is_inherited_agent_var(key: &str, value: &str) -> bool {
+    key == "CLAUDECODE"
+        || key.starts_with("CLAUDE_CODE_")
+        || matches!(key, "CLAUDE_PID" | "CLAUDE_EFFORT" | "CLAUDE_CONFIG_DIR" | "CODEX_SANDBOX" | "CODEX_SANDBOX_NETWORK_DISABLED")
+        || (key == "GIT_EDITOR" && value.contains("claude"))
+}
+
 /// Parses the OSC sequences ADE cares about.
 pub fn parse_osc(params: &[&[u8]]) -> Option<HolderEvent> {
     let s = |i: usize| params.get(i).map(|p| String::from_utf8_lossy(p).into_owned()).unwrap_or_default();
@@ -355,7 +363,15 @@ pub fn run(paths: Paths, args: HolderArgs) -> Result<()> {
     cmd.env("COLORTERM", "truecolor");
     cmd.env("TERM_PROGRAM", "ade");
     cmd.env("ADE_SESSION_ID", &args.id);
-    cmd.env_remove("ADE_HOLDER");
+    // Never leak the environment of whatever started the daemon (e.g. a Claude Code
+    // session) into user sessions: nested-agent markers disable transcripts and
+    // CLAUDE_CONFIG_DIR would silently switch accounts. Profiles re-add what they need.
+    for (k, v) in std::env::vars_os() {
+        let k = k.to_string_lossy().into_owned();
+        if is_inherited_agent_var(&k, &v.to_string_lossy()) {
+            cmd.env_remove(&k);
+        }
+    }
     for (k, v) in &args.env {
         cmd.env(k, v);
     }

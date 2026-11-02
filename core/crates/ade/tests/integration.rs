@@ -37,6 +37,9 @@ impl Env {
         let child = Command::new(BIN)
             .arg("daemon")
             .env("ADE_HOME", &self.home)
+            .env("CLAUDE_CODE_CHILD_SESSION", "1")
+            .env("CLAUDECODE", "1")
+            .env("CLAUDE_CONFIG_DIR", "/should/not/leak")
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -554,4 +557,14 @@ fn ade_attach_binary_proxies_a_pty() {
     e.wait_screen(&outer, "attached-1ok");
     e.input(&outer, "echo via-$((1))proxy\r");
     e.wait_screen(&id, "via-1proxy");
+}
+
+#[test]
+fn enclosing_agent_env_does_not_leak_into_sessions() {
+    let e = Env::new();
+    let p = e.project();
+    let id = plain_shell(&e, &p);
+    e.input(&id, "echo LEAK=${CLAUDECODE:-none}/${CLAUDE_CODE_CHILD_SESSION:-none}/${CLAUDE_CONFIG_DIR:-none}/$((1))\r");
+    let text = e.wait_screen(&id, "/1");
+    assert!(text.contains("LEAK=none/none/none/1"), "{text}");
 }
