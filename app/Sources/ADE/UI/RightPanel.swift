@@ -167,6 +167,8 @@ final class FilesModel: ObservableObject {
             var files: [String]
             if let out = GitInfo.git(["ls-files", "--cached", "--others", "--exclude-standard"], in: path) {
                 files = out.split(separator: "\n").map(String.init)
+            } else if AppModel.shared.host.isRemote {
+                files = []   // non-git folders on remote hosts: no tree walk over the wire
             } else {
                 files = []
                 let fm = FileManager.default
@@ -227,17 +229,7 @@ final class FilesModel: ObservableObject {
         guard let path else { return }
         let full = (path as NSString).appendingPathComponent(rel)
         DispatchQueue.global(qos: .userInitiated).async {
-            var text: String
-            if let data = FileManager.default.contents(atPath: full) {
-                if data.prefix(8000).contains(0) {
-                    text = "Binary file (\(ByteCountFormatter.string(fromByteCount: Int64(data.count), countStyle: .file)))"
-                } else {
-                    text = String(decoding: data.prefix(512 * 1024), as: UTF8.self)
-                    if data.count > 512 * 1024 { text += "\n… (truncated)" }
-                }
-            } else {
-                text = "Cannot read file"
-            }
+            let text = RemoteFS.readText(full) ?? "Cannot read file"
             DispatchQueue.main.async { if self.selected == rel { self.preview = text } }
         }
     }
@@ -275,7 +267,9 @@ struct FilesPanel: View {
                 HStack(spacing: 6) {
                     Text(sel).font(T.mono(11)).foregroundStyle(T.text2).lineLimit(1).truncationMode(.head)
                     Spacer()
-                    OpenInMenu(path: (base as NSString).appendingPathComponent(sel)).menuStyle(.borderlessButton).fixedSize()
+                    if !model.host.isRemote {
+                        OpenInMenu(path: (base as NSString).appendingPathComponent(sel)).menuStyle(.borderlessButton).fixedSize()
+                    }
                     Button { f.selected = nil } label: { Image(systemName: "xmark").font(.system(size: 9, weight: .bold)) }.buttonStyle(ChromeButtonStyle())
                 }
                 .padding(.horizontal, 10).frame(height: 30)

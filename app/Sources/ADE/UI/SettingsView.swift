@@ -700,7 +700,7 @@ struct HostsSettings: View {
                 Label("Add host…", systemImage: "plus")
             }.buttonStyle(.plain).foregroundStyle(T.text2)
         }
-        Text("Remote projects: the Changes / History / Files panel and worktrees work on this Mac's folders only for now.")
+        Text("Changes / History / Files and worktrees work on remote projects too: the host's daemon runs git (allowlisted commands) and serves file previews. Open in… is local only.")
             .font(T.caption).foregroundStyle(T.text3)
         .sheet(item: $editing) { h in
             HostEditor(host: h) { saved in

@@ -88,6 +88,24 @@ struct OpenInButton: View {
     }
 }
 
+// MARK: - Remote-aware file reads
+
+enum RemoteFS {
+    /// Text of a file on the current host (nil when unreadable; "Binary file" note for binaries).
+    static func readText(_ path: String, max: Int = 512 * 1024) -> String? {
+        if AppModel.shared.host.isRemote {
+            guard let r = try? AppModel.shared.client.callSync("fs.read", ["path": path, "max": max]) as? [String: Any] else { return nil }
+            if (r["binary"] as? Bool) == true { return "Binary file (\(r["size"] ?? "?") bytes)" }
+            let t = r["text"] as? String ?? ""
+            return (r["truncated"] as? Bool) == true ? t + "\n… (truncated)" : t
+        }
+        guard let data = FileManager.default.contents(atPath: path) else { return nil }
+        if data.prefix(8000).contains(0) { return "Binary file (\(ByteCountFormatter.string(fromByteCount: Int64(data.count), countStyle: .file)))" }
+        let t = String(decoding: data.prefix(max), as: UTF8.self)
+        return data.count > max ? t + "\n… (truncated)" : t
+    }
+}
+
 // MARK: - Git
 
 /// Branch + diff stat per project path, refreshed in the background.
@@ -135,6 +153,12 @@ final class GitInfo: ObservableObject {
     }
 
     static func git(_ args: [String], in dir: String) -> String? {
+        if AppModel.shared.host.isRemote {
+            // Remote host: the daemon there runs git (`git.run`, allowlisted).
+            guard let r = try? AppModel.shared.client.callSync("git.run", ["cwd": dir, "args": args]) as? [String: Any],
+                  (r["ok"] as? Bool) == true else { return nil }
+            return r["stdout"] as? String
+        }
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/bin/git")
         p.arguments = ["-C", dir] + args

@@ -951,6 +951,34 @@ impl Daemon {
                 self.changed();
                 Ok(json!({ "ok": true }))
             }
+            "git.run" => {
+                // Git for clients on other machines (remote hosts): `git -C <cwd> <args…>`, allowlisted.
+                const ALLOWED: &[&str] = &["status", "diff", "log", "show", "ls-files", "rev-parse", "worktree", "add", "commit", "push", "branch"];
+                let cwd = util::expand_tilde(&req("cwd")?);
+                let args: Vec<String> = p.get("args").and_then(|v| v.as_array()).map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default();
+                let sub = args.first().cloned().unwrap_or_default();
+                if !ALLOWED.contains(&sub.as_str()) {
+                    bail!("git {sub} is not allowed");
+                }
+                let out = std::process::Command::new("git").arg("-C").arg(&cwd).args(&args).stdin(std::process::Stdio::null()).output()?;
+                let mut stdout = String::from_utf8_lossy(&out.stdout).into_owned();
+                if stdout.len() > 2_000_000 {
+                    stdout.truncate(2_000_000);
+                }
+                Ok(json!({ "ok": out.status.success(), "code": out.status.code(), "stdout": stdout, "stderr": String::from_utf8_lossy(&out.stderr) }))
+            }
+            "fs.read" => {
+                // File preview for remote clients: first `max` bytes (default 512 KiB).
+                let path = util::expand_tilde(&req("path")?);
+                let max = p.get("max").and_then(|v| v.as_u64()).unwrap_or(512 * 1024).min(4 * 1024 * 1024) as usize;
+                use std::io::Read;
+                let f = std::fs::File::open(&path)?;
+                let size = f.metadata()?.len();
+                let mut buf = Vec::new();
+                f.take(max as u64).read_to_end(&mut buf)?;
+                let binary = buf.iter().take(8000).any(|b| *b == 0);
+                Ok(json!({ "size": size, "binary": binary, "text": if binary { String::new() } else { String::from_utf8_lossy(&buf).into_owned() }, "truncated": (size as usize) > max }))
+            }
             "usage.report" => {
                 // { session_id, rate_limits: { five_hour: {used_percentage, resets_at}, ... } }
                 let sid = req("session_id")?;

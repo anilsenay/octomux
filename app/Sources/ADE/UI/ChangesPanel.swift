@@ -76,7 +76,7 @@ final class ChangesModel: ObservableObject {
             var d: String
             if c.badge == "U" {
                 let full = (path as NSString).appendingPathComponent(c.path)
-                let content = (try? String(contentsOfFile: full, encoding: .utf8)) ?? "(binary or unreadable file)"
+                let content = RemoteFS.readText(full) ?? "(binary or unreadable file)"
                 d = content.split(separator: "\n", omittingEmptySubsequences: false).prefix(2000).map { "+" + $0 }.joined(separator: "\n")
             } else {
                 d = GitInfo.git(["diff", "HEAD", "--", c.path], in: path) ?? GitInfo.git(["diff", "--cached", "--", c.path], in: path) ?? ""

@@ -216,7 +216,12 @@ impl Paths {
             return Paths { home: PathBuf::from(h) };
         }
         let base = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/tmp"));
-        Paths { home: base.join("Library/Application Support/ade-dev") }
+        if cfg!(target_os = "macos") {
+            return Paths { home: base.join("Library/Application Support/ade-dev") };
+        }
+        // Linux and others: $XDG_DATA_HOME/ade-dev, else ~/.local/share/ade-dev.
+        let data = std::env::var_os("XDG_DATA_HOME").filter(|v| !v.is_empty()).map(PathBuf::from).unwrap_or_else(|| base.join(".local/share"));
+        Paths { home: data.join("ade-dev") }
     }
 
     pub fn run_dir(&self) -> PathBuf {

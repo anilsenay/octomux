@@ -694,3 +694,26 @@ fn stdio_bridge_speaks_the_control_protocol() {
     drop(stdin);
     assert!(c.wait().unwrap().success());
 }
+
+#[test]
+fn git_run_and_fs_read_for_remote_clients() {
+    let e = Env::new();
+    let dir = e.home.join("repo");
+    std::fs::create_dir_all(&dir).unwrap();
+    let git = |a: &[&str]| assert!(Command::new("git").arg("-C").arg(&dir).args(a).status().unwrap().success());
+    git(&["init", "-q", "-b", "main"]);
+    std::fs::write(dir.join("a.txt"), "hello\n").unwrap();
+    git(&["add", "-A"]);
+    git(&["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "first"]);
+    std::fs::write(dir.join("a.txt"), "hello\nworld\n").unwrap();
+    let st = e.call("git.run", json!({ "cwd": dir, "args": ["status", "--porcelain=v1"] }));
+    assert_eq!(st["ok"], true);
+    assert!(st["stdout"].as_str().unwrap().contains("a.txt"), "{st}");
+    let log = e.call("git.run", json!({ "cwd": dir, "args": ["log", "--pretty=%s"] }));
+    assert_eq!(log["stdout"].as_str().unwrap().trim(), "first");
+    let denied = e.try_call("git.run", json!({ "cwd": dir, "args": ["config", "--global", "x.y", "z"] })).unwrap_err();
+    assert!(denied.contains("not allowed"), "{denied}");
+    let f = e.call("fs.read", json!({ "path": dir.join("a.txt") }));
+    assert_eq!(f["text"], "hello\nworld\n");
+    assert_eq!(f["binary"], false);
+}

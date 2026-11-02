@@ -173,7 +173,7 @@ struct TopBar: View {
                         }
                         .buttonStyle(.plain).help("\(stat.files) changed files")
                     }
-                    if let p = model.currentProject {
+                    if let p = model.currentProject, !model.host.isRemote {
                         OpenInButton(path: p.path)
                     }
                     Button { model.newSession(profileId: nil, split: .right) } label: { Image(systemName: "rectangle.split.2x1") }
