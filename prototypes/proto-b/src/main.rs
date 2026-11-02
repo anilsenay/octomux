@@ -543,6 +543,27 @@ fn install_test_hooks(window: gpui::WindowHandle<Root>, cx: &mut App) {
         })
         .detach();
     }
+    // Keystrokes dispatched through GPUI's normal key path (focus -> on_key_down
+    // -> encoder -> Input frame), e.g. "1500:e c h o space ç ğ enter ctrl-c".
+    if let Ok(spec) = std::env::var("PROTO_B_TYPE") {
+        if let Some((ms, keys)) = spec.split_once(':') {
+            let ms: u64 = ms.parse().unwrap_or(1000);
+            let keys: Vec<String> = keys.split_whitespace().map(str::to_string).collect();
+            cx.spawn(async move |cx| {
+                cx.background_executor().timer(Duration::from_millis(ms)).await;
+                for k in keys {
+                    let any: gpui::AnyWindowHandle = window.into();
+                    let _ = cx.update_window(any, |_, window, cx| {
+                        if let Ok(ks) = gpui::Keystroke::parse(&k) {
+                            window.dispatch_keystroke(ks, cx);
+                        }
+                    });
+                    cx.background_executor().timer(Duration::from_millis(20)).await;
+                }
+            })
+            .detach();
+        }
+    }
     if let Ok(spec) = std::env::var("PROTO_B_RESIZE") {
         for item in spec.split(',') {
             let Some((ms, wh)) = item.split_once(':') else { continue };

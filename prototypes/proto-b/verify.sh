@@ -76,7 +76,7 @@ compare() { # client parser text vs holder text
   done
 }
 launch() {
-  PROTO_B_DUMP_DIR=$DUMP PROTO_B_RESIZE="${1:-}" "$APP" "$ADE_HOME" "$S1" "$S2" >"$ADE_HOME/app.out" 2>&1 &
+  PROTO_B_TYPE="${2:-}" PROTO_B_DUMP_DIR=$DUMP PROTO_B_RESIZE="${1:-}" "$APP" "$ADE_HOME" "$S1" "$S2" >"$ADE_HOME/app.out" 2>&1 &
   APP_PID=$!
   sleep 3
 }
@@ -113,4 +113,11 @@ sleep 0.5
 input "$S1" $'stty size\r'; input "$S2" $'stty size\r'
 sleep 1
 shot 4b-large; compare
+
+echo "== 5. keyboard path (GPUI dispatch_keystroke -> on_key_down -> Input frame)"
+kill "$APP_PID"; wait "$APP_PID" 2>/dev/null; APP_PID=""
+launch "" "1000:e c h o space shift-k ç ğ ı ö ş ü shift-ç shift-ğ shift-i shift-ö tab enter s l e e p space 9 enter ctrl-c up enter"
+sleep 3
+shot 5-keys; compare
+screen "$S1" | tail -12
 tail -5 "$ADE_HOME/app.out"

@@ -302,13 +302,24 @@ fn vim_alt_screen_survives_reattach() {
     std::thread::sleep(Duration::from_millis(500));
     e.input(&id, "ihello from vim\x1b");
     e.wait_screen(&id, "hello from vim");
-    let (_s, snap) = attach(&e.home, &id, 80, 24);
+    let (mut s, snap) = attach(&e.home, &id, 80, 24);
     let mut v = vt100::Parser::new(24, 80, 0);
     v.process(&snap);
     assert!(v.screen().alternate_screen(), "vim runs in the alternate screen: {:?}", e.call("session.screen_text", json!({ "id": id })));
     assert_eq!(v.screen().contents(), e.screen(&id));
     e.input(&id, ":q!\r");
     e.wait_screen(&id, "ade$");
+    // A client that attached while vim was up must see the shell again after vim exits.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while v.screen().alternate_screen() || v.screen().contents() != e.screen(&id) {
+        assert!(Instant::now() < deadline, "main screen not restored:\n{}", v.screen().contents());
+        if let Ok(Some(f)) = Frame::read_from(&mut s) {
+            if f.kind == Kind::Output {
+                v.process(&f.payload);
+            }
+        }
+    }
+    assert!(v.screen().contents().contains("CLEARED4"), "main screen content is back");
 }
 
 #[test]

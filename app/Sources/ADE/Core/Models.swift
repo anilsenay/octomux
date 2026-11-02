@@ -1,0 +1,236 @@
+import Foundation
+
+// Mirrors ade-proto/src/control.rs (snake_case JSON).
+
+struct Workspace: Codable, Identifiable, Equatable {
+    var id: String
+    var name: String
+    var color: String
+    var sort: Int
+}
+
+struct ProjectIcon: Codable, Equatable {
+    var kind: String
+    var value: String?
+}
+
+struct Project: Codable, Identifiable, Equatable {
+    var id: String
+    var workspaceId: String
+    var name: String
+    var path: String
+    var color: String
+    var icon: ProjectIcon
+    var sort: Int
+    var archived: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, path, color, icon, sort, archived
+        case workspaceId = "workspace_id"
+    }
+}
+
+enum AgentKind: String, Codable, CaseIterable {
+    case claude, codex, generic
+}
+
+struct Profile: Codable, Identifiable, Equatable {
+    var id: String
+    var name: String
+    var icon: String
+    var kind: AgentKind
+    var command: String
+    var args: [String]
+    var env: [String: String]
+    var viaLoginShell: Bool
+    var resumeTemplate: String
+    var enabled: Bool
+    var pinned: Bool
+    var sort: Int
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, icon, kind, command, args, env, enabled, pinned, sort
+        case viaLoginShell = "via_login_shell"
+        case resumeTemplate = "resume_template"
+    }
+}
+
+enum SessionKind: String, Codable { case terminal, agent, action }
+enum SessionState: String, Codable { case running, stopped, exited, interrupted }
+enum Activity: String, Codable { case idle, working, needsInput = "needs_input", done, error }
+enum Placement: String, Codable { case tab, dock }
+
+struct Session: Codable, Identifiable, Equatable {
+    var id: String
+    var projectId: String
+    var kind: SessionKind
+    var profileId: String?
+    var title: String
+    var customTitle: String
+    var cwd: String
+    var state: SessionState
+    var activity: Activity
+    var unread: Bool
+    var agentSessionId: String?
+    var createdAt: Int
+    var lastActivityAt: Int
+    var exitCode: Int?
+    var placement: Placement
+    var command: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, kind, title, cwd, state, activity, unread, placement, command
+        case projectId = "project_id"
+        case profileId = "profile_id"
+        case customTitle = "custom_title"
+        case agentSessionId = "agent_session_id"
+        case createdAt = "created_at"
+        case lastActivityAt = "last_activity_at"
+        case exitCode = "exit_code"
+    }
+
+    var displayTitle: String {
+        if !customTitle.isEmpty { return customTitle }
+        return title.isEmpty ? "Session" : title
+    }
+
+    /// Stopped or ended: drawn dimmed, with restart/remove controls.
+    var isDormant: Bool { state == .stopped || state == .exited }
+}
+
+enum SplitDir: String, Codable { case right, down }
+
+indirect enum PaneNode: Codable, Equatable {
+    case leaf(sessionId: String)
+    case split(dir: SplitDir, ratio: Double, a: PaneNode, b: PaneNode)
+
+    enum CodingKeys: String, CodingKey { case type, dir, ratio, a, b; case sessionId = "session_id" }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let type = try c.decode(String.self, forKey: .type)
+        if type == "leaf" {
+            self = .leaf(sessionId: try c.decode(String.self, forKey: .sessionId))
+        } else {
+            self = .split(dir: try c.decode(SplitDir.self, forKey: .dir),
+                          ratio: try c.decode(Double.self, forKey: .ratio),
+                          a: try c.decode(PaneNode.self, forKey: .a),
+                          b: try c.decode(PaneNode.self, forKey: .b))
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case .leaf(let id):
+            try c.encode("leaf", forKey: .type)
+            try c.encode(id, forKey: .sessionId)
+        case .split(let dir, let ratio, let a, let b):
+            try c.encode("split", forKey: .type)
+            try c.encode(dir, forKey: .dir)
+            try c.encode(ratio, forKey: .ratio)
+            try c.encode(a, forKey: .a)
+            try c.encode(b, forKey: .b)
+        }
+    }
+
+    var sessions: [String] {
+        switch self {
+        case .leaf(let id): return [id]
+        case .split(_, _, let a, let b): return a.sessions + b.sessions
+        }
+    }
+
+    func withRatio(path: [Bool], ratio r: Double) -> PaneNode {
+        guard case .split(let dir, let ratio, let a, let b) = self else { return self }
+        if path.isEmpty { return .split(dir: dir, ratio: r, a: a, b: b) }
+        let rest = Array(path.dropFirst())
+        return path[0] ? .split(dir: dir, ratio: ratio, a: a, b: b.withRatio(path: rest, ratio: r))
+                       : .split(dir: dir, ratio: ratio, a: a.withRatio(path: rest, ratio: r), b: b)
+    }
+}
+
+struct Tab: Codable, Identifiable, Equatable {
+    var id: String
+    var projectId: String
+    var sort: Int
+    var layout: PaneNode
+    var activeSessionId: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, sort, layout
+        case projectId = "project_id"
+        case activeSessionId = "active_session_id"
+    }
+}
+
+struct Setting: Codable, Equatable {
+    var scope: String
+    var key: String
+    var value: JSONValue
+}
+
+struct DaemonState: Codable, Equatable {
+    var workspaces: [Workspace] = []
+    var projects: [Project] = []
+    var profiles: [Profile] = []
+    var sessions: [Session] = []
+    var tabs: [Tab] = []
+    var settings: [Setting] = []
+}
+
+struct AppNotification: Codable {
+    var sessionId: String
+    var projectId: String
+    var kind: String
+    var title: String
+    var body: String
+
+    enum CodingKeys: String, CodingKey {
+        case kind, title, body
+        case sessionId = "session_id"
+        case projectId = "project_id"
+    }
+}
+
+/// Minimal JSON value for settings.
+enum JSONValue: Codable, Equatable {
+    case null, bool(Bool), number(Double), string(String), array([JSONValue]), object([String: JSONValue])
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.singleValueContainer()
+        if c.decodeNil() { self = .null }
+        else if let b = try? c.decode(Bool.self) { self = .bool(b) }
+        else if let n = try? c.decode(Double.self) { self = .number(n) }
+        else if let s = try? c.decode(String.self) { self = .string(s) }
+        else if let a = try? c.decode([JSONValue].self) { self = .array(a) }
+        else { self = .object(try c.decode([String: JSONValue].self)) }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.singleValueContainer()
+        switch self {
+        case .null: try c.encodeNil()
+        case .bool(let b): try c.encode(b)
+        case .number(let n): try c.encode(n)
+        case .string(let s): try c.encode(s)
+        case .array(let a): try c.encode(a)
+        case .object(let o): try c.encode(o)
+        }
+    }
+
+    var bool: Bool? { if case .bool(let b) = self { return b }; return nil }
+    var number: Double? { if case .number(let n) = self { return n }; return nil }
+    var string: String? { if case .string(let s) = self { return s }; return nil }
+    var any: Any {
+        switch self {
+        case .null: return NSNull()
+        case .bool(let b): return b
+        case .number(let n): return n
+        case .string(let s): return s
+        case .array(let a): return a.map { $0.any }
+        case .object(let o): return o.mapValues { $0.any }
+        }
+    }
+}
+

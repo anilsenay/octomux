@@ -151,11 +151,17 @@ fn percent_decode(s: &str) -> String {
 }
 
 /// Escape sequences that recreate the current screen in a fresh terminal.
-pub fn snapshot_bytes(screen: &vt100::Screen, title: &str) -> Vec<u8> {
+/// `main` is the main-screen image captured when the program switched to the
+/// alternate screen; it is replayed first so leaving the alt screen shows it.
+pub fn snapshot_bytes(screen: &vt100::Screen, title: &str, main: Option<&[u8]>) -> Vec<u8> {
     let mut out = Vec::new();
     // Reset attributes and clear, so a recycled terminal starts clean.
     out.extend_from_slice(b"\x1b[0m\x1b[H\x1b[2J");
     if screen.alternate_screen() {
+        if let Some(m) = main {
+            out.extend_from_slice(m);
+            out.extend_from_slice(b"\x1b[0m");
+        }
         out.extend_from_slice(b"\x1b[?1049h\x1b[H\x1b[2J");
     }
     out.extend_from_slice(&screen.contents_formatted());
@@ -181,6 +187,35 @@ struct Inner {
     cols: u16,
     rows: u16,
     last_activity_event: Instant,
+    /// Main screen as it was when the alternate screen was entered.
+    main_snapshot: Option<Vec<u8>>,
+}
+
+const ALT_ENTER: &[&[u8]] = &[b"\x1b[?1049h", b"\x1b[?1047h", b"\x1b[?47h"];
+
+fn find_alt_enter(data: &[u8]) -> Option<usize> {
+    ALT_ENTER.iter().filter_map(|pat| data.windows(pat.len()).position(|w| w == *pat)).min()
+}
+
+impl Inner {
+    /// Processes output, capturing the main screen right before an alt-screen switch.
+    fn process(&mut self, data: &[u8]) {
+        let mut rest = data;
+        while !self.parser.screen().alternate_screen() {
+            let Some(i) = find_alt_enter(rest) else { break };
+            self.parser.process(&rest[..i]);
+            let sc = self.parser.screen();
+            let mut m = sc.contents_formatted();
+            m.extend_from_slice(&sc.cursor_state_formatted());
+            self.main_snapshot = Some(m);
+            self.parser.process(&rest[i..i + 3]); // "\x1b[?" prefix; rest of the sequence follows
+            rest = &rest[i + 3..];
+        }
+        self.parser.process(rest);
+        if !self.parser.screen().alternate_screen() {
+            self.main_snapshot = None;
+        }
+    }
 }
 
 struct Shared {
@@ -219,7 +254,7 @@ impl Shared {
         let mut inner = self.inner.lock().unwrap();
         let attached = inner.clients.iter().any(|c| c.role == Role::Attach);
         inner.parser.callbacks_mut().answer_queries = !attached;
-        inner.parser.process(data);
+        inner.process(data);
         let events = std::mem::take(&mut inner.parser.callbacks_mut().events);
         let replies = std::mem::take(&mut inner.parser.callbacks_mut().replies);
         Self::broadcast_locked(&mut inner, |r| r == Role::Attach, &Frame::new(Kind::Output, data.to_vec()));
@@ -343,6 +378,7 @@ pub fn run(paths: Paths, args: HolderArgs) -> Result<()> {
             cols,
             rows,
             last_activity_event: Instant::now() - Duration::from_secs(10),
+            main_snapshot: None,
         }),
         pty_writer: Mutex::new(writer),
         master: Mutex::new(pair.master),
@@ -444,7 +480,7 @@ fn serve_client(shared: Arc<Shared>, stream: UnixStream) -> Result<()> {
                 inner = shared.inner.lock().unwrap();
             }
             let title = inner.parser.callbacks().title.clone();
-            let snap = snapshot_bytes(inner.parser.screen(), &title);
+            let snap = snapshot_bytes(inner.parser.screen(), &title, inner.main_snapshot.as_deref());
             let _ = tx.send(Frame::new(Kind::Snapshot, snap).encode());
         }
         if let Some(exit) = inner.exited.clone() {
@@ -478,7 +514,7 @@ fn serve_client(shared: Arc<Shared>, stream: UnixStream) -> Result<()> {
                     HolderRequest::Snapshot => {
                         let inner = shared.inner.lock().unwrap();
                         let title = inner.parser.callbacks().title.clone();
-                        serde_json::json!({ "bytes": String::from_utf8_lossy(&snapshot_bytes(inner.parser.screen(), &title)) })
+                        serde_json::json!({ "bytes": String::from_utf8_lossy(&snapshot_bytes(inner.parser.screen(), &title, inner.main_snapshot.as_deref())) })
                     }
                     HolderRequest::Kill => {
                         shared.kill_child();
@@ -564,7 +600,7 @@ mod tests {
     fn snapshot_recreates_screen() {
         let mut a = vt100::Parser::new(10, 40, 0);
         a.process(b"\x1b[31mred\x1b[0m line one\r\nsecond \xc3\xa7\xc4\x9f\xc3\xbc line\r\n\x1b[5;10Hcursor");
-        let snap = snapshot_bytes(a.screen(), "");
+        let snap = snapshot_bytes(a.screen(), "", None);
         let mut b = vt100::Parser::new(10, 40, 0);
         b.process(b"garbage that should be cleared");
         b.process(&snap);
@@ -577,11 +613,13 @@ mod tests {
     fn snapshot_alt_screen() {
         let mut a = vt100::Parser::new(10, 40, 0);
         a.process(b"main\x1b[?1049h\x1b[Halt content\x1b[?2004h");
-        let snap = snapshot_bytes(a.screen(), "");
+        let snap = snapshot_bytes(a.screen(), "", Some(b"main"));
         let mut b = vt100::Parser::new(10, 40, 0);
         b.process(&snap);
         assert!(b.screen().alternate_screen());
         assert!(b.screen().bracketed_paste());
         assert_eq!(b.screen().contents().trim(), "alt content");
+        b.process(b"\x1b[?1049l");
+        assert_eq!(b.screen().contents().trim(), "main");
     }
 }

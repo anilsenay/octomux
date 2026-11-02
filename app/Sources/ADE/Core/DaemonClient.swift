@@ -1,0 +1,184 @@
+import Foundation
+
+/// Line-oriented Unix socket.
+final class LineSocket {
+    private let fd: Int32
+    private var buffer = Data()
+
+    init?(path: String) {
+        fd = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard fd >= 0 else { return nil }
+        var addr = sockaddr_un()
+        addr.sun_family = sa_family_t(AF_UNIX)
+        let bytes = Array(path.utf8)
+        guard bytes.count < MemoryLayout.size(ofValue: addr.sun_path) else { close(fd); return nil }
+        withUnsafeMutableBytes(of: &addr.sun_path) { raw in
+            for (i, b) in bytes.enumerated() { raw[i] = b }
+            raw[bytes.count] = 0
+        }
+        let r = withUnsafePointer(to: &addr) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
+        }
+        if r != 0 { close(fd); return nil }
+        var on: Int32 = 1
+        setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
+    }
+
+    deinit { close(fd) }
+
+    func writeLine(_ data: Data) -> Bool {
+        var d = data
+        d.append(0x0A)
+        return d.withUnsafeBytes { raw -> Bool in
+            var off = 0
+            while off < raw.count {
+                let n = write(fd, raw.baseAddress! + off, raw.count - off)
+                if n <= 0 { return false }
+                off += n
+            }
+            return true
+        }
+    }
+
+    func readLine() -> Data? {
+        while true {
+            if let nl = buffer.firstIndex(of: 0x0A) {
+                let line = buffer.subdata(in: buffer.startIndex..<nl)
+                buffer.removeSubrange(buffer.startIndex...nl)
+                return line
+            }
+            var chunk = [UInt8](repeating: 0, count: 65536)
+            let n = read(fd, &chunk, chunk.count)
+            if n <= 0 { return nil }
+            buffer.append(contentsOf: chunk[0..<n])
+        }
+    }
+}
+
+enum DaemonError: Error, CustomStringConvertible {
+    case unavailable
+    case remote(String)
+    var description: String {
+        switch self {
+        case .unavailable: return "ADE daemon is not reachable"
+        case .remote(let s): return s
+        }
+    }
+}
+
+/// Talks to the ADE daemon. Requests go over one connection (serialized);
+/// state/notification events arrive on a second, subscribed connection.
+final class DaemonClient {
+    private let queue = DispatchQueue(label: "ade.daemon.requests")
+    private var socket: LineSocket?
+    private var nextId: UInt64 = 1
+
+    var onState: ((DaemonState) -> Void)?
+    var onNotify: ((AppNotification) -> Void)?
+    var onDisconnect: (() -> Void)?
+
+    /// Makes sure a daemon is running (installs/kickstarts the launchd agent if needed).
+    static func ensureDaemon() -> Bool {
+        if LineSocket(path: Paths.daemonSocket.path) != nil { return true }
+        let env = ProcessInfo.processInfo.environment
+        let plist = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/LaunchAgents/dev.ade-dev.daemon.plist")
+        if env["ADE_HOME"] == nil && !FileManager.default.fileExists(atPath: plist.path) {
+            run([Paths.adeBinary, "install-agent"])
+        }
+        run([Paths.adeBinary, "status"])
+        // `ade ctl hello` starts the daemon (launchd kickstart, or detached spawn).
+        run([Paths.adeBinary, "ctl", "hello"])
+        for _ in 0..<50 {
+            if LineSocket(path: Paths.daemonSocket.path) != nil { return true }
+            usleep(100_000)
+        }
+        return false
+    }
+
+    @discardableResult
+    static func run(_ argv: [String]) -> Int32 {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: argv[0])
+        p.arguments = Array(argv.dropFirst())
+        var env = ProcessInfo.processInfo.environment
+        env["ADE_HOME"] = env["ADE_HOME"] ?? nil
+        p.environment = env
+        p.standardOutput = FileHandle.nullDevice
+        p.standardError = FileHandle.nullDevice
+        do { try p.run() } catch { return -1 }
+        p.waitUntilExit()
+        return p.terminationStatus
+    }
+
+    func startSubscription() {
+        Thread.detachNewThread { [weak self] in
+            while true {
+                guard let self else { return }
+                if let sock = LineSocket(path: Paths.daemonSocket.path) {
+                    let req = try! JSONSerialization.data(withJSONObject: ["id": 0, "method": "subscribe", "params": [:]])
+                    _ = sock.writeLine(req)
+                    while let line = sock.readLine() {
+                        self.handleEventLine(line)
+                    }
+                }
+                DispatchQueue.main.async { self.onDisconnect?() }
+                // Daemon gone (upgrade/crash): bring it back and resubscribe.
+                _ = DaemonClient.ensureDaemon()
+                Thread.sleep(forTimeInterval: 0.5)
+            }
+        }
+    }
+
+    private func handleEventLine(_ line: Data) {
+        guard let obj = try? JSONSerialization.jsonObject(with: line) as? [String: Any] else { return }
+        if let event = obj["event"] as? String, let data = obj["data"] {
+            guard let raw = try? JSONSerialization.data(withJSONObject: data) else { return }
+            switch event {
+            case "state":
+                if let s = try? JSONDecoder().decode(DaemonState.self, from: raw) {
+                    DispatchQueue.main.async { self.onState?(s) }
+                }
+            case "notify":
+                if let n = try? JSONDecoder().decode(AppNotification.self, from: raw) {
+                    DispatchQueue.main.async { self.onNotify?(n) }
+                }
+            default: break
+            }
+        } else if obj["id"] != nil, let result = obj["result"] {
+            // Response to `subscribe` carries the initial state.
+            if let raw = try? JSONSerialization.data(withJSONObject: result),
+               let s = try? JSONDecoder().decode(DaemonState.self, from: raw) {
+                DispatchQueue.main.async { self.onState?(s) }
+            }
+        }
+    }
+
+    /// Synchronous call (runs on the request queue; do not call from main for slow methods).
+    func callSync(_ method: String, _ params: [String: Any] = [:]) throws -> Any {
+        try queue.sync {
+            if socket == nil { socket = LineSocket(path: Paths.daemonSocket.path) }
+            guard let sock = socket else { throw DaemonError.unavailable }
+            let id = nextId
+            nextId += 1
+            let data = try JSONSerialization.data(withJSONObject: ["id": id, "method": method, "params": params])
+            guard sock.writeLine(data) else { socket = nil; throw DaemonError.unavailable }
+            while true {
+                guard let line = sock.readLine() else { socket = nil; throw DaemonError.unavailable }
+                guard let obj = try JSONSerialization.jsonObject(with: line) as? [String: Any] else { continue }
+                if obj["event"] != nil { continue }
+                if (obj["id"] as? NSNumber)?.uint64Value != id { continue }
+                if let err = obj["error"] as? String { throw DaemonError.remote(err) }
+                return obj["result"] ?? NSNull()
+            }
+        }
+    }
+
+    /// Async call; completion on main.
+    func call(_ method: String, _ params: [String: Any] = [:], completion: ((Result<Any, Error>) -> Void)? = nil) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let r: Result<Any, Error>
+            do { r = .success(try self.callSync(method, params)) } catch { r = .failure(error) }
+            DispatchQueue.main.async { completion?(r) }
+        }
+    }
+}
