@@ -25,6 +25,8 @@ final class AppModel: ObservableObject {
     /// The doc tab shown instead of the active session tab (nil: the session tab shows).
     @Published var activeDocId: String? { didSet { if oldValue != activeDocId { TerminalHost.shared.render(force: true) } } }
     @Published var focusedSessionId: String?
+    /// Split tab temporarily showing one pane full size (tab id → session id). App-side only.
+    @Published var zoomedPanes: [String: String] = [:] { didSet { if oldValue != zoomedPanes { TerminalHost.shared.render(force: true) } } }
     @Published var sidebarVisible = true
     /// Sidebar shown floating over the content while it is hidden (pointer at the left edge).
     @Published var sidebarPeek = false

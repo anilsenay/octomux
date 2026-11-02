@@ -115,6 +115,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         file.addItem(item("New Agent Tab", #selector(newAgent(_:)), "T"))
         file.addItem(item("Split Right", #selector(splitRight(_:)), "d"))
         file.addItem(item("Split Down", #selector(splitDown(_:)), "D"))
+        let zoom = item("Zoom Pane", #selector(zoomPane(_:)), "")
+        zoom.keyEquivalent = "\r"; zoom.keyEquivalentModifierMask = [.command, .shift]
+        file.addItem(zoom)
         file.addItem(.separator())
         file.addItem(item("Add Project…", #selector(addProject(_:)), "O"))
         file.addItem(item("Open Project in Default App", #selector(openInDefault(_:)), "o"))
@@ -215,6 +218,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc func newAgent(_ s: Any?) { model.newSession(profileId: (model.profile(model.lastNewSessionProfile) ?? model.pinnedProfiles.first ?? model.enabledProfiles.first)?.id) }
     @objc func splitRight(_ s: Any?) { model.newSession(profileId: nil, split: .right) }
     @objc func splitDown(_ s: Any?) { model.newSession(profileId: nil, split: .down) }
+    @objc func zoomPane(_ s: Any?) { model.toggleZoom() }
     @objc func addProject(_ s: Any?) { model.addProject() }
     @objc func openInDefault(_ s: Any?) { if let p = model.currentProject { OpenIn.open(p.path, appId: OpenIn.defaultAppId) } }
     @objc func closePane(_ s: Any?) {

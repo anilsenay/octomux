@@ -375,6 +375,7 @@ final class TerminalSurfaceView: NSView, NSTextInputClient {
             add("Split Right", "d") { m.selectSession(sid); m.newSession(profileId: nil, split: .right) }
             add("Split Down", "d", [.command, .shift]) { m.selectSession(sid); m.newSession(profileId: nil, split: .down) }
             if (m.tab(containing: sid)?.layout.sessions.count ?? 1) > 1 {
+                add(m.isZoomed(sid) ? "Restore Split" : "Zoom Pane", "\r", [.command, .shift]) { m.toggleZoom(sid) }
                 add("Move to New Tab") { m.movePaneToNewTab(sid) }
             }
             add("Move to Dock") { m.client(for: sid).call("session.move", ["id": sid, "placement": "dock"]) }

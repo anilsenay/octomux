@@ -43,6 +43,7 @@ enum DebugActions {
             case "new_terminal": m.newSession(profileId: nil, projectId: id)
             case "new_agent": m.newSession(profileId: p["profile_id"] as? String, projectId: id)
             case "split_right": m.newSession(profileId: p["profile_id"] as? String, split: .right)
+            case "zoom_pane": m.toggleZoom()
             case "split_down": m.newSession(profileId: p["profile_id"] as? String, split: .down)
             case "select_session": if let id { m.selectSession(id) }
             case "select_workspace": if let id { m.selectWorkspace(id) }

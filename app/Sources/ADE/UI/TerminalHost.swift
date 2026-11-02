@@ -94,6 +94,8 @@ final class TerminalHost {
         dockContainer.setRoot(pane)
     }
 
+    private var renderedZoom: String?
+
     func render(force: Bool = false) {
         if let doc = model.activeDoc {
             DocHost.shared.activeChanged(doc.id)
@@ -113,7 +115,13 @@ final class TerminalHost {
         if renderedDocId != nil { renderedDocId = nil; DocHost.shared.activeChanged(nil); renderedTabId = "\u{0}" }
         let tab = model.activeTab
         let states = Dictionary(uniqueKeysWithValues: (tab?.layout.sessions ?? []).compactMap { id in model.session(id).map { (id, $0.state) } })
-        if !force, tab?.id == renderedTabId, tab?.layout == renderedLayout, states == renderedStates { return }
+        // Focusing another pane of a zoomed tab (sidebar, ⌥⌘arrows) brings the split back.
+        if let tab, let z = model.zoomedPane(in: tab), let f = model.focusedSessionId, f != z, tab.layout.sessions.contains(f) {
+            DispatchQueue.main.async { self.model.zoomedPanes[tab.id] = nil }
+        }
+        let zoomed = model.zoomedPane(in: tab)
+        if !force, tab?.id == renderedTabId, tab?.layout == renderedLayout, states == renderedStates, zoomed == renderedZoom { return }
+        renderedZoom = zoomed
         renderedTabId = tab?.id
         renderedLayout = tab?.layout
         renderedStates = states
@@ -122,7 +130,7 @@ final class TerminalHost {
             container.showEmpty()
             return
         }
-        let root = build(tab.layout, tabId: tab.id, path: [])
+        let root = build(zoomed.map { PaneNode.leaf(sessionId: $0) } ?? tab.layout, tabId: tab.id, path: [])
         container.setRoot(root)
         updateFocusRings(model.focusedSessionId)
         DispatchQueue.main.async { self.focusCurrent() }
@@ -191,7 +199,8 @@ final class TerminalHost {
     }
 
     func focusNeighbor(_ dir: NSRectEdge) {
-        guard let tab = model.activeTab, let cur = model.focusedSessionId, let curView = surfaces[cur], let win = curView.window else { return }
+        guard let tab = model.activeTab, model.zoomedPane(in: tab) == nil,
+              let cur = model.focusedSessionId, let curView = surfaces[cur], let win = curView.window else { return }
         let curFrame = curView.convert(curView.bounds, to: nil)
         var best: (String, CGFloat)?
         for id in tab.layout.sessions where id != cur {
@@ -460,18 +469,35 @@ struct PaneHeader: View {
 
     var body: some View {
         let focused = model.focusedSessionId == sessionId
+        let zoomed = model.isZoomed(sessionId)
         if let s = model.session(sessionId) {
+            GeometryReader { g in
+            // Narrow panes keep their title: the split buttons stay in the … and right-click menus.
+            let roomy = g.size.width >= 300
             HStack(spacing: 7) {
                 Image(systemName: "circle.grid.2x3.fill").font(.system(size: 7.5)).foregroundStyle(T.text3.opacity(hover ? 0.9 : 0.45))
                     .frame(width: 8).help("Drag to move this pane")
                 AgentIcon(icon: iconName(for: s, model: model), size: 11).opacity(focused ? 1 : 0.6)
                 Text(s.displayTitle)
+                    .layoutPriority(1)
                     .font(.system(size: 12, weight: focused ? .semibold : .medium))
                     .foregroundStyle(focused ? T.text : T.text3)
                     .lineLimit(1).truncationMode(.tail)
                 ActivityIndicator(session: s)
                 Spacer(minLength: 6)
                 Group {
+                    if s.placement == .tab && !zoomed && roomy {
+                        Button { model.selectSession(s.id); model.newSession(profileId: nil, split: .right) } label: { Image(systemName: "rectangle.split.2x1") }
+                            .help("Split Right (⌘D)")
+                        Button { model.selectSession(s.id); model.newSession(profileId: nil, split: .down) } label: { Image(systemName: "rectangle.split.1x2") }
+                            .help("Split Down (⇧⌘D)")
+                    }
+                    Button { model.toggleZoom(s.id) } label: {
+                        Image(systemName: zoomed ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
+                            .foregroundStyle(zoomed ? T.accent : T.text3)
+                    }
+                    .help(zoomed ? "Restore split (⇧⌘↩)" : "Zoom pane (⇧⌘↩)")
+                    .background(zoomed ? RoundedRectangle(cornerRadius: 5, style: .continuous).fill(T.accent.opacity(0.15)) : nil)
                     if model.canChat(s) {
                         Button { model.toggleChat(s.id) } label: { Image(systemName: model.isChat(s.id) ? "terminal" : "text.bubble") }
                             .help(model.isChat(s.id) ? "Show terminal" : "Show as chat")
@@ -485,10 +511,11 @@ struct PaneHeader: View {
                 .buttonStyle(IconButtonStyle(size: 20))
                 .font(.system(size: 10.5, weight: .medium))
                 .foregroundStyle(T.text3)
-                .opacity(hover || focused ? 1 : 0)
+                .opacity(hover || focused || zoomed ? 1 : 0)
             }
             .padding(.leading, 12).padding(.trailing, 6)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(width: g.size.width, height: g.size.height)
+            }
             .background(focused ? T.hover : Color.clear)
             .overlay(alignment: .bottom) { Rectangle().fill(T.border).frame(height: 1) }
             .contentShape(Rectangle())
@@ -531,6 +558,7 @@ struct PaneMenuItems: View {
         Button("Split Right") { model.selectSession(session.id); model.newSession(profileId: nil, split: .right) }
         Button("Split Down") { model.selectSession(session.id); model.newSession(profileId: nil, split: .down) }
         if (model.tab(containing: session.id)?.layout.sessions.count ?? 1) > 1 {
+            Button(model.isZoomed(session.id) ? "Restore Split" : "Zoom Pane") { model.toggleZoom(session.id) }
             Button("Move to New Tab") { model.movePaneToNewTab(session.id) }
         }
         Divider()
