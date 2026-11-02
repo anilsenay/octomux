@@ -104,6 +104,13 @@ like the hooks). It reports `rate_limits` (5-hour / weekly) to the daemon at mos
 rollout files once a minute while a Codex session runs. The status bar shows the focused agent's profile plus
 profiles marked "Always show" (in the usage popover or the agent's settings).
 
+## Worktrees and the right panel
+
+Project right-click → **New Worktree…**: a new branch in `<parent>/<repo>.worktrees/<branch>`, opened with an agent
+or a terminal; worktrees show under their project in the sidebar (right-click to open, reveal or remove).
+⌘⌥B opens the right panel: **Changes** (stage-all commit / commit & push), **History** (commits + diffs) and
+**Files** (tree, filter, preview, Open in). All three follow the focused session's worktree.
+
 ## Chat view (Claude)
 
 ⌘⇧C (or the speech-bubble button in the top bar) shows a Claude session as a chat: its own transcript, live,

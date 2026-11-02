@@ -79,7 +79,7 @@ struct ErrorBanner: View {
     let dismiss: () -> Void
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(T.amber)
             Text(text).font(.system(size: 12)).lineLimit(3)
             Button { dismiss() } label: { Image(systemName: "xmark") }.buttonStyle(.plain)
         }

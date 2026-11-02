@@ -137,7 +137,7 @@ struct WorkspacesSettings: View {
 
     var body: some View {
         Text("Workspaces group projects. Switch with the dots at the bottom of the sidebar, a two-finger swipe on the sidebar, or ⌃1…⌃9.")
-            .foregroundStyle(.secondary)
+            .foregroundStyle(T.text2)
         SettingsCard {
             ForEach(model.state.workspaces.sorted { $0.sort < $1.sort }) { w in
                 HStack {
@@ -147,12 +147,12 @@ struct WorkspacesSettings: View {
                         .menuStyle(.borderlessButton).menuIndicator(.hidden).frame(width: 20)
                     TextField("Name", text: Binding(get: { w.name }, set: { model.updateWorkspace(w.id, ["name": $0]) }))
                         .textFieldStyle(.plain).font(.system(size: 13, weight: .medium))
-                    Text("\(model.state.projects.filter { $0.workspaceId == w.id }.count) projects").foregroundStyle(.secondary)
+                    Text("\(model.state.projects.filter { $0.workspaceId == w.id }.count) projects").foregroundStyle(T.text2)
                     Button { model.updateWorkspace(w.id, ["sort": w.sort - 2]) } label: { Image(systemName: "arrow.up") }.buttonStyle(.plain)
                     Button(role: .destructive) { model.deleteWorkspace(w.id) } label: { Image(systemName: "trash") }
                         .buttonStyle(.plain).disabled(model.state.workspaces.count <= 1)
                 }
-                Divider()
+                Hairline()
             }
             HStack {
                 TextField("New workspace name", text: $newName).onSubmit(add)
@@ -190,7 +190,7 @@ struct AgentsSettings: View {
 
     var body: some View {
         Text("Agents appear in the + menu. Pinned agents also get a one-click button in the tab bar. Claude and Codex sessions resume their conversation after a crash or reboot.")
-            .foregroundStyle(.secondary)
+            .foregroundStyle(T.text2)
         SettingsCard {
             ForEach(model.state.profiles.sorted { $0.sort < $1.sort }) { p in
                 HStack(spacing: 10) {
@@ -198,17 +198,17 @@ struct AgentsSettings: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(p.name).font(.system(size: 13, weight: .medium))
                         Text(([p.command] + p.args).joined(separator: " ") + (p.env.isEmpty ? "" : "  ·  " + p.env.map { "\($0)=\($1)" }.joined(separator: " ")))
-                            .font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary).lineLimit(1)
+                            .font(.system(size: 11, design: .monospaced)).foregroundStyle(T.text2).lineLimit(1)
                     }
                     Spacer()
                     Text(p.kind.rawValue).font(.caption).padding(.horizontal, 6).padding(.vertical, 2)
-                        .background(Capsule().fill(Color.primary.opacity(0.08)))
+                        .background(Capsule().fill(T.hover))
                     Button { update(p, ["pinned": !p.pinned]) } label: { Image(systemName: p.pinned ? "pin.fill" : "pin") }
                         .buttonStyle(.plain).help("Show as a shortcut next to +")
                     Toggle("", isOn: Binding(get: { p.enabled }, set: { update(p, ["enabled": $0]) })).labelsHidden().toggleStyle(.switch).controlSize(.small)
                     Button { editing = p } label: { Image(systemName: "slider.horizontal.3") }.buttonStyle(.plain)
                 }
-                Divider()
+                Hairline()
             }
             Button { editing = Profile(id: "", name: "", icon: "terminal", kind: .generic, command: "", args: [], env: [:], viaLoginShell: true, resumeTemplate: "", enabled: true, pinned: false, sort: 99) } label: {
                 Label("Add custom agent…", systemImage: "plus")
@@ -225,7 +225,7 @@ struct AgentsSettings: View {
                     HStack {
                         AgentIcon(icon: d["icon"] as? String ?? "agent")
                         Text(d["command"] as? String ?? "")
-                        Text(d["path"] as? String ?? "").font(.caption).foregroundStyle(.secondary)
+                        Text(d["path"] as? String ?? "").font(.caption).foregroundStyle(T.text2)
                         Spacer()
                         Button("Add") {
                             model.client.call("profile.create", ["name": d["command"] as? String ?? "", "command": d["command"] as? String ?? "",
@@ -236,7 +236,7 @@ struct AgentsSettings: View {
             }
         }
         Text("Tip: for a second Claude account, duplicate the claude agent and set CLAUDE_CONFIG_DIR, or point Command at a wrapper like `claude-work`.")
-            .font(.caption).foregroundStyle(.secondary)
+            .font(.caption).foregroundStyle(T.text2)
             .sheet(item: $editing) { p in ProfileEditor(profile: p) { editing = nil } }
             .onAppear {
                 model.client.call("profile.detect") { r in
@@ -280,7 +280,7 @@ struct ProfileEditor: View {
                 }
                 TextField("Command", text: $profile.command).font(.system(.body, design: .monospaced))
                     .onSubmit(check)
-                if !resolved.isEmpty { Text(resolved).font(.caption).foregroundStyle(.secondary) }
+                if !resolved.isEmpty { Text(resolved).font(.caption).foregroundStyle(T.text2) }
                 TextField("Arguments", text: $argsText).font(.system(.body, design: .monospaced))
                 VStack(alignment: .leading) {
                     Text("Environment (KEY=value per line)").font(.caption)
@@ -391,7 +391,7 @@ struct AppearanceSettings: View {
                 HStack {
                     ForEach(Palette.colors, id: \.self) { c in
                         Circle().fill(Color(hex: c)).frame(width: 22, height: 22)
-                            .overlay(Circle().stroke(Color.primary, lineWidth: w.color == c ? 2 : 0))
+                            .overlay(Circle().stroke(T.text, lineWidth: w.color == c ? 2 : 0))
                             .onTapGesture { model.updateWorkspace(w.id, ["color": c]) }
                     }
                 }
@@ -400,7 +400,7 @@ struct AppearanceSettings: View {
         SettingsCard {
             Text("Terminal").font(.headline)
             Text("Uses Ghostty's config syntax (font-family, font-size, cursor-style, …). The theme's colors are applied on top unless “Use theme colors” is off. Saved to \(Paths.terminalConfig.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")).")
-                .font(.caption).foregroundStyle(.secondary)
+                .font(.caption).foregroundStyle(T.text2)
             TextEditor(text: $config).font(T.mono(12)).frame(height: 220)
                 .scrollContentBackground(.hidden).padding(6)
                 .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(T.surface))
@@ -409,7 +409,7 @@ struct AppearanceSettings: View {
                 Button("Import from Ghostty") { importGhostty() }
                 Button("Insert example") { config += (config.isEmpty ? "" : "\n") + "font-family = JetBrains Mono\nfont-size = 13\ncursor-style = bar\n" }
                 Spacer()
-                Text(status).font(.caption).foregroundStyle(.secondary)
+                Text(status).font(.caption).foregroundStyle(T.text2)
                 Button("Apply") { save() }.keyboardShortcut("s")
             }
         }
@@ -531,28 +531,28 @@ struct NotificationSettings: View {
     var body: some View {
         SettingsCard {
             toggle("Notifications", key: "notifications.enabled")
-            Divider()
+            Hairline()
             toggle("Agent finished", key: "notifications.done")
             toggle("Agent needs input or permission", key: "notifications.needs_input")
             toggle("Agent error", key: "notifications.error")
             toggle("Long-running terminal command finished", key: "notifications.command_done")
             toggle("Program notifications (OSC 9 / 777)", key: "notifications.program")
-            Divider()
+            Hairline()
             HStack {
                 Text("Command threshold")
                 Spacer()
                 let v = Int(model.settingValue("notifications.command_threshold_secs", scope: sel.scope)?.number ?? 10)
                 Stepper("\(v) s", value: Binding(get: { v }, set: { model.setSetting("notifications.command_threshold_secs", $0, scope: sel.scope) }), in: 1...600)
             }
-            Divider()
+            Hairline()
             toggle("Sound", key: "notifications.sound")
             toggle("Dock badge", key: "notifications.badge")
         }
         Text("You are never notified about the pane you are looking at. Mute a single project from its right-click menu.")
-            .font(.caption).foregroundStyle(.secondary)
+            .font(.caption).foregroundStyle(T.text2)
         if !Notifier.shared.authorized {
             Text("System notifications are not authorized for ADE (or ADE runs outside its app bundle). Enable them in System Settings → Notifications.")
-                .font(.caption).foregroundStyle(.orange)
+                .font(.caption).foregroundStyle(T.amber)
         }
     }
 
@@ -577,11 +577,11 @@ struct FeatureSettings: View {
     var body: some View {
         SettingsCard {
             feature("Git worktrees", key: "features.worktrees", desc: "New Worktree… in the project menu and worktree groups in the sidebar.", available: true, defaultOn: true)
-            Divider()
+            Hairline()
             feature("Remote hosts", key: "features.remote", desc: "Connect the window to an ADE daemon on another machine over SSH (Settings → Hosts).", available: true, defaultOn: true)
-            Divider()
+            Hairline()
             feature("Chat view for Claude", key: "features.chat", desc: "Show a Claude session as a chat (its transcript) and type into the same session. ⌘⇧C.", available: true, defaultOn: true)
-            Divider()
+            Hairline()
             feature("Usage via OAuth API", key: "features.usage_oauth", desc: "Read Claude plan limits from Anthropic's usage endpoint even with no session open. (Phase 2.)", available: false)
         }
     }
@@ -590,7 +590,7 @@ struct FeatureSettings: View {
         VStack(alignment: .leading, spacing: 3) {
             Toggle(title, isOn: Binding(get: { model.setting(key)?.bool ?? defaultOn }, set: { model.setSetting(key, $0) }))
                 .toggleStyle(.switch).disabled(!available)
-            Text(desc).font(.caption).foregroundStyle(.secondary)
+            Text(desc).font(.caption).foregroundStyle(T.text2)
         }
     }
 }
@@ -787,7 +787,7 @@ struct AdvancedSettings: View {
                 Button("Open Data Folder") { NSWorkspace.shared.open(Paths.home) }
                 Button("Open Logs") { NSWorkspace.shared.open(Paths.home.appendingPathComponent("logs")) }
             }
-            Text("Sessions keep running while the daemon restarts; they live in their own processes.").font(.caption).foregroundStyle(.secondary)
+            Text("Sessions keep running while the daemon restarts; they live in their own processes.").font(.caption).foregroundStyle(T.text2)
         }
         .onAppear(perform: refresh)
     }

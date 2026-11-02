@@ -228,11 +228,11 @@ struct ActionEditor: View {
         VStack(alignment: .leading, spacing: 12) {
             Text(original == nil ? "Add action" : "Edit action").font(.title3.weight(.semibold))
             Text("Save a project command to run with one click. It runs in a dock terminal at the project root.")
-                .font(.caption).foregroundStyle(.secondary)
+                .font(.caption).foregroundStyle(T.text2)
             HStack {
                 ForEach(ProjectAction.icons, id: \.self) { i in
                     Image(systemName: i).frame(width: 30, height: 26)
-                        .background(RoundedRectangle(cornerRadius: 6).stroke(i == icon ? Color.accentColor : Color.primary.opacity(0.15)))
+                        .background(RoundedRectangle(cornerRadius: 6).stroke(i == icon ? T.accent : T.border))
                         .onTapGesture { icon = i }
                 }
             }
