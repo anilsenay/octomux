@@ -215,8 +215,8 @@ struct ChatView: View {
         VStack(spacing: 0) {
             header(s)
             Hairline()
-            if chat.path == nil {
-                PanelEmpty(icon: "text.bubble", text: "No transcript yet — it appears after the first message.")
+            if chat.path == nil || chat.items.isEmpty {
+                starting(s)
             } else {
                 ScrollViewReader { proxy in
                     ScrollView {
@@ -260,6 +260,34 @@ struct ChatView: View {
         .onDisappear { chat.stop() }
         .onChange(of: s?.transcriptPath) { _, _ in chat.attach(resolvePath(model.session(sessionId))) }
         .onChange(of: s?.agentSessionId) { _, _ in chat.attach(resolvePath(model.session(sessionId))) }
+    }
+
+    /// Before the transcript has anything: the first message (started from the chat screen) and a spinner,
+    /// or a hint when the session was opened without one.
+    @ViewBuilder private func starting(_ s: Session?) -> some View {
+        let agent = model.profile(s?.profileId)?.name ?? "The agent"
+        let first = s.flatMap { ChatFirstMessage.get($0.id) }
+        VStack(alignment: .leading, spacing: 14) {
+            if let first {
+                HStack {
+                    Spacer(minLength: 80)
+                    Text(first).font(T.body).foregroundStyle(T.text)
+                        .padding(.horizontal, 13).padding(.vertical, 9)
+                        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(T.selection))
+                }
+            }
+            if first == nil, s?.state == .running {
+                Text("\(agent) is ready. Write below; it goes to the same session as the terminal.").font(T.body).foregroundStyle(T.text2)
+            } else if s?.state == .running || s?.state == .interrupted {
+                HStack(spacing: 8) { WorkingRing(); Text("Starting \(agent)…").font(T.body).foregroundStyle(T.text2) }
+            } else {
+                Text("\(agent) is not running.").font(T.body).foregroundStyle(T.text2)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 22).padding(.vertical, 16)
+        .frame(maxWidth: 820, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func resolvePath(_ s: Session?) -> String? {
@@ -369,6 +397,17 @@ struct ChatView: View {
 
     private func markdown(_ s: String) -> AttributedString {
         (try? AttributedString(markdown: s, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(s)
+    }
+}
+
+/// The message a chat session was started with (shown until the transcript has it). App-side only.
+enum ChatFirstMessage {
+    static func get(_ id: String) -> String? { (UserDefaults.standard.dictionary(forKey: "ade.chatFirst") as? [String: String])?[id] }
+    static func set(_ id: String, _ text: String) {
+        var d = UserDefaults.standard.dictionary(forKey: "ade.chatFirst") as? [String: String] ?? [:]
+        d[id] = text
+        if d.count > 50 { d = Dictionary(uniqueKeysWithValues: d.suffix(50).map { ($0.key, $0.value) }) }
+        UserDefaults.standard.set(d, forKey: "ade.chatFirst")
     }
 }
 

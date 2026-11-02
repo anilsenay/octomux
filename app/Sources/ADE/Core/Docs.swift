@@ -8,6 +8,7 @@ struct DocTab: Codable, Identifiable, Equatable {
         case file(String)            // path relative to workPath
         case changes
         case commit(String, String)  // hash, subject
+        case newChat                 // start screen of a chat session (no agent running yet)
     }
     var id: String
     var projectId: String
@@ -19,6 +20,7 @@ struct DocTab: Codable, Identifiable, Equatable {
         case .file(let rel): return (rel as NSString).lastPathComponent
         case .changes: return "Changes"
         case .commit(let h, let subject): return subject.isEmpty ? String(h.prefix(7)) : subject
+        case .newChat: return "New session"
         }
     }
 
@@ -27,6 +29,7 @@ struct DocTab: Codable, Identifiable, Equatable {
         case .file: return "doc.text"
         case .changes: return "plusminus"
         case .commit: return "clock.arrow.circlepath"
+        case .newChat: return "bubble.left.and.text.bubble.right"
         }
     }
 
@@ -60,6 +63,18 @@ extension AppModel {
         activeDocId = doc.id
         if let scrollTo { DocHost.shared.controller(for: doc).scroll(to: scrollTo) }
         if let line { DocHost.shared.controller(for: doc).goto(line: line) }
+    }
+
+    /// A fresh chat start screen (each call opens another one, like a new tab).
+    func openNewChat(projectId: String? = nil) {
+        guard let p = project(projectId ?? currentProject?.id ?? "") ?? currentProject else {
+            lastError = "Add a project first (⌘⇧O)."
+            return
+        }
+        if p.id != currentProject?.id { selectedProjectId = p.id; activeTabId = tabs(ofProject: p.id).first?.id }
+        let doc = DocTab(id: UUID().uuidString, projectId: p.id, workPath: p.path, kind: .newChat)
+        docTabs.append(doc)
+        activeDocId = doc.id
     }
 
     func openFile(_ rel: String, line: Int? = nil) { openDoc(.file(rel), line: line) }

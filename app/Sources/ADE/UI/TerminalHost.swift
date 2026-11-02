@@ -104,6 +104,12 @@ final class TerminalHost {
             renderedTabId = nil
             renderedLayout = nil
             container.subviews.forEach { $0.removeFromSuperview() }
+            if case .newChat = doc.kind {
+                let pane = PaneView(sessionId: "")
+                pane.setContent(NSHostingView(rootView: NewChatView(docId: doc.id).environmentObject(model)))
+                container.setRoot(pane)
+                return
+            }
             let pane = PaneView(sessionId: "")
             let web = DocHost.shared.controller(for: doc).web
             web.removeFromSuperview()

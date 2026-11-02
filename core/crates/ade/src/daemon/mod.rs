@@ -29,6 +29,8 @@ pub struct Daemon {
     subs: Mutex<Vec<Sender<String>>>,
     monitored: Mutex<HashSet<String>>,
     spawning: Mutex<HashSet<String>>,
+    /// First message for agent sessions about to be spawned (`session.create` `prompt`).
+    prompts: Mutex<HashMap<String, String>>,
     cmd_started: Mutex<HashMap<String, Instant>>,
     dirty: Sender<()>,
     login_path: Mutex<Option<String>>,
@@ -95,6 +97,7 @@ pub fn run(paths: Paths) -> Result<()> {
         subs: Mutex::new(Vec::new()),
         monitored: Mutex::new(HashSet::new()),
         spawning: Mutex::new(HashSet::new()),
+        prompts: Mutex::new(HashMap::new()),
         cmd_started: Mutex::new(HashMap::new()),
         dirty: dirty_tx,
         login_path: Mutex::new(None),
@@ -295,7 +298,8 @@ impl Daemon {
             bail!("agent profile for session {id} no longer exists");
         }
         let aliases = self.aliases.lock().unwrap().clone();
-        let mut spec = agents::build_launch(&self.paths, &session, profile.as_ref(), restoring, &aliases);
+        let prompt = self.prompts.lock().unwrap().remove(id);
+        let mut spec = agents::build_launch_with_prompt(&self.paths, &session, profile.as_ref(), restoring, &aliases, prompt.as_deref());
         if let Some(p) = self.login_path.lock().unwrap().clone() {
             spec.env.push(("PATH".into(), p));
         }
@@ -1275,6 +1279,14 @@ impl Daemon {
                 (cwd, SessionKind::Terminal, "Terminal".to_string())
             }
         };
+        // Started from the chat screen: the first message names the session until the agent titles it.
+        let title = match p.get("prompt").and_then(|v| v.as_str()).map(|t| t.trim()).filter(|t| !t.is_empty()) {
+            Some(t) if kind == SessionKind::Agent => {
+                let line = t.lines().next().unwrap_or(t);
+                if line.chars().count() > 60 { format!("{}…", line.chars().take(59).collect::<String>()) } else { line.to_string() }
+            }
+            _ => title,
+        };
         let now = util::now_secs();
         let session = Session {
             id: util::short_id(),
@@ -1328,6 +1340,9 @@ impl Daemon {
 
         let cols = p.get("cols").and_then(|v| v.as_u64()).unwrap_or(120) as u16;
         let rows = p.get("rows").and_then(|v| v.as_u64()).unwrap_or(40) as u16;
+        if let Some(prompt) = p.get("prompt").and_then(|v| v.as_str()).filter(|s| !s.trim().is_empty()) {
+            self.prompts.lock().unwrap().insert(session.id.clone(), prompt.to_string());
+        }
         self.spawning.lock().unwrap().insert(session.id.clone());
         let r = self.spawn_session_inner(&session.id, resume.is_some(), cols, rows);
         self.spawning.lock().unwrap().remove(&session.id);

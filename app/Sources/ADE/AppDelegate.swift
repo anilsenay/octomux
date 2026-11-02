@@ -113,6 +113,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let file = submenu(main, "File")
         file.addItem(item("New Terminal Tab", #selector(newTerminal(_:)), "t"))
         file.addItem(item("New Agent Tab", #selector(newAgent(_:)), "T"))
+        file.addItem(item("New Chat", #selector(newChat(_:)), "n"))
         file.addItem(item("Split Right", #selector(splitRight(_:)), "d"))
         file.addItem(item("Split Down", #selector(splitDown(_:)), "D"))
         let zoom = item("Zoom Pane", #selector(zoomPane(_:)), "")
@@ -222,6 +223,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc func splitRight(_ s: Any?) { model.newSession(profileId: nil, split: .right) }
     @objc func splitDown(_ s: Any?) { model.newSession(profileId: nil, split: .down) }
     @objc func zoomPane(_ s: Any?) { model.toggleZoom() }
+    @objc func newChat(_ s: Any?) { model.openNewChat() }
     @objc func toggleAgentsView(_ s: Any?) {
         withAnimation(.easeOut(duration: 0.15)) { model.sidebarAgents.toggle() }
         if !model.sidebarVisible { model.toggleSidebar() }

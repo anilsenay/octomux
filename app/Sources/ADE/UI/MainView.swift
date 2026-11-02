@@ -435,6 +435,7 @@ struct DocChip: View {
         case .file(let rel): return rel
         case .changes: return "Uncommitted changes"
         case .commit(let h, let s): return "\(h.prefix(8)) \(s)"
+        case .newChat: return "New chat session"
         }
     }
 }
@@ -519,6 +520,8 @@ struct NewSessionItems: View {
     var remember = false
 
     var body: some View {
+        Button { model.openNewChat(projectId: projectId) } label: { Label("New Chat…", systemImage: "bubble.left.and.text.bubble.right") }
+        Divider()
         Button { start(nil) } label: { Label("Terminal", systemImage: "terminal") }
         Divider()
         ForEach(model.profileGroups(forProject: projectId), id: \.first!.id) { group in
@@ -547,6 +550,12 @@ func newSessionMenu(model: AppModel, projectId: String?, remember: Bool) -> NSMe
         if remember { model.lastNewSessionProfile = id }
         model.newSession(profileId: id, projectId: projectId)
     }
+    let chat = ClosureMenuItem("New Chat…", image: NSImage(systemSymbolName: "bubble.left.and.text.bubble.right", accessibilityDescription: nil)) {
+        model.openNewChat(projectId: projectId)
+    }
+    chat.keyEquivalent = "n"; chat.keyEquivalentModifierMask = [.command]
+    menu.addItem(chat)
+    menu.addItem(.separator())
     menu.addItem(ClosureMenuItem("Terminal", image: NSImage(systemSymbolName: "apple.terminal", accessibilityDescription: nil)) { start(nil) })
     menu.addItem(.separator())
     for group in model.profileGroups(forProject: projectId) {

@@ -856,3 +856,22 @@ fn notifications_are_stored_and_history_outlives_sessions() {
     let r2 = e.call("session.create", json!({ "project_id": p, "profile_id": prof["id"], "resume_agent_session_id": agent_id }));
     assert_eq!(r2["session"]["agent_session_id"], agent_id.as_str());
 }
+
+#[test]
+fn agent_started_with_a_first_message_gets_it_as_cli_prompt() {
+    let e = Env::new();
+    let p = e.project();
+    let script = fake_agent(&e);
+    let prof = e.call("profile.create", json!({ "name": "Claude", "kind": "claude", "command": script, "via_login_shell": true }));
+    let r = e.call("session.create", json!({ "project_id": p, "profile_id": prof["id"], "prompt": "explain the build, it's slow" }));
+    let id = r["session"]["id"].as_str().unwrap().to_string();
+    assert_eq!(r["session"]["title"], "explain the build, it's slow");
+    let text = e.wait_screen(&id, "FAKE-ARGS");
+    assert!(text.contains("explain the build, it's slow"), "{text}");
+    // A restart resumes without repeating the first message.
+    e.call("session.restart", json!({ "id": id }));
+    std::thread::sleep(Duration::from_millis(800));
+    let text = e.wait_screen(&id, "FAKE-ARGS");
+    let last = text.lines().filter(|l| l.contains("FAKE-ARGS")).last().unwrap_or("");
+    assert!(!last.contains("explain the build"), "{text}");
+}

@@ -276,6 +276,12 @@ fn expand_alias<'a>(command: &str, aliases: &'a [(String, String)]) -> Option<&'
 }
 
 pub fn build_launch(paths: &Paths, session: &Session, profile: Option<&Profile>, restoring: bool, aliases: &[(String, String)]) -> LaunchSpec {
+    build_launch_with_prompt(paths, session, profile, restoring, aliases, None)
+}
+
+/// Like `build_launch`; `prompt` (a new session's first message, from the chat start screen) is passed
+/// as the CLI's positional prompt, so it is never typed before the agent is ready.
+pub fn build_launch_with_prompt(paths: &Paths, session: &Session, profile: Option<&Profile>, restoring: bool, aliases: &[(String, String)], prompt: Option<&str>) -> LaunchSpec {
     let cwd = session.cwd.clone();
     let mut env = vec![("ADE_HOME".to_string(), paths.home.to_string_lossy().into_owned())];
     match session.kind {
@@ -333,6 +339,11 @@ pub fn build_launch(paths: &Paths, session: &Session, profile: Option<&Profile>,
                             None => t,
                         });
                     }
+                }
+            }
+            if let Some(p) = prompt.filter(|p| !restoring && !p.trim().is_empty()) {
+                if matches!(profile.kind, AgentKind::Claude | AgentKind::Codex) {
+                    args.push(p.to_string());
                 }
             }
             let command = expand_tilde(&profile.command);
