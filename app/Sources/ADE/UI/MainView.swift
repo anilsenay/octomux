@@ -267,7 +267,7 @@ struct StatusBar: View {
                 Button { model.nextNeedingInput() } label: { Label("\(waiting) waiting", systemImage: "exclamationmark.bubble") }
                     .buttonStyle(.plain).foregroundStyle(.orange).help("Jump to the next session waiting for input (⌘⇧U)")
             }
-            if let p = model.currentProject, let stat = GitInfo.shared.diffStat(for: p.path) {
+            if let p = model.currentProject, let stat = git.diffStat(for: p.path), stat.files > 0 {
                 HStack(spacing: 4) {
                     Text("+\(stat.added)").foregroundStyle(.green)
                     Text("−\(stat.removed)").foregroundStyle(.red)
