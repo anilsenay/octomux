@@ -233,7 +233,6 @@ struct TopBar: View {
     var body: some View {
         GeometryReader { geo in content(width: geo.size.width) }
             .frame(height: T.m.topH)
-            .background(WindowDragArea())
     }
 
     /// Fits the bar into `width`: tools on the right are fixed, tabs share the rest (overflow → "+N").
@@ -255,7 +254,7 @@ struct TopBar: View {
         let fit = layout(width: width)
         return HStack(spacing: 6) {
             if !model.sidebarVisible {
-                Spacer().frame(width: TopLeftControls.width)
+                WindowDragArea().frame(width: TopLeftControls.width)
             }
             let docs = model.currentDocs
             let docSlots = docs.isEmpty ? 0 : max(1, min(docs.count, fit.visible - min(model.currentTabs.count, 1)))
@@ -295,7 +294,9 @@ struct TopBar: View {
             .background(m.tabStyle == .segment && !(model.currentTabs.isEmpty && docs.isEmpty) ? RoundedRectangle(cornerRadius: 9, style: .continuous).fill(T.hover) : nil)
             .fixedSize()
             if model.currentProject != nil { NewSessionButton() }
-            Spacer(minLength: 8)
+            // Only empty top-bar space moves the window; a window-wide drag view under the tabs would
+            // swallow their mouse-down and drag the window instead of the tab.
+            WindowDragArea().frame(minWidth: 8, maxWidth: .infinity)
             HStack(spacing: 4) {
                 if !fit.compact {
                     if let wp = model.currentWorkPath, let stat = git.diffStat(for: wp), stat.files > 0 {

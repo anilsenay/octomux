@@ -412,7 +412,61 @@ struct PopupMenuButton<Label: View>: View {
 
 /// What is being dragged inside the app (tab / project / session reordering).
 enum DragItem {
-    static var current: (kind: String, id: String)?
+    static var current: (kind: String, id: String)? {
+        didSet {
+            if current == nil { DragState.shared.end() } else { DragState.shared.begin(current!.id) }
+        }
+    }
+}
+
+/// Observable side of `DragItem`: which item is in flight, so its source slot can render as a gap
+/// instead of a second copy. SwiftUI's `onDrag` has no "drag ended" callback, so a short poll on the
+/// mouse button clears it when a drag is dropped outside any target or cancelled.
+final class DragState: ObservableObject {
+    static let shared = DragState()
+    @Published private(set) var draggingId: String?
+    private var timer: Timer?
+
+    func begin(_ id: String) {
+        timer?.invalidate()
+        // Let the drag preview snapshot the untouched view first.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) { [weak self] in
+            guard DragItem.current?.id == id else { return }
+            withAnimation(.easeOut(duration: 0.12)) { self?.draggingId = id }
+        }
+        timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] t in
+            guard NSEvent.pressedMouseButtons & 1 == 0 else { return }
+            t.invalidate()
+            // performDrop runs around mouse-up and still needs DragItem.current.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                if DragItem.current?.id == id { DragItem.current = nil } else { self?.end() }
+            }
+        }
+    }
+
+    func end() {
+        timer?.invalidate(); timer = nil
+        if draggingId != nil { withAnimation(.easeOut(duration: 0.12)) { draggingId = nil } }
+    }
+}
+
+/// The source of an in-flight drag: drawn as an empty slot so the live-reordered position reads clearly.
+struct DragSourceGap: ViewModifier {
+    let id: String
+    @ObservedObject private var drag = DragState.shared
+    func body(content: Content) -> some View {
+        let gap = drag.draggingId == id
+        content
+            .opacity(gap ? 0 : 1)
+            .overlay {
+                if gap {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(T.accent.opacity(0.08))
+                        .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .strokeBorder(T.accent.opacity(0.55), style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
+                }
+            }
+    }
 }
 
 /// Live reordering: as the dragged item enters a target of the same kind, `move` runs.
@@ -439,6 +493,7 @@ extension View {
                 return NSItemProvider(object: "ade-\(kind):\(id)" as NSString)
             }
             .onDrop(of: [.text], delegate: ReorderDrop(kind: kind, targetId: id, move: move))
+            .modifier(DragSourceGap(id: id))
     }
 }
 
