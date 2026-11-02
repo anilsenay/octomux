@@ -174,3 +174,19 @@ final class GraphTests: XCTestCase {
         XCTAssertEqual(rows[4].graph.incoming, [1])
     }
 }
+
+final class TerminalTitleTests: XCTestCase {
+    private func title(_ t: String, cwd: String) -> String {
+        Session(id: "s", projectId: "p", kind: .terminal, profileId: nil, title: t, customTitle: "", cwd: cwd,
+                state: .running, activity: .idle, unread: false, agentSessionId: nil, createdAt: 0, lastActivityAt: 0,
+                exitCode: nil, placement: .tab, command: nil, worktree: nil, transcriptPath: nil, agentTitle: nil).displayTitle
+    }
+
+    func testClippedPromptTitles() {
+        XCTAssertEqual(title("..onal_projects", cwd: "/Users/a/personal_projects"), "personal_projects")
+        XCTAssertEqual(title("..onal_projects", cwd: "/Users/a/new-ade"), "…onal_projects")
+        XCTAssertEqual(title("..cts/new-ade", cwd: "/x"), "new-ade")
+        XCTAssertEqual(title("~/personal_projects/new-ade", cwd: "/x"), "new-ade")
+        XCTAssertEqual(title("a@host: ~", cwd: "/x"), "~")
+    }
+}

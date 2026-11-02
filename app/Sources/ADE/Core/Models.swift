@@ -127,10 +127,18 @@ struct Session: Codable, Identifiable, Equatable {
             // Shells usually report a (truncated) path: show the folder name instead.
             var t = title.trimmingCharacters(in: .whitespaces)
             if let colon = t.range(of: ": "), t[..<colon.lowerBound].contains("@") { t = String(t[colon.upperBound...]) }
-            while t.hasPrefix(".") { t.removeFirst() }
+            // Prompts clip long paths from the left ("..onal_projects", "…/new-ade" — oh-my-zsh keeps 15 chars).
+            let clipped = t.hasPrefix("..") || t.hasPrefix("…")
+            while t.hasPrefix(".") || t.hasPrefix("…") { t.removeFirst() }
+            let partial = clipped && !t.contains("/")   // the cut went through the folder name itself
             if t.hasPrefix("/") || t.hasPrefix("~") || (t.contains("/") && !t.contains(" ")) {
                 let last = (t as NSString).lastPathComponent
                 t = last.isEmpty || last == "~" ? "~" : last
+            }
+            if partial, !t.isEmpty {
+                // The working directory (OSC 7 / start dir) usually has the full name the prompt cut.
+                let dir = (cwd as NSString).lastPathComponent
+                return dir.count > t.count && dir.hasSuffix(t) ? dir : "…" + t
             }
             return t.isEmpty ? "Terminal" : t
         }
