@@ -103,6 +103,10 @@ enum DebugActions {
                     m.addProject(path: path, onExtraHost: h, workspaceId: ws)
                 }
             case "move_project": if let id, let ws = p["value"] as? String { m.moveProject(id, toWorkspace: ws) }
+            case "sidebar_peek": m.sidebarPeek = (p["value"] as? Bool) ?? true
+            case "dock_position": UserDefaults.standard.set(p["value"] as? String ?? "bottom", forKey: "ade.dockPosition")
+            case "hover_project": m.debugHoverProject = id
+            case "sidebar_width": m.sidebarWidth = CGFloat((p["value"] as? Double) ?? 252)
             case "toggle_chat": m.toggleChat(id)
             case "chat_send": if let id { m.sendToSession(id, text: p["value"] as? String ?? "") }
             case "usage_popover": m.usagePopoverOpen = (p["value"] as? Bool) ?? true

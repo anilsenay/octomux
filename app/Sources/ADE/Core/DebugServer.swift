@@ -100,7 +100,14 @@ final class DebugServer {
             let win = NSApp.windows.first { $0.isVisible && $0.isMainWindow } ?? NSApp.windows.first { $0.isVisible }
             guard let win, let view = win.contentView?.superview ?? win.contentView else { throw DebugError.bad("no window") }
             var image: CGImage?
-            if let cg = CGWindowListCreateImage(.null, .optionIncludingWindow, CGWindowID(win.windowNumber), [.boundsIgnoreFraming, .bestResolution]),
+            if (p["children"] as? Bool) == true {
+                // The window plus its child windows (e.g. the floating sidebar): the topmost child and
+                // everything below it, cropped to our window's rectangle (which our opaque window covers).
+                let top = (win.childWindows ?? []).last ?? win
+                let screenH = NSScreen.screens.first?.frame.height ?? 0
+                let r = CGRect(x: win.frame.minX, y: screenH - win.frame.maxY, width: win.frame.width, height: win.frame.height)
+                image = CGWindowListCreateImage(r, [.optionOnScreenBelowWindow, .optionIncludingWindow], CGWindowID(top.windowNumber), [.bestResolution])
+            } else if let cg = CGWindowListCreateImage(.null, .optionIncludingWindow, CGWindowID(win.windowNumber), [.boundsIgnoreFraming, .bestResolution]),
                cg.width > 1 {
                 image = cg
             }

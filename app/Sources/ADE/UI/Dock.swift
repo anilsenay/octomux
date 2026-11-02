@@ -108,11 +108,16 @@ extension AppModel {
     }
 }
 
-/// Bottom dock: chip strip of the project's dock sessions + the selected one in a card.
+/// Dock: chip strip of the project's dock sessions + the selected one. Sits below, above, left or right
+/// of the terminal area (`ade.dockPosition`); the edge facing the terminals resizes it.
 struct DockView: View {
     @EnvironmentObject var model: AppModel
+    let position: String
     @AppStorage("ade.dockHeight") private var height: Double = 220
-    @State private var dragStart: Double?
+    @AppStorage("ade.dockWidth") private var width: Double = 420
+    @AppStorage("ade.dockPosition") private var storedPosition = "bottom"
+
+    private var vertical: Bool { position == "bottom" || position == "top" }
 
     var body: some View {
         let pid = model.currentProject?.id
@@ -120,40 +125,114 @@ struct DockView: View {
         let sel = model.dockSelection(pid)
         VStack(spacing: 4) {
             HStack(spacing: 2) {
-                ForEach(sessions) { s in
-                    Chip(selected: s.id == sel, action: { if let pid { model.selectDock(pid, s.id) } }) {
-                        Circle().fill(s.isDormant ? T.text3 : s.kind == .action ? T.green : T.text3.opacity(0.7)).frame(width: 6, height: 6)
-                        Text(s.displayTitle).lineLimit(1)
-                        if s.isDormant { Text("exited").font(.system(size: 10)).foregroundStyle(T.text3) }
-                        Button { model.remove(s.id, confirm: false) } label: { Image(systemName: "xmark").font(.system(size: 7.5, weight: .bold)) }
-                            .buttonStyle(.plain).foregroundStyle(T.text3)
-                    }
-                    .contextMenu {
-                        Button("Move to Tab") { model.client(for: s.id).call("session.move", ["id": s.id, "placement": "tab"]) }
-                        Button("Restart") { model.restart(s.id) }
-                        Button("Close", role: .destructive) { model.remove(s.id, confirm: false) }
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 2) {
+                        ForEach(sessions) { s in
+                            Chip(selected: s.id == sel, action: { if let pid { model.selectDock(pid, s.id) } }) {
+                                Circle().fill(s.isDormant ? T.text3 : s.kind == .action ? T.green : T.text3.opacity(0.7)).frame(width: 6, height: 6)
+                                Text(s.displayTitle).lineLimit(1)
+                                if s.isDormant { Text("exited").font(.system(size: 10)).foregroundStyle(T.text3) }
+                                Button { model.remove(s.id, confirm: false) } label: { Image(systemName: "xmark").font(.system(size: 7.5, weight: .bold)) }
+                                    .buttonStyle(IconButtonStyle(size: 14))
+                            }
+                            .contextMenu {
+                                Button("Move to Tab") { model.client(for: s.id).call("session.move", ["id": s.id, "placement": "tab"]) }
+                                Button("Restart") { model.restart(s.id) }
+                                Button("Close", role: .destructive) { model.remove(s.id, confirm: false) }
+                            }
+                        }
                     }
                 }
-                Spacer()
-                Text("⌘J").font(T.caption).foregroundStyle(T.text3)
-                Button { model.newDockTerminal() } label: { Image(systemName: "plus") }.buttonStyle(ChromeButtonStyle()).help("New terminal in dock")
-                Button { model.toggleDock() } label: { Image(systemName: "chevron.down") }.buttonStyle(ChromeButtonStyle()).help("Hide dock (⌘J)")
+                Spacer(minLength: 4)
+                Button { model.newDockTerminal() } label: { Image(systemName: "plus") }
+                    .buttonStyle(ChromeButtonStyle(size: 22)).help("New terminal in dock")
+                Menu {
+                    ForEach([("bottom", "Dock Bottom"), ("top", "Dock Top"), ("left", "Dock Left"), ("right", "Dock Right")], id: \.0) { p, name in
+                        Button { storedPosition = p } label: {
+                            if p == position { Label(name, systemImage: "checkmark") } else { Text(name) }
+                        }
+                    }
+                } label: {
+                    Image(systemName: Self.positionIcon(position)).font(.system(size: 11.5)).foregroundStyle(T.text2)
+                }
+                .plainMenu()
+                .frame(width: 22, height: 22).hoverHighlight()
+                .help("Dock position")
+                Button { model.toggleDock() } label: { Image(systemName: Self.hideIcon(position)) }
+                    .buttonStyle(ChromeButtonStyle(size: 22)).help("Hide dock (⌘J)")
             }
             .font(.system(size: 11.5))
             .padding(.leading, T.m.inset == 0 ? 8 : 2)
             .frame(height: 26)
-            .contentShape(Rectangle())
-            .gesture(DragGesture(minimumDistance: 2, coordinateSpace: .global)
-                .onChanged { v in
-                    if dragStart == nil { dragStart = height }
-                    height = min(700, max(90, (dragStart ?? height) - v.translation.height))
-                }
-                .onEnded { _ in dragStart = nil })
-            .onHover { inside in if inside { NSCursor.resizeUpDown.push() } else { NSCursor.pop() } }
-            DockArea().frame(height: height)
+            DockArea()
         }
-        .padding(.top, T.m.inset == 0 ? 0 : 0)
-        .overlay(alignment: .top) { if T.m.inset == 0 { Hairline() } }
+        .frame(width: vertical ? nil : width, height: vertical ? height + 30 : nil)
+        .overlay(alignment: handleAlignment) { DockResizeHandle(vertical: vertical, sign: position == "bottom" || position == "right" ? -1 : 1, height: $height, width: $width) }
+        .overlay(alignment: .top) { if T.m.inset == 0 && position == "bottom" { Hairline() } }
+        .onChange(of: sessions.count) { old, new in
+            // Closing the last dock session closes the dock; the Terminal button opens a fresh one.
+            if old > 0 && new == 0, let pid {
+                model.setDockOpen(pid, false)
+                TerminalHost.shared.focusCurrent()
+            }
+        }
+    }
+
+    private var handleAlignment: Alignment {
+        switch position {
+        case "top": return .bottom
+        case "left": return .trailing
+        case "right": return .leading
+        default: return .top
+        }
+    }
+
+    static func positionIcon(_ p: String) -> String {
+        switch p {
+        case "top": return "rectangle.topthird.inset.filled"
+        case "left": return "rectangle.leftthird.inset.filled"
+        case "right": return "rectangle.rightthird.inset.filled"
+        default: return "rectangle.bottomthird.inset.filled"
+        }
+    }
+
+    static func hideIcon(_ p: String) -> String {
+        switch p {
+        case "top": return "chevron.up"
+        case "left": return "chevron.left"
+        case "right": return "chevron.right"
+        default: return "chevron.down"
+        }
+    }
+}
+
+/// The dock edge that faces the terminal area: drag to resize.
+struct DockResizeHandle: View {
+    let vertical: Bool
+    let sign: Double
+    @Binding var height: Double
+    @Binding var width: Double
+    @State private var start: Double?
+
+    var body: some View {
+        Rectangle().fill(Color.clear)
+            .frame(width: vertical ? nil : 6, height: vertical ? 6 : nil)
+            .contentShape(Rectangle())
+            .onHover { h in
+                if h { (vertical ? NSCursor.resizeUpDown : NSCursor.resizeLeftRight).push() } else { NSCursor.pop() }
+            }
+            .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                .onChanged { v in
+                    if vertical {
+                        if start == nil { start = height }
+                        height = min(800, max(90, (start ?? height) + sign * v.translation.height))
+                    } else {
+                        if start == nil { start = width }
+                        width = min(900, max(220, (start ?? width) + sign * v.translation.width))
+                    }
+                }
+                .onEnded { _ in start = nil })
+            .offset(x: vertical ? 0 : (sign < 0 ? -3 : 3), y: vertical ? (sign < 0 ? -3 : 3) : 0)
     }
 }
 
@@ -200,7 +279,7 @@ struct ActionsControl: View {
                     HStack(spacing: 5) { Image(systemName: "play.fill").font(.system(size: 9)); Text("Actions") }.foregroundStyle(T.text2)
                 } else { Image(systemName: "chevron.down").font(.system(size: 8, weight: .semibold)).foregroundStyle(T.text2) }
             }
-            .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+            .plainMenu().fixedSize().hoverHighlight(padding: 4)
         }
         .disabled(pid == nil)
         .sheet(isPresented: $adding) { ActionEditor(action: nil) { adding = false } }

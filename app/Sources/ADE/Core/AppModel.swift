@@ -15,6 +15,13 @@ final class AppModel: ObservableObject {
     @Published var activeTabId: String? { didSet { saveSelection() } }
     @Published var focusedSessionId: String?
     @Published var sidebarVisible = true
+    /// Sidebar shown floating over the content while it is hidden (pointer at the left edge).
+    @Published var sidebarPeek = false
+    /// Debug channel only: shows a project row's hover controls in screenshots.
+    @Published var debugHoverProject: String?
+    @Published var sidebarWidth: CGFloat = CGFloat(UserDefaults.standard.object(forKey: "ade.sidebarWidth") as? Double ?? 252) {
+        didSet { UserDefaults.standard.set(Double(sidebarWidth), forKey: "ade.sidebarWidth") }
+    }
     @Published var rightPanelVisible = UserDefaults.standard.bool(forKey: "ade.rightPanel") {
         didSet { UserDefaults.standard.set(rightPanelVisible, forKey: "ade.rightPanel") }
     }
@@ -243,6 +250,43 @@ final class AppModel: ObservableObject {
         return state.profiles.filter { $0.enabled && owner[$0.id] == h }.sorted { $0.sort < $1.sort }
     }
     var pinnedProfiles: [Profile] { enabledProfiles.filter { $0.pinned } }
+
+    /// Enabled profiles of the host that owns `projectId`.
+    func enabledProfiles(forProject projectId: String?) -> [Profile] {
+        let h = owner[projectId ?? ""]
+        return state.profiles.filter { $0.enabled && owner[$0.id] == h }.sorted { $0.sort < $1.sort }
+    }
+
+    /// Profiles grouped by agent kind/icon, so two Claude profiles show as one Claude entry with a choice.
+    func profileGroups(forProject projectId: String?, pinnedOnly: Bool = false) -> [[Profile]] {
+        var order: [String] = []
+        var groups: [String: [Profile]] = [:]
+        for p in enabledProfiles(forProject: projectId) where !pinnedOnly || p.pinned {
+            let key = p.icon
+            if groups[key] == nil { order.append(key) }
+            groups[key, default: []].append(p)
+        }
+        return order.compactMap { groups[$0] }
+    }
+
+    /// What the tab bar's new-session button starts: a profile id, or nil for a terminal.
+    var lastNewSessionProfile: String? {
+        get {
+            let v = defaults.string(forKey: "ade.lastNew")
+            guard let v, v != "terminal", enabledProfiles.contains(where: { $0.id == v }) else { return nil }
+            return v
+        }
+        set {
+            defaults.set(newValue ?? "terminal", forKey: "ade.lastNew")
+            objectWillChange.send()
+        }
+    }
+
+    /// Starts a session and remembers the choice for the tab bar's button.
+    func newSessionRemembering(profileId: String?) {
+        lastNewSessionProfile = profileId
+        newSession(profileId: profileId)
+    }
 
     func tab(containing sessionId: String) -> Tab? { state.tabs.first { $0.layout.sessions.contains(sessionId) } }
 
@@ -551,6 +595,7 @@ final class AppModel: ObservableObject {
     func deleteWorkspace(_ id: String) { client.call("workspace.delete", ["id": id], completion: report) }
 
     func toggleSidebar() {
+        sidebarPeek = false
         sidebarVisible.toggle()
         saveSelection()
     }

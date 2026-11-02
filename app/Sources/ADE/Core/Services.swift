@@ -82,8 +82,8 @@ struct OpenInButton: View {
                         }
                     }
                 }
-            } label: { Image(systemName: "chevron.down").font(.system(size: 8)) }
-                .menuStyle(.borderlessButton).menuIndicator(.hidden).frame(width: 14)
+            } label: { Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold)).foregroundStyle(T.text3).frame(width: 14, height: 26) }
+                .plainMenu().pointerCursor()
         }
     }
 }

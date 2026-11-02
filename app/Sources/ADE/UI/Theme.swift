@@ -28,6 +28,8 @@ struct ThemeMetrics {
     var inset: CGFloat = 8
     var monoLabels = false
     var sidebarMaterial = false
+    /// Whole window translucent (behind-window blur); terminals use background-opacity.
+    var glass = false
 }
 
 struct ThemePreset: Identifiable {
@@ -89,7 +91,7 @@ enum Themes {
                            text: c("#15161A"), text2: c("#50525D"), text3: c("#666874"),
                            accent: c("#0A6CF0"), claude: c("#C9592B"), amber: c("#966100"), green: c("#178A47"), red: c("#CC3333"), blue: c("#0A6CF0"),
                            termFg: c("#1F2024"), termCursor: c("#0A6CF0"), termSelection: c("#D5E4FB"), ansi: ansiLight),
-        metrics: ThemeMetrics(rowH: 30, rowR: 8, tileR: 9, tabStyle: .segment, tabH: 26, topH: 48, statusH: 32, cardR: 12, inset: 8, sidebarMaterial: true))
+        metrics: ThemeMetrics(rowH: 30, rowR: 8, tileR: 9, tabStyle: .segment, tabH: 26, topH: 48, statusH: 32, cardR: 12, inset: 8, sidebarMaterial: true, glass: true))
 
     static let all = [ink, grid, glass]
     static func preset(_ id: String?) -> ThemePreset { all.first { $0.id == id } ?? ink }
@@ -124,6 +126,7 @@ final class ThemeStore: ObservableObject {
         if id != preset.id {
             preset = Themes.preset(id)
             DispatchQueue.main.async {
+                Self.applyWindowGlass()
                 TerminalHost.shared.render(force: true)
                 TerminalHost.shared.renderDock(force: true)
             }
@@ -132,6 +135,14 @@ final class ThemeStore: ObservableObject {
         terminalColors = tc
         NSApp.appearance = m == "dark" ? NSAppearance(named: .darkAqua) : m == "light" ? NSAppearance(named: .aqua) : nil
         writeTerminalTheme()
+    }
+
+    /// Glass needs a non-opaque window so the behind-window blur shows through the terminals.
+    static func applyWindowGlass() {
+        guard let w = (NSApp.delegate as? AppDelegate)?.mainWindow else { return }
+        let glass = shared.preset.metrics.glass
+        w.isOpaque = !glass
+        w.backgroundColor = glass ? .clear : .windowBackgroundColor
     }
 
     var isDark: Bool {
@@ -164,7 +175,8 @@ final class ThemeStore: ObservableObject {
     func writeTerminalTheme() {
         let text = terminalColors ? terminalConfigText(dark: isDark) : "# Terminal colors come from terminal.conf\n"
         let padding = "window-padding-x = 12\nwindow-padding-y = 8\nwindow-padding-balance = true\nwindow-padding-color = background\n"
-        let full = padding + text
+        let glass = preset.metrics.glass ? "background-opacity = \(isDark ? 0.55 : 0.6)\n" : ""
+        let full = padding + glass + text
         guard full != lastWritten else { return }
         lastWritten = full
         try? FileManager.default.createDirectory(at: Paths.themeConfig.deletingLastPathComponent(), withIntermediateDirectories: true)

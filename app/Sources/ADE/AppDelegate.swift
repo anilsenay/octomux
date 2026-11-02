@@ -56,6 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         w.delegate = self
         w.makeKeyAndOrderFront(nil)
         mainWindow = w
+        ThemeStore.applyWindowGlass()
     }
 
     func windowDidBecomeKey(_ notification: Notification) {
@@ -66,7 +67,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func installSwipeMonitor() {
         NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
             guard let self, let win = event.window, win === self.mainWindow, AppModel.shared.sidebarVisible,
-                  event.locationInWindow.x < 250, event.hasPreciseScrollingDeltas else { return event }
+                  event.locationInWindow.x < AppModel.shared.sidebarWidth, event.hasPreciseScrollingDeltas else { return event }
             if event.phase == .began { self.swipeAccum = 0 }
             if abs(event.scrollingDeltaX) > abs(event.scrollingDeltaY) {
                 self.swipeAccum += event.scrollingDeltaX

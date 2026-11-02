@@ -37,6 +37,9 @@ pub struct Workspace {
     pub name: String,
     pub color: String,
     pub sort: i64,
+    /// Optional icon: SF Symbol name or a single emoji. Shown in the workspace switcher.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

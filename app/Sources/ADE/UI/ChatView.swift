@@ -340,7 +340,7 @@ struct ChatView: View {
                 .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(T.frame.opacity(0.6)))
                 .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(composerFocused ? T.accent.opacity(0.6) : T.border))
             Button(action: send) { Image(systemName: "arrow.up").font(.system(size: 12, weight: .bold)).frame(width: 30, height: 30) }
-                .buttonStyle(.plain).foregroundStyle(.white)
+                .buttonStyle(.plain).foregroundStyle(.white).pointerCursor()
                 .background(Circle().fill(draft.isEmpty ? T.text3 : T.accent))
                 .disabled(draft.isEmpty || s?.state != .running)
                 .help("Send (↩)")

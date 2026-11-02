@@ -48,7 +48,7 @@ pub fn run(paths: Paths) -> Result<()> {
     let mut state = store.load()?;
     let first_run = state.workspaces.is_empty();
     if first_run {
-        state.workspaces.push(Workspace { id: util::short_id(), name: "Personal".into(), color: "#E8704A".into(), sort: 0 });
+        state.workspaces.push(Workspace { id: util::short_id(), name: "Personal".into(), color: "#E8704A".into(), sort: 0, icon: None });
         state.profiles = agents::default_profiles();
         store.save_all(&state)?;
     }
@@ -624,6 +624,7 @@ impl Daemon {
                     name: s("name").unwrap_or("Workspace".into()),
                     color: s("color").unwrap_or_else(|| PROJECT_COLORS[st.workspaces.len() % PROJECT_COLORS.len()].into()),
                     sort: st.workspaces.iter().map(|w| w.sort).max().unwrap_or(-1) + 1,
+                    icon: s("icon").filter(|s| !s.is_empty()),
                 };
                 st.workspaces.push(w.clone());
                 self.store.lock().unwrap().put("workspace", &w.id, &w)?;
@@ -643,6 +644,9 @@ impl Daemon {
                 }
                 if let Some(v) = p.get("sort").and_then(|v| v.as_i64()) {
                     w.sort = v;
+                }
+                if let Some(v) = p.get("icon") {
+                    w.icon = v.as_str().filter(|s| !s.is_empty()).map(String::from);
                 }
                 let w = w.clone();
                 st.workspaces.sort_by_key(|w| w.sort);

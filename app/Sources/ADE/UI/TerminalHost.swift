@@ -236,7 +236,7 @@ final class PaneView: NSView {
         layer.cornerRadius = m.cardR
         layer.borderWidth = m.cardR > 0 ? 1 : 0
         effectiveAppearance.performAsCurrentDrawingAppearance {
-            layer.backgroundColor = T.ns(\.surface).cgColor
+            layer.backgroundColor = m.glass ? NSColor.clear.cgColor : T.ns(\.surface).cgColor
             layer.borderColor = (focused ? T.ns(\.accent).withAlphaComponent(0.55) : T.ns(\.border)).cgColor
         }
     }

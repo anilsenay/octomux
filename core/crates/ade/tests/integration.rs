@@ -756,3 +756,16 @@ fn profile_without_statusline_gets_hooks_only_settings() {
     let on = e.call("profile.create", json!({ "name": "d", "kind": "claude", "command": script, "via_login_shell": false }));
     assert_eq!(on["statusline"], true, "default on");
 }
+
+#[test]
+fn workspace_icon_is_optional_and_clearable() {
+    let e = Env::new();
+    let ws = e.workspace();
+    assert!(e.call("state.get", json!({}))["workspaces"][0].get("icon").is_none());
+    e.call("workspace.update", json!({ "id": ws, "icon": "house.fill" }));
+    assert_eq!(e.call("state.get", json!({}))["workspaces"][0]["icon"], "house.fill");
+    e.call("workspace.update", json!({ "id": ws, "icon": "" }));
+    assert!(e.call("state.get", json!({}))["workspaces"][0].get("icon").is_none());
+    let w2 = e.call("workspace.create", json!({ "name": "Work", "icon": "🛠" }));
+    assert_eq!(w2["icon"], "🛠");
+}

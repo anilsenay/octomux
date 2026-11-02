@@ -7,6 +7,7 @@ struct Workspace: Codable, Identifiable, Equatable {
     var name: String
     var color: String
     var sort: Int
+    var icon: String?
 }
 
 struct ProjectIcon: Codable, Equatable {

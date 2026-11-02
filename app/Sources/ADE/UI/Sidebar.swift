@@ -3,6 +3,8 @@ import SwiftUI
 
 struct SidebarView: View {
     @EnvironmentObject var model: AppModel
+    /// Floating (revealed from the left edge while hidden): no room needed for the traffic lights.
+    var floating = false
     @ObservedObject var wt = Worktrees.shared
     @State private var collapsed: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "ade.collapsed") ?? [])
 
@@ -12,21 +14,8 @@ struct SidebarView: View {
             HStack {
                 SectionLabel("Projects")
                 Spacer()
-                if model.extraHosts.isEmpty {
-                    Button { model.addProject() } label: { Image(systemName: "plus").font(.system(size: 10.5, weight: .semibold)) }
-                        .buttonStyle(.plain).foregroundStyle(T.text3).help("Add Project (⌘⇧O)")
-                } else {
-                    Menu {
-                        Button("On \(model.host.name)…") { model.addProject() }
-                        ForEach(model.extraHosts) { h in
-                            Button("On \(h.name)…") { model.addProject(onHost: h.id) }
-                        }
-                    } label: { Image(systemName: "plus").font(.system(size: 10.5, weight: .semibold)) }
-                        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-                        .foregroundStyle(T.text3).help("Add Project")
-                }
             }
-            .padding(.horizontal, 18).padding(.top, 10).padding(.bottom, 4)
+            .padding(.horizontal, 18).padding(.top, 12).padding(.bottom, 4)
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 1) {
                     ForEach(Array(model.projects.enumerated()), id: \.element.id) { i, p in
@@ -42,11 +31,11 @@ struct SidebarView: View {
                             }
                             ForEach((model.setting("features.worktrees")?.bool ?? true) ? worktreeGroups(p, all) : [], id: \.path) { g in
                                 WorktreeRow(project: p, path: g.path, branch: g.branch, sessions: g.sessions)
-                                ForEach(g.sessions) { s in SessionRow(session: s, indent: 46) }
+                                ForEach(g.sessions) { s in SessionRow(session: s, indent: 32) }
                             }
                             let dock = model.state.sessions.filter { $0.projectId == p.id && $0.placement == .dock }
                             if !dock.isEmpty {
-                                Text("\(dock.count) in dock").font(T.caption).foregroundStyle(T.text3).padding(.leading, 38).frame(height: 20)
+                                Text("\(dock.count) in dock").font(T.caption).foregroundStyle(T.text3).padding(.leading, 20).frame(height: 20)
                             }
                         }
                     }
@@ -82,7 +71,7 @@ struct SidebarView: View {
 
     private var header: some View {
         VStack(spacing: 8) {
-            Spacer().frame(height: 38)  // traffic lights
+            Spacer().frame(height: floating ? 6 : 38)  // traffic lights
             Menu {
                 ForEach(model.state.workspaces.sorted { $0.sort < $1.sort }) { w in
                     Button((w.id == model.selectedWorkspaceId ? "✓ " : "") + w.name) { model.selectWorkspace(w.id) }
@@ -98,7 +87,7 @@ struct SidebarView: View {
                 Button("Workspace Settings…") { SettingsWindow.show(section: .workspaces) }
             } label: {
                 HStack(spacing: 8) {
-                    Circle().fill(Color(hex: model.workspace?.color ?? "#888")).frame(width: 8, height: 8)
+                    if let w = model.workspace { WorkspaceIcon(workspace: w, size: 12).frame(width: 14) }
                     Text(model.workspace?.name ?? "ADE").font(T.headline).foregroundStyle(T.text)
                     Spacer()
                     if !model.connected {
@@ -111,6 +100,7 @@ struct SidebarView: View {
                 .contentShape(Rectangle())
             }
             .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden)
+            .pointerCursor()
             .help("Switch workspace (⌃⌘← →, or swipe) or host")
             if model.host.isRemote {
                 HStack(spacing: 6) {
@@ -125,75 +115,139 @@ struct SidebarView: View {
                 .background(RoundedRectangle(cornerRadius: T.m.rowR, style: .continuous).fill(T.selection))
                 .help(model.connected ? "Connected to \(model.host.name)" : "Connecting to \(model.host.name)…")
             }
-            Button { model.paletteVisible = true } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "magnifyingglass").font(.system(size: 11))
-                    Text("Search")
-                    Spacer()
-                    Text(KeyBindings.shared.current("cmd.command-palette")?.display ?? "").font(T.mono(11))
-                }
-                .font(T.body).foregroundStyle(T.text3)
-                .padding(.horizontal, 10).frame(height: 28)
-                .overlay(RoundedRectangle(cornerRadius: T.m.rowR, style: .continuous).stroke(T.border))
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
         }
         .padding(.horizontal, 10)
     }
 
     private var footer: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: 0) {
+            AddMenu()
+            Spacer(minLength: 4)
+            WorkspaceSwitcher()
+            Spacer(minLength: 4)
             Button { NSApp.sendAction(#selector(AppDelegate.showSettings(_:)), to: nil, from: nil) } label: {
-                Image(systemName: "gearshape")
-            }.buttonStyle(ChromeButtonStyle()).help("Settings (⌘,)")
-            Button { model.addProject() } label: { Image(systemName: "folder.badge.plus") }
-                .buttonStyle(ChromeButtonStyle()).help("Add Project (⌘⇧O)")
-            Spacer()
-            WorkspaceDots()
+                Image(systemName: "gearshape").font(.system(size: 13))
+            }.buttonStyle(IconButtonStyle(size: 26)).help("Settings (⌘,)")
         }
-        .font(.system(size: 13))
-        .padding(.horizontal, 10)
+        .padding(.horizontal, 8)
         .frame(height: 40)
-        .overlay(alignment: .top) { Hairline() }
     }
 }
 
-struct WorkspaceDots: View {
+/// Sidebar footer "+": new project (on a chosen host when hosts are side by side) or workspace.
+struct AddMenu: View {
     @EnvironmentObject var model: AppModel
-    @State private var adding = false
-    @State private var newName = ""
 
     var body: some View {
-        HStack(spacing: 4) {
-            ForEach(model.state.workspaces.sorted { $0.sort < $1.sort }) { w in
-                let selected = w.id == model.selectedWorkspaceId
-                Circle()
-                    .fill(selected ? Color(hex: w.color) : T.text3.opacity(0.6))
-                    .frame(width: selected ? 8 : 6, height: selected ? 8 : 6)
-                    .padding(3)
-                    .contentShape(Rectangle())
-                    .onTapGesture { model.selectWorkspace(w.id) }
-                    .help(w.name)
-            }
-            Button { adding = true } label: { Image(systemName: "plus").font(.system(size: 9, weight: .semibold)) }
-                .buttonStyle(.plain).foregroundStyle(T.text3).help("New workspace")
-                .popover(isPresented: $adding) {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("New workspace").font(T.headline)
-                        TextField("Name", text: $newName).textFieldStyle(.roundedBorder).frame(width: 200).onSubmit(create)
-                        HStack { Spacer(); Button("Create", action: create).buttonStyle(PrimaryButtonStyle()).keyboardShortcut(.defaultAction) }
-                    }.padding(14)
+        Menu {
+            if model.extraHosts.isEmpty {
+                Button("New Project…") { model.addProject() }
+            } else {
+                Button("New Project on \(model.host.name)…") { model.addProject() }
+                ForEach(model.extraHosts) { h in
+                    Button("New Project on \(h.name)…") { model.addProject(onHost: h.id) }
                 }
+            }
+            Button("New Workspace…") { WorkspaceEditor.create() }
+        } label: {
+            Image(systemName: "plus").font(.system(size: 13, weight: .medium)).foregroundStyle(T.text2)
+        }
+        .plainMenu()
+        .frame(width: 26, height: 26)
+        .hoverHighlight(radius: 5)
+        .help("New project or workspace")
+    }
+}
+
+/// Workspace buttons in the sidebar footer: icon (or color dot) per workspace, selected one in a pill.
+struct WorkspaceSwitcher: View {
+    @EnvironmentObject var model: AppModel
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(model.state.workspaces.sorted { $0.sort < $1.sort }) { w in
+                WorkspaceButton(workspace: w, selected: w.id == model.selectedWorkspaceId)
+            }
         }
     }
+}
 
-    private func create() {
-        let n = newName.trimmingCharacters(in: .whitespaces)
-        guard !n.isEmpty else { return }
-        model.createWorkspace(name: n)
-        newName = ""
-        adding = false
+struct WorkspaceButton: View {
+    @EnvironmentObject var model: AppModel
+    let workspace: Workspace
+    let selected: Bool
+    @State private var hover = false
+
+    var body: some View {
+        WorkspaceIcon(workspace: workspace, size: 13, dimmed: !selected && !hover)
+            .frame(width: selected ? 40 : 28, height: 24)
+            .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(selected ? T.raised : hover ? T.hover : .clear))
+            .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(selected ? T.border : .clear))
+            .contentShape(Rectangle())
+            .onHover { hover = $0 }
+            .pointerCursor()
+            .onTapGesture { model.selectWorkspace(workspace.id) }
+            .help(workspace.name)
+            .contextMenu { WorkspaceMenu(workspace: workspace) }
+            .animation(.easeOut(duration: 0.12), value: selected)
+    }
+}
+
+struct WorkspaceMenu: View {
+    @EnvironmentObject var model: AppModel
+    let workspace: Workspace
+
+    var body: some View {
+        Button("Rename…") { WorkspaceEditor.rename(workspace) }
+        Menu("Icon") {
+            Button("None (color dot)") { model.updateWorkspace(workspace.id, ["icon": ""]) }
+            Divider()
+            ForEach(WorkspaceIcon.symbols, id: \.self) { sym in
+                Button { model.updateWorkspace(workspace.id, ["icon": sym]) } label: { Label(sym, systemImage: sym) }
+            }
+            Divider()
+            Button("Emoji…") { WorkspaceEditor.emoji(workspace) }
+        }
+        Menu("Color") {
+            ForEach(Palette.colors, id: \.self) { c in
+                Button(ProjectMenu.colorName(c)) { model.updateWorkspace(workspace.id, ["color": c]) }
+            }
+        }
+        Divider()
+        Button("Workspace Settings…") { SettingsWindow.show(section: .workspaces) }
+        Button("Delete Workspace", role: .destructive) { model.deleteWorkspace(workspace.id) }
+            .disabled(model.state.workspaces.count <= 1)
+    }
+}
+
+enum WorkspaceEditor {
+    private static func ask(_ title: String, _ value: String, width: CGFloat = 240, button: String) -> String? {
+        let a = NSAlert()
+        a.messageText = title
+        let tf = NSTextField(string: value)
+        tf.frame = NSRect(x: 0, y: 0, width: width, height: 24)
+        a.accessoryView = tf
+        a.addButton(withTitle: button)
+        a.addButton(withTitle: "Cancel")
+        a.window.initialFirstResponder = tf
+        guard a.runModal() == .alertFirstButtonReturn else { return nil }
+        let v = tf.stringValue.trimmingCharacters(in: .whitespaces)
+        return v.isEmpty ? nil : v
+    }
+
+    static func create() {
+        if let n = ask("New workspace", "", button: "Create") { AppModel.shared.createWorkspace(name: n) }
+    }
+
+    static func rename(_ w: Workspace) {
+        if let n = ask("Rename workspace", w.name, button: "Rename") { AppModel.shared.updateWorkspace(w.id, ["name": n]) }
+    }
+
+    static func emoji(_ w: Workspace) {
+        let current = w.icon.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: nil) == nil ? $0 : nil } ?? ""
+        if let e = ask("Workspace emoji", current, width: 80, button: "Set"), let ch = e.first {
+            AppModel.shared.updateWorkspace(w.id, ["icon": String(ch)])
+        }
     }
 }
 
@@ -227,8 +281,8 @@ struct ProjectRow: View {
                 Text("\(sessions.count)").font(T.caption).foregroundStyle(T.text3)
             }
             Spacer(minLength: 4)
-            if hover {
-                NewSessionMenu(projectId: project.id, compact: true)
+            if hover || model.debugHoverProject == project.id {
+                ProjectQuickActions(project: project)
             } else {
                 if waiting > 0 { Badge(text: "\(waiting)") }
                 else if collapsed && unread > 0 { Circle().fill(T.green).frame(width: 6, height: 6) }
@@ -242,6 +296,7 @@ struct ProjectRow: View {
         .background(RoundedRectangle(cornerRadius: m.rowR, style: .continuous).fill(hover ? T.hover : .clear))
         .contentShape(Rectangle())
         .onHover { hover = $0 }
+        .pointerCursor()
         .onTapGesture(count: 1) { toggle(); model.selectProject(project.id) }
         .contextMenu { ProjectMenu(project: project) }
     }
@@ -268,12 +323,12 @@ struct WorktreeRow: View {
                         Button(p.name) { model.newSession(profileId: p.id, projectId: project.id, worktree: path) }
                     }
                 } label: { Image(systemName: "plus").font(.system(size: 10, weight: .semibold)).foregroundStyle(T.text2) }
-                    .menuStyle(.borderlessButton).menuIndicator(.hidden).frame(width: 18)
+                    .plainMenu().frame(width: 20, height: 20).hoverHighlight(radius: 5)
             } else if sessions.isEmpty {
                 Text("empty").font(T.caption).foregroundStyle(T.text3)
             }
         }
-        .padding(.leading, 30).padding(.trailing, 8)
+        .padding(.leading, 18).padding(.trailing, 8)
         .frame(height: max(22, T.m.rowH - 6))
         .background(RoundedRectangle(cornerRadius: T.m.rowR, style: .continuous).fill(hover ? T.hover : .clear))
         .contentShape(Rectangle())
@@ -310,7 +365,7 @@ struct ProjectMenu: View {
         Button("Rename…") { ProjectEditor.rename(project) }
         Menu("Color") {
             ForEach(Palette.colors, id: \.self) { c in
-                Button { model.updateProject(project.id, ["color": c]) } label: { Text(colorName(c)) }
+                Button { model.updateProject(project.id, ["color": c]) } label: { Text(Self.colorName(c)) }
             }
         }
         Menu("Icon") {
@@ -355,7 +410,7 @@ struct ProjectMenu: View {
         Button("Remove Project…", role: .destructive) { model.removeProject(project.id) }
     }
 
-    func colorName(_ hex: String) -> String {
+    static func colorName(_ hex: String) -> String {
         ["#459CF7": "Blue", "#F4BF25": "Yellow", "#39C363": "Green", "#E45A9F": "Pink", "#B168D4": "Purple",
          "#37BEB4": "Teal", "#EF8C39": "Orange", "#EA603E": "Red", "#8B949C": "Gray"][hex] ?? hex
     }
@@ -369,7 +424,7 @@ func copy(_ s: String) {
 struct SessionRow: View {
     @EnvironmentObject var model: AppModel
     let session: Session
-    var indent: CGFloat = 30
+    var indent: CGFloat = 18
     @State private var hover = false
     @State private var editTitle = ""
 
@@ -409,9 +464,8 @@ struct SessionRow: View {
                             .help("Stop")
                     }
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(IconButtonStyle(size: 18))
                 .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(T.text2)
             } else {
                 ActivityIndicator(session: session)
             }
@@ -423,6 +477,7 @@ struct SessionRow: View {
         .background(RoundedRectangle(cornerRadius: m.rowR, style: .continuous).fill(selected ? T.selection : hover ? T.hover : .clear))
         .contentShape(Rectangle())
         .onHover { hover = $0 }
+        .pointerCursor()
         .onTapGesture { model.selectSession(session.id) }
         .contextMenu { SessionMenu(session: session) }
         .help(session.kind == .agent ? "\(model.profile(session.profileId)?.name ?? "agent") · \(session.cwd)" : session.cwd)

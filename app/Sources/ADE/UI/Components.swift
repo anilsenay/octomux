@@ -208,19 +208,94 @@ struct Mascot: View {
     }
 }
 
+/// Pointing-hand cursor while the pointer is over the view (clickable chrome).
+struct PointerCursor: ViewModifier {
+    @State private var inside = false
+    func body(content: Content) -> some View {
+        content.onHover { h in
+            inside = h
+            if h { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+        }
+        .onDisappear { if inside { NSCursor.pop(); inside = false } }
+    }
+}
+
+/// Hover fill + pointing hand, for things that are not Buttons (menus, tappable rows).
+struct HoverHighlight: ViewModifier {
+    var radius: CGFloat = 6
+    var padding: CGFloat = 0
+    @State private var hover = false
+    func body(content: Content) -> some View {
+        content
+            .padding(padding)
+            .background(RoundedRectangle(cornerRadius: radius, style: .continuous).fill(hover ? T.hover : .clear))
+            .contentShape(Rectangle())
+            .onHover { hover = $0 }
+            .modifier(PointerCursor())
+    }
+}
+
+extension View {
+    /// Menu whose label is drawn as-is (no accent tint, no indicator).
+    func plainMenu() -> some View { menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden) }
+    func pointerCursor() -> some View { modifier(PointerCursor()) }
+    func hoverHighlight(radius: CGFloat = 6, padding: CGFloat = 0) -> some View { modifier(HoverHighlight(radius: radius, padding: padding)) }
+}
+
 /// Hover-aware icon button used across the chrome.
 struct ChromeButtonStyle: ButtonStyle {
     var active = false
+    var size: CGFloat = 26
     @State private var hover = false
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .foregroundStyle(active ? T.accent : T.text2)
-            .padding(.horizontal, 6).frame(minWidth: 26, minHeight: 26)
+            .foregroundStyle(active ? T.accent : hover ? T.text : T.text2)
+            .padding(.horizontal, size > 22 ? 6 : 3).frame(minWidth: size, minHeight: size)
             .background(RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .fill(configuration.isPressed ? T.border : hover ? T.hover : .clear))
             .contentShape(Rectangle())
             .onHover { hover = $0 }
+            .pointerCursor()
     }
+}
+
+/// Small square icon button (row actions, "+" buttons): hover fill + hand cursor.
+struct IconButtonStyle: ButtonStyle {
+    var size: CGFloat = 20
+    @State private var hover = false
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(hover ? T.text : T.text2)
+            .frame(width: size, height: size)
+            .background(RoundedRectangle(cornerRadius: 5, style: .continuous)
+                .fill(configuration.isPressed ? T.border : hover ? T.hover : .clear))
+            .contentShape(Rectangle())
+            .onHover { hover = $0 }
+            .pointerCursor()
+    }
+}
+
+/// Workspace icon: SF Symbol or emoji, else the workspace's color dot.
+struct WorkspaceIcon: View {
+    let workspace: Workspace
+    var size: CGFloat = 13
+    var dimmed = false
+
+    var body: some View {
+        if let icon = workspace.icon, !icon.isEmpty {
+            if NSImage(systemSymbolName: icon, accessibilityDescription: nil) != nil {
+                Image(systemName: icon).font(.system(size: size, weight: .medium))
+                    .foregroundStyle(dimmed ? T.text3 : Color(hex: workspace.color))
+            } else {
+                Text(icon).font(.system(size: size)).opacity(dimmed ? 0.55 : 1)
+            }
+        } else {
+            Circle().fill(dimmed ? T.text3.opacity(0.6) : Color(hex: workspace.color)).frame(width: size * 0.55, height: size * 0.55)
+        }
+    }
+
+    static let symbols = ["house.fill", "briefcase.fill", "building.2.fill", "hammer.fill", "flask.fill", "graduationcap.fill",
+                          "heart.fill", "star.fill", "bolt.fill", "leaf.fill", "gamecontroller.fill", "globe", "lock.fill", "cube.fill"]
 }
 
 struct PrimaryButtonStyle: ButtonStyle {
@@ -232,6 +307,7 @@ struct PrimaryButtonStyle: ButtonStyle {
             .padding(.horizontal, 12).frame(height: 28)
             .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(T.accent.opacity(configuration.isPressed ? 0.8 : 1)))
             .opacity(enabled ? 1 : 0.45)
+            .pointerCursor()
     }
 }
 
@@ -247,6 +323,7 @@ struct SecondaryButtonStyle: ButtonStyle {
             .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(T.border))
             .opacity(enabled ? 1 : 0.45)
             .onHover { hover = $0 }
+            .pointerCursor()
     }
 }
 
@@ -264,6 +341,7 @@ struct Chip<Label: View>: View {
             .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(selected ? T.raised : hover ? T.hover : .clear))
             .contentShape(Rectangle())
             .onHover { hover = $0 }
+            .pointerCursor()
             .onTapGesture(perform: action)
     }
 }
