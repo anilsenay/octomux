@@ -32,6 +32,7 @@ pub struct Daemon {
     cmd_started: Mutex<HashMap<String, Instant>>,
     dirty: Sender<()>,
     login_path: Mutex<Option<String>>,
+    aliases: Mutex<Vec<(String, String)>>,
 }
 
 pub fn run(paths: Paths) -> Result<()> {
@@ -64,6 +65,7 @@ pub fn run(paths: Paths) -> Result<()> {
         cmd_started: Mutex::new(HashMap::new()),
         dirty: dirty_tx,
         login_path: Mutex::new(None),
+        aliases: Mutex::new(Vec::new()),
     });
 
     // Bind under a private name, then atomically publish (never unlink a live socket).
@@ -79,16 +81,13 @@ pub fn run(paths: Paths) -> Result<()> {
         std::thread::spawn(move || broadcaster(d, dirty_rx));
     }
     {
+        // The user's login environment must be known before sessions are restored
+        // (after a reboot the daemon starts from launchd with a minimal PATH).
         let d = d.clone();
         std::thread::spawn(move || {
-            if let Some(p) = agents::login_shell_path() {
-                *d.login_path.lock().unwrap() = Some(p);
-            }
+            d.refresh_shell_env();
+            d.reconcile();
         });
-    }
-    {
-        let d = d.clone();
-        std::thread::spawn(move || d.reconcile());
     }
 
     for stream in listener.incoming() {
@@ -122,6 +121,13 @@ fn strip_title(t: &str) -> String {
 }
 
 impl Daemon {
+    fn refresh_shell_env(&self) {
+        if let Some(p) = agents::login_shell_path() {
+            *self.login_path.lock().unwrap() = Some(p);
+        }
+        *self.aliases.lock().unwrap() = agents::login_aliases();
+    }
+
     fn changed(&self) {
         let _ = self.dirty.send(());
     }
@@ -222,7 +228,8 @@ impl Daemon {
         if session.kind == SessionKind::Agent && profile.is_none() {
             bail!("agent profile for session {id} no longer exists");
         }
-        let mut spec = agents::build_launch(&self.paths, &session, profile.as_ref(), restoring);
+        let aliases = self.aliases.lock().unwrap().clone();
+        let mut spec = agents::build_launch(&self.paths, &session, profile.as_ref(), restoring, &aliases);
         if let Some(p) = self.login_path.lock().unwrap().clone() {
             spec.env.push(("PATH".into(), p));
         }
@@ -724,7 +731,9 @@ impl Daemon {
                     })
                     .collect();
                 // Shell aliases that start an agent, e.g. a second Claude account.
-                for (name, value) in agents::login_aliases() {
+                let aliases = agents::login_aliases();
+                *self.aliases.lock().unwrap() = aliases.clone();
+                for (name, value) in aliases {
                     if let Some((kind, icon)) = agents::alias_agent(&value) {
                         found.push(json!({ "command": name, "icon": icon, "kind": kind, "installed": true, "path": format!("alias: {value}"), "alias": true }));
                     }

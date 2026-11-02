@@ -52,6 +52,11 @@ pub fn claude_config_dir(profile: &Profile) -> PathBuf {
 /// CLAUDE_CONFIG_DIR, `~/.claude`, and any `~/.claude-*` directory.
 pub fn claude_config_candidates(profile: &Profile) -> Vec<PathBuf> {
     let mut v = vec![claude_config_dir(profile)];
+    for w in profile.command.split_whitespace() {
+        if let Some(d) = w.strip_prefix("CLAUDE_CONFIG_DIR=") {
+            v.push(PathBuf::from(expand_tilde(d)));
+        }
+    }
     let home = util::home_dir();
     v.push(home.join(".claude"));
     if let Ok(rd) = std::fs::read_dir(&home) {
@@ -155,11 +160,24 @@ pub fn discover_codex_session(profile: &Profile, cwd: &str, since: u64) -> Optio
     best.map(|(_, id)| id)
 }
 
+/// Runs a command line through the user's *login* shell. Deliberately not `-i`:
+/// interactive rc files can hang or swallow `-c` without a real terminal (seen with
+/// shell integrations). PATH comes from [`login_shell_path`] and aliases are expanded
+/// by us (see `expand_alias`).
 fn login_shell_argv(cmdline: &str) -> Vec<String> {
-    vec![util::user_shell(), "-l".into(), "-i".into(), "-c".into(), cmdline.to_string()]
+    vec![util::user_shell(), "-l".into(), "-c".into(), cmdline.to_string()]
 }
 
-pub fn build_launch(paths: &Paths, session: &Session, profile: Option<&Profile>, restoring: bool) -> LaunchSpec {
+/// If `command` is one of the user's aliases, returns its text so it can be used
+/// verbatim in a `-c` line (e.g. `CLAUDE_CONFIG_DIR=~/.claude-work claude`).
+fn expand_alias<'a>(command: &str, aliases: &'a [(String, String)]) -> Option<&'a str> {
+    if command.contains('/') || command.contains(' ') {
+        return None;
+    }
+    aliases.iter().find(|(k, _)| k == command).map(|(_, v)| v.as_str())
+}
+
+pub fn build_launch(paths: &Paths, session: &Session, profile: Option<&Profile>, restoring: bool, aliases: &[(String, String)]) -> LaunchSpec {
     let cwd = session.cwd.clone();
     let mut env = vec![("ADE_HOME".to_string(), paths.home.to_string_lossy().into_owned())];
     match session.kind {
@@ -208,7 +226,13 @@ pub fn build_launch(paths: &Paths, session: &Session, profile: Option<&Profile>,
                 }
                 AgentKind::Generic => {
                     if restoring && !profile.resume_template.trim().is_empty() {
-                        generic_resume = Some(profile.resume_template.replace("{id}", agent_id.as_deref().unwrap_or("")));
+                        let t = profile.resume_template.replace("{id}", agent_id.as_deref().unwrap_or(""));
+                        // Allow templates that start with an alias name.
+                        let first = t.split_whitespace().next().unwrap_or("").to_string();
+                        generic_resume = Some(match expand_alias(&first, aliases) {
+                            Some(text) => format!("{text}{}", &t[first.len()..]),
+                            None => t,
+                        });
                     }
                 }
             }
@@ -216,7 +240,10 @@ pub fn build_launch(paths: &Paths, session: &Session, profile: Option<&Profile>,
             let argv = if let Some(line) = generic_resume {
                 login_shell_argv(&line)
             } else if profile.via_login_shell {
-                let mut line = shell_quote(&command);
+                let mut line = match expand_alias(&profile.command, aliases) {
+                    Some(text) => text.to_string(),
+                    None => shell_quote(&command),
+                };
                 for a in &args {
                     line.push(' ');
                     line.push_str(&shell_quote(a));
@@ -277,17 +304,62 @@ pub const KNOWN_AGENTS: &[(&str, &str, AgentKind)] = &[
     ("copilot", "copilot", AgentKind::Generic),
 ];
 
+/// Runs `cmd` in the user's interactive login shell (no TTY) and returns stdout.
+/// Bounded: rc files that hang must not block the daemon.
+fn shell_output(cmd: &str) -> Option<String> {
+    use std::io::Read;
+    let mut child = std::process::Command::new(util::user_shell())
+        .args(["-l", "-i", "-c", cmd])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .ok()?;
+    let mut stdout = child.stdout.take()?;
+    // Read on a thread: a background process started by an rc file may keep the
+    // pipe open after the shell exits, so never block on EOF.
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        let mut chunk = [0u8; 8192];
+        loop {
+            match stdout.read(&mut chunk) {
+                Ok(0) | Err(_) => break,
+                Ok(n) => {
+                    buf.extend_from_slice(&chunk[..n]);
+                    let _ = tx.send(buf.clone());
+                }
+            }
+        }
+        let _ = tx.send(buf);
+    });
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) if std::time::Instant::now() < deadline => std::thread::sleep(std::time::Duration::from_millis(20)),
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+        }
+    }
+    // Take the latest snapshot of output; give the pipe a moment to flush.
+    let mut latest = Vec::new();
+    let until = std::time::Instant::now() + std::time::Duration::from_millis(500);
+    while let Ok(b) = rx.recv_timeout(until.saturating_duration_since(std::time::Instant::now())) {
+        latest = b;
+    }
+    Some(String::from_utf8_lossy(&latest).into_owned())
+}
+
 /// Aliases defined in the user's interactive login shell (`name -> value`).
 pub fn login_aliases() -> Vec<(String, String)> {
-    let Ok(out) = std::process::Command::new(util::user_shell())
-        .args(["-l", "-i", "-c", "alias"])
-        .stdin(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .output()
-    else {
+    let Some(out) = shell_output("alias") else {
         return vec![];
     };
-    String::from_utf8_lossy(&out.stdout)
+    out
         .lines()
         .filter_map(|l| {
             let l = l.strip_prefix("alias ").unwrap_or(l);
@@ -313,13 +385,7 @@ pub fn alias_agent(value: &str) -> Option<(AgentKind, &'static str)> {
 
 /// PATH as seen by the user's login shell (launchd gives daemons a minimal PATH).
 pub fn login_shell_path() -> Option<String> {
-    let out = std::process::Command::new(util::user_shell())
-        .args(["-l", "-i", "-c", "printf '__ADE_PATH__%s__END__' \"$PATH\""])
-        .stdin(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .output()
-        .ok()?;
-    let s = String::from_utf8_lossy(&out.stdout);
+    let s = shell_output("printf '__ADE_PATH__%s__END__' \"$PATH\"")?;
     let start = s.find("__ADE_PATH__")? + "__ADE_PATH__".len();
     let end = s[start..].find("__END__")? + start;
     Some(s[start..end].to_string())
@@ -343,6 +409,14 @@ mod tests {
             ["--model", "opus", "--resume", "abc", "-c", "--session-id=x", "--dangerously-skip-permissions"].iter().map(|s| s.to_string()).collect();
         assert_eq!(strip_session_flags(&args, AgentKind::Claude), vec!["--model", "opus", "--dangerously-skip-permissions"]);
         assert_eq!(strip_session_flags(&args, AgentKind::Generic), args);
+    }
+
+    #[test]
+    fn alias_expansion_in_launch_line() {
+        let aliases = vec![("claude-work".to_string(), "CLAUDE_CONFIG_DIR=~/.claude-work claude".to_string())];
+        assert_eq!(expand_alias("claude-work", &aliases), Some("CLAUDE_CONFIG_DIR=~/.claude-work claude"));
+        assert_eq!(expand_alias("claude", &aliases), None);
+        assert_eq!(expand_alias("/bin/claude-work", &aliases), None);
     }
 
     #[test]

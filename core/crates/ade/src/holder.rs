@@ -407,6 +407,10 @@ pub fn run(paths: Paths, args: HolderArgs) -> Result<()> {
             cmd.env_remove(&k);
         }
     }
+    // launchd gives daemons no locale; without one, shells and TUIs mangle UTF-8 (ç, ğ, ş…).
+    if std::env::var_os("LANG").is_none() && std::env::var_os("LC_ALL").is_none() && std::env::var_os("LC_CTYPE").is_none() {
+        cmd.env("LANG", "en_US.UTF-8");
+    }
     for (k, v) in &args.env {
         cmd.env(k, v);
     }
