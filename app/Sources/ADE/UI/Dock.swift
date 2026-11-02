@@ -108,47 +108,52 @@ extension AppModel {
     }
 }
 
-/// Bottom dock: tab strip of the project's dock sessions + the selected one.
+/// Bottom dock: chip strip of the project's dock sessions + the selected one in a card.
 struct DockView: View {
     @EnvironmentObject var model: AppModel
+    @AppStorage("ade.dockHeight") private var height: Double = 220
+    @State private var dragStart: Double?
 
     var body: some View {
         let pid = model.currentProject?.id
         let sessions = model.dockSessions(pid)
         let sel = model.dockSelection(pid)
-        VStack(spacing: 0) {
+        VStack(spacing: 4) {
             HStack(spacing: 2) {
                 ForEach(sessions) { s in
-                    HStack(spacing: 5) {
-                        AgentIcon(icon: s.kind == .action ? "action" : "terminal", size: 10)
-                        Text(s.displayTitle).lineLimit(1).frame(maxWidth: 140)
-                        if s.isDormant { Text("exited").font(.system(size: 9)).foregroundStyle(.tertiary) }
-                        Button { model.remove(s.id, confirm: false) } label: { Image(systemName: "xmark").font(.system(size: 8, weight: .bold)) }
-                            .buttonStyle(.plain).foregroundStyle(.tertiary)
+                    Chip(selected: s.id == sel, action: { if let pid { model.selectDock(pid, s.id) } }) {
+                        Circle().fill(s.isDormant ? T.text3 : s.kind == .action ? T.green : T.text3.opacity(0.7)).frame(width: 6, height: 6)
+                        Text(s.displayTitle).lineLimit(1)
+                        if s.isDormant { Text("exited").font(.system(size: 10)).foregroundStyle(T.text3) }
+                        Button { model.remove(s.id, confirm: false) } label: { Image(systemName: "xmark").font(.system(size: 7.5, weight: .bold)) }
+                            .buttonStyle(.plain).foregroundStyle(T.text3)
                     }
-                    .font(.system(size: 11, weight: s.id == sel ? .medium : .regular))
-                    .foregroundStyle(s.id == sel ? .primary : .secondary)
-                    .padding(.horizontal, 8).frame(height: 22)
-                    .background(RoundedRectangle(cornerRadius: 5).fill(s.id == sel ? Color.primary.opacity(0.09) : .clear))
-                    .contentShape(Rectangle())
-                    .onTapGesture { if let pid { model.selectDock(pid, s.id) } }
                     .contextMenu {
                         Button("Move to Tab") { model.client.call("session.move", ["id": s.id, "placement": "tab"]) }
-                        Button(s.isDormant ? "Restart" : "Restart") { model.restart(s.id) }
+                        Button("Restart") { model.restart(s.id) }
                         Button("Close", role: .destructive) { model.remove(s.id, confirm: false) }
                     }
                 }
                 Spacer()
+                Text("⌘J").font(T.caption).foregroundStyle(T.text3)
                 Button { model.newDockTerminal() } label: { Image(systemName: "plus") }.buttonStyle(ChromeButtonStyle()).help("New terminal in dock")
                 Button { model.toggleDock() } label: { Image(systemName: "chevron.down") }.buttonStyle(ChromeButtonStyle()).help("Hide dock (⌘J)")
             }
-            .font(.system(size: 11))
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 6)
-            .frame(height: 28)
-            Divider()
-            DockArea()
+            .font(.system(size: 11.5))
+            .padding(.leading, T.m.inset == 0 ? 8 : 2)
+            .frame(height: 26)
+            .contentShape(Rectangle())
+            .gesture(DragGesture(minimumDistance: 2, coordinateSpace: .global)
+                .onChanged { v in
+                    if dragStart == nil { dragStart = height }
+                    height = min(700, max(90, (dragStart ?? height) - v.translation.height))
+                }
+                .onEnded { _ in dragStart = nil })
+            .onHover { inside in if inside { NSCursor.resizeUpDown.push() } else { NSCursor.pop() } }
+            DockArea().frame(height: height)
         }
+        .padding(.top, T.m.inset == 0 ? 0 : 0)
+        .overlay(alignment: .top) { if T.m.inset == 0 { Hairline() } }
     }
 }
 
@@ -174,7 +179,9 @@ struct ActionsControl: View {
         let list = model.actions(pid)
         HStack(spacing: 2) {
             if let last = model.lastAction(pid) {
-                Button { model.runAction(last) } label: { Label(last.name, systemImage: last.icon) }
+                Button { model.runAction(last) } label: {
+                    HStack(spacing: 5) { Image(systemName: last.icon).font(.system(size: 10)); Text(last.name) }
+                }
                     .buttonStyle(ChromeButtonStyle()).help("Run “\(last.command)” in the dock")
             }
             Menu {
@@ -189,7 +196,9 @@ struct ActionsControl: View {
                 }
                 Button("Add Action…") { adding = true }
             } label: {
-                if list.isEmpty { Label("Actions", systemImage: "play") } else { Image(systemName: "chevron.down").font(.system(size: 8)) }
+                if list.isEmpty {
+                    HStack(spacing: 5) { Image(systemName: "play.fill").font(.system(size: 9)); Text("Actions") }.foregroundStyle(T.text2)
+                } else { Image(systemName: "chevron.down").font(.system(size: 8, weight: .semibold)).foregroundStyle(T.text2) }
             }
             .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
         }

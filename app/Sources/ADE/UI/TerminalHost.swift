@@ -24,7 +24,10 @@ final class TerminalHost {
             command: "\(Paths.adeBinary.shellQuoted) attach \(session.id)",
             env: ["ADE_HOME": Paths.home.path],
             workingDirectory: session.cwd)
-        v.onFocus = { [weak self] in self?.model.sessionFocused(session.id) }
+        v.onFocus = { [weak self] in
+            self?.model.sessionFocused(session.id)
+            self?.updateFocusRings(session.id)
+        }
         v.onProcessExit = { [weak self, weak v] in
             // `ade attach` ended: the session exited, was stopped, or removed.
             guard let self, let v else { return }
@@ -92,6 +95,7 @@ final class TerminalHost {
         }
         let root = build(tab.layout, tabId: tab.id, path: [])
         container.setRoot(root)
+        updateFocusRings(model.focusedSessionId)
         DispatchQueue.main.async { self.focusCurrent() }
     }
 
@@ -121,6 +125,17 @@ final class TerminalHost {
             }
             return split
         }
+    }
+
+    /// Accent border on the focused pane when a tab shows more than one pane.
+    func updateFocusRings(_ focusedId: String?) {
+        func walk(_ v: NSView, _ out: inout [PaneView]) {
+            if let p = v as? PaneView { out.append(p) }
+            for s in v.subviews where !(s is TerminalSurfaceView) { walk(s, &out) }
+        }
+        var panes: [PaneView] = []
+        walk(container, &panes)
+        for p in panes { p.focused = panes.count > 1 && p.sessionId == focusedId }
     }
 
     func focusCurrent() {
@@ -184,15 +199,37 @@ final class PaneContainerView: NSView {
     }
 }
 
-/// One pane: draws a focus ring around its terminal.
+/// One pane: a rounded card (per theme) holding a terminal or a dormant view.
 final class PaneView: NSView {
     let sessionId: String
+    var focused = false { didSet { if focused != oldValue { needsDisplay = true; updateLayer() } } }
+
     init(sessionId: String) {
         self.sessionId = sessionId
         super.init(frame: .zero)
         wantsLayer = true
+        layer?.masksToBounds = true
+        layer?.cornerCurve = .continuous
     }
     required init?(coder: NSCoder) { fatalError() }
+
+    override var wantsUpdateLayer: Bool { true }
+
+    override func updateLayer() {
+        guard let layer else { return }
+        let m = T.m
+        layer.cornerRadius = m.cardR
+        layer.borderWidth = m.cardR > 0 ? 1 : 0
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            layer.backgroundColor = T.ns(\.surface).cgColor
+            layer.borderColor = (focused ? T.ns(\.accent).withAlphaComponent(0.55) : T.ns(\.border)).cgColor
+        }
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateLayer()
+    }
 
     func setContent(_ v: NSView) {
         v.removeFromSuperview()
@@ -229,6 +266,10 @@ final class RatioSplitView: NSSplitView, NSSplitViewDelegate {
         delegate = self
     }
     required init?(coder: NSCoder) { fatalError() }
+
+    // Cards themes: a gap in the frame color. Flat themes: a hairline.
+    override var dividerThickness: CGFloat { T.m.inset > 0 ? T.m.inset : 1 }
+    override var dividerColor: NSColor { T.m.inset > 0 ? T.ns(\.frame) : T.ns(\.border) }
 
     override func layout() {
         super.layout()

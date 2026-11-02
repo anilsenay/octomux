@@ -8,53 +8,76 @@ struct SidebarView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
+            HStack {
+                SectionLabel("Projects")
+                Spacer()
+                Button { model.addProject() } label: { Image(systemName: "plus").font(.system(size: 10.5, weight: .semibold)) }
+                    .buttonStyle(.plain).foregroundStyle(T.text3).help("Add Project (⌘⇧O)")
+            }
+            .padding(.horizontal, 18).padding(.top, 10).padding(.bottom, 4)
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 1) {
-                    ForEach(model.projects) { p in
+                    ForEach(Array(model.projects.enumerated()), id: \.element.id) { i, p in
                         ProjectRow(project: p, collapsed: collapsed.contains(p.id)) {
                             if collapsed.contains(p.id) { collapsed.remove(p.id) } else { collapsed.insert(p.id) }
                             UserDefaults.standard.set(Array(collapsed), forKey: "ade.collapsed")
                         }
+                        .padding(.top, i == 0 ? 0 : 6)
                         if !collapsed.contains(p.id) {
                             ForEach(model.sessions(ofProject: p.id)) { s in
                                 SessionRow(session: s)
                             }
                             let dock = model.state.sessions.filter { $0.projectId == p.id && $0.placement == .dock }
                             if !dock.isEmpty {
-                                Text("\(dock.count) in dock").font(.system(size: 10)).foregroundStyle(.tertiary).padding(.leading, 34)
+                                Text("\(dock.count) in dock").font(T.caption).foregroundStyle(T.text3).padding(.leading, 38).frame(height: 20)
                             }
                         }
                     }
                     if model.projects.isEmpty {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("No projects in this workspace").font(.system(size: 12)).foregroundStyle(.secondary)
-                            Button("Add Project…") { model.addProject() }.controlSize(.small)
-                        }.padding(12)
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("No projects in this workspace").font(T.body).foregroundStyle(T.text2)
+                            Button("Add Project…") { model.addProject() }.buttonStyle(SecondaryButtonStyle())
+                        }.padding(.horizontal, 10).padding(.vertical, 8)
                     }
                 }
-                .padding(.vertical, 4)
+                .padding(.horizontal, 10)
+                .padding(.bottom, 8)
             }
             footer
         }
-        .background(Palette.sidebarBG)
     }
 
     private var header: some View {
-        HStack(spacing: 6) {
-            Circle().fill(Color(hex: model.workspace?.color ?? "#888")).frame(width: 8, height: 8)
-            Text(model.workspace?.name ?? "ADE").font(.system(size: 13, weight: .semibold))
-            Spacer()
-            if !model.connected {
-                Image(systemName: "bolt.horizontal.circle").foregroundStyle(.orange).help("Reconnecting to the ADE daemon…")
+        VStack(spacing: 8) {
+            Spacer().frame(height: 38)  // traffic lights
+            Menu {
+                ForEach(model.state.workspaces.sorted { $0.sort < $1.sort }) { w in
+                    Button((w.id == model.selectedWorkspaceId ? "✓ " : "") + w.name) { model.selectWorkspace(w.id) }
+                }
+                Divider()
+                Button("Workspace Settings…") { SettingsWindow.show(section: .workspaces) }
+            } label: {
+                HStack(spacing: 8) {
+                    Circle().fill(Color(hex: model.workspace?.color ?? "#888")).frame(width: 8, height: 8)
+                    Text(model.workspace?.name ?? "ADE").font(T.headline).foregroundStyle(T.text)
+                    Spacer()
+                    if !model.connected {
+                        Image(systemName: "bolt.horizontal.circle").foregroundStyle(T.amber).help("Reconnecting to the ADE daemon…")
+                    }
+                    Image(systemName: "chevron.up.chevron.down").font(.system(size: 9, weight: .semibold)).foregroundStyle(T.text3)
+                }
+                .padding(.horizontal, 10).frame(height: 32)
+                .background(RoundedRectangle(cornerRadius: T.m.rowR, style: .continuous).fill(T.hover))
+                .contentShape(Rectangle())
             }
+            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden)
+            .help("Switch workspace (⌃⌘← →, or swipe)")
         }
-        .padding(.horizontal, 12)
-        .padding(.top, 34)
-        .padding(.bottom, 8)
+        .padding(.horizontal, 10)
     }
 
     private var footer: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 2) {
             Button { NSApp.sendAction(#selector(AppDelegate.showSettings(_:)), to: nil, from: nil) } label: {
                 Image(systemName: "gearshape")
             }.buttonStyle(ChromeButtonStyle()).help("Settings (⌘,)")
@@ -64,9 +87,9 @@ struct SidebarView: View {
             WorkspaceDots()
         }
         .font(.system(size: 13))
-        .foregroundStyle(.secondary)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 10)
+        .frame(height: 40)
+        .overlay(alignment: .top) { Hairline() }
     }
 }
 
@@ -76,25 +99,25 @@ struct WorkspaceDots: View {
     @State private var newName = ""
 
     var body: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: 4) {
             ForEach(model.state.workspaces.sorted { $0.sort < $1.sort }) { w in
                 let selected = w.id == model.selectedWorkspaceId
                 Circle()
-                    .fill(selected ? Color(hex: w.color) : Color.secondary.opacity(0.45))
+                    .fill(selected ? Color(hex: w.color) : T.text3.opacity(0.6))
                     .frame(width: selected ? 8 : 6, height: selected ? 8 : 6)
-                    .padding(2)
+                    .padding(3)
                     .contentShape(Rectangle())
                     .onTapGesture { model.selectWorkspace(w.id) }
                     .help(w.name)
             }
             Button { adding = true } label: { Image(systemName: "plus").font(.system(size: 9, weight: .semibold)) }
-                .buttonStyle(.plain).foregroundStyle(.tertiary).help("New workspace")
+                .buttonStyle(.plain).foregroundStyle(T.text3).help("New workspace")
                 .popover(isPresented: $adding) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("New workspace").font(.headline)
-                        TextField("Name", text: $newName).frame(width: 180).onSubmit(create)
-                        HStack { Spacer(); Button("Create", action: create).keyboardShortcut(.defaultAction) }
-                    }.padding(12)
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("New workspace").font(T.headline)
+                        TextField("Name", text: $newName).textFieldStyle(.roundedBorder).frame(width: 200).onSubmit(create)
+                        HStack { Spacer(); Button("Create", action: create).buttonStyle(PrimaryButtonStyle()).keyboardShortcut(.defaultAction) }
+                    }.padding(14)
                 }
         }
     }
@@ -110,27 +133,37 @@ struct WorkspaceDots: View {
 
 struct ProjectRow: View {
     @EnvironmentObject var model: AppModel
+    @ObservedObject var git = GitInfo.shared
     let project: Project
     let collapsed: Bool
     let toggle: () -> Void
     @State private var hover = false
 
     var body: some View {
-        HStack(spacing: 6) {
-            ProjectIconView(project: project)
-                .frame(width: 18)
-            Text(project.name).font(.system(size: 13, weight: .medium)).lineLimit(1)
-            if collapsed {
-                let n = model.sessions(ofProject: project.id).filter { $0.activity == .needsInput || $0.unread }.count
-                if n > 0 { Circle().fill(Color.orange).frame(width: 6, height: 6) }
+        let m = T.m
+        let sessions = model.sessions(ofProject: project.id)
+        let waiting = sessions.filter { $0.activity == .needsInput }.count
+        let unread = sessions.filter { $0.unread && $0.activity != .needsInput }.count
+        HStack(spacing: 8) {
+            ProjectIconView(project: project, size: 18)
+            Text(project.name).font(T.headline).foregroundStyle(T.text).lineLimit(1)
+            if collapsed && !sessions.isEmpty {
+                Text("\(sessions.count)").font(T.caption).foregroundStyle(T.text3)
             }
-            Spacer()
+            Spacer(minLength: 4)
             if hover {
                 NewSessionMenu(projectId: project.id, compact: true)
+            } else {
+                if waiting > 0 { Badge(text: "\(waiting)") }
+                else if collapsed && unread > 0 { Circle().fill(T.green).frame(width: 6, height: 6) }
+                if let b = git.branch(for: project.path) {
+                    Text(b).font(T.mono(10.5)).foregroundStyle(T.text3).lineLimit(1).frame(maxWidth: 80, alignment: .trailing)
+                }
             }
         }
-        .padding(.horizontal, 10)
-        .frame(height: 26)
+        .padding(.horizontal, 8)
+        .frame(height: m.rowH)
+        .background(RoundedRectangle(cornerRadius: m.rowR, style: .continuous).fill(hover ? T.hover : .clear))
         .contentShape(Rectangle())
         .onHover { hover = $0 }
         .onTapGesture(count: 1) { toggle(); model.selectProject(project.id) }
@@ -214,12 +247,13 @@ struct SessionRow: View {
     var selected: Bool { model.focusedSessionId == session.id && model.activeTab?.layout.sessions.contains(session.id) == true }
 
     var body: some View {
-        HStack(spacing: 6) {
-            AgentIcon(icon: iconName(for: session, model: model), size: 11).frame(width: 14)
+        let m = T.m
+        HStack(spacing: 8) {
+            AgentIcon(icon: iconName(for: session, model: model), size: 12).frame(width: 14)
             if model.renamingSessionId == session.id {
                 TextField("Title", text: $editTitle)
                     .textFieldStyle(.plain)
-                    .font(.system(size: 12))
+                    .font(T.body)
                     .onSubmit {
                         model.rename(session.id, to: editTitle)
                         model.renamingSessionId = nil
@@ -228,32 +262,36 @@ struct SessionRow: View {
                     .onAppear { editTitle = session.displayTitle }
             } else {
                 Text(session.displayTitle)
-                    .font(.system(size: 12, weight: session.unread ? .semibold : .regular))
+                    .font(.system(size: 13, weight: selected || session.unread ? .semibold : .regular))
+                    .foregroundStyle(selected ? T.text : T.text2)
                     .lineLimit(1)
                     .truncationMode(.tail)
             }
             Spacer(minLength: 4)
             if hover {
-                if session.isDormant {
-                    Button { model.restart(session.id) } label: { Image(systemName: "arrow.clockwise") }
-                        .buttonStyle(.plain).help(session.kind == .agent ? "Resume" : "Restart")
-                    Button { model.remove(session.id) } label: { Image(systemName: "xmark") }
-                        .buttonStyle(.plain).help("Remove")
-                } else {
-                    Button { model.stop(session.id) } label: { Image(systemName: "stop.fill").font(.system(size: 8)) }
-                        .buttonStyle(.plain).help("Stop")
+                Group {
+                    if session.isDormant {
+                        Button { model.restart(session.id) } label: { Image(systemName: "arrow.clockwise") }
+                            .help(session.kind == .agent ? "Resume" : "Restart")
+                        Button { model.remove(session.id) } label: { Image(systemName: "xmark") }
+                            .help("Remove")
+                    } else {
+                        Button { model.stop(session.id) } label: { Image(systemName: "stop.fill").font(.system(size: 8)) }
+                            .help("Stop")
+                    }
                 }
+                .buttonStyle(.plain)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(T.text2)
             } else {
                 ActivityIndicator(session: session)
             }
         }
-        .font(.system(size: 10, weight: .semibold))
-        .foregroundStyle(.primary)
         .opacity(session.isDormant ? 0.45 : 1)
         .padding(.leading, 30)
-        .padding(.trailing, 10)
-        .frame(height: 24)
-        .background(RoundedRectangle(cornerRadius: 6).fill(selected ? Palette.selection : hover ? Color.primary.opacity(0.05) : .clear).padding(.horizontal, 6))
+        .padding(.trailing, 8)
+        .frame(height: m.rowH)
+        .background(RoundedRectangle(cornerRadius: m.rowR, style: .continuous).fill(selected ? T.selection : hover ? T.hover : .clear))
         .contentShape(Rectangle())
         .onHover { hover = $0 }
         .onTapGesture { model.selectSession(session.id) }

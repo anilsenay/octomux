@@ -278,8 +278,8 @@ pub fn default_profiles() -> Vec<Profile> {
             sort: out_len_hint(kind),
         });
     };
-    add("claude", "claude", AgentKind::Claude, "claude");
-    add("codex", "codex", AgentKind::Codex, "codex");
+    add("Claude", "claude", AgentKind::Claude, "claude");
+    add("Codex", "codex", AgentKind::Codex, "codex");
     out
 }
 

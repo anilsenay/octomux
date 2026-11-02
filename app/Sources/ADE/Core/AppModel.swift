@@ -77,6 +77,7 @@ final class AppModel: ObservableObject {
             focusedSessionId = tab.activeSessionId ?? tab.layout.sessions.first
         }
         Notifier.shared.updateBadge(state: s)
+        ThemeStore.shared.sync(from: self)
         TerminalHost.shared.reconcile(with: s)
     }
 

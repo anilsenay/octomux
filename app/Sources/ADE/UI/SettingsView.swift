@@ -30,6 +30,9 @@ final class SettingsWindow {
             let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 860, height: 600),
                              styleMask: [.titled, .closable, .resizable, .miniaturizable], backing: .buffered, defer: false)
             w.title = "Settings"
+            w.titlebarAppearsTransparent = true
+            w.titleVisibility = .hidden
+            w.styleMask.insert(.fullSizeContentView)
             w.isReleasedWhenClosed = false
             w.contentView = NSHostingView(rootView: SettingsView().environmentObject(AppModel.shared).environmentObject(selection))
             w.center()
@@ -48,36 +51,47 @@ final class SettingsSelection: ObservableObject {
 struct SettingsView: View {
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var sel: SettingsSelection
+    @ObservedObject var theme = ThemeStore.shared
 
     var body: some View {
         HStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 1) {
+                Spacer().frame(height: 30)
+                SectionLabel("Scope").padding(.horizontal, 10).padding(.bottom, 2)
                 Picker("", selection: $sel.scope) {
                     Text("Global").tag("global")
                     ForEach(model.state.workspaces) { w in Text("Workspace: \(w.name)").tag("workspace:\(w.id)") }
                 }
                 .labelsHidden()
-                .padding(.bottom, 10)
+                .padding(.horizontal, 6)
+                .padding(.bottom, 12)
                 .help("Some settings can be overridden per workspace")
                 ForEach(SettingsSection.allCases) { s in
                     Button { sel.section = s } label: {
-                        Label(s.rawValue, systemImage: s.icon).frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.vertical, 5).padding(.horizontal, 8)
-                            .background(RoundedRectangle(cornerRadius: 6).fill(sel.section == s ? Palette.selection : .clear))
+                        HStack(spacing: 9) {
+                            Image(systemName: s.icon).font(.system(size: 12)).frame(width: 16)
+                                .foregroundStyle(sel.section == s ? T.accent : T.text3)
+                            Text(s.rawValue).font(.system(size: 13, weight: sel.section == s ? .semibold : .regular))
+                                .foregroundStyle(sel.section == s ? T.text : T.text2)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 10).frame(height: T.m.rowH)
+                        .background(RoundedRectangle(cornerRadius: T.m.rowR, style: .continuous).fill(sel.section == s ? T.selection : .clear))
+                        .contentShape(Rectangle())
                     }.buttonStyle(.plain)
                 }
                 Spacer()
             }
-            .padding(12)
-            .frame(width: 210)
-            .background(Palette.sidebarBG)
-            Divider()
+            .padding(10)
+            .frame(width: 212)
+            .background(T.frame)
+            Hairline(vertical: true)
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    Text(sel.section.rawValue).font(.largeTitle.weight(.semibold))
+                    Text(sel.section.rawValue).font(T.title).foregroundStyle(T.text).padding(.top, 8)
                     if sel.section.scoped {
                         Text(sel.scope == "global" ? "Applies everywhere unless a workspace or project overrides it." : "Overrides for this workspace. Unset values fall back to Global.")
-                            .foregroundStyle(.secondary)
+                            .font(T.body).foregroundStyle(T.text2)
                     }
                     switch sel.section {
                     case .workspaces: WorkspacesSettings()
@@ -89,11 +103,16 @@ struct SettingsView: View {
                     case .advanced: AdvancedSettings()
                     }
                 }
-                .padding(28)
-                .frame(maxWidth: 680, alignment: .leading)
+                .padding(.horizontal, 30).padding(.vertical, 24)
+                .frame(maxWidth: 700, alignment: .leading)
             }
             .frame(maxWidth: .infinity)
+            .background(T.surface)
         }
+        .foregroundStyle(T.text)
+        .tint(T.accent)
+        .ignoresSafeArea()
+        .id(theme.revision)
     }
 }
 
@@ -103,7 +122,8 @@ struct SettingsCard<Content: View>: View {
         VStack(alignment: .leading, spacing: 10) { content }
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.04)))
+            .background(RoundedRectangle(cornerRadius: max(T.m.cardR, 4), style: .continuous).fill(T.frame.opacity(0.55)))
+            .overlay(RoundedRectangle(cornerRadius: max(T.m.cardR, 4), style: .continuous).stroke(T.border))
     }
 }
 
@@ -355,6 +375,9 @@ struct AppearanceSettings: View {
     @State private var status = ""
 
     var body: some View {
+        if sel.scope == "global" {
+            ThemePicker()
+        }
         if sel.scope.hasPrefix("workspace:"), let w = model.state.workspaces.first(where: { "workspace:\($0.id)" == sel.scope }) {
             SettingsCard {
                 Text("Workspace color").font(.headline)
@@ -369,13 +392,15 @@ struct AppearanceSettings: View {
         }
         SettingsCard {
             Text("Terminal").font(.headline)
-            Text("Uses Ghostty's config syntax (font-family, font-size, theme, cursor-style, …). Saved to \(Paths.terminalConfig.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")).")
+            Text("Uses Ghostty's config syntax (font-family, font-size, cursor-style, …). The theme's colors are applied on top unless “Use theme colors” is off. Saved to \(Paths.terminalConfig.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")).")
                 .font(.caption).foregroundStyle(.secondary)
-            TextEditor(text: $config).font(.system(size: 12, design: .monospaced)).frame(height: 220)
-                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.primary.opacity(0.1)))
+            TextEditor(text: $config).font(T.mono(12)).frame(height: 220)
+                .scrollContentBackground(.hidden).padding(6)
+                .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(T.surface))
+                .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(T.border))
             HStack {
                 Button("Import from Ghostty") { importGhostty() }
-                Button("Insert example") { config += (config.isEmpty ? "" : "\n") + "font-family = JetBrains Mono\nfont-size = 13\ntheme = Builtin Dark\ncursor-style = bar\nwindow-padding-x = 6\n" }
+                Button("Insert example") { config += (config.isEmpty ? "" : "\n") + "font-family = JetBrains Mono\nfont-size = 13\ncursor-style = bar\n" }
                 Spacer()
                 Text(status).font(.caption).foregroundStyle(.secondary)
                 Button("Apply") { save() }.keyboardShortcut("s")
@@ -410,6 +435,83 @@ struct AppearanceSettings: View {
             }
         }
         status = "No Ghostty config found"
+    }
+}
+
+struct ThemePicker: View {
+    @EnvironmentObject var model: AppModel
+    @ObservedObject var store = ThemeStore.shared
+
+    var body: some View {
+        SettingsCard {
+            Text("Theme").font(.headline)
+            HStack(spacing: 12) {
+                ForEach(Themes.all) { p in
+                    let on = p.id == store.preset.id
+                    Button { store.set(theme: p.id) } label: {
+                        VStack(alignment: .leading, spacing: 8) {
+                            ThemeSwatch(preset: p)
+                            Text(p.name).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(T.text)
+                            Text(p.summary).font(.system(size: 11)).foregroundStyle(T.text2).lineLimit(2, reservesSpace: true)
+                        }
+                        .padding(10)
+                        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(on ? T.selection : .clear))
+                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(on ? T.accent : T.border, lineWidth: on ? 1.5 : 1))
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            HStack {
+                Text("Appearance")
+                Spacer()
+                Picker("", selection: Binding(get: { store.mode }, set: { store.set(mode: $0) })) {
+                    Text("System").tag("system"); Text("Dark").tag("dark"); Text("Light").tag("light")
+                }
+                .pickerStyle(.segmented).labelsHidden().frame(width: 220)
+            }
+            Toggle("Use theme colors in the terminal", isOn: Binding(
+                get: { model.settingValue("appearance.terminal_colors", scope: "global")?.bool ?? true },
+                set: { model.setSetting("appearance.terminal_colors", $0 ? nil : false) }))
+        }
+    }
+}
+
+/// Miniature of a preset: frame, sidebar rows, terminal card, accent.
+struct ThemeSwatch: View {
+    let preset: ThemePreset
+    @Environment(\.colorScheme) var scheme
+    var body: some View {
+        let c = scheme == .dark ? preset.dark : preset.light
+        let r = preset.metrics.cardR > 0 ? 4.0 : 0.0
+        HStack(spacing: preset.metrics.inset > 0 ? 4 : 0) {
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(0..<4) { i in
+                    RoundedRectangle(cornerRadius: 1.5).fill(i == 1 ? Color(nsColor: c.accent) : Color(nsColor: c.text3).opacity(0.5))
+                        .frame(width: i == 0 ? 26 : 34, height: 3)
+                }
+                Spacer()
+            }
+            .padding(6)
+            .frame(width: 46)
+            VStack(alignment: .leading, spacing: 3) {
+                ForEach(0..<5) { i in
+                    RoundedRectangle(cornerRadius: 1).fill(Color(nsColor: i == 4 ? c.accent : c.termFg).opacity(i == 4 ? 1 : 0.55))
+                        .frame(width: [60, 44, 70, 30, 6][i], height: 3)
+                }
+                Spacer()
+            }
+            .padding(7)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(RoundedRectangle(cornerRadius: r).fill(Color(nsColor: c.surface)))
+            .overlay(RoundedRectangle(cornerRadius: r).stroke(Color(nsColor: c.border)))
+            .padding(.vertical, preset.metrics.inset > 0 ? 4 : 0)
+            .padding(.trailing, preset.metrics.inset > 0 ? 4 : 0)
+        }
+        .frame(width: 150, height: 74)
+        .background(Color(nsColor: c.frame))
+        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(Color(nsColor: c.border)))
     }
 }
 

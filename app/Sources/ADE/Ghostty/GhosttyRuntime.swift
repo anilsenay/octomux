@@ -21,10 +21,7 @@ final class GhosttyRuntime {
         guard let cfg = ghostty_config_new() else { return false }
         // Our own config file, in Ghostty syntax. We deliberately do not read the
         // user's Ghostty config (it can be imported from Settings instead).
-        let path = Paths.terminalConfig.path
-        if FileManager.default.fileExists(atPath: path) {
-            ghostty_config_load_file(cfg, path)
-        }
+        Self.loadFiles(cfg)
         ghostty_config_finalize(cfg)
         config = cfg
 
@@ -76,13 +73,17 @@ final class GhosttyRuntime {
         ghostty_app_tick(app)
     }
 
+    /// The user's terminal.conf, then the theme's generated colors (theme.conf).
+    private static func loadFiles(_ cfg: ghostty_config_t) {
+        for url in [Paths.terminalConfig, Paths.themeConfig] where FileManager.default.fileExists(atPath: url.path) {
+            ghostty_config_load_file(cfg, url.path)
+        }
+    }
+
     /// Reloads the terminal config file into the running app.
     func reloadConfig() {
         guard let app, let cfg = ghostty_config_new() else { return }
-        let path = Paths.terminalConfig.path
-        if FileManager.default.fileExists(atPath: path) {
-            ghostty_config_load_file(cfg, path)
-        }
+        Self.loadFiles(cfg)
         ghostty_config_finalize(cfg)
         ghostty_app_update_config(app, cfg)
         if let old = config { ghostty_config_free(old) }

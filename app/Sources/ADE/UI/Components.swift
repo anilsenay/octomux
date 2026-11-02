@@ -13,13 +13,37 @@ extension Color {
 
 enum Palette {
     static let colors = ["#459CF7", "#F4BF25", "#39C363", "#E45A9F", "#B168D4", "#37BEB4", "#EF8C39", "#EA603E", "#8B949C"]
-    static let sidebarBG = Color(nsColor: NSColor(name: nil) { a in
-        a.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(white: 0.13, alpha: 1) : NSColor(white: 0.94, alpha: 1)
-    })
-    static let chromeBG = Color(nsColor: NSColor(name: nil) { a in
-        a.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(white: 0.16, alpha: 1) : NSColor(white: 0.97, alpha: 1)
-    })
-    static let selection = Color.accentColor.opacity(0.22)
+    static var sidebarBG: Color { T.frame }
+    static var chromeBG: Color { T.frame }
+    static var selection: Color { T.selection }
+}
+
+/// Claude's mark: three crossing strokes (drawn, so it scales and tints cleanly).
+struct ClaudeMark: Shape {
+    func path(in r: CGRect) -> Path {
+        var p = Path()
+        let cx = r.midX, cy = r.midY, rad = min(r.width, r.height) / 2
+        for a in [90.0, 30.0, -30.0] {
+            let t = a * .pi / 180
+            p.move(to: CGPoint(x: cx - cos(t) * rad, y: cy - sin(t) * rad))
+            p.addLine(to: CGPoint(x: cx + cos(t) * rad, y: cy + sin(t) * rad))
+        }
+        return p
+    }
+}
+
+struct HexMark: Shape {
+    func path(in r: CGRect) -> Path {
+        var p = Path()
+        let cx = r.midX, cy = r.midY, rad = min(r.width, r.height) / 2
+        for i in 0..<6 {
+            let t = (Double(i) * 60 - 90) * .pi / 180
+            let pt = CGPoint(x: cx + cos(t) * rad, y: cy + sin(t) * rad)
+            if i == 0 { p.move(to: pt) } else { p.addLine(to: pt) }
+        }
+        p.closeSubpath()
+        return p
+    }
 }
 
 /// Icon for an agent profile / session kind.
@@ -30,17 +54,20 @@ struct AgentIcon: View {
     var body: some View {
         switch icon {
         case "claude":
-            Image(systemName: "asterisk").font(.system(size: size, weight: .bold)).foregroundStyle(Color(hex: "#D97757"))
+            ClaudeMark().stroke(T.claude, style: StrokeStyle(lineWidth: max(1.6, size / 6), lineCap: .round))
+                .frame(width: size, height: size)
         case "codex":
-            Image(systemName: "hexagon").font(.system(size: size, weight: .semibold)).foregroundStyle(.primary)
+            HexMark().stroke(T.text, style: StrokeStyle(lineWidth: max(1.2, size / 8), lineJoin: .round))
+                .frame(width: size, height: size)
         case "gemini":
-            Image(systemName: "sparkle").font(.system(size: size)).foregroundStyle(Color(hex: "#4F8DF7"))
+            Image(systemName: "sparkle").font(.system(size: size)).foregroundStyle(T.blue)
         case "terminal":
-            Image(systemName: "terminal").font(.system(size: size)).foregroundStyle(.secondary)
+            Image(systemName: "chevron.right").font(.system(size: size * 0.8, weight: .bold)).foregroundStyle(T.text3)
+                .frame(width: size, height: size)
         case "action":
-            Image(systemName: "play.fill").font(.system(size: size - 2)).foregroundStyle(.secondary)
+            Image(systemName: "play.fill").font(.system(size: size - 2)).foregroundStyle(T.text3)
         default:
-            Image(systemName: "chevron.left.forwardslash.chevron.right").font(.system(size: size - 1)).foregroundStyle(.secondary)
+            Image(systemName: "chevron.left.forwardslash.chevron.right").font(.system(size: size - 1)).foregroundStyle(T.text3)
         }
     }
 }
@@ -53,63 +80,100 @@ func iconName(for session: Session, model: AppModel) -> String {
     }
 }
 
-/// Small activity indicator shown next to sessions.
+/// Rotating accent arc: an agent is working.
+struct WorkingRing: View {
+    var size: CGFloat = 11
+    @State private var spin = false
+    var body: some View {
+        ZStack {
+            Circle().stroke(T.border, lineWidth: 2)
+            Circle().trim(from: 0, to: 0.28).stroke(T.accent, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                .rotationEffect(.degrees(spin ? 360 : 0))
+                .animation(.linear(duration: 0.9).repeatForever(autoreverses: false), value: spin)
+        }
+        .frame(width: size, height: size)
+        .onAppear { spin = true }
+    }
+}
+
+/// Small rounded label: "input", counts.
+struct Badge: View {
+    let text: String
+    var color: Color = T.amber
+    var body: some View {
+        Text(text).font(.system(size: 10, weight: .bold))
+            .foregroundStyle(color)
+            .padding(.horizontal, 6).padding(.vertical, 1)
+            .background(Capsule().fill(color.opacity(0.16)))
+    }
+}
+
+/// Activity indicator shown next to sessions and in tabs.
 struct ActivityIndicator: View {
     let session: Session
 
     var body: some View {
         Group {
             if session.state == .interrupted {
-                Image(systemName: "arrow.clockwise").font(.system(size: 9, weight: .bold)).foregroundStyle(.orange)
+                Image(systemName: "arrow.clockwise").font(.system(size: 9, weight: .bold)).foregroundStyle(T.amber)
                     .help("Restoring…")
             } else if session.isDormant {
                 EmptyView()
             } else {
                 switch session.activity {
                 case .working:
-                    ProgressView().controlSize(.mini).scaleEffect(0.7).frame(width: 12, height: 12).help("Working")
+                    WorkingRing().help("Working")
                 case .needsInput:
-                    Image(systemName: "exclamationmark.bubble.fill").font(.system(size: 10)).foregroundStyle(.orange).help("Needs your input")
+                    Badge(text: "input").fixedSize().help("Needs your input")
                 case .error:
-                    Image(systemName: "xmark.octagon.fill").font(.system(size: 10)).foregroundStyle(.red).help("Error")
+                    Circle().fill(T.red).frame(width: 7, height: 7).help("Error")
                 case .done where session.unread:
-                    Circle().fill(Color.accentColor).frame(width: 7, height: 7).help("Finished")
+                    Circle().fill(T.green).frame(width: 7, height: 7).help("Finished")
                 default:
                     if session.unread {
-                        Circle().fill(Color.accentColor).frame(width: 7, height: 7)
+                        Circle().fill(T.accent).frame(width: 6, height: 6)
                     } else {
                         EmptyView()
                     }
                 }
             }
         }
-        .frame(width: 14, height: 14)
+        .frame(minWidth: 14, minHeight: 14)
     }
 }
 
-/// Project icon: colored folder / SF Symbol / emoji / mascot / image.
+/// Project icon: color tile with initial / symbol / mascot, or emoji / image.
 struct ProjectIconView: View {
     let project: Project
-    var size: CGFloat = 14
+    var size: CGFloat = 18
 
     var body: some View {
         let color = Color(hex: project.color)
+        let tile = RoundedRectangle(cornerRadius: min(T.m.tileR, size / 2), style: .continuous)
         switch project.icon.kind {
-        case "symbol":
-            Image(systemName: project.icon.value ?? "folder.fill").font(.system(size: size - 1)).foregroundStyle(color)
         case "emoji":
-            Text(project.icon.value ?? "📁").font(.system(size: size - 1))
-        case "mascot":
-            Mascot(name: project.icon.value ?? "invader", color: color).frame(width: size + 2, height: size + 2)
+            Text(project.icon.value ?? "📁").font(.system(size: size - 3)).frame(width: size, height: size)
         case "image":
             if let p = project.icon.value, let img = NSImage(contentsOfFile: p) {
-                Image(nsImage: img).resizable().scaledToFit().frame(width: size + 2, height: size + 2).clipShape(RoundedRectangle(cornerRadius: 3))
+                Image(nsImage: img).resizable().scaledToFill().frame(width: size, height: size).clipShape(tile)
             } else {
-                Image(systemName: "folder.fill").font(.system(size: size - 1)).foregroundStyle(color)
+                initialTile(color, tile)
             }
+        case "symbol":
+            tile.fill(color).frame(width: size, height: size)
+                .overlay(Image(systemName: project.icon.value ?? "folder.fill").font(.system(size: size * 0.52, weight: .semibold)).foregroundStyle(.white))
+        case "mascot":
+            tile.fill(color).frame(width: size, height: size)
+                .overlay(Mascot(name: project.icon.value ?? "invader", color: .white).frame(width: size * 0.62, height: size * 0.62))
         default:
-            Image(systemName: "folder.fill").font(.system(size: size - 1)).foregroundStyle(color)
+            initialTile(color, tile)
         }
+    }
+
+    private func initialTile(_ color: Color, _ tile: RoundedRectangle) -> some View {
+        tile.fill(color).frame(width: size, height: size)
+            .overlay(Text(String(project.name.first.map { String($0).uppercased() } ?? "?"))
+                .font(.system(size: size * 0.58, weight: .bold)).foregroundStyle(.white))
     }
 }
 
@@ -144,13 +208,82 @@ struct Mascot: View {
     }
 }
 
-/// Hover-aware button style used across the chrome.
+/// Hover-aware icon button used across the chrome.
 struct ChromeButtonStyle: ButtonStyle {
+    var active = false
     @State private var hover = false
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .padding(.horizontal, 5).padding(.vertical, 3)
-            .background(RoundedRectangle(cornerRadius: 5).fill(configuration.isPressed ? Color.primary.opacity(0.15) : hover ? Color.primary.opacity(0.08) : .clear))
+            .foregroundStyle(active ? T.accent : T.text2)
+            .padding(.horizontal, 6).frame(minWidth: 26, minHeight: 26)
+            .background(RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(configuration.isPressed ? T.border : hover ? T.hover : .clear))
+            .contentShape(Rectangle())
             .onHover { hover = $0 }
+    }
+}
+
+struct PrimaryButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var enabled
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 12.5, weight: .semibold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 12).frame(height: 28)
+            .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(T.accent.opacity(configuration.isPressed ? 0.8 : 1)))
+            .opacity(enabled ? 1 : 0.45)
+    }
+}
+
+struct SecondaryButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var enabled
+    @State private var hover = false
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 12.5, weight: .medium))
+            .foregroundStyle(T.text)
+            .padding(.horizontal, 12).frame(height: 28)
+            .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(configuration.isPressed ? T.border : hover ? T.hover : .clear))
+            .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(T.border))
+            .opacity(enabled ? 1 : 0.45)
+            .onHover { hover = $0 }
+    }
+}
+
+/// Selectable chip (dock tabs, filters, panel tabs).
+struct Chip<Label: View>: View {
+    let selected: Bool
+    let action: () -> Void
+    @ViewBuilder let label: () -> Label
+    @State private var hover = false
+    var body: some View {
+        HStack(spacing: 6) { label() }
+            .font(.system(size: 11.5, weight: selected ? .semibold : .medium))
+            .foregroundStyle(selected ? T.text : T.text2)
+            .padding(.horizontal, 9).frame(height: 22)
+            .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(selected ? T.raised : hover ? T.hover : .clear))
+            .contentShape(Rectangle())
+            .onHover { hover = $0 }
+            .onTapGesture(perform: action)
+    }
+}
+
+/// Rounded content card (settings sections, panels).
+struct Card<Content: View>: View {
+    @ViewBuilder let content: () -> Content
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) { content() }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: max(T.m.cardR, 4), style: .continuous).fill(T.surface))
+            .overlay(RoundedRectangle(cornerRadius: max(T.m.cardR, 4), style: .continuous).stroke(T.border))
+    }
+}
+
+/// Thin separator in the border color.
+struct Hairline: View {
+    var vertical = false
+    var body: some View {
+        Rectangle().fill(T.border).frame(width: vertical ? 1 : nil, height: vertical ? nil : 1)
     }
 }

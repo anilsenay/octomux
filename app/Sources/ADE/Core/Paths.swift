@@ -11,6 +11,8 @@ enum Paths {
 
     static var daemonSocket: URL { home.appendingPathComponent("run/daemon.sock") }
     static var terminalConfig: URL { home.appendingPathComponent("terminal.conf") }
+    /// Generated from the current theme preset; loaded after terminal.conf.
+    static var themeConfig: URL { home.appendingPathComponent("theme.conf") }
     static var debugSocket: URL { home.appendingPathComponent("run/app-debug.sock") }
 
     /// The `ade` CLI: bundled inside the app, or `ADE_BIN` / the dev build for development.

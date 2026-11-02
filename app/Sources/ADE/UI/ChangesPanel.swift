@@ -14,10 +14,10 @@ struct GitChange: Identifiable, Equatable {
 
     var color: Color {
         switch badge {
-        case "A", "U": return .green
-        case "D": return .red
-        case "R": return .blue
-        default: return .orange
+        case "A", "U": return T.green
+        case "D": return T.red
+        case "R": return T.blue
+        default: return T.amber
         }
     }
 }
@@ -113,57 +113,60 @@ struct ChangesPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text("Changes").font(.system(size: 12, weight: .semibold))
-                if !changes.changes.isEmpty {
-                    Text("\(changes.changes.count)").font(.system(size: 10, weight: .semibold))
-                        .padding(.horizontal, 5).padding(.vertical, 1).background(Capsule().fill(Color.accentColor.opacity(0.25)))
-                }
+            HStack(spacing: 8) {
+                Text("Changes").font(T.headline)
+                if !changes.changes.isEmpty { Badge(text: "\(changes.changes.count)", color: T.accent) }
                 Spacer()
-                Button { changes.refresh() } label: { Image(systemName: "arrow.clockwise") }.buttonStyle(ChromeButtonStyle())
+                Button { changes.refresh() } label: { Image(systemName: "arrow.clockwise").font(.system(size: 11)) }.buttonStyle(ChromeButtonStyle())
             }
-            .padding(.horizontal, 10).frame(height: 32)
-            Divider()
+            .padding(.leading, 14).padding(.trailing, 8).frame(height: 40)
+            Hairline()
             if !changes.isRepo {
-                Text("Not a git repository").foregroundStyle(.secondary).font(.system(size: 12)).padding(12)
-                Spacer()
+                VStack(spacing: 8) {
+                    Image(systemName: "arrow.triangle.branch").font(.system(size: 24, weight: .light)).foregroundStyle(T.text3)
+                    Text("Not a git repository").font(T.body).foregroundStyle(T.text2)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 VStack(spacing: 6) {
                     TextField("Commit message", text: $changes.message, axis: .vertical)
-                        .lineLimit(1...4).textFieldStyle(.roundedBorder).font(.system(size: 12))
-                    HStack {
-                        Button("Commit") { changes.commit(push: false) }
-                        Button("Commit & Push") { changes.commit(push: true) }
+                        .lineLimit(1...4).textFieldStyle(.plain).font(T.body)
+                        .padding(.horizontal, 10).padding(.vertical, 7)
+                        .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(T.frame.opacity(0.6)))
+                        .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(T.border))
+                    HStack(spacing: 6) {
+                        Button("Commit") { changes.commit(push: false) }.buttonStyle(PrimaryButtonStyle())
+                        Button("Commit & Push") { changes.commit(push: true) }.buttonStyle(SecondaryButtonStyle())
                         Spacer()
                     }
-                    .controlSize(.small)
                     .disabled(changes.busy || changes.changes.isEmpty || changes.message.isEmpty)
-                    if !changes.status.isEmpty { Text(changes.status).font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading) }
+                    if !changes.status.isEmpty { Text(changes.status).font(T.caption).foregroundStyle(T.text2).frame(maxWidth: .infinity, alignment: .leading) }
                 }
-                .padding(10)
-                Divider()
+                .padding(12)
+                Hairline()
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
                         ForEach(changes.changes) { c in
                             HStack(spacing: 6) {
-                                Text((c.path as NSString).lastPathComponent).font(.system(size: 12)).lineLimit(1)
-                                Text((c.path as NSString).deletingLastPathComponent).font(.system(size: 10)).foregroundStyle(.tertiary).lineLimit(1).truncationMode(.head)
+                                Text((c.path as NSString).lastPathComponent).font(.system(size: 12.5)).foregroundStyle(T.text).lineLimit(1)
+                                Text((c.path as NSString).deletingLastPathComponent).font(.system(size: 11)).foregroundStyle(T.text3).lineLimit(1).truncationMode(.head)
                                 Spacer()
-                                Text(c.badge).font(.system(size: 10, weight: .bold, design: .monospaced)).foregroundStyle(c.color)
+                                Text(c.badge).font(T.mono(10.5, .bold)).foregroundStyle(c.color)
                             }
-                            .padding(.horizontal, 10).frame(height: 22)
-                            .background(changes.selected == c.path ? Palette.selection : .clear)
+                            .padding(.horizontal, 8).frame(height: 26)
+                            .background(RoundedRectangle(cornerRadius: T.m.rowR, style: .continuous).fill(changes.selected == c.path ? T.selection : .clear))
+                            .padding(.horizontal, 6)
                             .contentShape(Rectangle())
                             .onTapGesture { changes.select(c) }
                         }
                         if changes.changes.isEmpty {
-                            Text("Working tree clean").font(.system(size: 12)).foregroundStyle(.secondary).padding(10)
+                            Text("Working tree clean").font(T.body).foregroundStyle(T.text2).padding(14)
                         }
                     }
                 }
                 .frame(maxHeight: changes.selected == nil ? .infinity : 220)
                 if changes.selected != nil {
-                    Divider()
+                    Hairline()
                     DiffView(text: changes.diff)
                 }
             }
@@ -182,10 +185,10 @@ struct DiffView: View {
                 ForEach(Array(text.split(separator: "\n", omittingEmptySubsequences: false).enumerated()), id: \.offset) { _, line in
                     let s = String(line)
                     Text(s.isEmpty ? " " : s)
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(s.hasPrefix("@@") ? Color.blue : s.hasPrefix("+") && !s.hasPrefix("+++") ? Color.green : s.hasPrefix("-") && !s.hasPrefix("---") ? Color.red : Color.primary)
+                        .font(T.mono(11.5))
+                        .foregroundStyle(s.hasPrefix("@@") ? T.blue : s.hasPrefix("+") && !s.hasPrefix("+++") ? T.green : s.hasPrefix("-") && !s.hasPrefix("---") ? T.red : T.text2)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(s.hasPrefix("+") && !s.hasPrefix("+++") ? Color.green.opacity(0.08) : s.hasPrefix("-") && !s.hasPrefix("---") ? Color.red.opacity(0.08) : .clear)
+                        .background(s.hasPrefix("+") && !s.hasPrefix("+++") ? T.green.opacity(0.10) : s.hasPrefix("-") && !s.hasPrefix("---") ? T.red.opacity(0.10) : .clear)
                 }
             }
             .padding(6)
