@@ -150,6 +150,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let rp = item("Toggle Changes Panel", #selector(toggleRightPanel(_:)), "b")
         rp.keyEquivalentModifierMask = [.command, .option]
         view.addItem(rp)
+        let ag = item("Toggle Agents View", #selector(toggleAgentsView(_:)), "a")
+        ag.keyEquivalentModifierMask = [.command, .option]
+        view.addItem(ag)
         view.addItem(.separator())
         let prev = item("Previous Tab", #selector(prevTab(_:)), "{")
         view.addItem(prev)
@@ -219,6 +222,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc func splitRight(_ s: Any?) { model.newSession(profileId: nil, split: .right) }
     @objc func splitDown(_ s: Any?) { model.newSession(profileId: nil, split: .down) }
     @objc func zoomPane(_ s: Any?) { model.toggleZoom() }
+    @objc func toggleAgentsView(_ s: Any?) {
+        withAnimation(.easeOut(duration: 0.15)) { model.sidebarAgents.toggle() }
+        if !model.sidebarVisible { model.toggleSidebar() }
+    }
     @objc func addProject(_ s: Any?) { model.addProject() }
     @objc func openInDefault(_ s: Any?) { if let p = model.currentProject { OpenIn.open(p.path, appId: OpenIn.defaultAppId) } }
     @objc func closePane(_ s: Any?) {

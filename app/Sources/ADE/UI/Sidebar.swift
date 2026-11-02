@@ -11,11 +11,10 @@ struct SidebarView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            HStack {
-                SectionLabel("Projects")
-                Spacer()
-            }
-            .padding(.horizontal, 18).padding(.top, 12).padding(.bottom, 4)
+            SidebarModeSwitch().padding(.horizontal, 10).padding(.top, 10).padding(.bottom, 4)
+            if model.sidebarAgents {
+                AgentsList()
+            } else {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 1) {
                     ForEach(Array(model.projects.enumerated()), id: \.element.id) { i, p in
@@ -49,6 +48,7 @@ struct SidebarView: View {
                 }
                 .padding(.horizontal, 10)
                 .padding(.bottom, 8)
+            }
             }
             footer
         }

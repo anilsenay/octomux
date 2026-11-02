@@ -28,6 +28,10 @@ final class AppModel: ObservableObject {
     /// Split tab temporarily showing one pane full size (tab id → session id). App-side only.
     @Published var zoomedPanes: [String: String] = [:] { didSet { if oldValue != zoomedPanes { TerminalHost.shared.render(force: true) } } }
     @Published var sidebarVisible = true
+    /// Sidebar shows projects (default) or every agent across workspaces, by status.
+    @Published var sidebarAgents = UserDefaults.standard.bool(forKey: "ade.sidebarAgents") {
+        didSet { UserDefaults.standard.set(sidebarAgents, forKey: "ade.sidebarAgents") }
+    }
     /// Sidebar shown floating over the content while it is hidden (pointer at the left edge).
     @Published var sidebarPeek = false
     /// Dock terminal opened automatically per project (dropped on close when unused).
