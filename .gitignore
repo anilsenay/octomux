@@ -6,3 +6,4 @@
 /prototypes/*/target/
 /prototypes/*/.build/
 .DS_Store
+/tools/winid
