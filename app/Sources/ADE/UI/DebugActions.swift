@@ -85,6 +85,16 @@ enum DebugActions {
                 m.rightPanelVisible = true
             case "panel_select":
                 NotificationCenter.default.post(name: .adeDebugPanel, object: nil, userInfo: p["info"] as? [String: Any] ?? [:])
+            case "add_host":
+                // {"value": {"id","name","kind","target","ade","prefix"}}
+                if let d = p["value"] as? [String: Any], let data = try? JSONSerialization.data(withJSONObject: d),
+                   let h = try? JSONDecoder().decode(Host.self, from: data) {
+                    var all = HostStore.all
+                    all.removeAll { $0.id == h.id }
+                    all.append(h)
+                    HostStore.all = all
+                }
+            case "switch_host": m.switchHost(p["value"] as? String ?? "local")
             case "usage_popover": m.usagePopoverOpen = (p["value"] as? Bool) ?? true
             case "palette_run":
                 // Runs the top result for `value`, like typing it and pressing Return.

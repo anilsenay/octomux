@@ -77,6 +77,13 @@ struct SidebarView: View {
                     Button((w.id == model.selectedWorkspaceId ? "✓ " : "") + w.name) { model.selectWorkspace(w.id) }
                 }
                 Divider()
+                Section("Host") {
+                    ForEach(HostStore.withLocal) { h in
+                        Button((h.id == model.hostId ? "✓ " : "") + h.name) { model.switchHost(h.id) }
+                    }
+                    Button("Manage Hosts…") { SettingsWindow.show(section: .hosts) }
+                }
+                Divider()
                 Button("Workspace Settings…") { SettingsWindow.show(section: .workspaces) }
             } label: {
                 HStack(spacing: 8) {
@@ -93,7 +100,20 @@ struct SidebarView: View {
                 .contentShape(Rectangle())
             }
             .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden)
-            .help("Switch workspace (⌃⌘← →, or swipe)")
+            .help("Switch workspace (⌃⌘← →, or swipe) or host")
+            if model.host.isRemote {
+                HStack(spacing: 6) {
+                    Image(systemName: "server.rack").font(.system(size: 10))
+                    Text(model.host.name).font(T.caption)
+                    Text(model.host.subtitle).font(T.mono(10.5)).foregroundStyle(T.text3).lineLimit(1).truncationMode(.middle)
+                    Spacer()
+                    Circle().fill(model.connected ? T.green : T.amber).frame(width: 6, height: 6)
+                }
+                .foregroundStyle(T.text2)
+                .padding(.horizontal, 10).frame(height: 24)
+                .background(RoundedRectangle(cornerRadius: T.m.rowR, style: .continuous).fill(T.selection))
+                .help(model.connected ? "Connected to \(model.host.name)" : "Connecting to \(model.host.name)…")
+            }
             Button { model.paletteVisible = true } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass").font(.system(size: 11))

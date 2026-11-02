@@ -1,7 +1,13 @@
 import Foundation
 
+protocol LineStream: AnyObject {
+    func writeLine(_ data: Data) -> Bool
+    func readLine() -> Data?
+    func close()
+}
+
 /// Line-oriented Unix socket.
-final class LineSocket {
+final class LineSocket: LineStream {
     private let fd: Int32
     private var buffer = Data()
 
@@ -11,7 +17,7 @@ final class LineSocket {
         var addr = sockaddr_un()
         addr.sun_family = sa_family_t(AF_UNIX)
         let bytes = Array(path.utf8)
-        guard bytes.count < MemoryLayout.size(ofValue: addr.sun_path) else { close(fd); return nil }
+        guard bytes.count < MemoryLayout.size(ofValue: addr.sun_path) else { Darwin.close(fd); return nil }
         withUnsafeMutableBytes(of: &addr.sun_path) { raw in
             for (i, b) in bytes.enumerated() { raw[i] = b }
             raw[bytes.count] = 0
@@ -19,12 +25,18 @@ final class LineSocket {
         let r = withUnsafePointer(to: &addr) {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
         }
-        if r != 0 { close(fd); return nil }
+        if r != 0 { Darwin.close(fd); return nil }
         var on: Int32 = 1
         setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
     }
 
-    deinit { close(fd) }
+    private var closed = false
+    deinit { close() }
+    func close() {
+        guard !closed else { return }
+        closed = true
+        Darwin.close(fd)
+    }
 
     func writeLine(_ data: Data) -> Bool {
         var d = data
@@ -70,8 +82,28 @@ enum DaemonError: Error, CustomStringConvertible {
 /// state/notification events arrive on a second, subscribed connection.
 final class DaemonClient {
     private let queue = DispatchQueue(label: "ade.daemon.requests")
-    private var socket: LineSocket?
+    private var socket: LineStream?
     private var nextId: UInt64 = 1
+    /// The daemon we talk to. Changing it (`switchHost`) reconnects everything.
+    private(set) var host: Host = HostStore.current
+    private var generation = 0
+    private var subStream: LineStream?
+
+    func openStream() -> LineStream? {
+        if let argv = host.controlArgv { return ProcessLineStream(argv: argv) }
+        return LineSocket(path: Paths.daemonSocket.path)
+    }
+
+    /// Points the client at another host; the subscription loop reconnects.
+    func switchHost(_ h: Host) {
+        queue.sync {
+            socket?.close()
+            socket = nil
+        }
+        host = h
+        generation += 1
+        subStream?.close()
+    }
 
     var onState: ((DaemonState) -> Void)?
     var onNotify: ((AppNotification) -> Void)?
@@ -114,17 +146,23 @@ final class DaemonClient {
         Thread.detachNewThread { [weak self] in
             while true {
                 guard let self else { return }
-                if let sock = LineSocket(path: Paths.daemonSocket.path) {
+                let gen = self.generation
+                if let sock = self.openStream() {
+                    self.subStream = sock
                     let req = try! JSONSerialization.data(withJSONObject: ["id": 0, "method": "subscribe", "params": [:]])
                     _ = sock.writeLine(req)
                     while let line = sock.readLine() {
+                        if gen != self.generation { break }
                         self.handleEventLine(line)
                     }
+                    sock.close()
                 }
-                DispatchQueue.main.async { self.onDisconnect?() }
-                // Daemon gone (upgrade/crash): bring it back and resubscribe.
-                _ = DaemonClient.ensureDaemon()
-                Thread.sleep(forTimeInterval: 0.5)
+                if gen == self.generation {
+                    DispatchQueue.main.async { self.onDisconnect?() }
+                    // Local daemon gone (upgrade/crash): bring it back and resubscribe.
+                    if !self.host.isRemote { _ = DaemonClient.ensureDaemon() }
+                    Thread.sleep(forTimeInterval: self.host.isRemote ? 3 : 0.5)
+                }
             }
         }
     }
@@ -159,14 +197,14 @@ final class DaemonClient {
             return try callOnce(method, params)
         } catch DaemonError.unavailable {
             // The daemon may have restarted: reconnect (starting it if needed) and retry once.
-            if LineSocket(path: Paths.daemonSocket.path) == nil { _ = DaemonClient.ensureDaemon() }
+            if !host.isRemote, LineSocket(path: Paths.daemonSocket.path) == nil { _ = DaemonClient.ensureDaemon() }
             return try callOnce(method, params)
         }
     }
 
     private func callOnce(_ method: String, _ params: [String: Any]) throws -> Any {
         try queue.sync {
-            if socket == nil { socket = LineSocket(path: Paths.daemonSocket.path) }
+            if socket == nil { socket = openStream() }
             guard let sock = socket else { throw DaemonError.unavailable }
             let id = nextId
             nextId += 1

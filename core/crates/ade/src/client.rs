@@ -133,3 +133,33 @@ pub fn spawn_detached(paths: &Paths, args: &[&str]) -> Result<()> {
     cmd.spawn()?;
     Ok(())
 }
+
+/// `ade stdio`: relays stdin/stdout to this host's daemon socket (starting the daemon if needed),
+/// so a client can reach it through any byte pipe, e.g. `ssh host ade stdio`.
+pub fn stdio_bridge(paths: &Paths) -> Result<i32> {
+    // Make sure a daemon runs, then open a raw connection for relaying.
+    drop(Control::connect_or_spawn(paths)?);
+    let sock = UnixStream::connect(paths.daemon_socket()).context("connect daemon")?;
+    let mut to_daemon = sock.try_clone()?;
+    let mut from_daemon = sock;
+    let up = std::thread::spawn(move || {
+        let _ = std::io::copy(&mut std::io::stdin().lock(), &mut to_daemon);
+        let _ = to_daemon.shutdown(std::net::Shutdown::Write);
+    });
+    let mut out = std::io::stdout().lock();
+    let mut buf = [0u8; 65536];
+    loop {
+        use std::io::{Read, Write};
+        match from_daemon.read(&mut buf) {
+            Ok(0) | Err(_) => break,
+            Ok(n) => {
+                if out.write_all(&buf[..n]).is_err() || out.flush().is_err() {
+                    break;
+                }
+            }
+        }
+    }
+    drop(up);
+    Ok(0)
+}
+

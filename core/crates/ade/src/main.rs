@@ -41,6 +41,8 @@ enum Cmd {
     /// Internal: agent hook entry point (reads the hook JSON on stdin).
     #[command(hide = true)]
     Hook { event: String },
+    /// Relay stdin/stdout to this host's daemon (for `ssh host ade stdio`).
+    Stdio,
     /// Claude Code status line passthrough (reports usage limits to the daemon).
     #[command(hide = true)]
     Statusline,
@@ -96,6 +98,7 @@ fn run(cli: Cli, paths: Paths) -> anyhow::Result<i32> {
             Ok(0)
         }
         Cmd::Statusline => Ok(statusline::run(&paths)),
+        Cmd::Stdio => client::stdio_bridge(&paths),
         Cmd::Ctl { method, params } => {
             let params: serde_json::Value = serde_json::from_str(&params)?;
             // Shutting down must never start a daemon (which would restore sessions).

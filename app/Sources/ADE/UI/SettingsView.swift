@@ -3,7 +3,7 @@ import SwiftUI
 
 enum SettingsSection: String, CaseIterable, Identifiable {
     case workspaces = "Workspaces", agents = "Agents", appearance = "Appearance", notifications = "Notifications"
-    case features = "Features", keyboard = "Keyboard", advanced = "Advanced"
+    case hosts = "Hosts", features = "Features", keyboard = "Keyboard", advanced = "Advanced"
     var id: String { rawValue }
     var icon: String {
         switch self {
@@ -11,6 +11,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .agents: return "sparkles"
         case .appearance: return "paintbrush"
         case .notifications: return "bell"
+        case .hosts: return "network"
         case .features: return "flask"
         case .keyboard: return "keyboard"
         case .advanced: return "gearshape.2"
@@ -98,6 +99,7 @@ struct SettingsView: View {
                     case .agents: AgentsSettings()
                     case .appearance: AppearanceSettings()
                     case .notifications: NotificationSettings()
+                    case .hosts: HostsSettings()
                     case .features: FeatureSettings()
                     case .keyboard: KeyboardSettings()
                     case .advanced: AdvancedSettings()
@@ -656,6 +658,111 @@ struct KeyboardSettings: View {
         if let m = monitor { NSEvent.removeMonitor(m) }
         monitor = nil
         recording = nil
+    }
+}
+
+// MARK: Hosts
+
+struct HostsSettings: View {
+    @EnvironmentObject var model: AppModel
+    @State private var hosts = HostStore.all
+    @State private var editing: Host?
+    @State private var status: [String: String] = [:]
+
+    var body: some View {
+        Text("A host is a machine running its own ADE daemon. ADE reaches it with `ssh <host> ade stdio` (no open ports); panes attach with `ssh -t`. Sessions keep running there when you disconnect. Install `ade` on the host first (Linux build: see README).")
+            .font(T.body).foregroundStyle(T.text2).fixedSize(horizontal: false, vertical: true)
+        SettingsCard {
+            ForEach(HostStore.withLocal) { h in
+                HStack(spacing: 10) {
+                    Image(systemName: h.isRemote ? "server.rack" : "laptopcomputer").foregroundStyle(T.text3).frame(width: 18)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(h.name).font(.system(size: 13, weight: .semibold))
+                        Text(h.subtitle).font(T.mono(11)).foregroundStyle(T.text3).lineLimit(1)
+                    }
+                    Spacer()
+                    if let st = status[h.id] { Text(st).font(T.caption).foregroundStyle(st.hasPrefix("OK") ? T.green : T.red).lineLimit(1) }
+                    if h.isRemote {
+                        Button("Test") { test(h) }.buttonStyle(SecondaryButtonStyle())
+                        Button { editing = h } label: { Image(systemName: "slider.horizontal.3") }.buttonStyle(ChromeButtonStyle())
+                        Button { HostStore.all.removeAll { $0.id == h.id }; hosts = HostStore.all; if model.hostId == h.id { model.switchHost("local") } } label: { Image(systemName: "trash") }
+                            .buttonStyle(ChromeButtonStyle())
+                    }
+                    if model.hostId == h.id {
+                        Text("Connected").font(T.caption).foregroundStyle(T.accent)
+                    } else {
+                        Button("Connect") { model.switchHost(h.id) }.buttonStyle(PrimaryButtonStyle())
+                    }
+                }
+                .frame(minHeight: 40)
+            }
+            Button { editing = Host(id: String(UUID().uuidString.prefix(8)).lowercased(), name: "", kind: "ssh") } label: {
+                Label("Add host…", systemImage: "plus")
+            }.buttonStyle(.plain).foregroundStyle(T.text2)
+        }
+        Text("Remote projects: the Changes / History / Files panel and worktrees work on this Mac's folders only for now.")
+            .font(T.caption).foregroundStyle(T.text3)
+        .sheet(item: $editing) { h in
+            HostEditor(host: h) { saved in
+                if let saved {
+                    var all = HostStore.all
+                    if let i = all.firstIndex(where: { $0.id == saved.id }) { all[i] = saved } else { all.append(saved) }
+                    HostStore.all = all
+                    hosts = all
+                }
+                editing = nil
+            }
+        }
+    }
+
+    private func test(_ h: Host) {
+        status[h.id] = "Testing…"
+        DispatchQueue.global().async {
+            var msg = "Failed: no answer"
+            if let argv = h.controlArgv, let s = ProcessLineStream(argv: argv) {
+                let req = try! JSONSerialization.data(withJSONObject: ["id": 1, "method": "hello", "params": [:]])
+                if s.writeLine(req), let line = s.readLine(), let obj = try? JSONSerialization.jsonObject(with: line) as? [String: Any] {
+                    if let r = obj["result"] as? [String: Any] { msg = "OK · daemon \(r["version"] ?? r["protocol"] ?? "")" } else { msg = "Failed: \(obj["error"] ?? "?")" }
+                }
+                s.close()
+            }
+            DispatchQueue.main.async { status[h.id] = msg }
+        }
+    }
+}
+
+struct HostEditor: View {
+    @State var host: Host
+    let done: (Host?) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(host.name.isEmpty ? "Add host" : "Edit host").font(T.title)
+            TextField("Name (e.g. devbox)", text: $host.name).textFieldStyle(.roundedBorder)
+            Picker("Connect with", selection: $host.kind) {
+                Text("SSH").tag("ssh")
+                Text("Custom command").tag("command")
+            }
+            .pickerStyle(.segmented)
+            if host.kind == "ssh" {
+                TextField("SSH destination (user@host, or a Host from ~/.ssh/config)", text: $host.target).textFieldStyle(.roundedBorder)
+                Text("Uses your ssh config and keys; BatchMode, so keys/agent must work without prompts.").font(T.caption).foregroundStyle(T.text3)
+            } else {
+                TextField("Command prefix (e.g. ssh -p 2222 box, or env ADE_HOME=/tmp/x)", text: $host.prefix).textFieldStyle(.roundedBorder).font(T.mono(12))
+                TextField("Prefix for panes, if it needs a TTY (e.g. ssh -t -p 2222 box) — optional", text: Binding(get: { host.attachPrefix ?? "" }, set: { host.attachPrefix = $0.isEmpty ? nil : $0 }))
+                    .textFieldStyle(.roundedBorder).font(T.mono(12))
+            }
+            TextField("Path of ade on the host", text: $host.ade).textFieldStyle(.roundedBorder).font(T.mono(12))
+            HStack {
+                Spacer()
+                Button("Cancel") { done(nil) }.buttonStyle(SecondaryButtonStyle()).keyboardShortcut(.cancelAction)
+                Button("Save") { done(host) }.buttonStyle(PrimaryButtonStyle()).keyboardShortcut(.defaultAction)
+                    .disabled(host.name.isEmpty || (host.kind == "ssh" ? host.target.isEmpty : host.prefix.isEmpty))
+            }
+        }
+        .padding(22)
+        .frame(width: 480)
+        .background(T.surface)
     }
 }
 

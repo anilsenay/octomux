@@ -104,6 +104,19 @@ like the hooks). It reports `rate_limits` (5-hour / weekly) to the daemon at mos
 rollout files once a minute while a Codex session runs. The status bar shows the focused agent's profile plus
 profiles marked "Always show" (in the usage popover or the agent's settings).
 
+## Remote hosts
+
+1. Build `ade` for the server: `rustup target add x86_64-unknown-linux-gnu && tools/build-linux.sh x86_64`
+   (or `aarch64`; needs `zig`). Copy `core/target/<arch>-unknown-linux-gnu/release/ade` to the server, e.g.
+   `~/.local/bin/ade`.
+2. Settings → Hosts → Add host: SSH destination (`user@box` or a `Host` from `~/.ssh/config`; key/agent auth,
+   no prompts) and the path of `ade` there. **Test**, then **Connect**. Or pick it in the workspace menu.
+3. The daemon on the server starts on first use and keeps sessions running after you disconnect (no
+   launchd there; run `ade daemon` under systemd if you want it to survive server reboots).
+
+Custom command hosts take any prefix that reaches the other side, e.g. `docker exec -i <container>` (with
+pane prefix `docker exec -it <container>`).
+
 ## Clean up / uninstall
 
 ```sh

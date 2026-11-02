@@ -24,6 +24,7 @@ final class AppModel: ObservableObject {
     @Published var paletteQuery = ""
     @Published var usagePopoverOpen = false
     @Published var newWorktreeFor: Project?
+    @Published private(set) var hostId = HostStore.currentId
 
     private var lastTabPerWorkspace: [String: String] = [:]
     private let defaults = UserDefaults.standard
@@ -300,8 +301,39 @@ final class AppModel: ObservableObject {
         client.call("tab.update", ["id": tabId, "layout": obj])
     }
 
+    var host: Host { client.host }
+
+    /// Connects the window to another host's daemon (or back to this Mac).
+    func switchHost(_ id: String) {
+        guard id != client.host.id, let h = HostStore.withLocal.first(where: { $0.id == id }) else { return }
+        HostStore.currentId = id
+        hostId = id
+        TerminalHost.shared.closeAll()
+        state = DaemonState()
+        connected = false
+        selectedWorkspaceId = nil
+        selectedProjectId = nil
+        activeTabId = nil
+        focusedSessionId = nil
+        client.switchHost(h)
+    }
+
     func addProject() {
         guard let ws = selectedWorkspaceId else { return }
+        if host.isRemote {
+            // No file browser for the other machine: ask for the path.
+            let a = NSAlert()
+            a.messageText = "Add a project on \(host.name)"
+            a.informativeText = "Folder path on that host (~ works)."
+            let tf = NSTextField(string: "~/")
+            tf.frame = NSRect(x: 0, y: 0, width: 320, height: 24)
+            a.accessoryView = tf
+            a.addButton(withTitle: "Add")
+            a.addButton(withTitle: "Cancel")
+            a.window.initialFirstResponder = tf
+            if a.runModal() == .alertFirstButtonReturn, !tf.stringValue.isEmpty { addProject(path: tf.stringValue, workspaceId: ws) }
+            return
+        }
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false

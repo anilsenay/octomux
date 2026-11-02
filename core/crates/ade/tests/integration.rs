@@ -659,3 +659,37 @@ fn session_in_worktree_runs_there_and_is_tagged() {
     let bad = e.try_call("session.create", json!({ "project_id": p, "worktree": "/nonexistent/wt" })).unwrap_err();
     assert!(bad.contains("worktree not found"), "{bad}");
 }
+
+#[test]
+fn stdio_bridge_speaks_the_control_protocol() {
+    // What `ssh host ade stdio` does on the remote side: relay NDJSON to the daemon.
+    let e = Env::new();
+    let p = e.project();
+    let mut c = std::process::Command::new(BIN)
+        .arg("stdio")
+        .env("ADE_HOME", &e.home)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stdin = c.stdin.take().unwrap();
+    let mut out = BufReader::new(c.stdout.take().unwrap());
+    let mut req = |id: u64, method: &str, params: Value| -> Value {
+        writeln!(stdin, "{}", json!({ "id": id, "method": method, "params": params })).unwrap();
+        loop {
+            let mut line = String::new();
+            out.read_line(&mut line).unwrap();
+            let v: Value = serde_json::from_str(&line).unwrap();
+            if v["id"] == id {
+                return v;
+            }
+        }
+    };
+    assert!(req(1, "hello", json!({}))["result"].is_object());
+    let r = req(2, "session.create", json!({ "project_id": p, "cols": 80, "rows": 24 }));
+    let id = r["result"]["session"]["id"].as_str().unwrap().to_string();
+    let st = req(3, "state.get", json!({}));
+    assert!(st["result"]["sessions"].as_array().unwrap().iter().any(|s| s["id"] == id.as_str()));
+    drop(stdin);
+    assert!(c.wait().unwrap().success());
+}
