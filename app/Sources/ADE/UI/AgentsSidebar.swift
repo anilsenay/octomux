@@ -116,13 +116,14 @@ struct AgentsList: View {
                             if open { ForEach(list) { s in AgentRow(session: s, showProject: false) } }
                         }
                     } else {
-                        // Every state is listed, empty ones too, so the counts read like a dashboard.
                         ForEach(Group.allCases, id: \.rawValue) { g in
                             let list = sorted(agents.filter { Group.of($0) == g })
-                            let key = "s:\(g.rawValue)"
-                            let open = !collapsed.contains(key) && !list.isEmpty
-                            header(g.title, count: list.count, color: list.isEmpty ? nil : g.color, open: open) { if !list.isEmpty { toggle(key) } }
-                            if open { ForEach(list) { s in AgentRow(session: s, showProject: true) } }
+                            if !list.isEmpty {
+                                let key = "s:\(g.rawValue)"
+                                let open = !collapsed.contains(key)
+                                header(g.title, count: list.count, color: g.color, open: open) { toggle(key) }
+                                if open { ForEach(list) { s in AgentRow(session: s, showProject: true) } }
+                            }
                         }
                         if agents.isEmpty { empty }
                     }
