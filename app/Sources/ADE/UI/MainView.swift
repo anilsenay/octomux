@@ -453,13 +453,12 @@ struct TabChip: View {
         let ids = tab.layout.sessions
         let lead = model.session(tab.activeSessionId ?? ids.first)
         HStack(spacing: 7) {
-            if let lead { AgentIcon(icon: iconName(for: lead, model: model), size: 11).opacity(selected ? 1 : 0.5).saturation(selected ? 1 : 0.6) }
+            if let lead { PaneStackIcon(icon: iconName(for: lead, model: model), count: ids.count, size: 11).opacity(selected ? 1 : 0.5).saturation(selected ? 1 : 0.6) }
             if width != nil {
                 Text(lead?.displayTitle ?? "Tab").lineLimit(1).truncationMode(.tail)
             } else {
                 Text(Self.clip(lead?.displayTitle ?? "Tab", maxChars)).lineLimit(1).fixedSize()
             }
-            if ids.count > 1 { Text("\(ids.count)").font(.system(size: 10, weight: .semibold)).foregroundStyle(T.text3) }
             if width != nil { Spacer(minLength: 0) }
             if let s = ids.compactMap({ model.session($0) }).first(where: { $0.activity == .needsInput || $0.activity == .working || $0.unread }), !hover {
                 if s.activity == .needsInput { Circle().fill(T.amber).frame(width: 6, height: 6) }

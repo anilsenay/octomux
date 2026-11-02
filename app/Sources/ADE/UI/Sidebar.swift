@@ -494,6 +494,8 @@ func tabGroups(_ sessions: [Session]) -> [[Session]] {
 
 /// Sidebar rows of one tab: a single session as is; split panes inside one frame with a guide line.
 struct SessionGroup: View {
+    /// Split tabs as one stacked row (default) or as a framed group of rows.
+    static var stacked: Bool { UserDefaults.standard.object(forKey: "ade.sidebarStackedTabs") as? Bool ?? true }
     @EnvironmentObject var model: AppModel
     let sessions: [Session]
     let indent: CGFloat
@@ -501,6 +503,11 @@ struct SessionGroup: View {
     var body: some View {
         if sessions.count == 1 {
             SessionRow(session: sessions[0], indent: indent)
+        } else if Self.stacked {
+            // One row per tab: its focused pane, on a stacked icon.
+            let tab = model.tab(containing: sessions[0].id)
+            let lead = sessions.first { $0.id == tab?.activeSessionId } ?? sessions[0]
+            SessionRow(session: lead, indent: indent, stack: sessions)
         } else {
             let active = model.activeDoc == nil && model.activeTab.map { t in sessions.contains { t.layout.sessions.contains($0.id) } } == true
             VStack(spacing: 0) {
@@ -522,15 +529,24 @@ struct SessionRow: View {
     let session: Session
     var indent: CGFloat = 18
     var inGroup = false
+    /// All panes of the tab when this row stands for a split tab.
+    var stack: [Session] = []
     @State private var hover = false
     @State private var editTitle = ""
 
-    var selected: Bool { model.focusedSessionId == session.id && model.activeTab?.layout.sessions.contains(session.id) == true }
+    var selected: Bool {
+        if stack.count > 1 { return model.activeDoc == nil && model.activeTab?.layout.sessions.contains(session.id) == true }
+        return model.focusedSessionId == session.id && model.activeTab?.layout.sessions.contains(session.id) == true
+    }
+    /// The pane whose activity the row shows: one waiting for input beats one working, then unread.
+    private var indicated: Session {
+        stack.first { $0.activity == .needsInput } ?? stack.first { $0.activity == .working } ?? stack.first { $0.unread } ?? session
+    }
 
     var body: some View {
         let m = T.m
         HStack(spacing: 8) {
-            AgentIcon(icon: iconName(for: session, model: model), size: 12).frame(width: 14)
+            PaneStackIcon(icon: iconName(for: session, model: model), count: stack.count, size: 12).frame(width: 14)
             if model.renamingSessionId == session.id {
                 TextField("Title", text: $editTitle)
                     .textFieldStyle(.plain)
@@ -564,7 +580,7 @@ struct SessionRow: View {
                 .buttonStyle(IconButtonStyle(size: 18))
                 .font(.system(size: 10, weight: .semibold))
             } else {
-                ActivityIndicator(session: session)
+                ActivityIndicator(session: indicated)
             }
         }
         .opacity(session.isDormant ? 0.45 : 1)
@@ -577,7 +593,8 @@ struct SessionRow: View {
         .pointerCursor()
         .onTapGesture { model.selectSession(session.id) }
         .contextMenu { SessionMenu(session: session) }
-        .help(session.kind == .agent ? "\(model.profile(session.profileId)?.name ?? "agent") · \(session.cwd)" : session.cwd)
+        .help(stack.count > 1 ? "\(stack.count) panes: " + stack.map(\.displayTitle).joined(separator: ", ")
+              : session.kind == .agent ? "\(model.profile(session.profileId)?.name ?? "agent") · \(session.cwd)" : session.cwd)
     }
 }
 
