@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>B · Grid</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 2360px; height: 1360px; box-sizing: border-box; padding: 48px 40px; background: #C9CDD3; font-family: 'Inter', system-ui, sans-serif; color: #1D1D1F; display: flex; flex-direction: column; gap: 32px">
+  <div style="display: flex; align-items: baseline; gap: 16px">
+    <h1 style="margin: 0; font-size: 34px; font-weight: 700; letter-spacing: -0.02em">B · Grid</h1>
+    <span style="font-size: 15px; color: #4A4A50">Dense and technical: edge-to-edge panes, hairlines, mono labels, underline tabs</span>
+  </div>
+  <div style="display: flex; gap: 40px">
+    <dc-import name="Window" dir="grid" mode="dark" hint-size="1120px,700px"></dc-import>
+    <dc-import name="Window" dir="grid" mode="light" hint-size="1120px,700px"></dc-import>
+  </div>
+  <div style="display: flex; gap: 40px">
+    <dc-import name="Settings" dir="grid" mode="dark" hint-size="720px,460px"></dc-import>
+    <dc-import name="Settings" dir="grid" mode="light" hint-size="720px,460px"></dc-import>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":2360,"height":1360}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

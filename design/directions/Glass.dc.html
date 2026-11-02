@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>C · Glass</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 2360px; height: 1360px; box-sizing: border-box; padding: 48px 40px; background: #CBD0DA; font-family: 'Inter', system-ui, sans-serif; color: #1D1D1F; display: flex; flex-direction: column; gap: 32px">
+  <div style="display: flex; align-items: baseline; gap: 16px">
+    <h1 style="margin: 0; font-size: 34px; font-weight: 700; letter-spacing: -0.02em">C · Glass</h1>
+    <span style="font-size: 15px; color: #4A4A50">Closest to stock macOS: floating translucent sidebar, segmented tabs, system blue</span>
+  </div>
+  <div style="display: flex; gap: 40px">
+    <dc-import name="Window" dir="glass" mode="dark" hint-size="1120px,700px"></dc-import>
+    <dc-import name="Window" dir="glass" mode="light" hint-size="1120px,700px"></dc-import>
+  </div>
+  <div style="display: flex; gap: 40px">
+    <dc-import name="Settings" dir="glass" mode="dark" hint-size="720px,460px"></dc-import>
+    <dc-import name="Settings" dir="glass" mode="light" hint-size="720px,460px"></dc-import>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":2360,"height":1360}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

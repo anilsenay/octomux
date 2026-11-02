@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ADE window</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 1120px; height: 700px; box-sizing: border-box; display: flex; position: relative; overflow: hidden; border-radius: 12px; background: {{t.frame}}; color: {{t.text}}; font-family: {{t.ui}}; font-size: {{s.fs}}px; box-shadow: 0 0 0 1px {{t.windowRing}}, 0 24px 60px rgba(0,0,0,0.28)">
+
+  <aside style="width: {{s.sbW}}px; flex: none; box-sizing: border-box; display: flex; flex-direction: column; margin: {{s.sbMargin}}; border-radius: {{s.sbR}}px; background: {{t.sb}}; border-right: {{s.sbBorder}} {{t.border}}; box-shadow: {{s.sbShadow}}">
+    <div style="height: 40px; display: flex; align-items: center; gap: 8px; padding: 0 14px">
+      <span style="width: 12px; height: 12px; border-radius: 6px; background: #FF5F57"></span>
+      <span style="width: 12px; height: 12px; border-radius: 6px; background: #FEBC2E"></span>
+      <span style="width: 12px; height: 12px; border-radius: 6px; background: #28C840"></span>
+    </div>
+
+    <div style="padding: 2px 10px 8px; display: flex; flex-direction: column; gap: 8px">
+      <button style="all: unset; display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px; border-radius: {{s.rowR}}px; background: {{t.raisedSoft}}; cursor: pointer">
+        <span style="width: 8px; height: 8px; border-radius: 4px; background: {{t.accent}}"></span>
+        <span style="font-weight: 600; flex: 1">Personal</span>
+        <span style="display: flex; gap: 4px; align-items: center">
+          <span style="width: 5px; height: 5px; border-radius: 3px; background: {{t.accent}}"></span>
+          <span style="width: 5px; height: 5px; border-radius: 3px; background: {{t.text3}}"></span>
+          <span style="width: 5px; height: 5px; border-radius: 3px; background: {{t.text3}}"></span>
+        </span>
+      </button>
+      <div style="display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 8px; border-radius: {{s.rowR}}px; border: 1px solid {{t.border}}; color: {{t.text3}}">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5 14 14"></path></svg>
+        <span style="flex: 1">Search</span>
+        <span style="font-family: {{t.mono}}; font-size: 11px">⌘K</span>
+      </div>
+    </div>
+
+    <div style="padding: 6px 18px 4px; font-family: {{s.labelFont}}; font-size: {{s.labelSize}}px; font-weight: 600; letter-spacing: {{s.labelTrack}}; text-transform: {{s.labelCase}}; color: {{t.text3}}">Projects</div>
+
+    <div style="padding: 0 10px; display: flex; flex-direction: column; gap: 1px; flex: 1">
+      <sc-for list="{{rows}}" as="r" hint-placeholder-count="10">
+        <sc-if value="{{r.isProject}}" hint-placeholder-val="{{true}}">
+          <div style="display: flex; align-items: center; gap: 8px; height: {{s.rowH}}px; padding: 0 8px; border-radius: {{s.rowR}}px; margin-top: {{r.mt}}px">
+            <span style="width: 18px; height: 18px; border-radius: {{s.tileR}}px; background: {{r.color}}; color: #fff; font-size: 10.5px; font-weight: 700; display: flex; align-items: center; justify-content: center">{{r.letter}}</span>
+            <span style="font-weight: 600; flex: 1">{{r.name}}</span>
+            <sc-if value="{{r.hasBadge}}" hint-placeholder-val="{{false}}">
+              <span style="font-size: 10.5px; font-weight: 600; padding: 1px 6px; border-radius: 9px; background: {{t.amberSoft}}; color: {{t.amber}}">{{r.badge}}</span>
+            </sc-if>
+            <span style="font-family: {{t.mono}}; font-size: 10.5px; color: {{t.text3}}">{{r.branch}}</span>
+          </div>
+        </sc-if>
+        <sc-if value="{{r.isTree}}" hint-placeholder-val="{{false}}">
+          <div style="display: flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px 0 30px; color: {{t.text3}}; font-family: {{t.mono}}; font-size: 11px">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="4" cy="3" r="1.6"></circle><circle cx="4" cy="13" r="1.6"></circle><circle cx="12" cy="5" r="1.6"></circle><path d="M4 4.6v6.8M12 6.6c0 3-8 2-8 4.8"></path></svg>
+            <span>{{r.name}}</span>
+          </div>
+        </sc-if>
+        <sc-if value="{{r.isSession}}" hint-placeholder-val="{{false}}">
+          <div style="display: flex; align-items: center; gap: 8px; height: {{s.rowH}}px; padding: 0 8px 0 {{r.indent}}px; border-radius: {{s.rowR}}px; background: {{r.bg}}; opacity: {{r.op}}">
+            <span style="width: 14px; display: flex; justify-content: center; color: {{r.iconColor}}">
+              <sc-if value="{{r.isClaude}}" hint-placeholder-val="{{true}}">
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M8 1.5v13M2.4 4.8l11.2 6.4M2.4 11.2l11.2-6.4"></path></svg>
+              </sc-if>
+              <sc-if value="{{r.isCodex}}" hint-placeholder-val="{{false}}">
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M8 1.5 13.6 4.75v6.5L8 14.5 2.4 11.25v-6.5z"></path></svg>
+              </sc-if>
+              <sc-if value="{{r.isTerm}}" hint-placeholder-val="{{false}}">
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="m3 4.5 3.5 3.5L3 11.5M8.5 12H13"></path></svg>
+              </sc-if>
+            </span>
+            <span style="flex: 1; color: {{r.fg}}; font-weight: {{r.weight}}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.name}}</span>
+            <sc-if value="{{r.working}}" hint-placeholder-val="{{false}}">
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-label="Working" role="img"><circle cx="8" cy="8" r="6" stroke="{{t.border}}" stroke-width="2.2"></circle><path d="M8 2a6 6 0 0 1 6 6" stroke="{{t.accent}}" stroke-width="2.2" stroke-linecap="round"></path></svg>
+            </sc-if>
+            <sc-if value="{{r.input}}" hint-placeholder-val="{{false}}">
+              <span style="font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 9px; background: {{t.amberSoft}}; color: {{t.amber}}">input</span>
+            </sc-if>
+            <sc-if value="{{r.done}}" hint-placeholder-val="{{false}}">
+              <span style="width: 7px; height: 7px; border-radius: 4px; background: {{t.green}}" aria-label="Finished" role="img"></span>
+            </sc-if>
+          </div>
+        </sc-if>
+      </sc-for>
+    </div>
+
+    <div style="height: 40px; display: flex; align-items: center; gap: 4px; padding: 0 12px; border-top: 1px solid {{t.border}}; color: {{t.text2}}">
+      <button aria-label="Settings" style="all: unset; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; border-radius: 6px">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="8" r="2.2"></circle><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4"></path></svg>
+      </button>
+      <button aria-label="Add project" style="all: unset; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; border-radius: 6px">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M1.5 4.5h4l1.5 1.5h7.5v7.5h-13z"></path><path d="M8 8.2v3.6M6.2 10h3.6"></path></svg>
+      </button>
+      <span style="flex: 1"></span>
+      <span style="font-size: 11px; color: {{t.text3}}">3 projects</span>
+    </div>
+  </aside>
+
+  <main style="flex: 1; min-width: 0; display: flex; flex-direction: column">
+    <div style="height: {{s.topH}}px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 10px 0 {{s.topPadL}}px; border-bottom: {{s.topBorder}} {{t.border}}">
+      <div style="display: flex; align-items: center; gap: {{s.tabGap}}px; padding: {{s.tabsPad}}px; border-radius: {{s.tabsR}}px; background: {{t.tabsBg}}; height: {{s.tabsH}}">
+        <sc-for list="{{tabs}}" as="tab" hint-placeholder-count="3">
+          <div style="display: flex; align-items: center; gap: 7px; height: {{s.tabH}}px; padding: 0 12px; border-radius: {{s.tabR}}px; background: {{tab.bg}}; color: {{tab.fg}}; box-shadow: {{tab.shadow}}; border-bottom: {{tab.underline}}; box-sizing: border-box; font-family: {{s.tabFont}}; font-size: {{s.tabSize}}px; font-weight: {{tab.weight}}">
+            <span style="color: {{tab.iconColor}}; display: flex">
+              <sc-if value="{{tab.isClaude}}" hint-placeholder-val="{{true}}">
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M8 1.5v13M2.4 4.8l11.2 6.4M2.4 11.2l11.2-6.4"></path></svg>
+              </sc-if>
+              <sc-if value="{{tab.isCodex}}" hint-placeholder-val="{{false}}">
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M8 1.5 13.6 4.75v6.5L8 14.5 2.4 11.25v-6.5z"></path></svg>
+              </sc-if>
+              <sc-if value="{{tab.isTerm}}" hint-placeholder-val="{{false}}">
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="m3 4.5 3.5 3.5L3 11.5M8.5 12H13"></path></svg>
+              </sc-if>
+            </span>
+            <span>{{tab.name}}</span>
+            <sc-if value="{{tab.working}}" hint-placeholder-val="{{false}}">
+              <span style="width: 6px; height: 6px; border-radius: 3px; background: {{t.accent}}"></span>
+            </sc-if>
+          </div>
+        </sc-for>
+      </div>
+      <button aria-label="New session" style="all: unset; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; border-radius: 6px; color: {{t.text2}}">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M8 3v10M3 8h10"></path></svg>
+      </button>
+      <span style="flex: 1"></span>
+      <div style="display: flex; align-items: center; gap: 2px; color: {{t.text2}}">
+        <button aria-label="New Claude session" style="all: unset; height: 26px; padding: 0 8px; display: flex; align-items: center; gap: 6px; border-radius: 6px; color: {{t.claude}}; font-size: 12px">
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M8 1.5v13M2.4 4.8l11.2 6.4M2.4 11.2l11.2-6.4"></path></svg>
+          <span style="color: {{t.text2}}">Claude</span>
+        </button>
+        <button aria-label="New Claude work session" style="all: unset; height: 26px; padding: 0 8px; display: flex; align-items: center; gap: 6px; border-radius: 6px; color: {{t.claude}}; font-size: 12px">
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M8 1.5v13M2.4 4.8l11.2 6.4M2.4 11.2l11.2-6.4"></path></svg>
+          <span style="color: {{t.text2}}">Work</span>
+        </button>
+        <span style="width: 1px; height: 16px; background: {{t.border}}; margin: 0 6px"></span>
+        <span style="font-family: {{t.mono}}; font-size: 11.5px; padding: 3px 7px; border-radius: 6px; background: {{t.raisedSoft}}"><span style="color: {{t.green}}">+124</span> <span style="color: {{t.red}}">−18</span></span>
+        <button aria-label="Split right" style="all: unset; width: 28px; height: 26px; display: flex; align-items: center; justify-content: center">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="2"></rect><path d="M8 2.5v11"></path></svg>
+        </button>
+        <button aria-label="Toggle right panel" style="all: unset; width: 28px; height: 26px; display: flex; align-items: center; justify-content: center">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="2"></rect><path d="M10.5 2.5v11"></path></svg>
+        </button>
+      </div>
+    </div>
+
+    <div style="flex: 1; min-height: 0; display: flex; flex-direction: column; gap: {{s.paneGap}}px; padding: {{s.contentPad}}">
+      <section style="flex: 1; min-height: 0; border-radius: {{s.cardR}}px; background: {{t.term}}; border: {{s.cardBorder}} {{t.border}}; box-shadow: {{s.cardShadow}}; padding: 14px 16px; font-family: {{t.mono}}; font-size: 12.5px; line-height: 19px; overflow: hidden">
+        <sc-for list="{{lines}}" as="ln" hint-placeholder-count="14">
+          <div style="white-space: pre; min-height: 19px"><sc-for list="{{ln.segs}}" as="sg" hint-placeholder-count="2"><span style="color: {{sg.c}}; font-weight: {{sg.w}}">{{sg.x}}</span></sc-for></div>
+        </sc-for>
+        <div style="margin-top: 10px; border: 1px solid {{t.termBorder}}; border-radius: 8px; padding: 8px 12px; color: {{t.termFg}}">
+          <span style="color: {{t.termDim}}">&gt; </span><span style="display: inline-block; width: 8px; height: 15px; vertical-align: -3px; background: {{t.termFg}}"></span>
+        </div>
+        <div style="margin-top: 4px; color: {{t.termDim}}; font-size: 11.5px">  ⏵⏵ accept edits on · 2 files changed</div>
+      </section>
+
+      <section style="height: 150px; flex: none; display: flex; flex-direction: column; border-radius: {{s.cardR}}px; background: {{t.term}}; border: {{s.cardBorder}} {{t.border}}; border-top: {{s.dockTop}} {{t.border}}; box-shadow: {{s.cardShadow}}; overflow: hidden">
+        <div style="height: 32px; flex: none; display: flex; align-items: center; gap: 6px; padding: 0 8px; border-bottom: 1px solid {{t.border}}">
+          <span style="display: flex; align-items: center; gap: 6px; height: 22px; padding: 0 9px; border-radius: 6px; background: {{t.raisedSoft}}; font-size: 11.5px; font-weight: 600">
+            <span style="width: 6px; height: 6px; border-radius: 3px; background: {{t.green}}"></span>Test
+          </span>
+          <span style="display: flex; align-items: center; gap: 6px; height: 22px; padding: 0 9px; border-radius: 6px; font-size: 11.5px; color: {{t.text2}}">
+            <span style="width: 6px; height: 6px; border-radius: 3px; background: {{t.text3}}"></span>Dev server
+          </span>
+          <span style="display: flex; align-items: center; gap: 6px; height: 22px; padding: 0 9px; border-radius: 6px; font-size: 11.5px; color: {{t.text2}}">zsh</span>
+          <span style="flex: 1"></span>
+          <span style="font-size: 11px; color: {{t.text3}}">⌘J</span>
+        </div>
+        <div style="padding: 8px 14px; font-family: {{t.mono}}; font-size: 12px; line-height: 18px; color: {{t.termFg}}; white-space: pre">
+          <div><span style="color: {{t.termDim}}">$</span> cargo test -p ade</div>
+          <div>running 18 tests</div>
+          <div>test reboot_restore_resumes_claude ... <span style="color: {{t.green}}">ok</span></div>
+          <div>test vim_alt_screen_main_restore ... <span style="color: {{t.green}}">ok</span></div>
+          <div>test result: <span style="color: {{t.green}}">ok</span>. 18 passed; 0 failed</div>
+        </div>
+      </section>
+    </div>
+
+    <footer style="height: {{s.statusH}}px; flex: none; display: flex; align-items: center; gap: 14px; padding: 0 14px 0 {{s.statusPadL}}px; border-top: {{s.statusBorder}} {{t.border}}; font-size: 11.5px; color: {{t.text2}}; font-family: {{s.statusFont}}">
+      <span style="display: flex; align-items: center; gap: 6px"><span style="width: 6px; height: 6px; border-radius: 3px; background: {{t.accent}}"></span>2 working</span>
+      <span style="display: flex; align-items: center; gap: 6px; color: {{t.amber}}"><span style="width: 6px; height: 6px; border-radius: 3px; background: {{t.amber}}"></span>1 waiting</span>
+      <span style="display: flex; align-items: center; gap: 5px; font-family: {{t.mono}}; font-size: 11px">
+        <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="4" cy="3" r="1.6"></circle><circle cx="4" cy="13" r="1.6"></circle><circle cx="12" cy="5" r="1.6"></circle><path d="M4 4.6v6.8M12 6.6c0 3-8 2-8 4.8"></path></svg>main
+      </span>
+      <span style="flex: 1"></span>
+      <span style="display: flex; align-items: center; gap: 8px">
+        <span style="color: {{t.claude}}; display: flex"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M8 1.5v13M2.4 4.8l11.2 6.4M2.4 11.2l11.2-6.4"></path></svg></span>
+        <span>5h</span>
+        <span style="width: 54px; height: 5px; border-radius: 3px; background: {{t.track}}; overflow: hidden; display: flex"><span style="width: 42%; background: {{t.accent}}"></span></span>
+        <span style="font-family: {{t.mono}}; font-size: 11px">42%</span>
+        <span style="color: {{t.text3}}">·</span>
+        <span>week</span>
+        <span style="width: 54px; height: 5px; border-radius: 3px; background: {{t.track}}; overflow: hidden; display: flex"><span style="width: 18%; background: {{t.text2}}"></span></span>
+        <span style="font-family: {{t.mono}}; font-size: 11px">18%</span>
+      </span>
+      <span style="width: 1px; height: 14px; background: {{t.border}}"></span>
+      <span style="display: flex; align-items: center; gap: 5px">
+        <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 2.5v11l9-5.5z"></path></svg>Actions
+      </span>
+      <span style="color: {{t.text}}">Terminal</span>
+    </footer>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dir":{"editor":"enum","options":["ink","grid","glass"],"default":"ink"},"mode":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":1120,"height":700}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const dir = this.props.dir ?? 'ink';
+    const mode = this.props.mode ?? 'dark';
+    const T = ADE_TOKENS[dir][mode];
+    const S = ADE_STRUCT[dir];
+    const t = Object.assign({ ui: S.ui, mono: "'JetBrains Mono', ui-monospace, monospace" }, T);
+    const tile = mode === 'dark' ? ['#E07A50', '#4C8DF0', '#3FB37A'] : ['#D2643A', '#2F6FE0', '#2A9A62'];
+    const raw = [
+      { k: 'p', name: 'new-ade', letter: 'N', color: tile[0], branch: 'main', mt: 0 },
+      { k: 's', kind: 'claude', name: 'Refactor holder snapshot', working: true, selected: true },
+      { k: 's', kind: 'claude', name: 'Review PR #42 (work)', input: true },
+      { k: 's', kind: 'term', name: 'zsh' },
+      { k: 't', name: 'feat/usage-limits' },
+      { k: 's', kind: 'codex', name: 'Usage meter', done: true, indent: 44 },
+      { k: 's', kind: 'term', name: 'cargo watch', dormant: true, indent: 44 },
+      { k: 'p', name: 'cimri-web', letter: 'C', color: tile[1], branch: 'dev', badge: '1', mt: 8 },
+      { k: 'p', name: 'dotfiles', letter: 'D', color: tile[2], branch: 'main', mt: 0 },
+    ];
+    const rows = raw.map((r) => ({
+      ...r,
+      isProject: r.k === 'p', isTree: r.k === 't', isSession: r.k === 's',
+      isClaude: r.kind === 'claude', isCodex: r.kind === 'codex', isTerm: r.kind === 'term',
+      hasBadge: !!r.badge, mt: r.mt || 0,
+      indent: r.indent || 30,
+      bg: r.selected ? t.sel : 'transparent',
+      fg: r.selected ? t.text : t.text2,
+      weight: r.selected ? 600 : 500,
+      op: r.dormant ? 0.45 : 1,
+      iconColor: r.kind === 'claude' ? t.claude : r.kind === 'codex' ? t.text : t.text3,
+      working: !!r.working, input: !!r.input, done: !!r.done,
+    }));
+    const tabsRaw = [
+      { name: 'Refactor holder', kind: 'claude', active: true, working: true },
+      { name: 'Review PR #42', kind: 'claude' },
+      { name: 'zsh', kind: 'term' },
+    ];
+    const tabs = tabsRaw.map((x) => ({
+      ...x,
+      isClaude: x.kind === 'claude', isCodex: x.kind === 'codex', isTerm: x.kind === 'term',
+      working: !!x.working,
+      bg: x.active ? t.tabActive : 'transparent',
+      fg: x.active ? t.text : t.text2,
+      weight: x.active ? 600 : 500,
+      shadow: x.active ? S.tabShadow : 'none',
+      underline: x.active ? S.tabUnderline.replace('ACC', t.accent) : S.tabUnderline.replace('ACC', 'transparent'),
+      iconColor: x.kind === 'claude' ? t.claude : t.text3,
+    }));
+    const c = { f: t.termFg, d: t.termDim, a: t.claude, g: t.green, r: t.red, b: t.blue, y: t.amber };
+    const L = (...segs) => ({ segs: segs.map(([k, x, w]) => ({ c: c[k], x, w: w || 400 })) });
+    const lines = [
+      L(['a', '✻ ', 700], ['f', 'Claude Code', 700], ['d', '  ~/personal_projects/new-ade']),
+      L(['d', '']),
+      L(['d', '> '], ['f', 'snapshot should replay the main screen before the alt screen']),
+      L(['d', '']),
+      L(['g', '⏺ '], ['f', 'Read', 700], ['d', '(core/crates/ade/src/holder.rs)']),
+      L(['d', '  ⎿  Read 642 lines']),
+      L(['g', '⏺ '], ['f', 'Update', 700], ['d', '(core/crates/ade/src/holder.rs)']),
+      L(['d', '  ⎿  Updated with '], ['g', '18 additions'], ['d', ' and '], ['r', '4 removals']),
+      L(['g', '⏺ '], ['f', 'Bash', 700], ['d', '(cargo test -p ade)']),
+      L(['d', '  ⎿  test result: '], ['g', 'ok'], ['d', '. 26 passed; 0 failed']),
+      L(['d', '']),
+      L(['f', '⏺ The holder now captures the main screen on alt-screen entry and']),
+      L(['f', '  replays it first, so reattaching inside vim keeps your shell.']),
+      L(['d', '']),
+      L(['a', '✶ '], ['a', 'Pondering…'], ['d', ' (14s · ↑ 2.1k tokens · esc to interrupt)']),
+    ];
+    return { t, s: S, rows, tabs, lines };
+  }
+}
+const ADE_TOKENS = {
+  ink: {
+    dark: { frame: '#141416', sb: '#141416', windowRing: 'rgba(255,255,255,0.08)', term: '#1B1B1F', termFg: '#DCDCE0', termDim: '#8B8B94', termBorder: 'rgba(255,255,255,0.12)', tabsBg: 'transparent', tabActive: '#27272C', raisedSoft: 'rgba(255,255,255,0.05)', sel: 'rgba(235,138,94,0.14)', text: '#EDEDEF', text2: '#A6A6AF', text3: '#8B8B94', border: 'rgba(255,255,255,0.07)', track: 'rgba(255,255,255,0.10)', accent: '#EB8A5E', claude: '#E8875B', amber: '#E9B949', amberSoft: 'rgba(233,185,73,0.15)', green: '#5DCB8E', red: '#F27474', blue: '#74A9F8' },
+    light: { frame: '#ECEBE8', sb: '#ECEBE8', windowRing: 'rgba(0,0,0,0.10)', term: '#FBFBFA', termFg: '#2B2B30', termDim: '#6E6E76', termBorder: 'rgba(0,0,0,0.14)', tabsBg: 'transparent', tabActive: '#FBFBFA', raisedSoft: 'rgba(0,0,0,0.045)', sel: 'rgba(201,89,43,0.11)', text: '#1D1D1F', text2: '#55555C', text3: '#6B6B73', border: 'rgba(0,0,0,0.08)', track: 'rgba(0,0,0,0.10)', accent: '#C9592B', claude: '#C9592B', amber: '#9A6200', amberSoft: 'rgba(196,132,0,0.14)', green: '#1E8A4C', red: '#C93838', blue: '#2A6BD1' },
+  },
+  grid: {
+    dark: { frame: '#0D0F12', sb: '#0D0F12', windowRing: 'rgba(255,255,255,0.10)', term: '#0A0C0E', termFg: '#D6DCE3', termDim: '#7D8793', termBorder: 'rgba(255,255,255,0.14)', tabsBg: 'transparent', tabActive: 'transparent', raisedSoft: 'rgba(255,255,255,0.05)', sel: 'rgba(126,166,255,0.13)', text: '#E3E7EC', text2: '#9AA3AE', text3: '#7D8793', border: 'rgba(255,255,255,0.09)', track: 'rgba(255,255,255,0.10)', accent: '#7EA6FF', claude: '#E8875B', amber: '#F0C04A', amberSoft: 'rgba(240,192,74,0.14)', green: '#6BD49A', red: '#FF7A7A', blue: '#7EA6FF' },
+    light: { frame: '#F6F7F9', sb: '#F6F7F9', windowRing: 'rgba(0,0,0,0.12)', term: '#FFFFFF', termFg: '#1A1E24', termDim: '#636D79', termBorder: 'rgba(0,0,0,0.15)', tabsBg: 'transparent', tabActive: 'transparent', raisedSoft: 'rgba(0,0,0,0.05)', sel: 'rgba(45,91,219,0.10)', text: '#111418', text2: '#4F5865', text3: '#636D79', border: 'rgba(0,0,0,0.10)', track: 'rgba(0,0,0,0.10)', accent: '#2D5BDB', claude: '#C9592B', amber: '#986300', amberSoft: 'rgba(196,132,0,0.13)', green: '#1B8649', red: '#C83030', blue: '#2D5BDB' },
+  },
+  glass: {
+    dark: { frame: '#1E1F24', sb: 'rgba(255,255,255,0.05)', windowRing: 'rgba(255,255,255,0.10)', term: '#16171B', termFg: '#E2E3E8', termDim: '#8C8D96', termBorder: 'rgba(255,255,255,0.14)', tabsBg: 'rgba(255,255,255,0.06)', tabActive: '#3A3B42', raisedSoft: 'rgba(255,255,255,0.06)', sel: 'rgba(59,140,255,0.22)', text: '#F2F2F5', text2: '#ABACB5', text3: '#8C8D96', border: 'rgba(255,255,255,0.08)', track: 'rgba(255,255,255,0.12)', accent: '#3B8CFF', claude: '#E8875B', amber: '#F5B841', amberSoft: 'rgba(245,184,65,0.16)', green: '#44CF7C', red: '#FF6B6B', blue: '#3B8CFF' },
+    light: { frame: '#E6E8ED', sb: 'rgba(255,255,255,0.62)', windowRing: 'rgba(0,0,0,0.12)', term: '#FFFFFF', termFg: '#1F2024', termDim: '#66687A', termBorder: 'rgba(0,0,0,0.14)', tabsBg: 'rgba(0,0,0,0.06)', tabActive: '#FFFFFF', raisedSoft: 'rgba(0,0,0,0.05)', sel: 'rgba(10,108,240,0.13)', text: '#15161A', text2: '#50525D', text3: '#666874', border: 'rgba(0,0,0,0.09)', track: 'rgba(0,0,0,0.10)', accent: '#0A6CF0', claude: '#C9592B', amber: '#966100', amberSoft: 'rgba(196,132,0,0.14)', green: '#178A47', red: '#CC3333', blue: '#0A6CF0' },
+  },
+};
+const ADE_STRUCT = {
+  ink: { ui: "'Inter', -apple-system, system-ui, sans-serif", fs: 13, sbW: 252, sbMargin: '0', sbR: 0, sbBorder: '0px solid', sbShadow: 'none', rowH: 30, rowR: 7, tileR: 5, labelFont: "'Inter', system-ui, sans-serif", labelSize: 11, labelTrack: '0', labelCase: 'none', topH: 46, topPadL: 2, topBorder: '0px solid', tabsPad: 0, tabsR: 0, tabsH: 'auto', tabGap: 2, tabH: 28, tabR: 7, tabFont: "'Inter', system-ui, sans-serif", tabSize: 12.5, tabShadow: '0 1px 2px rgba(0,0,0,0.18)', tabUnderline: '0px solid ACC', paneGap: 8, contentPad: '0 8px 0 0', cardR: 10, cardBorder: '1px solid', cardShadow: 'none', dockTop: '1px solid', statusH: 32, statusPadL: 6, statusBorder: '0px solid', statusFont: "'Inter', system-ui, sans-serif" },
+  grid: { ui: "'Inter', -apple-system, system-ui, sans-serif", fs: 12, sbW: 236, sbMargin: '0', sbR: 0, sbBorder: '1px solid', sbShadow: 'none', rowH: 24, rowR: 2, tileR: 2, labelFont: "'JetBrains Mono', ui-monospace, monospace", labelSize: 10.5, labelTrack: '0.08em', labelCase: 'uppercase', topH: 36, topPadL: 0, topBorder: '1px solid', tabsPad: 0, tabsR: 0, tabsH: '36px', tabGap: 0, tabH: 36, tabR: 0, tabFont: "'JetBrains Mono', ui-monospace, monospace", tabSize: 11.5, tabShadow: 'none', tabUnderline: '2px solid ACC', paneGap: 0, contentPad: '0', cardR: 0, cardBorder: '0px solid', cardShadow: 'none', dockTop: '1px solid', statusH: 24, statusPadL: 12, statusBorder: '1px solid', statusFont: "'JetBrains Mono', ui-monospace, monospace" },
+  glass: { ui: "-apple-system, 'SF Pro Text', 'Inter', system-ui, sans-serif", fs: 13, sbW: 248, sbMargin: '8px', sbR: 12, sbBorder: '0px solid', sbShadow: '0 0 0 1px rgba(127,127,127,0.12), 0 6px 18px rgba(0,0,0,0.10)', rowH: 30, rowR: 8, tileR: 9, labelFont: "-apple-system, 'Inter', system-ui, sans-serif", labelSize: 11, labelTrack: '0', labelCase: 'none', topH: 48, topPadL: 2, topBorder: '0px solid', tabsPad: 3, tabsR: 9, tabsH: 'auto', tabGap: 2, tabH: 26, tabR: 7, tabFont: "-apple-system, 'Inter', system-ui, sans-serif", tabSize: 12.5, tabShadow: '0 1px 3px rgba(0,0,0,0.16)', tabUnderline: '0px solid ACC', paneGap: 8, contentPad: '0 8px 0 0', cardR: 12, cardBorder: '1px solid', cardShadow: '0 4px 14px rgba(0,0,0,0.10)', dockTop: '1px solid', statusH: 34, statusPadL: 6, statusBorder: '0px solid', statusFont: "-apple-system, 'Inter', system-ui, sans-serif" },
+};
+</script>
+</body>
+</html>

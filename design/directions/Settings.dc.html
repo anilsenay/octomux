@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ADE settings</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 720px; height: 460px; box-sizing: border-box; display: flex; overflow: hidden; border-radius: 12px; background: {{t.term}}; color: {{t.text}}; font-family: {{s.ui}}; font-size: 13px; box-shadow: 0 0 0 1px {{t.windowRing}}, 0 20px 50px rgba(0,0,0,0.25)">
+  <nav style="width: 190px; flex: none; background: {{t.frame}}; padding: 40px 10px 10px; box-sizing: border-box; display: flex; flex-direction: column; gap: 1px; border-right: 1px solid {{t.border}}">
+    <div style="position: absolute; margin: -28px 0 0 4px; display: flex; gap: 8px">
+      <span style="width: 12px; height: 12px; border-radius: 6px; background: #FF5F57"></span>
+      <span style="width: 12px; height: 12px; border-radius: 6px; background: #FEBC2E"></span>
+      <span style="width: 12px; height: 12px; border-radius: 6px; background: #28C840"></span>
+    </div>
+    <div style="padding: 4px 8px 6px; font-family: {{s.labelFont}}; font-size: {{s.labelSize}}px; font-weight: 600; letter-spacing: {{s.labelTrack}}; text-transform: {{s.labelCase}}; color: {{t.text3}}">Scope: Global</div>
+    <sc-for list="{{nav}}" as="n" hint-placeholder-count="7">
+      <div style="display: flex; align-items: center; gap: 8px; height: {{s.rowH}}px; padding: 0 10px; border-radius: {{s.rowR}}px; background: {{n.bg}}; color: {{n.fg}}; font-weight: {{n.w}}">{{n.name}}</div>
+    </sc-for>
+  </nav>
+  <section style="flex: 1; min-width: 0; padding: 26px 28px; display: flex; flex-direction: column; gap: 16px">
+    <div style="display: flex; align-items: baseline; gap: 10px">
+      <h2 style="margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.01em">Agents</h2>
+      <span style="color: {{t.text3}}; font-size: 12px">Profiles shown in the + menu</span>
+    </div>
+    <div style="border: 1px solid {{t.border}}; border-radius: {{s.cardR}}px; overflow: hidden">
+      <sc-for list="{{profiles}}" as="p" hint-placeholder-count="3">
+        <div style="display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-top: {{p.top}}">
+          <span style="width: 30px; height: 30px; border-radius: 8px; background: {{t.raisedSoft}}; display: flex; align-items: center; justify-content: center; color: {{p.color}}">
+            <sc-if value="{{p.isClaude}}" hint-placeholder-val="{{true}}">
+              <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" aria-hidden="true"><path d="M8 1.5v13M2.4 4.8l11.2 6.4M2.4 11.2l11.2-6.4"></path></svg>
+            </sc-if>
+            <sc-if value="{{p.isCodex}}" hint-placeholder-val="{{false}}">
+              <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M8 1.5 13.6 4.75v6.5L8 14.5 2.4 11.25v-6.5z"></path></svg>
+            </sc-if>
+          </span>
+          <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+            <span style="font-weight: 600">{{p.name}}</span>
+            <span style="font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11.5px; color: {{t.text3}}">{{p.cmd}}</span>
+          </span>
+          <span style="font-size: 11px; color: {{t.text3}}">{{p.usage}}</span>
+          <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: {{t.text2}}">
+            Pinned
+            <span style="width: 30px; height: 18px; border-radius: 9px; background: {{p.trackBg}}; display: flex; align-items: center; padding: 2px; box-sizing: border-box; justify-content: {{p.knobSide}}">
+              <span style="width: 14px; height: 14px; border-radius: 7px; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.3)"></span>
+            </span>
+          </label>
+        </div>
+      </sc-for>
+    </div>
+    <div style="display: flex; gap: 8px">
+      <button style="all: unset; height: 28px; padding: 0 12px; border-radius: 7px; background: {{t.accent}}; color: #fff; font-weight: 600; font-size: 12.5px; display: flex; align-items: center">Add agent</button>
+      <button style="all: unset; height: 28px; padding: 0 12px; border-radius: 7px; border: 1px solid {{t.border}}; font-size: 12.5px; display: flex; align-items: center">Detect installed</button>
+    </div>
+    <div style="margin-top: auto; display: flex; align-items: center; gap: 10px; padding-top: 12px; border-top: 1px solid {{t.border}}">
+      <span style="font-weight: 600">Theme</span>
+      <span style="flex: 1"></span>
+      <sc-for list="{{themes}}" as="th" hint-placeholder-count="3">
+        <span style="height: 26px; padding: 0 10px; border-radius: 7px; display: flex; align-items: center; gap: 6px; font-size: 12px; border: 1px solid {{th.border}}; background: {{th.bg}}">
+          <span style="width: 10px; height: 10px; border-radius: 5px; background: {{th.dot}}"></span>{{th.name}}
+        </span>
+      </sc-for>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dir":{"editor":"enum","options":["ink","grid","glass"],"default":"ink"},"mode":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":720,"height":460}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const dir = this.props.dir ?? 'ink';
+    const mode = this.props.mode ?? 'dark';
+    const P = {
+      ink: { dark: { frame: '#141416', term: '#1B1B1F', text: '#EDEDEF', text2: '#A6A6AF', text3: '#8B8B94', border: 'rgba(255,255,255,0.08)', raisedSoft: 'rgba(255,255,255,0.06)', sel: 'rgba(235,138,94,0.15)', accent: '#C9592B', claude: '#E8875B', windowRing: 'rgba(255,255,255,0.08)', off: 'rgba(255,255,255,0.16)' },
+             light: { frame: '#ECEBE8', term: '#FBFBFA', text: '#1D1D1F', text2: '#55555C', text3: '#6B6B73', border: 'rgba(0,0,0,0.09)', raisedSoft: 'rgba(0,0,0,0.05)', sel: 'rgba(201,89,43,0.12)', accent: '#C9592B', claude: '#C9592B', windowRing: 'rgba(0,0,0,0.10)', off: 'rgba(0,0,0,0.16)' } },
+      grid: { dark: { frame: '#0D0F12', term: '#0A0C0E', text: '#E3E7EC', text2: '#9AA3AE', text3: '#7D8793', border: 'rgba(255,255,255,0.10)', raisedSoft: 'rgba(255,255,255,0.05)', sel: 'rgba(126,166,255,0.14)', accent: '#2D5BDB', claude: '#E8875B', windowRing: 'rgba(255,255,255,0.10)', off: 'rgba(255,255,255,0.16)' },
+              light: { frame: '#F6F7F9', term: '#FFFFFF', text: '#111418', text2: '#4F5865', text3: '#636D79', border: 'rgba(0,0,0,0.10)', raisedSoft: 'rgba(0,0,0,0.05)', sel: 'rgba(45,91,219,0.10)', accent: '#2D5BDB', claude: '#C9592B', windowRing: 'rgba(0,0,0,0.12)', off: 'rgba(0,0,0,0.16)' } },
+      glass: { dark: { frame: '#1E1F24', term: '#16171B', text: '#F2F2F5', text2: '#ABACB5', text3: '#8C8D96', border: 'rgba(255,255,255,0.09)', raisedSoft: 'rgba(255,255,255,0.07)', sel: 'rgba(59,140,255,0.24)', accent: '#0A6CF0', claude: '#E8875B', windowRing: 'rgba(255,255,255,0.10)', off: 'rgba(255,255,255,0.18)' },
+               light: { frame: '#E6E8ED', term: '#FFFFFF', text: '#15161A', text2: '#50525D', text3: '#666874', border: 'rgba(0,0,0,0.09)', raisedSoft: 'rgba(0,0,0,0.05)', sel: 'rgba(10,108,240,0.13)', accent: '#0A6CF0', claude: '#C9592B', windowRing: 'rgba(0,0,0,0.12)', off: 'rgba(0,0,0,0.16)' } },
+    };
+    const S = {
+      ink: { ui: "'Inter', -apple-system, system-ui, sans-serif", rowH: 30, rowR: 7, cardR: 10, labelFont: "'Inter', system-ui, sans-serif", labelSize: 11, labelTrack: '0', labelCase: 'none' },
+      grid: { ui: "'Inter', -apple-system, system-ui, sans-serif", rowH: 24, rowR: 2, cardR: 2, labelFont: "'JetBrains Mono', ui-monospace, monospace", labelSize: 10.5, labelTrack: '0.08em', labelCase: 'uppercase' },
+      glass: { ui: "-apple-system, 'Inter', system-ui, sans-serif", rowH: 30, rowR: 8, cardR: 12, labelFont: "-apple-system, 'Inter', system-ui, sans-serif", labelSize: 11, labelTrack: '0', labelCase: 'none' },
+    }[dir];
+    const t = P[dir][mode];
+    const nav = ['General', 'Workspaces', 'Agents', 'Appearance', 'Notifications', 'Keyboard', 'Advanced'].map((name) => ({
+      name, bg: name === 'Agents' ? t.sel : 'transparent', fg: name === 'Agents' ? t.text : t.text2, w: name === 'Agents' ? 600 : 500,
+    }));
+    const profiles = [
+      { name: 'Claude', cmd: 'claude', kind: 'claude', pinned: true, usage: '5h 42% · wk 18%' },
+      { name: 'Claude (work)', cmd: 'claude-work', kind: 'claude', pinned: true, usage: '5h 7% · wk 31%' },
+      { name: 'Codex', cmd: 'codex', kind: 'codex', pinned: false, usage: '' },
+    ].map((p, i) => ({
+      ...p, isClaude: p.kind === 'claude', isCodex: p.kind === 'codex',
+      color: p.kind === 'claude' ? t.claude : t.text,
+      top: i === 0 ? 'none' : '1px solid ' + t.border,
+      trackBg: p.pinned ? t.accent : t.off, knobSide: p.pinned ? 'flex-end' : 'flex-start',
+    }));
+    const themes = [['Ink', 'ink', '#E8875B'], ['Grid', 'grid', '#7EA6FF'], ['Glass', 'glass', '#3B8CFF']].map(([name, id, dot]) => ({
+      name, dot, bg: id === dir ? t.sel : 'transparent', border: id === dir ? t.accent : t.border,
+    }));
+    return { t, s: S, nav, profiles, themes };
+  }
+}
+</script>
+</body>
+</html>
