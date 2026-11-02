@@ -166,6 +166,13 @@ enum DebugActions {
             let view: AnyView
             switch name {
             case "usage": view = AnyView(UsagePopover().environmentObject(AppModel.shared))
+            case "action_editor":
+                view = AnyView(ActionEditor(action: ProjectAction(name: "Test", icon: "flask", command: "cargo test"), done: {}).environmentObject(AppModel.shared).background(T.surface))
+            case "new_worktree":
+                guard let proj = AppModel.shared.currentProject else { throw DebugServer.DebugError.bad("no project") }
+                view = AnyView(NewWorktreeSheet(project: proj, done: {}).environmentObject(AppModel.shared))
+            case "host_editor":
+                view = AnyView(HostEditor(host: Host(id: "x", name: "devbox", kind: "ssh", target: "me@devbox", sshOptions: "-p 2222"), done: { _ in }))
             default: throw DebugServer.DebugError.bad("unknown view")
             }
             var out: [String: Any] = ["path": path]

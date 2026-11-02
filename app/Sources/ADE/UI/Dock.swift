@@ -226,7 +226,7 @@ struct ActionEditor: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(original == nil ? "Add action" : "Edit action").font(.title3.weight(.semibold))
+            Text(original == nil ? "Add action" : "Edit action").font(T.title)
             Text("Save a project command to run with one click. It runs in a dock terminal at the project root.")
                 .font(.caption).foregroundStyle(T.text2)
             HStack {
@@ -240,19 +240,21 @@ struct ActionEditor: View {
             TextField("Command (e.g. bun test)", text: $command).font(.system(.body, design: .monospaced))
             HStack {
                 if let original {
-                    Button("Delete", role: .destructive) {
+                    Button(role: .destructive) {
                         if let p = model.currentProject?.id { model.saveActions(p, model.actions(p).filter { $0 != original }) }
                         done()
-                    }
+                    } label: { Text("Delete").foregroundStyle(T.red) }
+                    .buttonStyle(SecondaryButtonStyle())
                 }
                 Spacer()
-                Button("Cancel") { done() }.keyboardShortcut(.cancelAction)
-                Button(original == nil ? "Add" : "Save") { save() }.keyboardShortcut(.defaultAction)
+                Button("Cancel") { done() }.buttonStyle(SecondaryButtonStyle()).keyboardShortcut(.cancelAction)
+                Button(original == nil ? "Add" : "Save") { save() }.buttonStyle(PrimaryButtonStyle()).keyboardShortcut(.defaultAction)
                     .disabled(name.isEmpty || command.isEmpty)
             }
         }
-        .padding(20)
+        .padding(22)
         .frame(width: 440)
+        .background(T.surface)
     }
 
     func save() {
