@@ -66,13 +66,17 @@ struct MainView: View {
 
     private func sidebar(floating: Bool = false) -> some View {
         SidebarView(floating: floating)
-            .background(theme.activeScene.map { AnyView(Color(nsColor: $0.colors.frame).opacity($0.dark ? 0.4 : 0.35)) }
+            // With a scene the root background already carries the chrome veil (one layer for sidebar and bars).
+            .background(theme.activeScene.map { _ in AnyView(Color.clear) }
                         ?? (T.m.glass ? AnyView(Color.clear) : T.m.sidebarMaterial ? AnyView(VisualEffect(material: .sidebar)) : AnyView(WorkspaceTintedFrame())))
     }
 
     /// Behind everything: the scene's live backdrop, the window glass, or the workspace-tinted frame.
     private var rootBackground: AnyView {
-        if let s = theme.activeScene { return AnyView(SceneBackdrop(scene: s)) }
+        // The veil spans the whole window: on the sidebar only, it ended in a hard edge in the top bar.
+        if let s = theme.activeScene {
+            return AnyView(SceneBackdrop(scene: s).overlay(Color(nsColor: s.colors.frame).opacity(s.dark ? 0.4 : 0.35)))
+        }
         return T.m.glass ? AnyView(VisualEffect(material: .underWindowBackground)) : AnyView(WorkspaceTintedFrame())
     }
 

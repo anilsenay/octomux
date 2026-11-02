@@ -117,6 +117,10 @@ final class ThemeStore: ObservableObject {
     /// The terminal-pane mode in effect: `.off` without a scene.
     var terminalSceneMode: TerminalSceneMode { activeScene == nil || metrics.glass ? .off : sceneTerminals }
     var transparentPanes: Bool { metrics.glass || terminalSceneMode != .off }
+    /// Ghostty's `background-opacity` when terminals are translucent (nil: opaque). Pane headers use it too.
+    var terminalBackgroundOpacity: Double? {
+        metrics.glass ? (isDark ? 0.55 : 0.6) : transparentPanes ? sceneTerminalOpacity : nil
+    }
     private var appearanceObs: NSKeyValueObservation?
     private var lastWritten = ""
 
@@ -256,8 +260,7 @@ final class ThemeStore: ObservableObject {
         DocHost.shared.refreshTheme()
         let text = terminalColors ? terminalConfigText(dark: isDark) : "# Terminal colors come from terminal.conf\n"
         let padding = "window-padding-x = 12\nwindow-padding-y = 8\nwindow-padding-balance = true\nwindow-padding-color = background\n"
-        let opacity = metrics.glass ? (isDark ? 0.55 : 0.6) : transparentPanes ? sceneTerminalOpacity : nil
-        let glass = opacity.map { "background-opacity = \($0)\n" } ?? ""
+        let glass = terminalBackgroundOpacity.map { "background-opacity = \($0)\n" } ?? ""
         let full = padding + glass + text
         guard full != lastWritten else { return }
         lastWritten = full

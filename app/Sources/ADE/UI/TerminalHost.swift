@@ -550,9 +550,14 @@ final class RatioSplitView: NSSplitView, NSSplitViewDelegate {
     }
     required init?(coder: NSCoder) { fatalError() }
 
-    // Cards themes: a gap in the frame color. Flat themes: a hairline.
+    // Cards themes: an empty gap, so the window background (workspace tint, glass, scene) shows between
+    // the cards like around them; a flat fill here read as a line. Flat themes: a hairline.
     override var dividerThickness: CGFloat { T.m.inset > 0 ? T.m.inset : 1 }
-    override var dividerColor: NSColor { T.m.inset > 0 ? T.ns(\.frame) : T.ns(\.border) }
+    override var dividerColor: NSColor { T.m.inset > 0 ? .clear : T.ns(\.border) }
+    override func drawDivider(in rect: NSRect) {
+        if T.m.inset > 0 { return }
+        super.drawDivider(in: rect)
+    }
 
     override func layout() {
         super.layout()
@@ -646,6 +651,9 @@ struct PaneHeader: View {
             .frame(width: g.size.width, height: g.size.height)
             }
             .background(focused ? T.hover : Color.clear)
+            // Over a translucent terminal (glass, scene behind terminals) the header gets the terminal's own
+            // tint, else it would show the window background at full strength and read as a separate band.
+            .background(ThemeStore.shared.terminalBackgroundOpacity.map { Color(nsColor: WorkspaceTint.canvas(dark: ThemeStore.shared.isDark)).opacity($0) })
             .overlay(alignment: .bottom) { Rectangle().fill(T.border).frame(height: 1) }
             .contentShape(Rectangle())
             .onHover { hover = $0 }
