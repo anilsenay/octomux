@@ -1,0 +1,25 @@
+[package]
+name = "ade"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "ade"
+path = "src/main.rs"
+
+[dependencies]
+ade-proto = { path = "../ade-proto" }
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+libc.workspace = true
+vt100 = "0.16"
+portable-pty = "0.9"
+rusqlite = { version = "0.37", features = ["bundled"] }
+uuid = { version = "1", features = ["v4"] }
+clap = { version = "4", features = ["derive"] }
+signal-hook = "0.3"
+
+[dev-dependencies]
+vt100 = "0.16"

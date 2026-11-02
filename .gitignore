@@ -1,0 +1,8 @@
+/core/target/
+/app/.build/
+/app/build/
+/vendor/ghostty/
+/vendor/GhosttyKit.xcframework/
+/prototypes/*/target/
+/prototypes/*/.build/
+.DS_Store
