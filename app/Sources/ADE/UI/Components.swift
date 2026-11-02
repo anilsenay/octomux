@@ -567,6 +567,19 @@ enum WorkspaceTint {
                       strength: strength(dark: dark) * canvasScale)
     }
 
+    /// The workspace color tuned to read as an accent on this appearance (focused-pane border):
+    /// saturation capped so neon picks don't glare, brightness lifted on dark and lowered on light so
+    /// every hue keeps similar contrast. Gray or no workspace color → the theme accent.
+    static func accent(dark: Bool, hex: String? = AppModel.shared.workspace?.color) -> NSColor {
+        guard let hex, let c = NSColor(Color(hex: hex)).usingColorSpace(.sRGB) else { return T.ns(\.accent) }
+        var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        c.getHue(&h, saturation: &s, brightness: &b, alpha: &a)
+        guard s > 0.12 else { return T.ns(\.accent) }
+        let sat = min(max(s, 0.45), dark ? 0.7 : 0.8)
+        let bri = dark ? max(b, 0.88) : min(max(b, 0.55), 0.72)
+        return NSColor(srgbHue: h, saturation: sat, brightness: bri, alpha: 1)
+    }
+
     /// `base` with its hue pushed toward `hex`'s hue; brightness and alpha unchanged.
     static func washed(_ base: NSColor, toward hex: String?, strength: Double = strength) -> NSColor {
         guard let hex, let b0 = base.usingColorSpace(.sRGB),
