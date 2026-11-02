@@ -600,9 +600,11 @@ fn statusline_reports_usage_and_passes_through_user_statusline() {
     let r = e.call("session.create", json!({ "project_id": p, "profile_id": prof["id"] }));
     let id = r["session"]["id"].as_str().unwrap().to_string();
 
-    // The hook settings we inject carry our status line.
+    // The hook settings we inject carry our status line; the hooks-only variant does not.
     let settings: Value = serde_json::from_str(&std::fs::read_to_string(e.home.join("agent/claude-settings.json")).unwrap()).unwrap();
     assert!(settings["statusLine"]["command"].as_str().unwrap().ends_with("statusline"), "{settings}");
+    let hooks_only: Value = serde_json::from_str(&std::fs::read_to_string(e.home.join("agent/claude-settings-hooks-only.json")).unwrap()).unwrap();
+    assert!(hooks_only.get("statusLine").is_none() && hooks_only["hooks"].is_object(), "{hooks_only}");
 
     // The user's own status line lives in their config dir and must keep working.
     let cfg = e.home.join("user-cfg");
@@ -738,4 +740,19 @@ fn codex_rollout_lookup_and_offset_reads() {
     std::fs::OpenOptions::new().append(true).open(&file).unwrap().write_all(b"{\"type\":\"x\"}\n").unwrap();
     let more = e.call("fs.read", json!({ "path": file, "offset": off }));
     assert_eq!(more["text"], "{\"type\":\"x\"}\n");
+}
+
+#[test]
+fn profile_without_statusline_gets_hooks_only_settings() {
+    let e = Env::new();
+    let p = e.project();
+    let script = fake_agent(&e);
+    let prof = e.call("profile.create", json!({ "name": "c", "kind": "claude", "command": script, "via_login_shell": false, "statusline": false }));
+    assert_eq!(prof["statusline"], false);
+    let r = e.call("session.create", json!({ "project_id": p, "profile_id": prof["id"] }));
+    let id = r["session"]["id"].as_str().unwrap().to_string();
+    let text = e.wait_screen(&id, "FAKE-ARGS");
+    assert!(text.contains("claude-settings-hooks-only.json"), "{text}");
+    let on = e.call("profile.create", json!({ "name": "d", "kind": "claude", "command": script, "via_login_shell": false }));
+    assert_eq!(on["statusline"], true, "default on");
 }

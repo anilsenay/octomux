@@ -21,6 +21,11 @@ pub fn hooks_settings_path(paths: &Paths) -> PathBuf {
     paths.agent_dir().join("claude-settings.json")
 }
 
+/// Same hooks, without the status line (profiles with `statusline: false`).
+pub fn hooks_only_settings_path(paths: &Paths) -> PathBuf {
+    paths.agent_dir().join("claude-settings-hooks-only.json")
+}
+
 /// Writes the settings file passed to Claude with `--settings`. It only adds
 /// hooks; the user's own settings files are never touched.
 pub fn write_hook_settings(paths: &Paths) -> anyhow::Result<()> {
@@ -36,6 +41,8 @@ pub fn write_hook_settings(paths: &Paths) -> anyhow::Result<()> {
         hooks.insert(ev.to_string(), serde_json::json!([entry]));
     }
     let statusline = format!("{} statusline", shell_quote(&exe));
+    let hooks_only = serde_json::json!({ "hooks": hooks });
+    std::fs::write(hooks_only_settings_path(paths), serde_json::to_vec_pretty(&hooks_only)?)?;
     let doc = serde_json::json!({ "hooks": hooks, "statusLine": { "type": "command", "command": statusline, "padding": 0 } });
     std::fs::write(hooks_settings_path(paths), serde_json::to_vec_pretty(&doc)?)?;
     Ok(())
@@ -302,7 +309,8 @@ pub fn build_launch(paths: &Paths, session: &Session, profile: Option<&Profile>,
                     } else {
                         args.extend(["--session-id".into(), id.clone()]);
                     }
-                    args.extend(["--settings".into(), hooks_settings_path(paths).to_string_lossy().into_owned()]);
+                    let settings = if profile.statusline { hooks_settings_path(paths) } else { hooks_only_settings_path(paths) };
+                    args.extend(["--settings".into(), settings.to_string_lossy().into_owned()]);
                     agent_id = Some(id);
                 }
                 AgentKind::Codex => {
@@ -367,6 +375,7 @@ pub fn default_profiles() -> Vec<Profile> {
             enabled: true,
             pinned: kind == AgentKind::Claude,
             sort: out_len_hint(kind),
+            statusline: true,
         });
     };
     add("Claude", "claude", AgentKind::Claude, "claude");

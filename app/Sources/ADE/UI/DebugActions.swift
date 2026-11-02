@@ -171,6 +171,9 @@ enum DebugActions {
             case "new_worktree":
                 guard let proj = AppModel.shared.currentProject else { throw DebugServer.DebugError.bad("no project") }
                 view = AnyView(NewWorktreeSheet(project: proj, done: {}).environmentObject(AppModel.shared))
+            case "profile_editor":
+                guard let prof = AppModel.shared.state.profiles.first(where: { $0.kind == .claude }) else { throw DebugServer.DebugError.bad("no claude profile") }
+                view = AnyView(ProfileEditor(profile: prof, done: {}).environmentObject(AppModel.shared).background(T.surface))
             case "host_editor":
                 view = AnyView(HostEditor(host: Host(id: "x", name: "devbox", kind: "ssh", target: "me@devbox", sshOptions: "-p 2222"), done: { _ in }))
             default: throw DebugServer.DebugError.bad("unknown view")

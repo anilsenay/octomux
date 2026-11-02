@@ -79,6 +79,13 @@ pub struct Profile {
     pub enabled: bool,
     pub pinned: bool,
     pub sort: i64,
+    /// Claude: inject ADE's status line (usage limits). Off = hooks only, the user's status line untouched.
+    #[serde(default = "yes")]
+    pub statusline: bool,
+}
+
+fn yes() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

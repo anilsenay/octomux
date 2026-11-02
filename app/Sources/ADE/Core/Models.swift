@@ -47,11 +47,35 @@ struct Profile: Codable, Identifiable, Equatable {
     var enabled: Bool
     var pinned: Bool
     var sort: Int
+    var statusline: Bool = true
 
     enum CodingKeys: String, CodingKey {
-        case id, name, icon, kind, command, args, env, enabled, pinned, sort
+        case id, name, icon, kind, command, args, env, enabled, pinned, sort, statusline
         case viaLoginShell = "via_login_shell"
         case resumeTemplate = "resume_template"
+    }
+
+    init(id: String, name: String, icon: String, kind: AgentKind, command: String, args: [String], env: [String: String],
+         viaLoginShell: Bool, resumeTemplate: String, enabled: Bool, pinned: Bool, sort: Int, statusline: Bool = true) {
+        (self.id, self.name, self.icon, self.kind, self.command, self.args, self.env) = (id, name, icon, kind, command, args, env)
+        (self.viaLoginShell, self.resumeTemplate, self.enabled, self.pinned, self.sort, self.statusline) = (viaLoginShell, resumeTemplate, enabled, pinned, sort, statusline)
+    }
+
+    init(from d: Decoder) throws {
+        let c = try d.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        icon = try c.decode(String.self, forKey: .icon)
+        kind = try c.decode(AgentKind.self, forKey: .kind)
+        command = try c.decode(String.self, forKey: .command)
+        args = try c.decodeIfPresent([String].self, forKey: .args) ?? []
+        env = try c.decodeIfPresent([String: String].self, forKey: .env) ?? [:]
+        viaLoginShell = try c.decodeIfPresent(Bool.self, forKey: .viaLoginShell) ?? true
+        resumeTemplate = try c.decodeIfPresent(String.self, forKey: .resumeTemplate) ?? ""
+        enabled = try c.decode(Bool.self, forKey: .enabled)
+        pinned = try c.decode(Bool.self, forKey: .pinned)
+        sort = try c.decode(Int.self, forKey: .sort)
+        statusline = try c.decodeIfPresent(Bool.self, forKey: .statusline) ?? true
     }
 }
 

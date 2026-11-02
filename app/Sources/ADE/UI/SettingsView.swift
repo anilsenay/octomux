@@ -287,6 +287,9 @@ struct ProfileEditor: View {
                     TextEditor(text: $envText).font(.system(.body, design: .monospaced)).frame(height: 60)
                 }
                 Toggle("Run through my login shell (aliases, PATH)", isOn: $profile.viaLoginShell)
+                if profile.kind == .claude {
+                    Toggle("Read usage limits through Claude's status line (runs your own status line too)", isOn: $profile.statusline)
+                }
                 if !profile.id.isEmpty {
                     Toggle("Always show usage limits in the status bar", isOn: Binding(
                         get: { AppModel.shared.usageAlwaysShown(profile.id) },
@@ -298,14 +301,15 @@ struct ProfileEditor: View {
             }
             HStack {
                 if !profile.id.isEmpty {
-                    Button("Delete", role: .destructive) {
+                    Button(role: .destructive) {
                         model.client.call("profile.delete", ["id": profile.id], completion: model.report)
                         done()
-                    }
+                    } label: { Text("Delete").foregroundStyle(T.red) }
+                    .buttonStyle(SecondaryButtonStyle())
                 }
                 Spacer()
-                Button("Cancel") { done() }.keyboardShortcut(.cancelAction)
-                Button("Save") { save() }.keyboardShortcut(.defaultAction).disabled(profile.command.isEmpty)
+                Button("Cancel") { done() }.buttonStyle(SecondaryButtonStyle()).keyboardShortcut(.cancelAction)
+                Button("Save") { save() }.buttonStyle(PrimaryButtonStyle()).keyboardShortcut(.defaultAction).disabled(profile.command.isEmpty)
             }
         }
         .padding(20)
@@ -334,6 +338,7 @@ struct ProfileEditor: View {
             "name": profile.name, "kind": profile.kind.rawValue, "icon": profile.icon, "command": profile.command,
             "args": ShellWords.split(argsText), "env": env, "via_login_shell": profile.viaLoginShell,
             "resume_template": profile.resumeTemplate, "enabled": profile.enabled, "pinned": profile.pinned,
+            "statusline": profile.statusline,
         ]
         if profile.id.isEmpty {
             model.client.call("profile.create", params, completion: model.report)
