@@ -96,9 +96,7 @@ defaults delete dev.ade-dev.app 2>/dev/null                 # UI selection state
 
 ## Known gaps (MVP)
 
-- No scrollback replay after an app restart: the screen comes back exactly, but
-  lines that had scrolled off before the app quit are not re-sent (the daemon
-  keeps them; the snapshot only sends the visible screen). See DECISIONS D1.
+- Scrollback replayed on attach is capped at 3000 lines per session (the daemon keeps 5000).
 - Plain terminal sessions are restored after a reboot as a fresh shell in the
   same directory (by design, SPEC §4); only agents resume.
 - Notifications are posted by the app; while the app is fully quit, sessions

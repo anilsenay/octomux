@@ -23,6 +23,8 @@ pub struct HolderArgs {
 }
 
 const SCROLLBACK: usize = 5000;
+/// Scrollback lines replayed to a client on attach.
+const HISTORY_REPLAY: usize = 3000;
 
 /// vt100 callbacks collecting the side-channel events we care about.
 #[derive(Default)]
@@ -165,6 +167,40 @@ pub fn snapshot_bytes(screen: &vt100::Screen, title: &str, main: Option<&[u8]>) 
     let mut out = Vec::new();
     // Reset attributes and clear, so a recycled terminal starts clean.
     out.extend_from_slice(b"\x1b[0m\x1b[H\x1b[2J");
+    write_screen(&mut out, screen, title, main);
+    out
+}
+
+/// Like [`snapshot_bytes`], but first replays up to `max_history` scrollback lines so
+/// they land in the client's own scrollback (main screen only).
+pub fn snapshot_with_history(screen: &mut vt100::Screen, title: &str, main: Option<&[u8]>, max_history: usize) -> Vec<u8> {
+    let mut out = Vec::new();
+    out.extend_from_slice(b"\x1b[0m\x1b[H\x1b[2J");
+    if !screen.alternate_screen() && max_history > 0 {
+        let (rows, cols) = screen.size();
+        screen.set_scrollback(usize::MAX);
+        let total = screen.scrollback();
+        if total > 0 {
+            for i in total.saturating_sub(max_history)..total {
+                screen.set_scrollback(total - i);
+                if let Some(row) = screen.rows_formatted(0, cols).next() {
+                    out.extend_from_slice(&row);
+                }
+                out.extend_from_slice(b"\x1b[0m\r\n");
+            }
+            // Push the replayed lines off the visible area before drawing the screen.
+            for _ in 0..rows {
+                out.extend_from_slice(b"\r\n");
+            }
+            out.extend_from_slice(b"\x1b[H\x1b[2J");
+        }
+        screen.set_scrollback(0);
+    }
+    write_screen(&mut out, screen, title, main);
+    out
+}
+
+fn write_screen(out: &mut Vec<u8>, screen: &vt100::Screen, title: &str, main: Option<&[u8]>) {
     if screen.alternate_screen() {
         if let Some(m) = main {
             out.extend_from_slice(m);
@@ -178,7 +214,6 @@ pub fn snapshot_bytes(screen: &vt100::Screen, title: &str, main: Option<&[u8]>) 
     if !title.is_empty() {
         out.extend_from_slice(format!("\x1b]2;{title}\x07").as_bytes());
     }
-    out
 }
 
 struct Client {
@@ -496,7 +531,8 @@ fn serve_client(shared: Arc<Shared>, stream: UnixStream) -> Result<()> {
                 inner = shared.inner.lock().unwrap();
             }
             let title = inner.parser.callbacks().title.clone();
-            let snap = snapshot_bytes(inner.parser.screen(), &title, inner.main_snapshot.as_deref());
+            let main = inner.main_snapshot.clone();
+            let snap = snapshot_with_history(inner.parser.screen_mut(), &title, main.as_deref(), HISTORY_REPLAY);
             let _ = tx.send(Frame::new(Kind::Snapshot, snap).encode());
         }
         if let Some(exit) = inner.exited.clone() {
@@ -623,6 +659,23 @@ mod tests {
         assert_eq!(a.screen().contents(), b.screen().contents());
         assert_eq!(a.screen().cursor_position(), b.screen().cursor_position());
         assert_eq!(a.screen().cell(0, 0).unwrap().fgcolor(), b.screen().cell(0, 0).unwrap().fgcolor());
+    }
+
+    #[test]
+    fn snapshot_replays_scrollback() {
+        let mut a = vt100::Parser::new(10, 40, 1000);
+        for i in 0..50 {
+            a.process(format!("line {i}\r\n").as_bytes());
+        }
+        let snap = snapshot_with_history(a.screen_mut(), "", None, 3000);
+        assert_eq!(a.screen().scrollback(), 0, "view restored");
+        let mut b = vt100::Parser::new(10, 40, 1000);
+        b.process(&snap);
+        assert_eq!(a.screen().contents(), b.screen().contents());
+        b.screen_mut().set_scrollback(usize::MAX);
+        assert!(b.screen().scrollback() >= 41, "history replayed: {}", b.screen().scrollback());
+        let top = b.screen().contents();
+        assert!(top.starts_with("line 0\n"), "{top}");
     }
 
     #[test]

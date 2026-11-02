@@ -396,12 +396,13 @@ final class TerminalSurfaceView: NSView, NSTextInputClient {
     // MARK: Text access (debug + copy)
 
     /// Visible screen text, read from libghostty (what the user actually sees).
-    func visibleText() -> String {
+    func visibleText(includeScrollback: Bool = false) -> String {
         guard let surface else { return "" }
         var text = ghostty_text_s()
+        let tag = includeScrollback ? GHOSTTY_POINT_SCREEN : GHOSTTY_POINT_VIEWPORT
         let sel = ghostty_selection_s(
-            top_left: ghostty_point_s(tag: GHOSTTY_POINT_VIEWPORT, coord: GHOSTTY_POINT_COORD_TOP_LEFT, x: 0, y: 0),
-            bottom_right: ghostty_point_s(tag: GHOSTTY_POINT_VIEWPORT, coord: GHOSTTY_POINT_COORD_BOTTOM_RIGHT, x: 0, y: 0),
+            top_left: ghostty_point_s(tag: tag, coord: GHOSTTY_POINT_COORD_TOP_LEFT, x: 0, y: 0),
+            bottom_right: ghostty_point_s(tag: tag, coord: GHOSTTY_POINT_COORD_BOTTOM_RIGHT, x: 0, y: 0),
             rectangle: false)
         guard ghostty_surface_read_text(surface, sel, &text) else { return "" }
         defer { ghostty_surface_free_text(surface, &text) }

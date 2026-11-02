@@ -132,7 +132,7 @@ final class DebugServer {
         }
         register("terminal_text") { p in
             guard let id = p["session_id"] as? String, let v = TerminalRegistry.shared.view(for: id) else { throw DebugError.bad("no terminal") }
-            return v.visibleText()
+            return v.visibleText(includeScrollback: (p["scrollback"] as? Bool) ?? false)
         }
         register("terminal_type") { p in
             guard let id = p["session_id"] as? String, let text = p["text"] as? String,
