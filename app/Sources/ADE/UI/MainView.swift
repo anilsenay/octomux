@@ -809,7 +809,9 @@ struct UsageStatus: View {
                             ForEach(compact ? Array(readings.prefix(1)) : readings) { r in
                                 if !compact { Text(r.shortName).foregroundStyle(T.text3) }
                                 UsageMeter(percent: r.effectivePercent, primary: r.window == "five_hour").frame(width: compact ? 30 : 44)
-                                Text(r.isReset ? "0%" : "\(Int(r.usedPercent.rounded()))%").font(T.mono(11))
+                                // After the window resets the old reading says nothing: "—" until a new one arrives.
+                                Text(r.isReset ? "—" : "\(Int(r.usedPercent.rounded()))%").font(T.mono(11))
+                                    .foregroundStyle(r.isReset ? T.text3 : T.text)
                             }
                         }
                     }
@@ -819,7 +821,9 @@ struct UsageStatus: View {
             .buttonStyle(.plain)
             .fixedSize()
             .hoverHighlight(radius: 5, padding: 3)
-            .help("Usage limits — click for details")
+            .help(shown.contains { $0.1.contains(where: \.isReset) }
+                  ? "Usage limits — “—” means the window reset and no newer reading came in yet (readings arrive when a Claude session started in ADE finishes a turn). Click for details"
+                  : "Usage limits — click for details")
             .popover(isPresented: open, arrowEdge: .top) { UsagePopover().environmentObject(model) }
         }
     }
@@ -855,6 +859,8 @@ struct UsagePopover: View {
                     .buttonStyle(ChromeButtonStyle())
                     .help("Refresh now (Codex is re-read; Claude updates with its next status line)")
             }
+            Text("Readings come from Claude and Codex sessions started in ADE: Claude reports with each turn, Codex is re-read on refresh. Usage from Claude running elsewhere (another terminal, the desktop app) shows up only after the next turn here.")
+                .font(T.caption).foregroundStyle(T.text3).fixedSize(horizontal: false, vertical: true)
             let profiles = model.enabledProfiles.filter { p in model.state.usage.contains { $0.profileId == p.id } }
             if profiles.isEmpty {
                 Text("No readings yet. They arrive while a Claude or Codex session runs.").font(T.body).foregroundStyle(T.text2)
@@ -873,7 +879,8 @@ struct UsagePopover: View {
                             HStack {
                                 Text(r.longName).font(T.body).foregroundStyle(T.text2)
                                 Spacer()
-                                Text(r.isReset ? "reset" : "\(Int(r.usedPercent.rounded()))%").font(T.mono(12, .semibold)).foregroundStyle(T.text)
+                                Text(r.isReset ? "no reading since reset" : "\(Int(r.usedPercent.rounded()))%")
+                                    .font(r.isReset ? T.caption : T.mono(12, .semibold)).foregroundStyle(r.isReset ? T.text3 : T.text)
                             }
                             UsageMeter(percent: r.effectivePercent, primary: r.window == "five_hour")
                             HStack {
