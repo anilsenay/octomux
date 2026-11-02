@@ -26,5 +26,6 @@ let package = Package(
                 .linkedLibrary("c++"),
             ]
         ),
+        .testTarget(name: "ADETests", dependencies: ["ADE"], path: "Tests/ADETests"),
     ]
 )

@@ -38,7 +38,8 @@ tools/build-app.sh            # release
 tools/build-app.sh debug      # faster, debug
 
 # Tests (Rust core: unit + 17 end-to-end tests over real PTYs)
-(cd core && cargo test)
+(cd core && cargo test          # core: unit + integration
+cd app && swift test           # app logic: palette, shortcuts, worktrees, chat parsing, usage)
 ```
 
 ## Run

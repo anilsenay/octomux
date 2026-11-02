@@ -75,6 +75,17 @@ final class ChatModel: ObservableObject {
         if next != items { items = next }
     }
 
+    /// Parses complete JSONL lines (used by `poll`; exposed for tests).
+    func feed(_ data: Data) {
+        partial.append(data)
+        var next = items
+        while let nl = partial.firstIndex(of: 0x0A) {
+            ingest(partial.subdata(in: partial.startIndex..<nl), into: &next)
+            partial.removeSubrange(partial.startIndex...nl)
+        }
+        if next != items { items = next }
+    }
+
     private func newId() -> String { seq += 1; return "c\(seq)" }
 
     private func ingest(_ line: Data, into out: inout [ChatItem]) {
