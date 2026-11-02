@@ -98,6 +98,11 @@ enum DebugActions {
             case "attach_host": m.setAttached(p["value"] as? String ?? "", (p["on"] as? Bool) ?? true)
             case "add_project_path":
                 if let ws = m.selectedWorkspaceId, let path = p["value"] as? String { m.addProject(path: path, workspaceId: ws) }
+            case "add_project_on_host":
+                if let ws = m.selectedWorkspaceId, let h = p["host"] as? String, let path = p["value"] as? String {
+                    m.addProject(path: path, onExtraHost: h, workspaceId: ws)
+                }
+            case "move_project": if let id, let ws = p["value"] as? String { m.moveProject(id, toWorkspace: ws) }
             case "toggle_chat": m.toggleChat(id)
             case "chat_send": if let id { m.sendToSession(id, text: p["value"] as? String ?? "") }
             case "usage_popover": m.usagePopoverOpen = (p["value"] as? Bool) ?? true

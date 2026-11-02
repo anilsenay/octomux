@@ -12,8 +12,19 @@ struct SidebarView: View {
             HStack {
                 SectionLabel("Projects")
                 Spacer()
-                Button { model.addProject() } label: { Image(systemName: "plus").font(.system(size: 10.5, weight: .semibold)) }
-                    .buttonStyle(.plain).foregroundStyle(T.text3).help("Add Project (⌘⇧O)")
+                if model.extraHosts.isEmpty {
+                    Button { model.addProject() } label: { Image(systemName: "plus").font(.system(size: 10.5, weight: .semibold)) }
+                        .buttonStyle(.plain).foregroundStyle(T.text3).help("Add Project (⌘⇧O)")
+                } else {
+                    Menu {
+                        Button("On \(model.host.name)…") { model.addProject() }
+                        ForEach(model.extraHosts) { h in
+                            Button("On \(h.name)…") { model.addProject(onHost: h.id) }
+                        }
+                    } label: { Image(systemName: "plus").font(.system(size: 10.5, weight: .semibold)) }
+                        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                        .foregroundStyle(T.text3).help("Add Project")
+                }
             }
             .padding(.horizontal, 18).padding(.top, 10).padding(.bottom, 4)
             ScrollView {
@@ -323,14 +334,16 @@ struct ProjectMenu: View {
             }
         }
         Divider()
-        Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: project.path)]) }
-        OpenInMenu(path: project.path)
+        if !model.host(for: project.id).isRemote {
+            Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: project.path)]) }
+            OpenInMenu(path: project.path)
+        }
         Button("Copy Path") { copy(project.path) }
         Divider()
         if model.state.workspaces.count > 1 {
             Menu("Move to Workspace") {
                 ForEach(model.state.workspaces.filter { $0.id != project.workspaceId }) { w in
-                    Button(w.name) { model.updateProject(project.id, ["workspace_id": w.id]) }
+                    Button(w.name) { model.moveProject(project.id, toWorkspace: w.id) }
                 }
             }
         }

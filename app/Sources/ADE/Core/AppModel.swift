@@ -123,6 +123,22 @@ final class AppModel: ObservableObject {
         publish()
     }
 
+    /// Hosts merged into this window besides the current one.
+    var extraHosts: [Host] { extraClients.values.map(\.host).sorted { $0.name < $1.name } }
+
+    /// Moves a project to a workspace of this window. A project of an extra host keeps its own
+    /// workspace on that host; the assignment is remembered here (D14).
+    func moveProject(_ id: String, toWorkspace ws: String) {
+        if owner[id] != nil {
+            var m = HostStore.projectWorkspace
+            m[id] = ws
+            HostStore.projectWorkspace = m
+            publish()
+        } else {
+            updateProject(id, ["workspace_id": ws])
+        }
+    }
+
     func setAttached(_ hostId: String, _ on: Bool) {
         var a = HostStore.attached.filter { $0 != hostId }
         if on { a.append(hostId) }
@@ -137,9 +153,14 @@ final class AppModel: ObservableObject {
         var own: [String: String] = [:]
         for (hid, st) in extraStates where extraClients[hid] != nil {
             let names = Dictionary(st.workspaces.map { ($0.id, $0.name) }, uniquingKeysWith: { a, _ in a })
+            let pinned = HostStore.projectWorkspace
             for var p in st.projects {
                 let wsName = names[p.workspaceId]
-                p.workspaceId = s.workspaces.first(where: { $0.name == wsName })?.id ?? s.workspaces.first?.id ?? p.workspaceId
+                if let w = pinned[p.id], s.workspaces.contains(where: { $0.id == w }) {
+                    p.workspaceId = w
+                } else {
+                    p.workspaceId = s.workspaces.first(where: { $0.name == wsName })?.id ?? s.workspaces.first?.id ?? p.workspaceId
+                }
                 s.projects.append(p); own[p.id] = hid
             }
             for x in st.sessions { s.sessions.append(x); own[x.id] = hid }
@@ -175,6 +196,10 @@ final class AppModel: ObservableObject {
         }
         if let tab = activeTab, focusedSessionId == nil || !tab.layout.sessions.contains(focusedSessionId!) {
             focusedSessionId = tab.activeSessionId ?? tab.layout.sessions.first
+        }
+        if let p = pendingSelect, s.projects.contains(where: { $0.id == p }) {
+            pendingSelect = nil
+            DispatchQueue.main.async { self.selectProject(p) }
         }
         Notifier.shared.updateBadge(state: s)
         ThemeStore.shared.sync(from: self)
@@ -419,8 +444,13 @@ final class AppModel: ObservableObject {
         syncExtraHosts()
     }
 
-    func addProject() {
+    func addProject(onHost hostId: String? = nil) {
         guard let ws = selectedWorkspaceId else { return }
+        if let hid = hostId, hid != client.host.id, let c = extraClients[hid] {
+            guard let path = askRemotePath(c.host) else { return }
+            addProject(path: path, onExtraHost: hid, workspaceId: ws)
+            return
+        }
         if host.isRemote {
             // No file browser for the other machine: ask for the path.
             let a = NSAlert()
@@ -443,6 +473,44 @@ final class AppModel: ObservableObject {
         guard panel.runModal() == .OK else { return }
         for url in panel.urls { addProject(path: url.path, workspaceId: ws) }
     }
+
+    private func askRemotePath(_ h: Host) -> String? {
+        let a = NSAlert()
+        a.messageText = "Add a project on \(h.name)"
+        a.informativeText = "Folder path on that host (~ works)."
+        let tf = NSTextField(string: "~/")
+        tf.frame = NSRect(x: 0, y: 0, width: 320, height: 24)
+        a.accessoryView = tf
+        a.addButton(withTitle: "Add")
+        a.addButton(withTitle: "Cancel")
+        a.window.initialFirstResponder = tf
+        guard a.runModal() == .alertFirstButtonReturn, !tf.stringValue.isEmpty else { return nil }
+        return tf.stringValue
+    }
+
+    /// Creates a project on an extra host (in its workspace with the same name, else its first one) and
+    /// assigns it to `workspaceId` of this window.
+    func addProject(path: String, onExtraHost hid: String, workspaceId: String) {
+        guard let c = extraClients[hid] else { return }
+        let wsName = state.workspaces.first { $0.id == workspaceId }?.name
+        let remote = extraStates[hid]?.workspaces ?? []
+        guard let rws = remote.first(where: { $0.name == wsName })?.id ?? remote.first?.id else {
+            lastError = "\(c.host.name) has no workspace yet."
+            return
+        }
+        c.call("project.create", ["workspace_id": rws, "path": path]) { [weak self] r in
+            if case .success(let v) = r, let id = (v as? [String: Any])?["id"] as? String {
+                var m = HostStore.projectWorkspace
+                m[id] = workspaceId
+                HostStore.projectWorkspace = m
+                self?.pendingSelect = id
+            }
+            self?.report(r)
+        }
+    }
+
+    /// Project to select once it shows up in merged state (created on an extra host).
+    private var pendingSelect: String?
 
     func addProject(path: String, workspaceId: String) {
         client.call("project.create", ["workspace_id": workspaceId, "path": path]) { [weak self] r in

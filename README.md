@@ -130,7 +130,12 @@ runs: same process, same login. Turn it off in Settings → Features.
    launchd there; run `ade daemon` under systemd if you want it to survive server reboots).
 
 With Settings → Features → "Hosts side by side", remote hosts marked "Show here" (Settings → Hosts) appear next to
-this Mac's projects, in the workspace with the same name.
+this Mac's projects, in the workspace with the same name. Move one with right-click → Move to Workspace (remembered
+in this app; the host keeps its own layout). The Projects **+** then asks which host the new project lives on.
+
+SSH hosts share one connection per host (control link, panes, git and file reads): OpenSSH `ControlMaster` with
+the socket in `/tmp/ade-ssh-<uid>/`, kept 10 minutes after the last use. If your ssh options set `ControlMaster`
+or `ControlPath` yourself, ADE leaves multiplexing to them.
 
 Custom command hosts take any prefix that reaches the other side, e.g. `docker exec -i <container>` (with
 pane prefix `docker exec -it <container>`).

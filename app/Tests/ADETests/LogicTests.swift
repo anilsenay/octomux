@@ -108,3 +108,24 @@ final class UsageTests: XCTestCase {
         XCTAssertEqual(future.shortName, "week")
     }
 }
+
+final class HostTests: XCTestCase {
+    func testSSHSharesOneConnection() {
+        let h = Host(id: "b", name: "box", kind: "ssh", target: "me@box")
+        let argv = h.controlArgv!
+        XCTAssertTrue(argv.contains("ControlMaster=auto"))
+        XCTAssertTrue(argv.contains("ControlPath=\(Host.muxDir)/%C"))
+        XCTAssertTrue(h.attachCommand("s1").contains("ControlPath="))
+        XCTAssertEqual(argv.suffix(3), ["me@box", "ade", "stdio"])
+    }
+
+    func testUserMultiplexingWins() {
+        let h = Host(id: "b", name: "box", kind: "ssh", target: "me@box", sshOptions: "-o ControlPath=~/.ssh/cm-%C")
+        XCTAssertFalse(h.controlArgv!.contains("ControlMaster=auto"))
+    }
+
+    func testCommandHostHasNoMux() {
+        let h = Host(id: "c", name: "c", kind: "command", prefix: "docker exec -i x")
+        XCTAssertFalse(h.controlArgv!.joined(separator: " ").contains("ControlMaster"))
+    }
+}
