@@ -715,13 +715,19 @@ impl Daemon {
             }
             "profile.detect" => {
                 let path = self.login_path.lock().unwrap().clone().or_else(agents::login_shell_path).unwrap_or_default();
-                let found: Vec<Value> = agents::KNOWN_AGENTS
+                let mut found: Vec<Value> = agents::KNOWN_AGENTS
                     .iter()
                     .map(|(cmd, icon, kind)| {
                         let at = agents::which(cmd, &path);
                         json!({ "command": cmd, "icon": icon, "kind": kind, "installed": at.is_some(), "path": at })
                     })
                     .collect();
+                // Shell aliases that start an agent, e.g. a second Claude account.
+                for (name, value) in agents::login_aliases() {
+                    if let Some((kind, icon)) = agents::alias_agent(&value) {
+                        found.push(json!({ "command": name, "icon": icon, "kind": kind, "installed": true, "path": format!("alias: {value}"), "alias": true }));
+                    }
+                }
                 Ok(json!(found))
             }
             "profile.check" => {

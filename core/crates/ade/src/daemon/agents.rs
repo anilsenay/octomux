@@ -48,6 +48,24 @@ pub fn claude_config_dir(profile: &Profile) -> PathBuf {
         .unwrap_or_else(|| util::home_dir().join(".claude"))
 }
 
+/// Config dirs that may hold this profile's transcripts: the profile's own
+/// CLAUDE_CONFIG_DIR, `~/.claude`, and any `~/.claude-*` directory.
+pub fn claude_config_candidates(profile: &Profile) -> Vec<PathBuf> {
+    let mut v = vec![claude_config_dir(profile)];
+    let home = util::home_dir();
+    v.push(home.join(".claude"));
+    if let Ok(rd) = std::fs::read_dir(&home) {
+        for e in rd.flatten() {
+            let name = e.file_name().to_string_lossy().into_owned();
+            if name.starts_with(".claude-") && e.path().is_dir() {
+                v.push(e.path());
+            }
+        }
+    }
+    v.dedup();
+    v
+}
+
 /// Does Claude have a transcript for this conversation id?
 pub fn claude_transcript_exists(config_dir: &Path, id: &str) -> bool {
     let projects = config_dir.join("projects");
@@ -165,8 +183,9 @@ pub fn build_launch(paths: &Paths, session: &Session, profile: Option<&Profile>,
             match profile.kind {
                 AgentKind::Claude => {
                     let id = agent_id.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-                    let cfg = claude_config_dir(profile);
-                    if claude_transcript_exists(&cfg, &id) {
+                    // The profile may set CLAUDE_CONFIG_DIR through an alias or wrapper we
+                    // cannot see, so look in every likely config dir.
+                    if claude_config_candidates(profile).iter().any(|cfg| claude_transcript_exists(cfg, &id)) {
                         args.extend(["--resume".into(), id.clone()]);
                     } else {
                         args.extend(["--session-id".into(), id.clone()]);
@@ -255,6 +274,40 @@ pub const KNOWN_AGENTS: &[(&str, &str, AgentKind)] = &[
     ("copilot", "copilot", AgentKind::Generic),
 ];
 
+/// Aliases defined in the user's interactive login shell (`name -> value`).
+pub fn login_aliases() -> Vec<(String, String)> {
+    let Ok(out) = std::process::Command::new(util::user_shell())
+        .args(["-l", "-i", "-c", "alias"])
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output()
+    else {
+        return vec![];
+    };
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter_map(|l| {
+            let l = l.strip_prefix("alias ").unwrap_or(l);
+            let (k, v) = l.split_once('=')?;
+            let v = v.trim().trim_matches('\'').trim_matches('"').to_string();
+            Some((k.trim().to_string(), v))
+        })
+        .collect()
+}
+
+/// Which agent an alias launches, if any (e.g. `claude-work='CLAUDE_CONFIG_DIR=… claude'`).
+pub fn alias_agent(value: &str) -> Option<(AgentKind, &'static str)> {
+    let words: Vec<&str> = value.split_whitespace().filter(|w| !w.contains('=')).collect();
+    let cmd = words.first()?.rsplit('/').next()?;
+    match cmd {
+        "claude" => Some((AgentKind::Claude, "claude")),
+        "codex" => Some((AgentKind::Codex, "codex")),
+        "gemini" => Some((AgentKind::Generic, "gemini")),
+        "amp" | "opencode" | "cursor-agent" | "kiro-cli" | "agy" | "copilot" => Some((AgentKind::Generic, "agent")),
+        _ => None,
+    }
+}
+
 /// PATH as seen by the user's login shell (launchd gives daemons a minimal PATH).
 pub fn login_shell_path() -> Option<String> {
     let out = std::process::Command::new(util::user_shell())
@@ -287,6 +340,13 @@ mod tests {
             ["--model", "opus", "--resume", "abc", "-c", "--session-id=x", "--dangerously-skip-permissions"].iter().map(|s| s.to_string()).collect();
         assert_eq!(strip_session_flags(&args, AgentKind::Claude), vec!["--model", "opus", "--dangerously-skip-permissions"]);
         assert_eq!(strip_session_flags(&args, AgentKind::Generic), args);
+    }
+
+    #[test]
+    fn alias_detection() {
+        assert_eq!(alias_agent("CLAUDE_CONFIG_DIR=~/.claude-work claude").map(|a| a.0), Some(AgentKind::Claude));
+        assert_eq!(alias_agent("/opt/homebrew/bin/codex --full-auto").map(|a| a.0), Some(AgentKind::Codex));
+        assert_eq!(alias_agent("ls -la"), None);
     }
 
     #[test]

@@ -91,6 +91,17 @@ struct Session: Codable, Identifiable, Equatable {
 
     var displayTitle: String {
         if !customTitle.isEmpty { return customTitle }
+        if kind == .terminal {
+            // Shells usually report a (truncated) path: show the folder name instead.
+            var t = title.trimmingCharacters(in: .whitespaces)
+            if let colon = t.range(of: ": "), t[..<colon.lowerBound].contains("@") { t = String(t[colon.upperBound...]) }
+            while t.hasPrefix(".") { t.removeFirst() }
+            if t.hasPrefix("/") || t.hasPrefix("~") || (t.contains("/") && !t.contains(" ")) {
+                let last = (t as NSString).lastPathComponent
+                t = last.isEmpty || last == "~" ? "~" : last
+            }
+            return t.isEmpty ? "Terminal" : t
+        }
         return title.isEmpty ? "Session" : title
     }
 
