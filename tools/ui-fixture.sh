@@ -15,7 +15,10 @@ for name in new-ade cimri-web dotfiles; do
   printf 'fn main() {}\n' > src/main.rs; printf '# %s\n' "$name" > README.md
   git add -A; git -c user.email=t@t -c user.name=t commit -qm init
 done
-cd $P/new-ade && printf 'fn main() { println!("hi"); }\n// more\n' > src/main.rs && printf 'new\n' > src/usage.rs
+cd $P/new-ade && for m in "holder: replay main screen before alt screen" "daemon: login shell PATH probe" "ui: theme presets"; do
+  printf '%s\n' "$m" >> CHANGELOG.md; git add -A; git -c user.email=dev@ade -c user.name="Ada Dev" commit -qm "$m"; done
+mkdir -p src/ui && printf 'struct Theme {}\n' > src/ui/theme.swift && git add -A && git -c user.email=dev@ade -c user.name="Ada Dev" commit -qm "ui: tokens"
+printf 'fn main() { println!("hi"); }\n// more\n' > src/main.rs && printf 'new\n' > src/usage.rs
 cd $P/cimri-web && git checkout -qb dev
 j() { "$ADE" ctl "$@"; }
 ws=$(j state.get | python3 -c 'import sys,json; print(json.load(sys.stdin)["workspaces"][0]["id"])')

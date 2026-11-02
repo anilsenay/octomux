@@ -80,6 +80,11 @@ enum DebugActions {
                     for s in m.state.sessions where s.worktree == path { m.remove(s.id, confirm: false) }
                     _ = Worktrees.remove(project: proj.path, path: path, force: true)
                 }
+            case "right_tab":
+                UserDefaults.standard.set(p["value"] as? String ?? "Changes", forKey: "ade.rightTab")
+                m.rightPanelVisible = true
+            case "panel_select":
+                NotificationCenter.default.post(name: .adeDebugPanel, object: nil, userInfo: p["info"] as? [String: Any] ?? [:])
             case "usage_popover": m.usagePopoverOpen = (p["value"] as? Bool) ?? true
             case "palette_run":
                 // Runs the top result for `value`, like typing it and pressing Return.

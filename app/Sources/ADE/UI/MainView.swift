@@ -32,7 +32,7 @@ struct MainView: View {
             .frame(minWidth: 0, maxWidth: .infinity)
             if model.rightPanelVisible {
                 if flat { Hairline(vertical: true) }
-                ChangesPanel()
+                RightPanel()
                     .frame(width: 320)
                     .background(T.surface)
                     .clipShape(RoundedRectangle(cornerRadius: m.cardR, style: .continuous))
@@ -164,7 +164,7 @@ struct TopBar: View {
                         .buttonStyle(ChromeButtonStyle()).help("Split Down (⌘⇧D)")
                 }
                 Button { model.rightPanelVisible.toggle() } label: { Image(systemName: "sidebar.right") }
-                    .buttonStyle(ChromeButtonStyle(active: model.rightPanelVisible)).help("Changes panel (⌘⌥B)")
+                    .buttonStyle(ChromeButtonStyle(active: model.rightPanelVisible)).help("Changes / History / Files (⌘⌥B)")
                 if let s = model.session(model.focusedSessionId) {
                     Menu {
                         SessionMenu(session: s)

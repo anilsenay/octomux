@@ -114,8 +114,7 @@ struct ChangesPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
-                Text("Changes").font(T.headline)
-                if !changes.changes.isEmpty { Badge(text: "\(changes.changes.count)", color: T.accent) }
+                Text(changes.changes.isEmpty ? "No changes" : "\(changes.changes.count) changed").font(.system(size: 12, weight: .semibold)).foregroundStyle(T.text2)
                 if let wp = model.currentWorkPath, wp != model.currentProject?.path, let b = GitInfo.shared.branch(for: wp) {
                     HStack(spacing: 4) {
                         Image(systemName: "arrow.triangle.branch").font(.system(size: 9.5))
@@ -126,7 +125,7 @@ struct ChangesPanel: View {
                 Spacer()
                 Button { changes.refresh() } label: { Image(systemName: "arrow.clockwise").font(.system(size: 11)) }.buttonStyle(ChromeButtonStyle())
             }
-            .padding(.leading, 14).padding(.trailing, 8).frame(height: 40)
+            .padding(.leading, 14).padding(.trailing, 8).frame(height: 32)
             Hairline()
             if !changes.isRepo {
                 VStack(spacing: 8) {
@@ -192,6 +191,7 @@ struct DiffView: View {
                 ForEach(Array(text.split(separator: "\n", omittingEmptySubsequences: false).enumerated()), id: \.offset) { _, line in
                     let s = String(line)
                     Text(s.isEmpty ? " " : s)
+                        .fixedSize(horizontal: true, vertical: false)
                         .font(T.mono(11.5))
                         .foregroundStyle(s.hasPrefix("@@") ? T.blue : s.hasPrefix("+") && !s.hasPrefix("+++") ? T.green : s.hasPrefix("-") && !s.hasPrefix("---") ? T.red : T.text2)
                         .frame(maxWidth: .infinity, alignment: .leading)
