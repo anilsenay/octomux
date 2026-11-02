@@ -142,6 +142,16 @@ final class TerminalHost {
         }
     }
 
+    /// Repaints pane backgrounds (workspace tint changed).
+    func refreshPaneBackgrounds() {
+        func walk(_ v: NSView) {
+            if let p = v as? PaneView { p.needsDisplay = true }
+            for s in v.subviews where !(s is TerminalSurfaceView) { walk(s) }
+        }
+        walk(container)
+        walk(dockContainer)
+    }
+
     /// Accent border on the focused pane when a tab shows more than one pane.
     func updateFocusRings(_ focusedId: String?) {
         func walk(_ v: NSView, _ out: inout [PaneView]) {
@@ -236,7 +246,8 @@ final class PaneView: NSView {
         layer.cornerRadius = m.cardR
         layer.borderWidth = m.cardR > 0 ? 1 : 0
         effectiveAppearance.performAsCurrentDrawingAppearance {
-            layer.backgroundColor = m.glass ? NSColor.clear.cgColor : T.ns(\.surface).cgColor
+            let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            layer.backgroundColor = m.glass ? NSColor.clear.cgColor : WorkspaceTint.canvas(dark: dark).cgColor
             layer.borderColor = (focused ? T.ns(\.accent).withAlphaComponent(0.55) : T.ns(\.border)).cgColor
         }
     }

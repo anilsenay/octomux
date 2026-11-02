@@ -10,7 +10,12 @@ final class AppModel: ObservableObject {
     let client = DaemonClient()
     @Published private(set) var state = DaemonState()
     @Published var connected = false
-    @Published var selectedWorkspaceId: String? { didSet { saveSelection() } }
+    @Published var selectedWorkspaceId: String? {
+        didSet {
+            saveSelection()
+            if oldValue != selectedWorkspaceId { DispatchQueue.main.async { self.workspaceTintChanged() } }
+        }
+    }
     @Published var selectedProjectId: String? { didSet { saveSelection() } }
     @Published var activeTabId: String? { didSet { saveSelection() } }
     @Published var focusedSessionId: String?
@@ -220,6 +225,7 @@ final class AppModel: ObservableObject {
         }
         Notifier.shared.updateBadge(state: s)
         ThemeStore.shared.sync(from: self)
+        if s.workspaces.first(where: { $0.id == selectedWorkspaceId })?.color != lastTintColor { workspaceTintChanged() }
         KeyBindings.shared.sync(from: self)
         TerminalHost.shared.reconcile(with: s)
     }
@@ -656,6 +662,14 @@ final class AppModel: ObservableObject {
     }
 
     func deleteWorkspace(_ id: String) { client.call("workspace.delete", ["id": id], completion: report) }
+
+    /// Terminal backgrounds follow the workspace color (theme.conf + pane layers).
+    private var lastTintColor: String?
+    func workspaceTintChanged() {
+        lastTintColor = workspace?.color
+        ThemeStore.shared.writeTerminalTheme()
+        TerminalHost.shared.refreshPaneBackgrounds()
+    }
 
     func toggleSidebar() {
         sidebarPeek = false

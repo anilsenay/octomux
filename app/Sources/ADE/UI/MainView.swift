@@ -582,7 +582,7 @@ struct DormantPaneView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(T.surface)
+        .background(CanvasBackground())
     }
 }
 
@@ -617,7 +617,7 @@ struct EmptyStateView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(T.surface)
+        .background(CanvasBackground())
     }
 }
 

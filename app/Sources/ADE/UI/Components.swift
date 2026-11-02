@@ -447,13 +447,24 @@ struct WorkspaceTintedFrame: View {
         let p = ThemeStore.shared.preset
         let base = scheme == .dark ? p.dark.frame : p.light.frame
         Rectangle()
-            .fill(Color(nsColor: WorkspaceTint.washed(base, toward: model.workspace?.color, strength: scheme == .dark ? 0.45 : 0.28)))
+            .fill(Color(nsColor: WorkspaceTint.washed(base, toward: model.workspace?.color, strength: WorkspaceTint.strength(dark: scheme == .dark))))
             .animation(.easeOut(duration: 0.4), value: model.selectedWorkspaceId)
     }
 }
 
 enum WorkspaceTint {
     static let strength = 0.45
+    /// Chrome wash strength per appearance.
+    static func strength(dark: Bool) -> Double { dark ? 0.45 : 0.28 }
+    /// The terminal canvas takes about a third of the chrome's wash (as in Unpeel): gray with a hint of color.
+    static let canvasScale = 0.35
+
+    /// Terminal / pane background for the current workspace.
+    static func canvas(dark: Bool) -> NSColor {
+        let p = ThemeStore.shared.preset
+        return washed(dark ? p.dark.surface : p.light.surface, toward: AppModel.shared.workspace?.color,
+                      strength: strength(dark: dark) * canvasScale)
+    }
 
     /// `base` with its hue pushed toward `hex`'s hue; brightness and alpha unchanged.
     static func washed(_ base: NSColor, toward hex: String?, strength: Double = strength) -> NSColor {
@@ -491,4 +502,11 @@ extension NSColor {
         }
         self.init(srgbRed: r, green: g, blue: b, alpha: a)
     }
+}
+
+/// Pane background (empty / stopped panes): the workspace-washed terminal canvas.
+struct CanvasBackground: View {
+    @EnvironmentObject var model: AppModel
+    @Environment(\.colorScheme) private var scheme
+    var body: some View { Rectangle().fill(Color(nsColor: WorkspaceTint.canvas(dark: scheme == .dark))) }
 }
