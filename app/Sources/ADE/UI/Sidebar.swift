@@ -673,66 +673,65 @@ struct DockCountRow: View {
     }
 }
 
-/// Empty workspace in the sidebar: a quiet line of text over a pixel illustration (no loud buttons; the
-/// footer "+" and this link add a project).
+/// Empty workspace in the sidebar: fading skeletons of project rows (what will appear here), a quiet line,
+/// and a dashed drop zone that adds a project on click or when a folder is dropped on it.
 struct SidebarEmptyState: View {
     @EnvironmentObject var model: AppModel
     @State private var hover = false
+    @State private var dropTarget = false
 
     var body: some View {
-        VStack(spacing: 18) {
-            Text("Projects you add will show up here")
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 4) {
+                ghostRow(width: 92, opacity: 0.9)
+                ghostRow(width: 120, opacity: 0.55)
+                ghostRow(width: 74, opacity: 0.28)
+            }
+            .padding(.bottom, 16)
+            Text("Projects you add will show up here. You can also drop a folder below.")
                 .font(.system(size: 12.5)).foregroundStyle(T.text3)
-                .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
-            PixelArt(rows: PixelArt.folderPlus, cell: 5, gap: 1)
-            Text("Add Project…")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(hover ? T.text : T.text3)
-                .padding(.horizontal, 8).padding(.vertical, 3)
-                .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(hover ? T.hover : .clear))
-                .onHover { hover = $0 }
-                .pointerCursor()
-                .onTapGesture { model.addProject() }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.horizontal, 24)
-        .padding(.top, 40)
-    }
-}
-
-/// Small pixel drawing: "#" = line, "o" = dim fill, "." = empty.
-struct PixelArt: View {
-    let rows: [String]
-    var cell: CGFloat = 5
-    var gap: CGFloat = 1
-
-    static let folderPlus = [
-        ".#####..........",
-        "#ooooo##########",
-        "#oooooooooooooo#",
-        "#oooooooooooooo#",
-        "#oooooo##oooooo#",
-        "#oooooo##oooooo#",
-        "#oooo######oooo#",
-        "#oooo######oooo#",
-        "#oooooo##oooooo#",
-        "#oooooo##oooooo#",
-        "#oooooooooooooo#",
-        "################",
-    ]
-
-    var body: some View {
-        let w = CGFloat(rows.map(\.count).max() ?? 0) * (cell + gap)
-        let h = CGFloat(rows.count) * (cell + gap)
-        Canvas { ctx, _ in
-            for (y, row) in rows.enumerated() {
-                for (x, ch) in row.enumerated() where ch != "." {
-                    let r = CGRect(x: CGFloat(x) * (cell + gap), y: CGFloat(y) * (cell + gap), width: cell, height: cell)
-                    ctx.fill(Path(roundedRect: r, cornerRadius: 1), with: .color(ch == "#" ? T.text3.opacity(0.75) : T.text3.opacity(0.14)))
+                .padding(.horizontal, 8)
+                .padding(.bottom, 12)
+            let active = hover || dropTarget
+            HStack(spacing: 8) {
+                Image(systemName: "folder.badge.plus").font(.system(size: 12.5))
+                Text(dropTarget ? "Drop to add" : "Add a project")
+                    .font(.system(size: 12.5, weight: .medium))
+                Spacer()
+            }
+            .foregroundStyle(active ? T.text : T.text2)
+            .padding(.horizontal, 10)
+            .frame(height: 34)
+            .background(RoundedRectangle(cornerRadius: T.m.rowR + 1, style: .continuous).fill(active ? T.hover : .clear))
+            .overlay(RoundedRectangle(cornerRadius: T.m.rowR + 1, style: .continuous)
+                .strokeBorder(dropTarget ? T.accent : T.border, style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
+            .contentShape(Rectangle())
+            .onHover { hover = $0 }
+            .pointerCursor()
+            .onTapGesture { model.addProject() }
+            .onDrop(of: [.fileURL], isTargeted: $dropTarget) { providers in
+                guard let ws = model.selectedWorkspaceId else { return false }
+                for p in providers {
+                    _ = p.loadObject(ofClass: URL.self) { url, _ in
+                        guard let url, (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true else { return }
+                        DispatchQueue.main.async { model.addProject(path: url.path, workspaceId: ws) }
+                    }
                 }
+                return true
             }
         }
-        .frame(width: w, height: h)
+        .padding(.top, 4)
+    }
+
+    private func ghostRow(width: CGFloat, opacity: Double) -> some View {
+        HStack(spacing: 8) {
+            RoundedRectangle(cornerRadius: min(T.m.tileR, 9), style: .continuous).fill(T.text3.opacity(0.22)).frame(width: 18, height: 18)
+            Capsule().fill(T.text3.opacity(0.18)).frame(width: width, height: 8)
+            Spacer()
+        }
+        .padding(.horizontal, 8)
+        .frame(height: T.m.rowH - 4)
+        .opacity(opacity)
     }
 }
