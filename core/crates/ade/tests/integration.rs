@@ -589,3 +589,55 @@ fn dock_action_runs_command_once_and_restores_as_shell() {
     let runs = std::fs::read_to_string(&marker).unwrap();
     assert_eq!(runs.lines().count(), 1, "restore must not re-run the action");
 }
+
+#[test]
+fn statusline_reports_usage_and_passes_through_user_statusline() {
+    let e = Env::new();
+    let p = e.project();
+    let script = fake_agent(&e);
+    let prof = e.call("profile.create", json!({ "name": "c", "kind": "generic", "command": script, "via_login_shell": false }));
+    let r = e.call("session.create", json!({ "project_id": p, "profile_id": prof["id"] }));
+    let id = r["session"]["id"].as_str().unwrap().to_string();
+
+    // The hook settings we inject carry our status line.
+    let settings: Value = serde_json::from_str(&std::fs::read_to_string(e.home.join("agent/claude-settings.json")).unwrap()).unwrap();
+    assert!(settings["statusLine"]["command"].as_str().unwrap().ends_with("statusline"), "{settings}");
+
+    // The user's own status line lives in their config dir and must keep working.
+    let cfg = e.home.join("user-cfg");
+    std::fs::create_dir_all(&cfg).unwrap();
+    std::fs::write(cfg.join("settings.json"), r#"{"statusLine":{"type":"command","command":"python3 -c 'import sys,json; print(\"USERLINE \" + json.load(sys.stdin)[\"model\"][\"display_name\"])'"}}"#).unwrap();
+    let payload = json!({
+        "model": { "display_name": "Opus" },
+        "workspace": { "current_dir": "/nonexistent" },
+        "rate_limits": { "five_hour": { "used_percentage": 42.5, "resets_at": 1900000000 }, "seven_day": { "used_percentage": 18, "resets_at": 1900500000 } }
+    });
+    let run = |cfg: &Path| {
+        let mut c = std::process::Command::new(BIN)
+            .arg("statusline")
+            .env("ADE_HOME", &e.home)
+            .env("ADE_SESSION_ID", &id)
+            .env("CLAUDE_CONFIG_DIR", cfg)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        use std::io::Write;
+        c.stdin.take().unwrap().write_all(payload.to_string().as_bytes()).unwrap();
+        String::from_utf8(c.wait_with_output().unwrap().stdout).unwrap()
+    };
+    let out = run(&cfg);
+    assert_eq!(out.trim(), "USERLINE Opus");
+    let st = e.call("state.get", json!({}));
+    let usage = st["usage"].as_array().unwrap();
+    assert_eq!(usage.len(), 2, "{st}");
+    let five = usage.iter().find(|u| u["window"] == "five_hour").unwrap();
+    assert_eq!(five["profile_id"], prof["id"]);
+    assert_eq!(five["used_percent"], 42.5);
+    assert_eq!(five["resets_at"], 1900000000);
+
+    // No user status line: a short default line.
+    let empty = e.home.join("empty-cfg");
+    std::fs::create_dir_all(&empty).unwrap();
+    assert_eq!(run(&empty).trim(), "Opus");
+}

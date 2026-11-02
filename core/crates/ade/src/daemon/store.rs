@@ -46,6 +46,7 @@ impl Store {
             sessions: self.load_kind("session")?,
             tabs: self.load_kind("tab")?,
             settings: self.load_kind("setting")?,
+            usage: self.load_kind("usage")?,
         };
         s.workspaces.sort_by_key(|w| w.sort);
         s.projects.sort_by_key(|p| p.sort);

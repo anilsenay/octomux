@@ -22,6 +22,7 @@ final class AppModel: ObservableObject {
     @Published var renamingSessionId: String?
     @Published var paletteVisible = false
     @Published var paletteQuery = ""
+    @Published var usagePopoverOpen = false
 
     private var lastTabPerWorkspace: [String: String] = [:]
     private let defaults = UserDefaults.standard
@@ -340,5 +341,38 @@ final class AppModel: ObservableObject {
     func toggleSidebar() {
         sidebarVisible.toggle()
         saveSelection()
+    }
+}
+
+// MARK: - Usage limits
+
+extension AppModel {
+    func usage(of profileId: String) -> [UsageReading] {
+        state.usage.filter { $0.profileId == profileId }.sorted { UsageReading.order($0.window) < UsageReading.order($1.window) }
+    }
+
+    func usageAlwaysShown(_ profileId: String) -> Bool {
+        if case .array(let a)? = settingValue("usage.always_show", scope: "global") { return a.contains(.string(profileId)) }
+        return false
+    }
+
+    func setUsageAlwaysShown(_ profileId: String, _ on: Bool) {
+        var ids: [String] = []
+        if case .array(let a)? = settingValue("usage.always_show", scope: "global") { ids = a.compactMap { $0.string } }
+        ids.removeAll { $0 == profileId }
+        if on { ids.append(profileId) }
+        setSetting("usage.always_show", ids.isEmpty ? nil : ids)
+    }
+
+    /// Profiles whose limits the status bar shows, with their readings.
+    func usageProfilesShown() -> [(Profile, [UsageReading])] {
+        var ids: [String] = []
+        if let s = session(focusedSessionId), s.kind == .agent, let pid = s.profileId { ids.append(pid) }
+        for p in enabledProfiles where usageAlwaysShown(p.id) && !ids.contains(p.id) { ids.append(p.id) }
+        return ids.compactMap { id in
+            guard let p = profile(id) else { return nil }
+            let r = usage(of: id).filter { $0.window == "five_hour" || $0.window == "seven_day" || $0.window == "spend_limit" }
+            return r.isEmpty ? nil : (p, Array(r.prefix(2)))
+        }
     }
 }

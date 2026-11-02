@@ -89,6 +89,13 @@ pub fn run(paths: Paths) -> Result<()> {
             d.reconcile();
         });
     }
+    {
+        let d = d.clone();
+        std::thread::spawn(move || loop {
+            std::thread::sleep(Duration::from_secs(60));
+            d.poll_codex_usage();
+        });
+    }
 
     for stream in listener.incoming() {
         let Ok(stream) = stream else { continue };
@@ -339,6 +346,43 @@ impl Daemon {
             }
         }
         self.changed();
+    }
+
+    /// Saves rate-limit readings for a profile (replacing the same windows).
+    fn store_usage(&self, profile_id: &str, readings: Vec<(String, f64, Option<i64>)>) -> usize {
+        if readings.is_empty() {
+            return 0;
+        }
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
+        let n = readings.len();
+        {
+            let mut st = self.state.lock().unwrap();
+            let store = self.store.lock().unwrap();
+            for (window, pct, resets_at) in readings {
+                let r = UsageReading { profile_id: profile_id.to_string(), window, used_percent: pct, resets_at, observed_at: now };
+                st.usage.retain(|x| !(x.profile_id == r.profile_id && x.window == r.window));
+                let _ = store.put("usage", &format!("{}:{}", r.profile_id, r.window), &r);
+                st.usage.push(r);
+            }
+        }
+        self.changed();
+        n
+    }
+
+    /// Every minute: Codex rate limits from its rollout files, for profiles with a running session.
+    fn poll_codex_usage(&self) {
+        let profiles: Vec<Profile> = {
+            let st = self.state.lock().unwrap();
+            st.profiles
+                .iter()
+                .filter(|p| p.kind == AgentKind::Codex && st.sessions.iter().any(|s| s.profile_id.as_deref() == Some(&p.id) && s.state == SessionState::Running))
+                .cloned()
+                .collect()
+        };
+        for p in profiles {
+            let r = agents::codex_rate_limits(&p);
+            self.store_usage(&p.id, r);
+        }
     }
 
     fn set_activity(&self, id: &str, new: Activity) {
@@ -895,6 +939,24 @@ impl Daemon {
                 self.store.lock().unwrap().delete("tab", &id)?;
                 self.changed();
                 Ok(json!({ "ok": true }))
+            }
+            "usage.report" => {
+                // { session_id, rate_limits: { five_hour: {used_percentage, resets_at}, ... } }
+                let sid = req("session_id")?;
+                let profile_id = {
+                    let st = self.state.lock().unwrap();
+                    st.sessions.iter().find(|x| x.id == sid).and_then(|x| x.profile_id.clone())
+                };
+                let Some(profile_id) = profile_id else { return Ok(json!({ "ok": false })) };
+                let mut readings = Vec::new();
+                if let Some(obj) = p.get("rate_limits").and_then(|v| v.as_object()) {
+                    for (window, w) in obj {
+                        let Some(pct) = w.get("used_percentage").and_then(|v| v.as_f64()) else { continue };
+                        readings.push((window.clone(), pct, w.get("resets_at").and_then(|v| v.as_i64())));
+                    }
+                }
+                let n = self.store_usage(&profile_id, readings);
+                Ok(json!({ "ok": true, "stored": n }))
             }
             "hook" => {
                 let id = req("session_id")?;

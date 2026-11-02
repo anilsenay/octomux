@@ -2,6 +2,7 @@ mod attach;
 mod client;
 mod daemon;
 mod holder;
+mod statusline;
 mod util;
 
 use ade_proto::Paths;
@@ -40,6 +41,9 @@ enum Cmd {
     /// Internal: agent hook entry point (reads the hook JSON on stdin).
     #[command(hide = true)]
     Hook { event: String },
+    /// Claude Code status line passthrough (reports usage limits to the daemon).
+    #[command(hide = true)]
+    Statusline,
     /// Send a raw control request, e.g. `ade ctl state.get` or `ade ctl session.create '{"project_id":"..."}'`.
     Ctl {
         method: String,
@@ -91,6 +95,7 @@ fn run(cli: Cli, paths: Paths) -> anyhow::Result<i32> {
             }
             Ok(0)
         }
+        Cmd::Statusline => Ok(statusline::run(&paths)),
         Cmd::Ctl { method, params } => {
             let params: serde_json::Value = serde_json::from_str(&params)?;
             // Shutting down must never start a daemon (which would restore sessions).

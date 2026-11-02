@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import UserNotifications
 
 /// UI-level debug methods (dev only): drive the app like a user and read back what it shows.
@@ -70,6 +71,7 @@ enum DebugActions {
                 m.paletteVisible = true
                 m.paletteQuery = p["value"] as? String ?? ""
             case "close_palette": m.paletteVisible = false
+            case "usage_popover": m.usagePopoverOpen = (p["value"] as? Bool) ?? true
             case "palette_run":
                 // Runs the top result for `value`, like typing it and pressing Return.
                 let r = PaletteSource.search(p["value"] as? String ?? "", model: m)
@@ -127,6 +129,28 @@ enum DebugActions {
             guard let path = p["path"] as? String else { throw DebugServer.DebugError.bad("path") }
             OpenIn.open(path, appId: p["app"] as? String ?? OpenIn.defaultAppId)
             return ["ok": true]
+        }
+        d.register("render_view") { p in
+            // Renders a popover-type view offscreen (popovers are separate windows).
+            guard let path = p["path"] as? String else { throw DebugServer.DebugError.bad("path") }
+            let name = p["view"] as? String ?? "usage"
+            let dark = (p["dark"] as? Bool) ?? false
+            let view: AnyView
+            switch name {
+            case "usage": view = AnyView(UsagePopover().environmentObject(AppModel.shared))
+            default: throw DebugServer.DebugError.bad("unknown view")
+            }
+            var out: [String: Any] = ["path": path]
+            NSAppearance(named: dark ? .darkAqua : .aqua)!.performAsCurrentDrawingAppearance {
+                let r = ImageRenderer(content: view.environment(\.colorScheme, dark ? .dark : .light))
+                r.scale = 2
+                if let img = r.nsImage, let tiff = img.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
+                   let png = rep.representation(using: .png, properties: [:]) {
+                    try? png.write(to: URL(fileURLWithPath: path))
+                    out["ok"] = true
+                }
+            }
+            return out
         }
         d.register("keybindings") { _ in
             KeyBindings.shared.commands.map { c in

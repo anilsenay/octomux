@@ -188,6 +188,58 @@ struct DaemonState: Codable, Equatable {
     var sessions: [Session] = []
     var tabs: [Tab] = []
     var settings: [Setting] = []
+    var usage: [UsageReading] = []
+
+    init() {}
+    init(from d: Decoder) throws {
+        let c = try d.container(keyedBy: CodingKeys.self)
+        workspaces = try c.decode([Workspace].self, forKey: .workspaces)
+        projects = try c.decode([Project].self, forKey: .projects)
+        profiles = try c.decode([Profile].self, forKey: .profiles)
+        sessions = try c.decode([Session].self, forKey: .sessions)
+        tabs = try c.decode([Tab].self, forKey: .tabs)
+        settings = try c.decode([Setting].self, forKey: .settings)
+        usage = try c.decodeIfPresent([UsageReading].self, forKey: .usage) ?? []
+    }
+}
+
+/// Rate-limit window reading (Claude statusline / Codex rollout).
+struct UsageReading: Codable, Equatable, Identifiable {
+    var profileId: String
+    var window: String
+    var usedPercent: Double
+    var resetsAt: Double?
+    var observedAt: Double
+    var id: String { profileId + ":" + window }
+
+    enum CodingKeys: String, CodingKey {
+        case window
+        case profileId = "profile_id"
+        case usedPercent = "used_percent"
+        case resetsAt = "resets_at"
+        case observedAt = "observed_at"
+    }
+
+    /// The window already reset since this reading was taken.
+    var isReset: Bool { resetsAt.map { Date().timeIntervalSince1970 >= $0 } ?? false }
+    var effectivePercent: Double { isReset ? 0 : usedPercent }
+    var shortName: String {
+        switch window {
+        case "five_hour": return "5h"
+        case "seven_day": return "week"
+        case "spend_limit": return "spend"
+        default: return window
+        }
+    }
+    var longName: String {
+        switch window {
+        case "five_hour": return "5-hour window"
+        case "seven_day": return "Weekly"
+        case "spend_limit": return "Spend limit"
+        default: return window.capitalized
+        }
+    }
+    static func order(_ w: String) -> Int { ["five_hour": 0, "seven_day": 1, "spend_limit": 2][w] ?? 3 }
 }
 
 struct AppNotification: Codable {

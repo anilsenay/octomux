@@ -39,4 +39,12 @@ agent "$p2" "$work" "Fix checkout test"
 agent "$p2" "$(pid_of Codex)" "Bump deps"
 j session.create "{\"project_id\":\"$p1\",\"command\":\"printf 'running 18 tests\\\\ntest reboot_restore ... ok\\\\ntest vim_alt_screen ... ok\\\\ntest result: ok. 18 passed\\\\n'\",\"title\":\"Test\",\"placement\":\"dock\",\"cols\":120,\"rows\":12}" >/dev/null
 j settings.set "{\"scope\":\"project:$p1\",\"key\":\"actions\",\"value\":[{\"name\":\"Test\",\"icon\":\"flask\",\"command\":\"cargo test\"},{\"name\":\"Dev\",\"icon\":\"play.fill\",\"command\":\"npm run dev\"}]}" >/dev/null
+# Fake usage readings through the real statusline path.
+sid_of() { j state.get | python3 -c "import sys,json; print([s['id'] for s in json.load(sys.stdin)['sessions'] if s.get('custom_title')=='$1'][0])"; }
+now=$(date +%s)
+feed() { printf '{"model":{"display_name":"Opus"},"rate_limits":{"five_hour":{"used_percentage":%s,"resets_at":%s},"seven_day":{"used_percentage":%s,"resets_at":%s}}}' "$2" $((now+8040)) "$3" $((now+302400)) \
+  | ADE_SESSION_ID=$(sid_of "$1") CLAUDE_CONFIG_DIR=/nonexistent "$ADE" statusline >/dev/null; }
+feed "Refactor holder snapshot" 42 18
+feed "Review PR #42" 76 31
+j settings.set "{\"scope\":\"global\",\"key\":\"usage.always_show\",\"value\":[\"$work\"]}" >/dev/null
 echo "export ADE_HOME=$ADE_HOME"

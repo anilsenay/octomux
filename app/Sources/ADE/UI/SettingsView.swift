@@ -285,6 +285,11 @@ struct ProfileEditor: View {
                     TextEditor(text: $envText).font(.system(.body, design: .monospaced)).frame(height: 60)
                 }
                 Toggle("Run through my login shell (aliases, PATH)", isOn: $profile.viaLoginShell)
+                if !profile.id.isEmpty {
+                    Toggle("Always show usage limits in the status bar", isOn: Binding(
+                        get: { AppModel.shared.usageAlwaysShown(profile.id) },
+                        set: { AppModel.shared.setUsageAlwaysShown(profile.id, $0) }))
+                }
                 if profile.kind == .generic {
                     TextField("Resume command after reboot (optional)", text: $profile.resumeTemplate).font(.system(.body, design: .monospaced))
                 }

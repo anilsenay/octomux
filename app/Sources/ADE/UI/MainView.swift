@@ -425,8 +425,102 @@ struct StatusBar: View {
     }
 }
 
-/// Placeholder until usage limits land (phase L).
+/// Agent rate limits in the status bar: the focused session's profile plus
+/// profiles marked "always show". Click for details.
 struct UsageStatus: View {
+    @EnvironmentObject var model: AppModel
     var compact = false
-    var body: some View { EmptyView() }
+
+    var body: some View {
+        let open = Binding(get: { model.usagePopoverOpen && !compact }, set: { model.usagePopoverOpen = $0 })
+        let shown = model.usageProfilesShown()
+        if !shown.isEmpty {
+            Button { model.usagePopoverOpen.toggle() } label: {
+                HStack(spacing: 12) {
+                    ForEach(shown, id: \.0.id) { prof, readings in
+                        HStack(spacing: 6) {
+                            AgentIcon(icon: prof.icon, size: 10)
+                            ForEach(compact ? Array(readings.prefix(1)) : readings) { r in
+                                if !compact { Text(r.shortName).foregroundStyle(T.text3) }
+                                UsageMeter(percent: r.effectivePercent, primary: r.window == "five_hour").frame(width: compact ? 30 : 44)
+                                Text(r.isReset ? "0%" : "\(Int(r.usedPercent.rounded()))%").font(T.mono(11))
+                            }
+                        }
+                    }
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .fixedSize()
+            .help("Usage limits — click for details")
+            .popover(isPresented: open, arrowEdge: .top) { UsagePopover().environmentObject(model) }
+        }
+    }
+}
+
+struct UsageMeter: View {
+    let percent: Double
+    var primary = true
+    var body: some View {
+        GeometryReader { g in
+            ZStack(alignment: .leading) {
+                Capsule().fill(T.border)
+                Capsule().fill(color).frame(width: max(2, g.size.width * min(1, percent / 100)))
+            }
+        }
+        .frame(height: 5)
+    }
+    var color: Color { percent >= 90 ? T.red : percent >= 70 ? T.amber : primary ? T.accent : T.text2 }
+}
+
+struct UsagePopover: View {
+    @EnvironmentObject var model: AppModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Usage limits").font(T.headline).foregroundStyle(T.text)
+            let profiles = model.enabledProfiles.filter { p in model.state.usage.contains { $0.profileId == p.id } }
+            if profiles.isEmpty {
+                Text("No readings yet. They arrive while a Claude or Codex session runs.").font(T.body).foregroundStyle(T.text2)
+            }
+            ForEach(profiles) { p in
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 7) {
+                        AgentIcon(icon: p.icon, size: 12)
+                        Text(p.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(T.text)
+                        Spacer()
+                        Toggle("Always show", isOn: Binding(get: { model.usageAlwaysShown(p.id) }, set: { model.setUsageAlwaysShown(p.id, $0) }))
+                            .toggleStyle(.checkbox).font(T.caption).foregroundStyle(T.text2)
+                    }
+                    ForEach(model.usage(of: p.id)) { r in
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text(r.longName).font(T.body).foregroundStyle(T.text2)
+                                Spacer()
+                                Text(r.isReset ? "reset" : "\(Int(r.usedPercent.rounded()))%").font(T.mono(12, .semibold)).foregroundStyle(T.text)
+                            }
+                            UsageMeter(percent: r.effectivePercent, primary: r.window == "five_hour")
+                            HStack {
+                                if let at = r.resetsAt, !r.isReset { Text("resets \(relative(at))").font(T.caption).foregroundStyle(T.text3) }
+                                Spacer()
+                                Text("updated \(relative(r.observedAt))").font(T.caption).foregroundStyle(T.text3)
+                            }
+                        }
+                    }
+                }
+                .padding(12)
+                .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(T.surface))
+                .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(T.border))
+            }
+        }
+        .padding(16)
+        .frame(width: 330)
+        .background(T.raised)
+    }
+
+    func relative(_ t: Double) -> String {
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .short
+        return f.localizedString(for: Date(timeIntervalSince1970: t), relativeTo: Date())
+    }
 }

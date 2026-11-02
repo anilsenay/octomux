@@ -75,6 +75,35 @@ tools/dbg ui_action '{"name":"new_terminal"}'
 tools/dbg screenshot '{"path":"/tmp/shot.png"}'   # self-capture, no Screen Recording permission needed
 ```
 
+UI fixture (fake agents in working / input / done states, git projects, usage readings, a dock action),
+never touching your real data:
+
+```sh
+tools/ui-fixture.sh              # builds ADE_HOME=/tmp/adeU
+tools/ui-restart.sh              # (re)starts the debug app against it; W=900 H=640 for a small window
+ADE_HOME=/tmp/adeU tools/dbg ui_action '{"name":"palette","value":"split"}'
+ADE_HOME=/tmp/adeU tools/dbg render_view '{"view":"usage","dark":true,"path":"/tmp/u.png"}'
+```
+
+Note: `tools/build-app.sh` rebuilds `build/ADE.app`, which the installed launchd daemon runs from.
+Use `release` for that bundle; for UI work run `app/.build/debug/ADE` (as `ui-restart.sh` does).
+
+## Appearance
+
+Three theme presets (Settings → Appearance or ⌘K "Theme"): **Ink** (default), **Grid**, **Glass**, each with
+dark/light, plus System/Dark/Light mode. Terminal colors follow the theme (written to `$ADE_HOME/theme.conf`,
+loaded after your `terminal.conf`); turn off "Use theme colors in the terminal" to use your own. Design
+system: `DESIGN.md`. App icon: `swift tools/make-icon.swift` regenerates `app/Resources/AppIcon.icns`.
+
+## Usage limits
+
+Claude sessions started by ADE get a status line command (`ade statusline`, injected with `--settings`
+like the hooks). It reports `rate_limits` (5-hour / weekly) to the daemon at most every 15 s and then runs
+**your own** `statusLine` command from your settings with the same input, so your status line is unchanged.
+(With no status line of your own it prints a short `model · context%` line.) Codex limits are read from its
+rollout files once a minute while a Codex session runs. The status bar shows the focused agent's profile plus
+profiles marked "Always show" (in the usage popover or the agent's settings).
+
 ## Clean up / uninstall
 
 ```sh
@@ -97,6 +126,11 @@ defaults delete dev.ade-dev.app 2>/dev/null                 # UI selection state
 | ⌘⇧U | Jump to the next session waiting for input |
 | ⌘. | Stop session |
 | ⌘B, ⌘O, ⌘⇧O, ⌘, | Sidebar, open project in default app, add project, settings |
+| ⌘K | Command palette (sessions, projects, commands, agents, settings, themes) |
+| ⌘J, ⌘⌥B | Dock, Changes panel |
+
+All menu shortcuts can be changed in Settings → Keyboard (click a shortcut, press the new keys; Delete
+unbinds). Overrides are the global setting `keybindings`.
 
 ## Known gaps (MVP)
 
@@ -105,9 +139,7 @@ defaults delete dev.ade-dev.app 2>/dev/null                 # UI selection state
   same directory (by design, SPEC §4); only agents resume.
 - Notifications are posted by the app; while the app is fully quit, sessions
   keep running but no notifications are shown.
-- Not yet built: git worktrees, dock + Actions, right-hand Changes/History/Files
-  panel, usage limits in the bottom bar, remote hosts, chat view, command
-  palette, custom key bindings. Feature flags for these exist in Settings.
+- See PROGRESS.md for what is built and what is still open.
 - Codex resume relies on finding the rollout file for the session's folder;
   verified only with fake data, not a live Codex run.
 

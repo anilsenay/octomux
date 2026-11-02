@@ -239,6 +239,21 @@ pub struct State {
     pub sessions: Vec<Session>,
     pub tabs: Vec<Tab>,
     pub settings: Vec<Setting>,
+    /// Latest rate-limit readings, one per (profile, window). Added in UI phase L.
+    #[serde(default)]
+    pub usage: Vec<UsageReading>,
+}
+
+/// One rate-limit window reading reported by an agent (Claude statusline payload,
+/// Codex rollout). `used_percent` 0..100, times are Unix seconds.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct UsageReading {
+    pub profile_id: String,
+    /// `five_hour` | `seven_day` | `spend_limit` (Claude) or `primary` | `secondary` (Codex)
+    pub window: String,
+    pub used_percent: f64,
+    pub resets_at: Option<i64>,
+    pub observed_at: i64,
 }
 
 /// `notify` event payload: the app turns these into user notifications.

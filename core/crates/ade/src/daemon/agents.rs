@@ -35,7 +35,8 @@ pub fn write_hook_settings(paths: &Paths) -> anyhow::Result<()> {
         }
         hooks.insert(ev.to_string(), serde_json::json!([entry]));
     }
-    let doc = serde_json::json!({ "hooks": hooks });
+    let statusline = format!("{} statusline", shell_quote(&exe));
+    let doc = serde_json::json!({ "hooks": hooks, "statusLine": { "type": "command", "command": statusline, "padding": 0 } });
     std::fs::write(hooks_settings_path(paths), serde_json::to_vec_pretty(&doc)?)?;
     Ok(())
 }
@@ -113,6 +114,55 @@ fn codex_home(profile: &Profile) -> PathBuf {
         .get("CODEX_HOME")
         .map(|d| PathBuf::from(expand_tilde(d)))
         .unwrap_or_else(|| util::home_dir().join(".codex"))
+}
+
+/// Latest Codex rate limits from the newest rollout touched in the last 15 minutes:
+/// `(window, used_percent, resets_at)`. Windows map to Claude's names by length
+/// (300 min → `five_hour`, 10080 min → `seven_day`).
+pub fn codex_rate_limits(profile: &Profile) -> Vec<(String, f64, Option<i64>)> {
+    let root = codex_home(profile).join("sessions");
+    let now = std::time::SystemTime::now();
+    let mut newest: Option<(std::time::SystemTime, PathBuf)> = None;
+    let mut stack = vec![root];
+    while let Some(dir) = stack.pop() {
+        let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+        for e in rd.flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                stack.push(p);
+            } else if p.extension().and_then(|x| x.to_str()) == Some("jsonl") {
+                if let Ok(m) = e.metadata().and_then(|m| m.modified()) {
+                    if now.duration_since(m).map(|d| d.as_secs() < 900).unwrap_or(false) && newest.as_ref().is_none_or(|(t, _)| m > *t) {
+                        newest = Some((m, p));
+                    }
+                }
+            }
+        }
+    }
+    let Some((_, path)) = newest else { return vec![] };
+    let Ok(bytes) = std::fs::read(&path) else { return vec![] };
+    let tail = &bytes[bytes.len().saturating_sub(512 * 1024)..];
+    let text = String::from_utf8_lossy(tail);
+    for line in text.lines().rev() {
+        if !line.contains("\"rate_limits\"") {
+            continue;
+        }
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else { continue };
+        let Some(rl) = v.pointer("/payload/rate_limits").or_else(|| v.get("rate_limits")) else { continue };
+        let mut out = vec![];
+        for key in ["primary", "secondary"] {
+            let Some(w) = rl.get(key).filter(|w| w.is_object()) else { continue };
+            let Some(pct) = w.get("used_percent").and_then(|x| x.as_f64()) else { continue };
+            let name = match w.get("window_minutes").and_then(|x| x.as_i64()) {
+                Some(300) => "five_hour".to_string(),
+                Some(10080) => "seven_day".to_string(),
+                _ => key.to_string(),
+            };
+            out.push((name, pct, w.get("resets_at").and_then(|x| x.as_i64())));
+        }
+        return out;
+    }
+    vec![]
 }
 
 /// Finds the newest Codex rollout for `cwd` created after `since` (seconds).
@@ -434,5 +484,31 @@ mod tests {
         assert!(claude_transcript_exists(&dir, "1234"));
         assert!(!claude_transcript_exists(&dir, "5678"));
         let _ = std::fs::remove_dir_all(dir);
+    }
+}
+
+#[cfg(test)]
+mod usage_tests {
+    use super::*;
+
+    #[test]
+    fn codex_rate_limits_from_newest_rollout() {
+        let home = std::env::temp_dir().join(format!("adecodex-{}", std::process::id()));
+        let dir = home.join("sessions/2026/11/02");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("rollout-x.jsonl"),
+            concat!(
+                "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/tmp\"}}\n",
+                "{\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"rate_limits\":{\"primary\":{\"used_percent\":10.0,\"window_minutes\":300,\"resets_at\":1},\"secondary\":null}}}\n",
+                "{\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"rate_limits\":{\"primary\":{\"used_percent\":12.5,\"window_minutes\":300,\"resets_at\":1900000000},\"secondary\":{\"used_percent\":40.0,\"window_minutes\":10080,\"resets_at\":1900500000}}}}\n"
+            ),
+        )
+        .unwrap();
+        let mut p = default_profiles().into_iter().find(|p| p.kind == AgentKind::Codex).unwrap();
+        p.env.insert("CODEX_HOME".into(), home.to_string_lossy().into_owned());
+        let r = codex_rate_limits(&p);
+        assert_eq!(r, vec![("five_hour".to_string(), 12.5, Some(1900000000)), ("seven_day".to_string(), 40.0, Some(1900500000))]);
+        let _ = std::fs::remove_dir_all(&home);
     }
 }
