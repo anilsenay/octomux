@@ -8,3 +8,4 @@
 .DS_Store
 /tools/winid
 /build/
+app/editor-web/node_modules/

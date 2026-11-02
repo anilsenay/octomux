@@ -173,6 +173,7 @@ final class ThemeStore: ObservableObject {
     }
 
     func writeTerminalTheme() {
+        DocHost.shared.refreshTheme()
         let text = terminalColors ? terminalConfigText(dark: isDark) : "# Terminal colors come from terminal.conf\n"
         let padding = "window-padding-x = 12\nwindow-padding-y = 8\nwindow-padding-balance = true\nwindow-padding-color = background\n"
         let glass = preset.metrics.glass ? "background-opacity = \(isDark ? 0.55 : 0.6)\n" : ""

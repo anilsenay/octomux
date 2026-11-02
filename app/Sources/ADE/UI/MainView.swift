@@ -244,7 +244,7 @@ struct TopBar: View {
         let newBtn: CGFloat = 52
         let avail = max(120, width - leading - tools - newBtn - 30)
         let tabMin: CGFloat = 120, tabMax: CGFloat = 220
-        let count = model.currentTabs.count
+        let count = model.currentTabs.count + model.currentDocs.count
         let visible = max(1, min(count, Int(avail / tabMin)))
         let tabW = max(tabMin, min(tabMax, (avail - (visible < count ? 44 : 0)) / CGFloat(max(1, visible))))
         return (max(4, Int((tabW - 60) / 7)), compact, visible, tabW)
@@ -257,31 +257,41 @@ struct TopBar: View {
             if !model.sidebarVisible {
                 Spacer().frame(width: TopLeftControls.width)
             }
-            let shown = visibleTabs(fit.visible)
+            let docs = model.currentDocs
+            let docSlots = docs.isEmpty ? 0 : max(1, min(docs.count, fit.visible - min(model.currentTabs.count, 1)))
+            let shown = visibleTabs(max(1, fit.visible - docSlots))
+            let shownDocs = visibleDocs(docSlots)
             HStack(spacing: m.tabStyle == .underline ? 0 : 4) {
                 ForEach(shown, id: \.1.id) { i, t in
                     TabChip(tab: t, index: i, maxChars: fit.chars, width: m.tabStyle == .underline ? nil : fit.tabW)
                         .reorderable("tab", id: t.id) { model.moveTab($0, to: $1) }
                 }
+                ForEach(shownDocs) { d in
+                    DocChip(doc: d, maxChars: fit.chars, width: m.tabStyle == .underline ? nil : fit.tabW)
+                        .reorderable("doc", id: d.id) { model.moveDoc($0, before: $1) }
+                }
                 let hidden = Array(model.currentTabs.enumerated()).filter { e in !shown.contains { $0.1.id == e.element.id } }
-                if !hidden.isEmpty {
+                let hiddenDocs = docs.filter { d in !shownDocs.contains { $0.id == d.id } }
+                if !hidden.isEmpty || !hiddenDocs.isEmpty {
                     Menu {
                         ForEach(hidden, id: \.element.id) { i, t in
                             let lead = model.session(t.activeSessionId ?? t.layout.sessions.first)
                             Button((i < 9 ? "⌘\(i + 1)  " : "") + (lead?.displayTitle ?? "Tab")) { model.selectTab(t.id) }
                         }
+                        if !hidden.isEmpty && !hiddenDocs.isEmpty { Divider() }
+                        ForEach(hiddenDocs) { d in Button(d.title) { model.selectDoc(d.id) } }
                     } label: {
-                        Text("+\(hidden.count)").font(.system(size: 11.5, weight: .semibold)).foregroundStyle(T.text2)
+                        Text("+\(hidden.count + hiddenDocs.count)").font(.system(size: 11.5, weight: .semibold)).foregroundStyle(T.text2)
                             .padding(.horizontal, 6).frame(height: m.tabH).contentShape(Rectangle())
                     }
                     .plainMenu().fixedSize()
                     .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(T.hover))
                     .pointerCursor()
-                    .help("\(hidden.count) more tabs")
+                    .help("\(hidden.count + hiddenDocs.count) more tabs")
                 }
             }
             .padding(m.tabStyle == .segment ? 3 : 0)
-            .background(m.tabStyle == .segment && !model.currentTabs.isEmpty ? RoundedRectangle(cornerRadius: 9, style: .continuous).fill(T.hover) : nil)
+            .background(m.tabStyle == .segment && !(model.currentTabs.isEmpty && docs.isEmpty) ? RoundedRectangle(cornerRadius: 9, style: .continuous).fill(T.hover) : nil)
             .fixedSize()
             if model.currentProject != nil { NewSessionButton() }
             Spacer(minLength: 8)
@@ -342,6 +352,66 @@ extension TopBar {
         return shown
     }
 
+    /// The first `n` doc tabs, swapping in the active one if it would be hidden.
+    func visibleDocs(_ n: Int) -> [DocTab] {
+        let all = model.currentDocs
+        guard all.count > n else { return all }
+        var shown = Array(all.prefix(n))
+        if n > 0, let a = model.activeDoc, !shown.contains(where: { $0.id == a.id }) { shown[n - 1] = a }
+        return shown
+    }
+}
+
+/// A file / changes / commit tab (app-side; not in the sidebar).
+struct DocChip: View {
+    @EnvironmentObject var model: AppModel
+    let doc: DocTab
+    var maxChars = 24
+    var width: CGFloat? = nil
+    @State private var hover = false
+
+    var body: some View {
+        let m = T.m
+        let selected = model.activeDocId == doc.id && model.activeDoc != nil
+        HStack(spacing: 7) {
+            Image(systemName: doc.icon).font(.system(size: 10.5, weight: .medium))
+                .foregroundStyle(selected ? T.text2 : T.text3)
+            if width != nil {
+                Text(doc.title).italic(isPreviewLike).lineLimit(1).truncationMode(.middle)
+            } else {
+                Text(TabChip.clip(doc.title, maxChars)).lineLimit(1).fixedSize()
+            }
+            if width != nil { Spacer(minLength: 0) }
+            Button { model.closeDoc(doc.id) } label: {
+                Image(systemName: "xmark").font(.system(size: 8, weight: .bold))
+            }
+            .buttonStyle(IconButtonStyle(size: 16)).opacity(hover ? 1 : 0)
+        }
+        .font(.system(size: 12.5, weight: selected ? .semibold : .medium))
+        .foregroundStyle(selected ? T.text : hover ? T.text2 : T.text3.opacity(0.85))
+        .padding(.leading, 11).padding(.trailing, 6)
+        .frame(width: width, height: m.tabStyle == .underline ? m.topH : m.tabH)
+        .background(TabChip.chipBackground(selected: selected, hover: hover))
+        .overlay(alignment: .bottom) {
+            if m.tabStyle == .underline { Rectangle().fill(selected ? T.accent : .clear).frame(height: 2) }
+        }
+        .contentShape(Rectangle())
+        .onHover { hover = $0 }
+        .pointerCursor()
+        .onTapGesture { model.selectDoc(doc.id) }
+        .overlay(MiddleClick { model.closeDoc(doc.id) })
+        .help(helpText)
+    }
+
+    private var isPreviewLike: Bool { if case .commit = doc.kind { return true }; return false }
+
+    private var helpText: String {
+        switch doc.kind {
+        case .file(let rel): return rel
+        case .changes: return "Uncommitted changes"
+        case .commit(let h, let s): return "\(h.prefix(8)) \(s)"
+        }
+    }
 }
 
 struct TabChip: View {
@@ -355,7 +425,7 @@ struct TabChip: View {
 
     var body: some View {
         let m = T.m
-        let selected = tab.id == model.activeTabId
+        let selected = tab.id == model.activeTabId && model.activeDoc == nil
         let ids = tab.layout.sessions
         let lead = model.session(tab.activeSessionId ?? ids.first)
         HStack(spacing: 7) {
@@ -399,13 +469,15 @@ struct TabChip: View {
         s.count <= n ? s : String(s.prefix(max(1, n - 1))).trimmingCharacters(in: .whitespaces) + "…"
     }
 
-    @ViewBuilder private func background(selected: Bool) -> some View {
+    private func background(selected: Bool) -> some View { Self.chipBackground(selected: selected, hover: hover) }
+
+    @ViewBuilder static func chipBackground(selected: Bool, hover: Bool) -> some View {
         let m = T.m
         switch m.tabStyle {
         case .underline:
             Rectangle().fill(hover && !selected ? T.hover : .clear)
         case .pill, .segment:
-            let dark = scheme == .dark
+            let dark = ThemeStore.shared.isDark
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(selected ? (dark ? Color.white.opacity(0.13) : T.raised)
                       : hover ? (dark ? Color.white.opacity(0.07) : Color.black.opacity(0.06))

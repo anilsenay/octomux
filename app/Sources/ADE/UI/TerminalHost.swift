@@ -12,6 +12,7 @@ final class TerminalHost {
     private var renderedDock: (String?, SessionState?)?
     private var surfaces: [String: TerminalSurfaceView] = [:]
     private var renderedTabId: String?
+    private var renderedDocId: String?
     private var renderedLayout: PaneNode?
     private var renderedStates: [String: SessionState] = [:]
 
@@ -94,6 +95,22 @@ final class TerminalHost {
     }
 
     func render(force: Bool = false) {
+        if let doc = model.activeDoc {
+            DocHost.shared.activeChanged(doc.id)
+            if !force, renderedDocId == doc.id { return }
+            renderedDocId = doc.id
+            renderedTabId = nil
+            renderedLayout = nil
+            container.subviews.forEach { $0.removeFromSuperview() }
+            let pane = PaneView(sessionId: "")
+            let web = DocHost.shared.controller(for: doc).web
+            web.removeFromSuperview()
+            pane.setContent(web)
+            container.setRoot(pane)
+            DispatchQueue.main.async { web.window?.makeFirstResponder(web) }
+            return
+        }
+        if renderedDocId != nil { renderedDocId = nil; DocHost.shared.activeChanged(nil); renderedTabId = "\u{0}" }
         let tab = model.activeTab
         let states = Dictionary(uniqueKeysWithValues: (tab?.layout.sessions ?? []).compactMap { id in model.session(id).map { (id, $0.state) } })
         if !force, tab?.id == renderedTabId, tab?.layout == renderedLayout, states == renderedStates { return }
@@ -165,6 +182,7 @@ final class TerminalHost {
 
     func focusCurrent() {
         render()
+        if model.activeDoc != nil { return }
         guard let id = model.focusedSessionId, let v = surfaces[id], v.window != nil else { return }
         if v.window?.firstResponder !== v { v.window?.makeFirstResponder(v) }
     }

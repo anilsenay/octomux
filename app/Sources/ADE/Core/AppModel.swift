@@ -17,7 +17,13 @@ final class AppModel: ObservableObject {
         }
     }
     @Published var selectedProjectId: String? { didSet { saveSelection() } }
-    @Published var activeTabId: String? { didSet { saveSelection() } }
+    @Published var activeTabId: String? {
+        didSet { saveSelection(); if oldValue != activeTabId, activeTabId != nil { activeDocId = nil } }
+    }
+    /// App-side tabs (file, changes, commit views) shown next to the session tabs; not in the sidebar.
+    @Published var docTabs: [DocTab] = DocTab.load() { didSet { DocTab.save(docTabs) } }
+    /// The doc tab shown instead of the active session tab (nil: the session tab shows).
+    @Published var activeDocId: String? { didSet { if oldValue != activeDocId { TerminalHost.shared.render(force: true) } } }
     @Published var focusedSessionId: String?
     @Published var sidebarVisible = true
     /// Sidebar shown floating over the content while it is hidden (pointer at the left edge).
@@ -385,6 +391,7 @@ final class AppModel: ObservableObject {
 
     func selectWorkspace(_ id: String) {
         guard id != selectedWorkspaceId else { return }
+        activeDocId = nil
         selectedWorkspaceId = id
         if let t = lastTabPerWorkspace[id], let tab = state.tabs.first(where: { $0.id == t }), project(tab.projectId)?.workspaceId == id {
             activeTabId = tab.id
@@ -405,6 +412,7 @@ final class AppModel: ObservableObject {
     }
 
     func selectProject(_ id: String) {
+        activeDocId = nil
         selectedProjectId = id
         if activeTab?.projectId != id { activeTabId = tabs(ofProject: id).first?.id }
         focusedSessionId = activeTab?.activeSessionId ?? activeTab?.layout.sessions.first
@@ -413,6 +421,7 @@ final class AppModel: ObservableObject {
 
     func selectTab(_ id: String) {
         guard let t = state.tabs.first(where: { $0.id == id }) else { return }
+        activeDocId = nil
         activeTabId = id
         selectedProjectId = t.projectId
         focusedSessionId = t.activeSessionId ?? t.layout.sessions.first
@@ -435,6 +444,7 @@ final class AppModel: ObservableObject {
 
     func selectSession(_ id: String) {
         guard let s = session(id) else { return }
+        activeDocId = nil
         if let p = project(s.projectId), p.workspaceId != selectedWorkspaceId { selectedWorkspaceId = p.workspaceId }
         selectedProjectId = s.projectId
         if let t = tab(containing: id) {
@@ -530,6 +540,7 @@ final class AppModel: ObservableObject {
     func rename(_ id: String, to title: String) { client(for: id).call("session.rename", ["id": id, "title": title], completion: report) }
 
     func closeFocusedPane() {
+        if let d = activeDocId { closeDoc(d); return }
         if let id = focusedSessionId { remove(id) }
     }
 

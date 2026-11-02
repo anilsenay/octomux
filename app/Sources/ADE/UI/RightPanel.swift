@@ -72,11 +72,7 @@ final class HistoryModel: ObservableObject {
     func select(_ c: Commit) {
         selected = c.id
         guard let path else { return }
-        DispatchQueue.global(qos: .userInitiated).async {
-            var d = GitInfo.git(["show", "--stat", "--patch", "--format=%H%nAuthor: %an <%ae>%nDate:   %ad%n%n    %B", c.id], in: path) ?? ""
-            if d.count > 400_000 { d = String(d.prefix(400_000)) + "\n… (truncated)" }
-            DispatchQueue.main.async { if self.selected == c.id { self.detail = d } }
-        }
+        AppModel.shared.openDoc(.commit(c.id, c.subject), workPath: path)
     }
 }
 
@@ -114,11 +110,6 @@ struct HistoryPanel: View {
                         }
                     }
                     .padding(6)
-                }
-                .frame(maxHeight: h.selected == nil ? .infinity : 240)
-                if h.selected != nil {
-                    Hairline()
-                    DiffView(text: h.detail)
                 }
             }
         }
@@ -227,11 +218,7 @@ final class FilesModel: ObservableObject {
     func open(_ rel: String) {
         selected = rel
         guard let path else { return }
-        let full = (path as NSString).appendingPathComponent(rel)
-        DispatchQueue.global(qos: .userInitiated).async {
-            let text = RemoteFS.readText(full) ?? "Cannot read file"
-            DispatchQueue.main.async { if self.selected == rel { self.preview = text } }
-        }
+        AppModel.shared.openDoc(.file(rel), workPath: path)
     }
 }
 
@@ -260,23 +247,6 @@ struct FilesPanel: View {
                     }
                 }
                 .padding(6)
-            }
-            .frame(maxHeight: f.selected == nil ? .infinity : 260)
-            if let sel = f.selected, let base = f.path {
-                Hairline()
-                HStack(spacing: 6) {
-                    Text(sel).font(T.mono(11)).foregroundStyle(T.text2).lineLimit(1).truncationMode(.head)
-                    Spacer()
-                    if !model.host(forPath: base).0.isRemote {
-                        OpenInMenu(path: (base as NSString).appendingPathComponent(sel)).menuStyle(.borderlessButton).fixedSize()
-                    }
-                    Button { f.selected = nil } label: { Image(systemName: "xmark").font(.system(size: 9, weight: .bold)) }.buttonStyle(ChromeButtonStyle())
-                }
-                .padding(.horizontal, 10).frame(height: 30)
-                ScrollView([.vertical, .horizontal]) {
-                    Text(f.preview).font(T.mono(11.5)).foregroundStyle(T.text).textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .topLeading).padding(10)
-                }
             }
         }
         .onAppear { f.attach(model.currentWorkPath) }

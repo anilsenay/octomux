@@ -106,6 +106,12 @@ enum DebugActions {
             case "move_tab": if let id, let to = p["value"] as? String { m.moveTab(id, to: to) }
             case "move_project_before": if let id, let to = p["value"] as? String { m.moveProject(id, before: to) }
             case "toggle_changes": m.toggleChangesPanel()
+            case "open_file": if let v = p["value"] as? String { m.openFile(v, line: p["line"] as? Int) }
+            case "open_changes": m.openChanges(scrollTo: p["value"] as? String)
+            case "open_commit": if let v = p["value"] as? String { m.openCommit(v, subject: p["subject"] as? String ?? "") }
+            case "doc_js": if let d = m.activeDoc, let v = p["value"] as? String { DocHost.shared.controller(for: d).web.evaluateJavaScript(v) }
+            case "close_doc": if let d = m.activeDocId { m.closeDoc(d) }
+            case "right_tab": UserDefaults.standard.set(p["value"] as? String ?? "Changes", forKey: "ade.rightTab"); m.rightPanelVisible = true
             case "sidebar_peek": m.sidebarPeek = (p["value"] as? Bool) ?? true
             case "dock_position": UserDefaults.standard.set(p["value"] as? String ?? "bottom", forKey: "ade.dockPosition")
             case "hover_project": m.debugHoverProject = id
