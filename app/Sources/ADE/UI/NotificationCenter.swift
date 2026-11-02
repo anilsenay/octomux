@@ -280,7 +280,11 @@ struct DropdownAnchor<Content: View>: NSViewRepresentable {
         func close() {
             monitors.forEach { NSEvent.removeMonitor($0) }; monitors = []
             if let o = observer { NotificationCenter.default.removeObserver(o); observer = nil }
-            if let p = panel { p.parent?.removeChildWindow(p); p.orderOut(nil) }
+            if let p = panel {
+                let parent = p.parent
+                parent?.removeChildWindow(p); p.orderOut(nil)
+                parent?.makeKey()   // typing goes back to the window (composer, terminal)
+            }
             panel = nil
         }
     }
@@ -289,28 +293,51 @@ struct DropdownAnchor<Content: View>: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView { NSView() }
     static func dismantleNSView(_ v: NSView, coordinator: Coordinator) { coordinator.close() }
 
+    /// Borderless panels cannot become key by default; this one must, for search and name fields.
+    final class Panel: NSPanel {
+        override var canBecomeKey: Bool { true }
+    }
+
+    /// Reports content size changes (rows loading, a field appearing) so the panel can follow.
+    final class Host: NSHostingView<AnyView> {
+        var onResize: (() -> Void)?
+        override func invalidateIntrinsicContentSize() {
+            super.invalidateIntrinsicContentSize()
+            DispatchQueue.main.async { [weak self] in self?.onResize?() }
+        }
+    }
+
+    private static func place(_ p: NSPanel, host: NSView, anchor v: NSView) {
+        guard let win = v.window else { return }
+        let size = host.fittingSize
+        let a = v.convert(v.bounds, to: nil)
+        let origin = win.convertPoint(toScreen: NSPoint(x: a.minX - 4, y: a.minY - 6 - size.height))
+        let frame = NSRect(origin: origin, size: size)
+        if p.frame != frame { p.setFrame(frame, display: true) }
+    }
+
     func updateNSView(_ v: NSView, context: Context) {
         let c = context.coordinator
         if isPresented, c.panel == nil, let win = v.window {
-            let host = NSHostingView(rootView: AnyView(content()
+            let host = Host(rootView: AnyView(content()
                 .background(T.m.glass ? AnyView(VisualEffect(material: .popover)) : AnyView(T.raised))
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(T.border))
                 .foregroundStyle(T.text)
                 .environmentObject(AppModel.shared)))
-            let size = host.fittingSize
-            let anchor = v.convert(v.bounds, to: nil)
-            let origin = win.convertPoint(toScreen: NSPoint(x: anchor.minX - 4, y: anchor.minY - 6 - size.height))
-            let p = NSPanel(contentRect: NSRect(origin: origin, size: size), styleMask: [.borderless, .nonactivatingPanel],
-                            backing: .buffered, defer: false)
+            let p = Panel(contentRect: NSRect(origin: .zero, size: host.fittingSize), styleMask: [.borderless, .nonactivatingPanel],
+                          backing: .buffered, defer: false)
             p.isOpaque = false
             p.backgroundColor = .clear
             p.hasShadow = true
-            p.becomesKeyOnlyIfNeeded = true
             p.contentView = host
             host.sizingOptions = [.intrinsicContentSize]
+            host.onResize = { [weak p, weak host, weak v] in
+                if let p, let host, let v { Self.place(p, host: host, anchor: v) }
+            }
+            Self.place(p, host: host, anchor: v)
             win.addChildWindow(p, ordered: .above)
-            p.orderFront(nil)
+            p.makeKeyAndOrderFront(nil)
             c.panel = p
             let dismiss = { DispatchQueue.main.async { isPresented = false } }
             c.monitors.append(NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { e in
@@ -322,12 +349,8 @@ struct DropdownAnchor<Content: View>: NSViewRepresentable {
                 return e
             } as Any)
             c.observer = NotificationCenter.default.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { _ in dismiss() }
-        } else if isPresented, let p = c.panel, let win = v.window, let host = p.contentView {
-            // Content grew or shrank (items arrived): keep the top edge under the anchor.
-            let size = host.fittingSize
-            let anchor = v.convert(v.bounds, to: nil)
-            let origin = win.convertPoint(toScreen: NSPoint(x: anchor.minX - 4, y: anchor.minY - 6 - size.height))
-            p.setFrame(NSRect(origin: origin, size: size), display: true)
+        } else if isPresented, let p = c.panel, let host = p.contentView {
+            Self.place(p, host: host, anchor: v)
         } else if !isPresented, c.panel != nil {
             c.close()
         }

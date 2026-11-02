@@ -12,6 +12,8 @@ struct NewChatView: View {
     @State private var profileId: String? = UserDefaults.standard.string(forKey: "ade.chatProfile")
     @State private var worktree: String?    // nil = the project's own checkout
     @State private var sending = false
+    @State private var pickingWorkspace = false
+    @State private var pickingBranch = false
     @FocusState private var focused: Bool
 
     private var doc: DocTab? { model.docTabs.first { $0.id == docId } }
@@ -40,6 +42,9 @@ struct NewChatView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(CanvasBackground())
         .onAppear { DispatchQueue.main.async { focused = true } }
+        .onReceive(NotificationCenter.default.publisher(for: .adeDebugPanel)) { n in
+            if let v = n.userInfo?["chatPicker"] as? String { pickingWorkspace = v == "workspace"; pickingBranch = v == "branch" }
+        }
     }
 
     private var composer: some View {
@@ -95,38 +100,25 @@ struct NewChatView: View {
         .help("Which agent to start")
     }
 
-    /// Where it runs: the project checkout or one of its worktrees, and that checkout's branch.
+    /// Where it runs (project checkout or a worktree) and that checkout's branch, as two buttons.
     private var context: some View {
         let path = worktree ?? project?.path ?? ""
-        let linked = project.map { wt.linked($0.path) } ?? []
-        return HStack(spacing: 14) {
-            Menu {
-                Button((worktree == nil ? "✓ " : "") + "Current checkout") { worktree = nil }
-                if !linked.isEmpty { Divider() }
-                ForEach(linked) { w in
-                    Button((worktree == w.path ? "✓ " : "") + w.label) { worktree = w.path }
-                }
-            } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: worktree == nil ? "folder" : "arrow.triangle.branch").font(.system(size: 10.5))
-                    Text(worktree.map { (($0 as NSString).lastPathComponent) } ?? "Current checkout").font(.system(size: 11.5))
-                    if !linked.isEmpty { Image(systemName: "chevron.down").font(.system(size: 7, weight: .bold)) }
-                }
-                .foregroundStyle(T.text3).contentShape(Rectangle())
-            }
-            .plainMenu().fixedSize().pointerCursor()
-            .help(path)
+        return HStack(spacing: 4) {
+            ContextChip(icon: worktree == nil ? "folder" : "arrow.triangle.branch",
+                        text: worktree.map { ($0 as NSString).lastPathComponent } ?? "Current checkout",
+                        open: $pickingWorkspace, help: path)
+                .background(DropdownAnchor(isPresented: $pickingWorkspace) {
+                    WorkspaceChoice(project: project, selected: worktree) { worktree = $0; pickingWorkspace = false }
+                })
             if let b = git.branch(for: path) {
-                HStack(spacing: 4) {
-                    Image(systemName: "arrow.triangle.branch").font(.system(size: 10))
-                    Text(b).font(T.mono(11))
-                }
-                .foregroundStyle(T.text3)
+                ContextChip(icon: "arrow.triangle.branch", text: b, mono: true, open: $pickingBranch, help: "Switch or create a branch in \(path)")
+                    .background(DropdownAnchor(isPresented: $pickingBranch) {
+                        BranchPicker(path: path, mode: .checkout, current: b) { pickingBranch = false }
+                    })
             }
             Spacer()
             Text("Opens as a chat; the terminal is one click away.").font(.system(size: 11)).foregroundStyle(T.text3.opacity(0.8))
         }
-        .padding(.horizontal, 4)
     }
 
     private func send() {
@@ -146,4 +138,115 @@ struct NewChatView: View {
 /// The accent ring color of the current workspace (focused composer border).
 enum WorkspaceTintColor {
     static func ring(_ model: AppModel) -> Color { Color(nsColor: WorkspaceTint.accent(dark: ThemeStore.shared.isDark)) }
+}
+
+/// A small pill under the composer (workspace, branch): hover fill, pressed look while its list is open.
+struct ContextChip: View {
+    let icon: String
+    let text: String
+    var mono = false
+    @Binding var open: Bool
+    var help = ""
+    @State private var hover = false
+
+    var body: some View {
+        Button { open.toggle() } label: {
+            HStack(spacing: 5) {
+                Image(systemName: icon).font(.system(size: 10.5))
+                Text(text).font(mono ? T.mono(11.5) : .system(size: 11.5, weight: .medium)).lineLimit(1)
+            }
+            .foregroundStyle(open || hover ? T.text : T.text2)
+            .padding(.horizontal, 8).frame(height: 24)
+            .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(open ? T.border : hover ? T.hover : .clear))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain).onHover { hover = $0 }.pointerCursor().help(help)
+    }
+}
+
+/// "Workspace" list: current checkout, a new worktree (branch name typed inline), or an existing one.
+struct WorkspaceChoice: View {
+    @EnvironmentObject var model: AppModel
+    @ObservedObject var wt = Worktrees.shared
+    let project: Project?
+    let selected: String?
+    let pick: (String?) -> Void
+    @State private var naming = false
+    @State private var branch = ""
+    @State private var showExisting = false
+    @State private var busy = false
+    @State private var error: String?
+    @FocusState private var nameFocused: Bool
+
+    var body: some View {
+        let linked = project.map { wt.linked($0.path) } ?? []
+        VStack(alignment: .leading, spacing: 1) {
+            Text("Workspace").font(.system(size: 11, weight: .semibold)).foregroundStyle(T.text3)
+                .padding(.horizontal, 10).padding(.top, 8).padding(.bottom, 4)
+            row("folder", "Current checkout", checked: selected == nil) { pick(nil) }
+            if naming {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrow.triangle.branch").font(.system(size: 11)).foregroundStyle(T.text2).frame(width: 16)
+                    TextField("New branch name", text: $branch).textFieldStyle(.plain).font(.system(size: 12.5))
+                        .focused($nameFocused).onSubmit(create).disabled(busy)
+                    if busy { WorkingRing() }
+                }
+                .padding(.horizontal, 10).frame(height: 30)
+                .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(T.hover))
+                .onAppear { nameFocused = true }
+            } else {
+                row("plus.square.on.square", "New worktree", checked: false) { naming = true }
+            }
+            if !linked.isEmpty {
+                row("square.stack", "Existing worktree", checked: false, trailing: showExisting ? "chevron.down" : "chevron.right") {
+                    withAnimation(.easeOut(duration: 0.12)) { showExisting.toggle() }
+                }
+                if showExisting || selected != nil {
+                    ForEach(linked) { w in
+                        row("arrow.triangle.branch", w.label, checked: selected == w.path, indent: 18) { pick(w.path) }
+                    }
+                }
+            }
+            if let error {
+                Text(error).font(T.caption).foregroundStyle(T.red).fixedSize(horizontal: false, vertical: true).padding(.horizontal, 10).padding(.vertical, 4)
+            }
+            Hairline().padding(.vertical, 4)
+            row("gearshape", "Worktree settings", checked: false) { SettingsWindow.show(section: .features); pick(selected) }
+        }
+        .padding(.horizontal, 5).padding(.bottom, 6)
+        .frame(width: 260)
+    }
+
+    private func row(_ icon: String, _ title: String, checked: Bool, trailing: String? = nil, indent: CGFloat = 0, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: icon).font(.system(size: 11)).foregroundStyle(T.text2).frame(width: 16)
+                Text(title).font(.system(size: 12.5)).foregroundStyle(T.text).lineLimit(1).truncationMode(.middle)
+                Spacer(minLength: 6)
+                if checked { Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundStyle(T.text) }
+                if let trailing { Image(systemName: trailing).font(.system(size: 9, weight: .semibold)).foregroundStyle(T.text3) }
+            }
+            .padding(.leading, 10 + indent).padding(.trailing, 10).frame(height: 30)
+            .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(checked ? T.hover : .clear))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain).background(HoverFill()).pointerCursor()
+    }
+
+    private func create() {
+        let b = branch.trimmingCharacters(in: .whitespaces)
+        guard let project, !b.isEmpty else { return }
+        busy = true
+        error = nil
+        DispatchQueue.global(qos: .userInitiated).async {
+            let r = Worktrees.create(project: project.path, branch: b)
+            DispatchQueue.main.async {
+                busy = false
+                switch r {
+                case .success(let path): pick(path)
+                case .failure(let e): error = "\(e)".split(separator: "\n").filter { !$0.hasPrefix("hint:") }.prefix(3).joined(separator: "\n")
+                }
+            }
+        }
+    }
 }
