@@ -445,7 +445,7 @@ struct WorkspaceTintedFrame: View {
         ZStack {
             T.frame
             if let hex = model.workspace?.color {
-                Color(hex: hex).opacity(scheme == .dark ? 0.075 : 0.05)
+                Color(hex: hex).opacity(scheme == .dark ? 0.03 : 0.025)
             }
         }
         .animation(.easeOut(duration: 0.25), value: model.selectedWorkspaceId)
@@ -456,6 +456,6 @@ enum WorkspaceTint {
     /// Selected-row fill: the workspace color when there is one, else the theme's selection.
     static func selection(_ model: AppModel) -> Color {
         guard let hex = model.workspace?.color else { return T.selection }
-        return Color(hex: hex).opacity(0.2)
+        return Color(hex: hex).opacity(0.16)
     }
 }
