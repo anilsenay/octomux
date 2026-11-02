@@ -235,6 +235,64 @@ enum DebugActions {
             menu.popUp(positioning: nil, at: NSPoint(x: 300, y: view.bounds.height - 60), in: view)
             return ["captured": done, "layers": layers]
         }
+        // Drives the real New Worktree sheet: types the branch into its field and presses Return
+        // (the sheet's default action = Create). Captures the sheet before submitting.
+        d.register("worktree_sheet_ui") { p in
+            guard let id = p["id"] as? String, let proj = AppModel.shared.project(id), let branch = p["value"] as? String,
+                  let main = (NSApp.delegate as? AppDelegate)?.mainWindow else { throw DebugServer.DebugError.bad("id/value") }
+            AppModel.shared.newWorktreeFor = proj
+            let shot = p["path"] as? String
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                guard let sheet = main.attachedSheet ?? main.sheets.first else { NSLog("no sheet"); return }
+                func fields(_ v: NSView) -> [NSTextField] { (v as? NSTextField).map { [$0] } ?? [] + v.subviews.flatMap(fields) }
+                if let f = fields(sheet.contentView!).first(where: { $0.isEditable }) {
+                    sheet.makeFirstResponder(f)
+                    (sheet.fieldEditor(true, for: f) as? NSTextView)?.insertText(branch, replacementRange: NSRange(location: NSNotFound, length: 0))
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    if let shot, let cg = CGWindowListCreateImage(.null, .optionIncludingWindow, CGWindowID(sheet.windowNumber), [.boundsIgnoreFraming, .bestResolution]),
+                       let png = NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:]) {
+                        try? png.write(to: URL(fileURLWithPath: shot))
+                    }
+                    let ev = { (type: NSEvent.EventType) in
+                        NSEvent.keyEvent(with: type, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                         windowNumber: sheet.windowNumber, context: nil, characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36)!
+                    }
+                    sheet.sendEvent(ev(.keyDown))
+                    sheet.sendEvent(ev(.keyUp))
+                }
+            }
+            return ["ok": true]
+        }
+        // Opens a SwiftUI pop-up menu (found as an NSPopUpButton by its tooltip) and captures it.
+        d.register("popup_shot") { p in
+            guard let out = p["path"] as? String, let main = (NSApp.delegate as? AppDelegate)?.mainWindow else { throw DebugServer.DebugError.bad("path") }
+            func all(_ v: NSView) -> [NSView] { [v] + v.subviews.flatMap(all) }
+            // Pop-up buttons ordered left→right, top→bottom on screen.
+            let pops = all(main.contentView!).compactMap { $0 as? NSPopUpButton }.sorted { a, b in
+                let fa = a.convert(a.bounds, to: nil), fb = b.convert(b.bounds, to: nil)
+                return abs(fa.minY - fb.minY) > 8 ? fa.minY > fb.minY : fa.minX < fb.minX
+            }
+            let i = p["index"] as? Int ?? 0
+            guard i < pops.count else { return ["captured": false, "count": pops.count] }
+            let b = pops[i]
+            var done = false
+            let t = Timer(timeInterval: 0.4, repeats: false) { _ in
+                let info = (CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]]) ?? []
+                if let win = info.first(where: { ($0[kCGWindowOwnerPID as String] as? Int32) == getpid() && ($0[kCGWindowLayer as String] as? Int) == 101 }),
+                   let num = win[kCGWindowNumber as String] as? UInt32,
+                   let cg = CGWindowListCreateImage(.null, .optionIncludingWindow, num, [.boundsIgnoreFraming, .bestResolution]),
+                   let png = NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:]) {
+                    try? png.write(to: URL(fileURLWithPath: out))
+                    done = true
+                }
+                b.menu?.cancelTracking()
+            }
+            RunLoop.main.add(t, forMode: .common)
+            b.performClick(nil)
+            let f = b.convert(b.bounds, to: nil)
+            return ["captured": done, "count": pops.count, "x": Int(f.minX), "y": Int(f.minY), "title": b.menu?.items.first?.title ?? ""]
+        }
         d.register("keybindings") { _ in
             KeyBindings.shared.commands.map { c in
                 ["id": c.id, "title": c.title, "shortcut": KeyBindings.shared.current(c.id)?.display ?? "",
