@@ -102,18 +102,20 @@ struct TopBar: View {
     }
 
     /// Fits the bar into `width`: pinned agent labels go first, then tab titles shrink.
-    private func layout(width: CGFloat) -> (labels: Bool, chars: Int, compact: Bool) {
-        let n = CGFloat(max(1, model.currentTabs.count))
+    private func layout(width: CGFloat) -> (labels: Bool, chars: Int, compact: Bool, visible: Int) {
         let leading: CGFloat = model.sidebarVisible ? 2 : 72 + 140
-        let compact = width < 620
-        let fixed: CGFloat = (compact ? 170 : 390) + leading   // +, terminal, diff, open in, splits, panel, menu, gaps
+        let compact = width < 820
+        let fixed: CGFloat = (compact ? 300 : 440) + leading   // +, pinned, terminal, diff, open in, splits, chat, panel, menu, gaps
+        let tabMin: CGFloat = 92
+        let visible = max(1, min(model.currentTabs.count, Int((width - fixed - 44) / tabMin)))
+        let n = CGFloat(max(1, visible))
         let pinnedIcons = CGFloat(model.pinnedProfiles.count) * 30
         let pinnedFull = model.pinnedProfiles.reduce(CGFloat(0)) { $0 + 40 + CGFloat($1.name.count) * 7 }
         let tabMinimum = n * 110
         let labels = !compact && width - fixed - pinnedFull - tabMinimum > 0
         let avail = width - fixed - (labels ? pinnedFull : pinnedIcons)
         let perTab = min(210, avail / n)
-        return (labels, max(3, Int((perTab - 64) / 7)), compact)
+        return (labels, max(3, Int((perTab - 64) / 7)), compact, visible)
     }
 
     private func content(width: CGFloat) -> some View {
@@ -127,9 +129,25 @@ struct TopBar: View {
                     Text(p.name).font(T.headline).padding(.trailing, 6)
                 }
             }
+            let shown = visibleTabs(fit.visible)
             HStack(spacing: m.tabStyle == .underline ? 0 : 2) {
-                ForEach(Array(model.currentTabs.enumerated()), id: \.element.id) { i, t in
+                ForEach(shown, id: \.1.id) { i, t in
                     TabChip(tab: t, index: i, maxChars: fit.chars)
+                }
+                let hidden = Array(model.currentTabs.enumerated()).filter { e in !shown.contains { $0.1.id == e.element.id } }
+                if !hidden.isEmpty {
+                    Menu {
+                        ForEach(hidden, id: \.element.id) { i, t in
+                            let lead = model.session(t.activeSessionId ?? t.layout.sessions.first)
+                            Button((i < 9 ? "⌘\(i + 1)  " : "") + (lead?.displayTitle ?? "Tab")) { model.selectTab(t.id) }
+                        }
+                    } label: {
+                        Text("+\(hidden.count)").font(.system(size: 11.5, weight: .semibold)).foregroundStyle(T.text2)
+                    }
+                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                    .padding(.horizontal, 6).frame(height: m.tabH)
+                    .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(T.hover))
+                    .help("\(hidden.count) more tabs")
                 }
             }
             .padding(m.tabStyle == .segment ? 3 : 0)
@@ -188,6 +206,17 @@ struct TopBar: View {
 }
 
 extension TopBar {
+    /// The first `n` tabs, swapping in the active tab if it would be hidden.
+    func visibleTabs(_ n: Int) -> [(Int, Tab)] {
+        let all = Array(model.currentTabs.enumerated()).map { ($0.offset, $0.element) }
+        guard all.count > n else { return all }
+        var shown = Array(all.prefix(n))
+        if let active = all.first(where: { $0.1.id == model.activeTabId }), !shown.contains(where: { $0.1.id == active.1.id }) {
+            shown[shown.count - 1] = active
+        }
+        return shown
+    }
+
     @ViewBuilder func pinned(labels: Bool) -> some View {
         HStack(spacing: 2) {
             ForEach(model.pinnedProfiles) { p in

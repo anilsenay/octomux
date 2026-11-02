@@ -120,6 +120,7 @@ final class KeyBindings: ObservableObject {
     }
 
     func sync(from model: AppModel) {
+        if model.host.isRemote { return }   // shortcuts are this Mac's preference
         var o: [String: String] = [:]
         if case .object(let d)? = model.settingValue("keybindings", scope: "global") {
             for (k, v) in d { if let s = v.string { o[k] = s } }

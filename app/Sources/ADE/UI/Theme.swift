@@ -114,6 +114,8 @@ final class ThemeStore: ObservableObject {
     }
 
     func sync(from model: AppModel) {
+        // Appearance is this Mac's preference: a remote host's settings do not change it.
+        if model.host.isRemote && !lastWritten.isEmpty { return }
         let id = model.settingValue("appearance.theme", scope: "global")?.string ?? "ink"
         let m = model.settingValue("appearance.mode", scope: "global")?.string ?? "system"
         let tc = model.settingValue("appearance.terminal_colors", scope: "global")?.bool ?? true
