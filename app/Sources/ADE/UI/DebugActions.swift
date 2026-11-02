@@ -1,4 +1,5 @@
 import AppKit
+import UserNotifications
 
 /// UI-level debug methods (dev only): drive the app like a user and read back what it shows.
 enum DebugActions {
@@ -80,6 +81,35 @@ enum DebugActions {
             default: throw DebugServer.DebugError.bad("unknown action \(name)")
             }
             return ["ok": true]
+        }
+        d.register("notif_status") { _ in
+            var status = "unknown"
+            let sem = DispatchSemaphore(value: 0)
+            if Notifier.shared.available {
+                UNUserNotificationCenter.current().getNotificationSettings { st in
+                    status = "\(st.authorizationStatus.rawValue)"
+                    sem.signal()
+                }
+                _ = sem.wait(timeout: .now() + 2)
+            }
+            var out: [String: Any] = [:]
+            out["available"] = Notifier.shared.available
+            out["authorized"] = Notifier.shared.authorized
+            out["status"] = status + " (0=notDetermined 1=denied 2=authorized 3=provisional)"
+            out["error"] = Notifier.shared.lastAuthError ?? "none"
+            out["bundle_id"] = Bundle.main.bundleIdentifier ?? "none"
+            out["bundle_url"] = Bundle.main.bundleURL.path
+            return out
+        }
+        d.register("delivered_notifications") { _ in
+            var list: [[String: Any]] = []
+            let sem = DispatchSemaphore(value: 0)
+            UNUserNotificationCenter.current().getDeliveredNotifications { ns in
+                list = ns.map { ["title": $0.request.content.title, "body": $0.request.content.body] }
+                sem.signal()
+            }
+            _ = sem.wait(timeout: .now() + 2)
+            return list
         }
         d.register("open_in_info") { _ in
             ["installed": OpenIn.installed.map { $0.name }, "default": OpenIn.defaultAppId]

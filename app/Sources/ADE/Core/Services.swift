@@ -152,7 +152,8 @@ final class GitInfo: ObservableObject {
 
 final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     static let shared = Notifier()
-    private var available = false
+    private(set) var available = false
+    private(set) var lastAuthError: String?
     private(set) var authorized = false
 
     func start() {
@@ -161,8 +162,12 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         available = true
         let c = UNUserNotificationCenter.current()
         c.delegate = self
-        c.requestAuthorization(options: [.alert, .sound, .badge]) { ok, _ in
-            DispatchQueue.main.async { self.authorized = ok }
+        c.requestAuthorization(options: [.alert, .sound, .badge]) { ok, err in
+            DispatchQueue.main.async {
+                self.authorized = ok
+                self.lastAuthError = err.map { "\($0)" }
+                if let err { NSLog("ADE notification authorization error: \(err)") }
+            }
         }
     }
 

@@ -80,7 +80,8 @@ final class DebugServer {
                 do { value = try h(params) } catch { thrown = error }
             }
             if let thrown { throw thrown }
-            result["result"] = value
+            // Never crash the app on a non-JSON value.
+            result["result"] = JSONSerialization.isValidJSONObject(["v": value]) ? value : "\(value)"
         } catch {
             result["error"] = "\(error)"
         }
