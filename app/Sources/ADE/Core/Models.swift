@@ -276,7 +276,10 @@ struct UsageReading: Codable, Equatable, Identifiable {
         case "five_hour": return "5-hour window"
         case "seven_day": return "Weekly"
         case "spend_limit": return "Spend limit"
-        default: return window.capitalized
+        default:
+            // Per-model weekly limits from `/usage` ("seven_day_fable" → "Weekly · Fable").
+            if window.hasPrefix("seven_day_") { return "Weekly · " + window.dropFirst(10).replacingOccurrences(of: "_", with: " ").capitalized }
+            return window.capitalized
         }
     }
     static func order(_ w: String) -> Int { ["five_hour": 0, "seven_day": 1, "spend_limit": 2][w] ?? 3 }
