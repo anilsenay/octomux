@@ -65,7 +65,7 @@ extension AppModel {
         var params: [String: Any] = ["project_id": projectId, "placement": "dock"]
         if let command { params["command"] = command }
         if let title { params["title"] = title }
-        client.call("session.create", params) { [weak self] r in
+        client(for: projectId).call("session.create", params) { [weak self] r in
             guard let self else { return }
             switch r {
             case .success(let v):
@@ -129,7 +129,7 @@ struct DockView: View {
                             .buttonStyle(.plain).foregroundStyle(T.text3)
                     }
                     .contextMenu {
-                        Button("Move to Tab") { model.client.call("session.move", ["id": s.id, "placement": "tab"]) }
+                        Button("Move to Tab") { model.client(for: s.id).call("session.move", ["id": s.id, "placement": "tab"]) }
                         Button("Restart") { model.restart(s.id) }
                         Button("Close", role: .destructive) { model.remove(s.id, confirm: false) }
                     }

@@ -93,8 +93,9 @@ struct OpenInButton: View {
 enum RemoteFS {
     /// Text of a file on the current host (nil when unreadable; "Binary file" note for binaries).
     static func readText(_ path: String, max: Int = 512 * 1024) -> String? {
-        if AppModel.shared.host.isRemote {
-            guard let r = try? AppModel.shared.client.callSync("fs.read", ["path": path, "max": max]) as? [String: Any] else { return nil }
+        let (h, c) = AppModel.shared.host(forPath: path)
+        if h.isRemote {
+            guard let r = try? c.callSync("fs.read", ["path": path, "max": max]) as? [String: Any] else { return nil }
             if (r["binary"] as? Bool) == true { return "Binary file (\(r["size"] ?? "?") bytes)" }
             let t = r["text"] as? String ?? ""
             return (r["truncated"] as? Bool) == true ? t + "\n… (truncated)" : t
@@ -153,9 +154,10 @@ final class GitInfo: ObservableObject {
     }
 
     static func git(_ args: [String], in dir: String) -> String? {
-        if AppModel.shared.host.isRemote {
+        let (h, c) = AppModel.shared.host(forPath: dir)
+        if h.isRemote {
             // Remote host: the daemon there runs git (`git.run`, allowlisted).
-            guard let r = try? AppModel.shared.client.callSync("git.run", ["cwd": dir, "args": args]) as? [String: Any],
+            guard let r = try? c.callSync("git.run", ["cwd": dir, "args": args]) as? [String: Any],
                   (r["ok"] as? Bool) == true else { return nil }
             return r["stdout"] as? String
         }

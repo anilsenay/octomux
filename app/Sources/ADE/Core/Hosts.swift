@@ -69,6 +69,11 @@ enum HostStore {
         set { UserDefaults.standard.set(newValue, forKey: "ade.host") }
     }
     static var current: Host { withLocal.first { $0.id == currentId } ?? .local }
+    /// Hosts shown alongside the current one (features.multi_host).
+    static var attached: [String] {
+        get { UserDefaults.standard.stringArray(forKey: "ade.attachedHosts") ?? [] }
+        set { UserDefaults.standard.set(newValue, forKey: "ade.attachedHosts") }
+    }
 }
 
 /// Line stream over a child process's stdin/stdout (ssh … ade stdio).

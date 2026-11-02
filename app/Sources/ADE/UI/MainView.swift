@@ -173,7 +173,7 @@ struct TopBar: View {
                         }
                         .buttonStyle(.plain).help("\(stat.files) changed files")
                     }
-                    if let p = model.currentProject, !model.host.isRemote {
+                    if let p = model.currentProject, !model.host(for: p.id).isRemote {
                         OpenInButton(path: p.path)
                     }
                     Button { model.newSession(profileId: nil, split: .right) } label: { Image(systemName: "rectangle.split.2x1") }
@@ -253,7 +253,7 @@ struct TabChip: View {
                 else if s.activity == .working { Circle().fill(T.accent).frame(width: 6, height: 6) }
                 else { Circle().fill(T.green).frame(width: 6, height: 6) }
             }
-            Button { model.client.call("tab.close", ["id": tab.id]) } label: {
+            Button { model.client(for: tab.id).call("tab.close", ["id": tab.id]) } label: {
                 Image(systemName: "xmark").font(.system(size: 8, weight: .bold)).frame(width: 14, height: 14)
             }
             .buttonStyle(.plain).foregroundStyle(T.text3).opacity(hover ? 1 : 0)

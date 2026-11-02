@@ -192,7 +192,7 @@ struct AgentsSettings: View {
         Text("Agents appear in the + menu. Pinned agents also get a one-click button in the tab bar. Claude and Codex sessions resume their conversation after a crash or reboot.")
             .foregroundStyle(T.text2)
         SettingsCard {
-            ForEach(model.state.profiles.sorted { $0.sort < $1.sort }) { p in
+            ForEach(model.state.profiles.filter { model.owner[$0.id] == nil }.sorted { $0.sort < $1.sort }) { p in
                 HStack(spacing: 10) {
                     AgentIcon(icon: p.icon, size: 14).frame(width: 20)
                     VStack(alignment: .leading, spacing: 2) {
@@ -585,6 +585,8 @@ struct FeatureSettings: View {
             Hairline()
             feature("Remote hosts", key: "features.remote", desc: "Connect the window to an ADE daemon on another machine over SSH (Settings → Hosts).", available: true, defaultOn: true)
             Hairline()
+            feature("Hosts side by side", key: "features.multi_host", desc: "Show projects of selected remote hosts next to this Mac's, in the workspace with the same name (Settings → Hosts → Show here).", available: true, defaultOn: false)
+            Hairline()
             feature("Chat view for Claude", key: "features.chat", desc: "Show a Claude session as a chat (its transcript) and type into the same session. ⌘⇧C.", available: true, defaultOn: true)
             Hairline()
             feature("Usage via OAuth API", key: "features.usage_oauth", desc: "Read Claude plan limits from Anthropic's usage endpoint even with no session open. (Phase 2.)", available: false)
@@ -692,6 +694,10 @@ struct HostsSettings: View {
                         Button { editing = h } label: { Image(systemName: "slider.horizontal.3") }.buttonStyle(ChromeButtonStyle())
                         Button { HostStore.all.removeAll { $0.id == h.id }; hosts = HostStore.all; if model.hostId == h.id { model.switchHost("local") } } label: { Image(systemName: "trash") }
                             .buttonStyle(ChromeButtonStyle())
+                    }
+                    if h.isRemote, model.multiHost, model.hostId != h.id {
+                        Toggle("Show here", isOn: Binding(get: { HostStore.attached.contains(h.id) }, set: { model.setAttached(h.id, $0); hosts = HostStore.all }))
+                            .toggleStyle(.checkbox).font(T.caption)
                     }
                     if model.hostId == h.id {
                         Text("Connected").font(T.caption).foregroundStyle(T.accent)

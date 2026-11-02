@@ -59,7 +59,102 @@ final class AppModel: ObservableObject {
         defaults.set(sidebarVisible, forKey: "ade.sidebar")
     }
 
+    // MARK: Multi-host (features.multi_host): extra hosts merged into this window
+
+    /// Daemons of hosts shown alongside the current one, by host id.
+    private(set) var extraClients: [String: DaemonClient] = [:]
+    private var primaryState = DaemonState()
+    private var extraStates: [String: DaemonState] = [:]
+    /// Which host owns an id (projects, sessions, tabs, profiles of extra hosts). Absent = current host.
+    private(set) var owner: [String: String] = [:]
+
+    var multiHost: Bool { setting("features.multi_host")?.bool ?? false }
+
+    /// Starts/stops extra host connections to match `HostStore.attached`.
+    func syncExtraHosts() {
+        let want = multiHost ? Set(HostStore.attached.filter { $0 != client.host.id }) : []
+        for (id, c) in extraClients where !want.contains(id) {
+            c.switchHost(.local); c.stopped = true
+            extraClients.removeValue(forKey: id)
+            extraStates.removeValue(forKey: id)
+        }
+        for id in want where extraClients[id] == nil {
+            guard let h = HostStore.withLocal.first(where: { $0.id == id }) else { continue }
+            let c = DaemonClient(host: h)
+            c.onState = { [weak self] st in self?.extraStates[id] = st; self?.publish() }
+            c.onNotify = { n in Notifier.shared.deliver(n) }
+            extraClients[id] = c
+            c.startSubscription()
+        }
+        publish()
+    }
+
+    func client(for id: String?) -> DaemonClient {
+        guard let id, let h = owner[id], let c = extraClients[h] else { return client }
+        return c
+    }
+
+    func host(for id: String?) -> Host {
+        guard let id, let h = owner[id], let c = extraClients[h] else { return client.host }
+        return c.host
+    }
+
+    private let rootsLock = NSLock()
+    private var extraRoots: [(String, DaemonClient)] = []   // project path → client, read from any thread
+
+    /// Host whose project contains `path` (git / file reads; callable off the main thread).
+    func host(forPath path: String) -> (Host, DaemonClient) {
+        rootsLock.lock(); let roots = extraRoots; rootsLock.unlock()
+        for (root, c) in roots where path == root || path.hasPrefix(root + "/") || path.hasPrefix(root + ".worktrees/") {
+            return (c.host, c)
+        }
+        return (client.host, client)
+    }
+
+    private var lastMultiHost: Bool?
+
     private func apply(_ s: DaemonState) {
+        primaryState = s
+        let flag = s.settings.first { $0.scope == "global" && $0.key == "features.multi_host" }?.value.bool ?? false
+        if flag != lastMultiHost {
+            lastMultiHost = flag
+            DispatchQueue.main.async { self.syncExtraHosts() }
+        }
+        publish()
+    }
+
+    func setAttached(_ hostId: String, _ on: Bool) {
+        var a = HostStore.attached.filter { $0 != hostId }
+        if on { a.append(hostId) }
+        HostStore.attached = a
+        syncExtraHosts()
+    }
+
+    /// Current host's state plus extra hosts' projects/sessions/tabs/profiles/usage. Extra projects join the
+    /// workspace with the same name (else the first one).
+    private func publish() {
+        var s = primaryState
+        var own: [String: String] = [:]
+        for (hid, st) in extraStates where extraClients[hid] != nil {
+            let names = Dictionary(st.workspaces.map { ($0.id, $0.name) }, uniquingKeysWith: { a, _ in a })
+            for var p in st.projects {
+                let wsName = names[p.workspaceId]
+                p.workspaceId = s.workspaces.first(where: { $0.name == wsName })?.id ?? s.workspaces.first?.id ?? p.workspaceId
+                s.projects.append(p); own[p.id] = hid
+            }
+            for x in st.sessions { s.sessions.append(x); own[x.id] = hid }
+            for t in st.tabs { s.tabs.append(t); own[t.id] = hid }
+            for pr in st.profiles { s.profiles.append(pr); own[pr.id] = hid }
+            s.usage += st.usage
+        }
+        owner = own
+        var roots: [(String, DaemonClient)] = []
+        for (hid, st) in extraStates { if let c = extraClients[hid] { roots += st.projects.map { ($0.path, c) } } }
+        rootsLock.lock(); extraRoots = roots; rootsLock.unlock()
+        applyMerged(s)
+    }
+
+    private func applyMerged(_ s: DaemonState) {
         connected = true
         state = s
         // Keep selection valid.
@@ -117,7 +212,11 @@ final class AppModel: ObservableObject {
     var currentProject: Project? { project(activeTab?.projectId ?? selectedProjectId) }
     var currentTabs: [Tab] { tabs(ofProject: currentProject?.id) }
 
-    var enabledProfiles: [Profile] { state.profiles.filter { $0.enabled }.sorted { $0.sort < $1.sort } }
+    /// Profiles of the host that owns the current project (each host has its own agents).
+    var enabledProfiles: [Profile] {
+        let h = owner[currentProject?.id ?? ""]
+        return state.profiles.filter { $0.enabled && owner[$0.id] == h }.sorted { $0.sort < $1.sort }
+    }
     var pinnedProfiles: [Profile] { enabledProfiles.filter { $0.pinned } }
 
     func tab(containing sessionId: String) -> Tab? { state.tabs.first { $0.layout.sessions.contains(sessionId) } }
@@ -202,7 +301,7 @@ final class AppModel: ObservableObject {
         selectedProjectId = s.projectId
         if let t = tab(containing: id) {
             activeTabId = t.id
-            if t.activeSessionId != id { client.call("tab.update", ["id": t.id, "active_session_id": id]) }
+            if t.activeSessionId != id { client(for: t.id).call("tab.update", ["id": t.id, "active_session_id": id]) }
         }
         focusedSessionId = id
         markRead(id)
@@ -214,13 +313,13 @@ final class AppModel: ObservableObject {
         focusedSessionId = id
         markRead(id)
         if let t = tab(containing: id), t.activeSessionId != id {
-            client.call("tab.update", ["id": t.id, "active_session_id": id])
+            client(for: t.id).call("tab.update", ["id": t.id, "active_session_id": id])
         }
     }
 
     func markRead(_ id: String) {
         if let s = session(id), s.unread || s.activity == .done {
-            client.call("session.mark_read", ["id": id])
+            client(for: id).call("session.mark_read", ["id": id])
         }
     }
 
@@ -258,7 +357,7 @@ final class AppModel: ObservableObject {
             params["cols"] = size.cols
             params["rows"] = size.rows
         }
-        client.call("session.create", params) { [weak self] r in
+        client(for: pid).call("session.create", params) { [weak self] r in
             guard let self else { return }
             switch r {
             case .success(let v):
@@ -275,8 +374,8 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func stop(_ id: String) { client.call("session.stop", ["id": id], completion: report) }
-    func restart(_ id: String) { client.call("session.restart", ["id": id], completion: report) }
+    func stop(_ id: String) { client(for: id).call("session.stop", ["id": id], completion: report) }
+    func restart(_ id: String) { client(for: id).call("session.restart", ["id": id], completion: report) }
 
     func remove(_ id: String, confirm: Bool = true) {
         if confirm, let s = session(id), s.state == .running, s.kind == .agent {
@@ -287,10 +386,10 @@ final class AppModel: ObservableObject {
             a.addButton(withTitle: "Cancel")
             if a.runModal() != .alertFirstButtonReturn { return }
         }
-        client.call("session.remove", ["id": id], completion: report)
+        client(for: id).call("session.remove", ["id": id], completion: report)
     }
 
-    func rename(_ id: String, to title: String) { client.call("session.rename", ["id": id, "title": title], completion: report) }
+    func rename(_ id: String, to title: String) { client(for: id).call("session.rename", ["id": id, "title": title], completion: report) }
 
     func closeFocusedPane() {
         if let id = focusedSessionId { remove(id) }
@@ -298,7 +397,7 @@ final class AppModel: ObservableObject {
 
     func updateLayout(tabId: String, layout: PaneNode) {
         guard let data = try? JSONEncoder().encode(layout), let obj = try? JSONSerialization.jsonObject(with: data) else { return }
-        client.call("tab.update", ["id": tabId, "layout": obj])
+        client(for: tabId).call("tab.update", ["id": tabId, "layout": obj])
     }
 
     var host: Host { client.host }
@@ -316,6 +415,8 @@ final class AppModel: ObservableObject {
         activeTabId = nil
         focusedSessionId = nil
         client.switchHost(h)
+        lastMultiHost = nil
+        syncExtraHosts()
     }
 
     func addProject() {
@@ -353,7 +454,7 @@ final class AppModel: ObservableObject {
     func updateProject(_ id: String, _ fields: [String: Any]) {
         var p = fields
         p["id"] = id
-        client.call("project.update", p, completion: report)
+        client(for: id).call("project.update", p, completion: report)
     }
 
     func removeProject(_ id: String) {
@@ -363,7 +464,7 @@ final class AppModel: ObservableObject {
         a.informativeText = "Its sessions are stopped and removed. Files on disk are not touched."
         a.addButton(withTitle: "Remove")
         a.addButton(withTitle: "Cancel")
-        if a.runModal() == .alertFirstButtonReturn { client.call("project.delete", ["id": id], completion: report) }
+        if a.runModal() == .alertFirstButtonReturn { client(for: id).call("project.delete", ["id": id], completion: report) }
     }
 
     func createWorkspace(name: String) {

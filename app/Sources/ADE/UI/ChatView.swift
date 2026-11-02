@@ -18,6 +18,9 @@ struct ChatItem: Identifiable, Equatable {
 final class ChatModel: ObservableObject {
     @Published var items: [ChatItem] = []
     @Published var path: String?
+    /// Client of the session's host when it is remote (transcripts live there).
+    var remoteClient: DaemonClient?
+    var remoteHint: String?
     private var offset: UInt64 = 0
     private var partial = Data()
     private var toolIndex: [String: Int] = [:]
@@ -42,9 +45,10 @@ final class ChatModel: ObservableObject {
     func poll() {
         guard let path else { return }
         var data = Data()
-        if AppModel.shared.host.isRemote {
+        let (h, c) = AppModel.shared.host(forPath: path.hasPrefix("/") ? (remoteHint ?? path) : path)
+        if h.isRemote || remoteClient != nil {
             let off = offset
-            guard let r = try? AppModel.shared.client.callSync("fs.read", ["path": path, "offset": off, "max": 2_000_000]) as? [String: Any] else { return }
+            guard let r = try? (remoteClient ?? c).callSync("fs.read", ["path": path, "offset": off, "max": 2_000_000]) as? [String: Any] else { return }
             let size = (r["size"] as? NSNumber)?.uint64Value ?? 0
             if size < off { offset = 0; items = []; toolIndex = [:]; return }
             data = (r["text"] as? String ?? "").data(using: .utf8) ?? Data()
@@ -235,7 +239,10 @@ struct ChatView: View {
             composer(s)
         }
         .background(T.surface)
-        .onAppear { chat.attach(resolvePath(s)) }
+        .onAppear {
+            if let s, model.host(for: s.id).isRemote { chat.remoteClient = model.client(for: s.id) }
+            chat.attach(resolvePath(s))
+        }
         .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in
             if chat.path == nil { chat.attach(resolvePath(model.session(sessionId))) }   // transcript appears after the first turn
         }
@@ -250,10 +257,11 @@ struct ChatView: View {
         if prof?.kind == .codex || prof?.icon == "codex" {
             var params: [String: Any] = ["id": s.agentSessionId ?? "", "cwd": s.cwd, "since": s.createdAt]
             if let ch = prof?.env["CODEX_HOME"] { params["codex_home"] = ch }
-            return (try? model.client.callSync("fs.find_rollout", params) as? [String: Any])?["path"] as? String
+            return (try? model.client(for: s.id).callSync("fs.find_rollout", params) as? [String: Any])?["path"] as? String
         }
-        if let p = s.transcriptPath, model.host.isRemote || FileManager.default.fileExists(atPath: p) { return p }
-        return model.host.isRemote ? nil : TranscriptLocator.path(for: s, model: model)
+        let remote = model.host(for: s.id).isRemote
+        if let p = s.transcriptPath, remote || FileManager.default.fileExists(atPath: p) { return p }
+        return remote ? nil : TranscriptLocator.path(for: s, model: model)
     }
 
     private func header(_ s: Session?) -> some View {
@@ -374,9 +382,10 @@ extension AppModel {
 
     /// Types `text` into the session like a paste followed by Enter.
     func sendToSession(_ id: String, text: String) {
-        client.call("session.input", ["id": id, "data": "\u{1b}[200~" + text + "\u{1b}[201~"]) { [weak self] _ in
+        let c = client(for: id)
+        c.call("session.input", ["id": id, "data": "\u{1b}[200~" + text + "\u{1b}[201~"]) { [weak self] _ in
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
-                self?.client.call("session.input", ["id": id, "data": "\r"], completion: self?.report)
+                c.call("session.input", ["id": id, "data": "\r"], completion: self?.report)
             }
         }
     }

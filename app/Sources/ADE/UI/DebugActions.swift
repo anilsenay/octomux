@@ -95,6 +95,7 @@ enum DebugActions {
                     HostStore.all = all
                 }
             case "switch_host": m.switchHost(p["value"] as? String ?? "local")
+            case "attach_host": m.setAttached(p["value"] as? String ?? "", (p["on"] as? Bool) ?? true)
             case "add_project_path":
                 if let ws = m.selectedWorkspaceId, let path = p["value"] as? String { m.addProject(path: path, workspaceId: ws) }
             case "toggle_chat": m.toggleChat(id)

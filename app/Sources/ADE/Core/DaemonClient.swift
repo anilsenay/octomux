@@ -86,6 +86,11 @@ final class DaemonClient {
     private var nextId: UInt64 = 1
     /// The daemon we talk to. Changing it (`switchHost`) reconnects everything.
     private(set) var host: Host = HostStore.current
+    /// An extra-host client that was removed: its subscription loop exits.
+    var stopped = false
+
+    init() {}
+    init(host: Host) { self.host = host }
     private var generation = 0
     private var subStream: LineStream?
 
@@ -145,7 +150,7 @@ final class DaemonClient {
     func startSubscription() {
         Thread.detachNewThread { [weak self] in
             while true {
-                guard let self else { return }
+                guard let self, !self.stopped else { return }
                 let gen = self.generation
                 if let sock = self.openStream() {
                     self.subStream = sock

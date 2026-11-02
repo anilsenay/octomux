@@ -167,7 +167,7 @@ final class FilesModel: ObservableObject {
             var files: [String]
             if let out = GitInfo.git(["ls-files", "--cached", "--others", "--exclude-standard"], in: path) {
                 files = out.split(separator: "\n").map(String.init)
-            } else if AppModel.shared.host.isRemote {
+            } else if AppModel.shared.host(forPath: path).0.isRemote {
                 files = []   // non-git folders on remote hosts: no tree walk over the wire
             } else {
                 files = []
@@ -267,7 +267,7 @@ struct FilesPanel: View {
                 HStack(spacing: 6) {
                     Text(sel).font(T.mono(11)).foregroundStyle(T.text2).lineLimit(1).truncationMode(.head)
                     Spacer()
-                    if !model.host.isRemote {
+                    if !model.host(forPath: base).0.isRemote {
                         OpenInMenu(path: (base as NSString).appendingPathComponent(sel)).menuStyle(.borderlessButton).fixedSize()
                     }
                     Button { f.selected = nil } label: { Image(systemName: "xmark").font(.system(size: 9, weight: .bold)) }.buttonStyle(ChromeButtonStyle())

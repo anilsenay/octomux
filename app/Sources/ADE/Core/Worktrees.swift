@@ -64,7 +64,7 @@ final class Worktrees: ObservableObject {
     /// Creates a new branch in a new worktree (or checks out an existing branch).
     static func create(project: String, branch: String) -> Result<String, GitError> {
         let path = defaultPath(project: project, branch: branch)
-        if !AppModel.shared.host.isRemote {
+        if !AppModel.shared.host(forPath: project).0.isRemote {
             try? FileManager.default.createDirectory(atPath: (path as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
         }
         let exists = GitInfo.git(["rev-parse", "--verify", "--quiet", "refs/heads/\(branch)"], in: project) != nil
@@ -84,9 +84,10 @@ final class Worktrees: ObservableObject {
     }
 
     static func gitWithError(_ args: [String], in dir: String) -> (Bool, String) {
-        if AppModel.shared.host.isRemote {
+        let (h, c) = AppModel.shared.host(forPath: dir)
+        if h.isRemote {
             do {
-                let r = try AppModel.shared.client.callSync("git.run", ["cwd": dir, "args": args]) as? [String: Any]
+                let r = try c.callSync("git.run", ["cwd": dir, "args": args]) as? [String: Any]
                 return ((r?["ok"] as? Bool) ?? false, (r?["stderr"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines))
             } catch { return (false, "\(error)") }
         }

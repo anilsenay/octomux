@@ -21,9 +21,9 @@ final class TerminalHost {
         if let s = surfaces[session.id], s.surface != nil { return s }
         let v = TerminalSurfaceView(
             sessionId: session.id,
-            command: model.host.attachCommand(session.id),
+            command: model.host(for: session.id).attachCommand(session.id),
             env: ["ADE_HOME": Paths.home.path],
-            workingDirectory: model.host.isRemote ? NSHomeDirectory() : session.cwd)
+            workingDirectory: model.host(for: session.id).isRemote ? NSHomeDirectory() : session.cwd)
         v.onFocus = { [weak self] in
             self?.model.sessionFocused(session.id)
             self?.updateFocusRings(session.id)

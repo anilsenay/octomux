@@ -128,6 +128,9 @@ runs: same process, same login. Turn it off in Settings → Features.
 3. The daemon on the server starts on first use and keeps sessions running after you disconnect (no
    launchd there; run `ade daemon` under systemd if you want it to survive server reboots).
 
+With Settings → Features → "Hosts side by side", remote hosts marked "Show here" (Settings → Hosts) appear next to
+this Mac's projects, in the workspace with the same name.
+
 Custom command hosts take any prefix that reaches the other side, e.g. `docker exec -i <container>` (with
 pane prefix `docker exec -it <container>`).
 

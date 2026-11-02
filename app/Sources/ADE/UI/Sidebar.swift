@@ -202,6 +202,16 @@ struct ProjectRow: View {
         HStack(spacing: 8) {
             ProjectIconView(project: project, size: 18)
             Text(project.name).font(T.headline).foregroundStyle(T.text).lineLimit(1)
+            if model.owner[project.id] != nil {
+                HStack(spacing: 3) {
+                    Image(systemName: "server.rack").font(.system(size: 8.5))
+                    Text(model.host(for: project.id).name).font(.system(size: 10, weight: .medium)).lineLimit(1)
+                }
+                .foregroundStyle(T.text3)
+                .padding(.horizontal, 5).padding(.vertical, 1)
+                .background(Capsule().fill(T.hover))
+                .help("On \(model.host(for: project.id).name)")
+            }
             if collapsed && !sessions.isEmpty {
                 Text("\(sessions.count)").font(T.caption).foregroundStyle(T.text3)
             }
@@ -421,7 +431,7 @@ struct SessionMenu: View {
         Button("Copy Transcript Path") { copy(TranscriptLocator.path(for: session, model: model) ?? "") }
             .disabled(TranscriptLocator.path(for: session, model: model) == nil)
         Button("Copy Screen Text") {
-            model.client.call("session.screen_text", ["id": session.id]) { r in
+            model.client(for: session.id).call("session.screen_text", ["id": session.id]) { r in
                 if case .success(let v) = r, let t = (v as? [String: Any])?["text"] as? String { copy(t) }
             }
         }.disabled(session.isDormant)
@@ -433,7 +443,7 @@ struct SessionMenu: View {
             Button("Restart") { model.restart(session.id) }
         }
         if session.placement == .tab {
-            Button("Move to Dock") { model.client.call("session.move", ["id": session.id, "placement": "dock"]) }
+            Button("Move to Dock") { model.client(for: session.id).call("session.move", ["id": session.id, "placement": "dock"]) }
         }
         Divider()
         Button("Remove Session", role: .destructive) { model.remove(session.id) }
