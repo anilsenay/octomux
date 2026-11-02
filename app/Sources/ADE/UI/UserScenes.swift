@@ -336,7 +336,10 @@ enum TerminalSceneMode: String, CaseIterable {
 struct TerminalSceneControls: View {
     @EnvironmentObject var model: AppModel
     let scope: String
+    /// The slider's value while dragging, and after release until the daemon's setting comes back with
+    /// it (showing the stored value in between made the knob jump back and forth).
     @State private var dragging: Double?
+    @State private var pending = false
 
     private var isWorkspace: Bool { scope.hasPrefix("workspace:") }
     private var own: JSONValue? { model.settingValue("appearance.scene_terminals", scope: scope) }
@@ -345,7 +348,8 @@ struct TerminalSceneControls: View {
 
     var body: some View {
         let effective = TerminalSceneMode.resolve(workspace: wsId, settings: model.state.settings)
-        let opacity = dragging ?? TerminalSceneMode.resolveOpacity(workspace: wsId, settings: model.state.settings)
+        let stored = TerminalSceneMode.resolveOpacity(workspace: wsId, settings: model.state.settings)
+        let opacity = dragging ?? stored
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("Behind terminals")
@@ -363,10 +367,13 @@ struct TerminalSceneControls: View {
                 HStack(spacing: 10) {
                     Text("Terminal opacity")
                     Slider(value: Binding(get: { opacity }, set: { dragging = $0 }), in: TerminalSceneMode.opacityRange) { editing in
-                        if !editing, let d = dragging {
-                            model.setSetting("appearance.scene_terminal_opacity", (d * 100).rounded() / 100, scope: scope)
-                            dragging = nil
-                        }
+                        guard !editing, let d = dragging else { return }
+                        let v = (d * 100).rounded() / 100
+                        dragging = v
+                        pending = true
+                        model.setSetting("appearance.scene_terminal_opacity", v, scope: scope)
+                        // Fallback if the value never comes back (daemon unreachable).
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { if pending { pending = false; dragging = nil } }
                     }
                     .frame(maxWidth: 220)
                     Text("\(Int((opacity * 100).rounded()))%").monospacedDigit().foregroundStyle(T.text2).frame(width: 40, alignment: .trailing)
@@ -378,5 +385,8 @@ struct TerminalSceneControls: View {
             }
         }
         .padding(.top, 4)
+        .onChange(of: stored) { _, v in
+            if pending, let d = dragging, abs(d - v) < 0.005 { pending = false; dragging = nil }
+        }
     }
 }
