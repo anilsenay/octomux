@@ -9,7 +9,8 @@ struct NewChatView: View {
     @ObservedObject var git = GitInfo.shared
     let docId: String
     @State private var draft = ""
-    @State private var profileId: String? = UserDefaults.standard.string(forKey: "ade.chatProfile")
+    /// Picked on this screen; else the workspace's default agent, else the last one used.
+    @State private var profileId: String?
     @State private var worktree: String?    // nil = the project's own checkout
     @State private var sending = false
     @State private var pickingWorkspace = false
@@ -28,7 +29,11 @@ struct NewChatView: View {
     private var profiles: [Profile] {
         model.enabledProfiles(forProject: project?.id).filter { $0.kind == .claude || $0.kind == .codex || $0.icon == "claude" || $0.icon == "codex" }
     }
-    private var profile: Profile? { profiles.first { $0.id == profileId } ?? profiles.first }
+    private var profile: Profile? {
+        let ws = model.defaultChatProfile(workspace: project?.workspaceId)
+        let last = UserDefaults.standard.string(forKey: "ade.chatProfile")
+        return profiles.first { $0.id == profileId } ?? profiles.first { $0.id == ws?.id } ?? profiles.first { $0.id == last } ?? profiles.first
+    }
 
     var body: some View {
         let path = worktree ?? project?.path ?? ""
@@ -144,7 +149,10 @@ struct NewChatView: View {
         .buttonStyle(.plain).hoverHighlight(radius: 6).pointerCursor()
         .help("\(profile?.name ?? "Agent") · model and effort")
         .background(DropdownAnchor(isPresented: $pickingModel) {
-            ModelEffortPicker(profiles: profiles, selected: profile, options: $options) { p in
+            ModelEffortPicker(profiles: profiles, selected: profile, options: $options,
+                              workspace: model.state.workspaces.first { $0.id == project?.workspaceId },
+                              isDefault: profile.map { $0.id == model.defaultChatProfile(workspace: project?.workspaceId)?.id } ?? false,
+                              makeDefault: { if let p = profile, let ws = project?.workspaceId { model.setDefaultChatProfile(p.id, workspace: ws) } }) { p in
                 profileId = p.id; UserDefaults.standard.set(p.id, forKey: "ade.chatProfile")
             }
         })

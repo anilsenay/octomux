@@ -425,6 +425,22 @@ enum ChatFirstMessage {
 }
 
 extension AppModel {
+    /// Agents a chat session can use (the chat view reads Claude and Codex transcripts).
+    var chatProfiles: [Profile] {
+        state.profiles.filter { $0.enabled && ($0.kind == .claude || $0.kind == .codex || $0.icon == "claude" || $0.icon == "codex") }
+            .sorted { $0.sort < $1.sort }
+    }
+
+    /// The workspace's default agent for new chats (Settings → Workspaces), if set and still there.
+    func defaultChatProfile(workspace id: String?) -> Profile? {
+        guard let id, case .string(let pid)? = settingValue("chat.default_profile", scope: "workspace:\(id)") else { return nil }
+        return profile(pid)
+    }
+
+    func setDefaultChatProfile(_ profileId: String?, workspace id: String) {
+        setSetting("chat.default_profile", profileId, scope: "workspace:\(id)")
+    }
+
     func isChat(_ id: String) -> Bool { (UserDefaults.standard.stringArray(forKey: "ade.chat") ?? []).contains(id) }
 
     func canChat(_ s: Session?) -> Bool {

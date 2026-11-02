@@ -148,6 +148,21 @@ struct WorkspacesSettings: View {
                     TextField("Name", text: Binding(get: { w.name }, set: { model.updateWorkspace(w.id, ["name": $0]) }))
                         .textFieldStyle(.plain).font(.system(size: 13, weight: .medium))
                     Text("\(model.state.projects.filter { $0.workspaceId == w.id }.count) projects").foregroundStyle(T.text2)
+                    let def = model.defaultChatProfile(workspace: w.id)
+                    Menu {
+                        Button((def == nil ? "✓ " : "") + "Last used") { model.setDefaultChatProfile(nil, workspace: w.id) }
+                        Divider()
+                        ForEach(model.chatProfiles) { p in
+                            Button((def?.id == p.id ? "✓ " : "") + p.name) { model.setDefaultChatProfile(p.id, workspace: w.id) }
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            if let def { AgentIcon(icon: def.icon, size: 11) }
+                            Text(def?.name ?? "Last used agent").font(.system(size: 12)).foregroundStyle(T.text2)
+                        }
+                    }
+                    .menuStyle(.borderlessButton).fixedSize()
+                    .help("Agent the New Chat screen starts with in this workspace")
                     Button { model.updateWorkspace(w.id, ["sort": w.sort - 2]) } label: { Image(systemName: "arrow.up") }.buttonStyle(.plain)
                     Button(role: .destructive) { model.deleteWorkspace(w.id) } label: { Image(systemName: "trash") }
                         .buttonStyle(.plain).disabled(model.state.workspaces.count <= 1)

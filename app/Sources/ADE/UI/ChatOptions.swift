@@ -97,6 +97,9 @@ struct ModelEffortPicker: View {
     let profiles: [Profile]
     let selected: Profile?
     @Binding var options: ChatLaunchOptions
+    var workspace: Workspace? = nil
+    var isDefault = false
+    var makeDefault: () -> Void = {}
     let pickProfile: (Profile) -> Void
     @State private var custom = ""
 
@@ -106,6 +109,18 @@ struct ModelEffortPicker: View {
             header("Provider")
             ForEach(Array(profiles.enumerated()), id: \.element.id) { i, p in
                 OptionRow(number: i + 1, title: p.name, checked: p.id == selected?.id, icon: p.icon) { pickProfile(p) }
+            }
+            if let workspace, selected != nil {
+                Button(action: makeDefault) {
+                    HStack(spacing: 6) {
+                        Image(systemName: isDefault ? "star.fill" : "star").font(.system(size: 10))
+                        Text(isDefault ? "Default in \(workspace.name)" : "Make default in \(workspace.name)").font(.system(size: 11.5))
+                    }
+                    .foregroundStyle(isDefault ? T.amber : T.text2)
+                    .padding(.horizontal, 10).frame(height: 24).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain).disabled(isDefault).pointerCursor()
+                .help("New chats in this workspace start with this agent (change it in Settings → Workspaces)")
             }
             Hairline().padding(.vertical, 4)
             header("Model")
