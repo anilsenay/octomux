@@ -47,6 +47,10 @@ tools/build-app.sh debug      # faster, debug
 open build/ADE.app
 ```
 
+State after the overnight build: the launchd agent `dev.ade-dev.daemon` is installed
+and running from `build/ADE.app`; the data folder holds one workspace (Personal), the
+`new-ade` project and your agent profiles — no sessions.
+
 On first launch the app installs a launchd agent `dev.ade-dev.daemon` pointing
 at the `ade` binary inside the bundle and starts it. Data lives in
 `~/Library/Application Support/ade-dev/` (SQLite, sockets, logs, terminal
@@ -117,9 +121,10 @@ permission dialogs):
    keyboard layout, ⌥ combinations, and an IME if you use one.
 3. **Trackpad**: two-finger swipe left/right over the sidebar switches workspaces.
 4. **Mouse**: select text and ⌘C, scroll back, click links (⌘-click).
-5. **Your agents**: Settings → Agents → edit `claude`, and add `Claude (work)` with
-   Command `/Users/anilsenay/.local/bin/claude-work-profile/claude` (or
-   `claude-work` with "Run through my login shell"). Pin it to get a one-click button.
+5. **Your agents**: `claude` and **Claude (work)** (your `claude-work` alias) are already
+   set up and pinned next to the + button. Start one of each and check the account in
+   Claude's status line. Other installed CLIs (gemini, amp, kiro-cli, agy) can be added
+   from Settings → Agents → "Installed on this Mac".
 6. **Notification click**: start a Claude task, switch to another app; when the
    notification arrives, click it → ADE should focus that pane.
 7. **Quit ADE (⌘Q) while Claude works**, reopen: the session is still running.
