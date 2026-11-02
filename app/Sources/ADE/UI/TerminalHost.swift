@@ -133,13 +133,16 @@ final class TerminalHost {
         case .leaf(let id):
             guard let s = model.session(id) else { return PlaceholderPane(text: "Session missing") }
             let pane = PaneView(sessionId: id)
+            // Split tabs get a title bar per pane (which session, close, chat toggle).
+            let header: NSView? = (model.state.tabs.first { $0.id == tabId }?.layout.sessions.count ?? 1) > 1
+                ? PaneHeaderHost(rootView: AnyView(PaneHeader(sessionId: id).environmentObject(model))) : nil
             if (s.state == .running || s.state == .interrupted) && model.isChat(id) && model.canChat(s) {
                 _ = surface(for: s)   // keep the terminal attached while the chat shows
-                pane.setContent(NSHostingView(rootView: ChatView(sessionId: id).environmentObject(model)))
+                pane.setContent(NSHostingView(rootView: ChatView(sessionId: id).environmentObject(model)), header: header)
             } else if s.state == .running || s.state == .interrupted {
-                pane.setContent(surface(for: s))
+                pane.setContent(surface(for: s), header: header)
             } else {
-                pane.setContent(NSHostingView(rootView: DormantPaneView(sessionId: id).environmentObject(model)))
+                pane.setContent(NSHostingView(rootView: DormantPaneView(sessionId: id).environmentObject(model)), header: header)
             }
             return pane
         case .split(let dir, let ratio, let a, let b):
@@ -277,13 +280,24 @@ final class PaneView: NSView {
         updateLayer()
     }
 
-    func setContent(_ v: NSView) {
+    /// Fills the pane with `v`; with a `header`, the header sits on top (split tabs) and `v` below it.
+    func setContent(_ v: NSView, header: NSView? = nil) {
         v.removeFromSuperview()
         v.translatesAutoresizingMaskIntoConstraints = false
         addSubview(v)
+        var top = topAnchor
+        if let header {
+            header.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(header)
+            NSLayoutConstraint.activate([
+                header.leadingAnchor.constraint(equalTo: leadingAnchor), header.trailingAnchor.constraint(equalTo: trailingAnchor),
+                header.topAnchor.constraint(equalTo: topAnchor), header.heightAnchor.constraint(equalToConstant: PaneHeader.height),
+            ])
+            top = header.bottomAnchor
+        }
         NSLayoutConstraint.activate([
             v.leadingAnchor.constraint(equalTo: leadingAnchor), v.trailingAnchor.constraint(equalTo: trailingAnchor),
-            v.topAnchor.constraint(equalTo: topAnchor), v.bottomAnchor.constraint(equalTo: bottomAnchor),
+            v.topAnchor.constraint(equalTo: top), v.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
     }
 }
@@ -345,5 +359,54 @@ extension String {
     var shellQuoted: String {
         if !isEmpty && allSatisfy({ $0.isLetter || $0.isNumber || "-_./=:,@+%".contains($0) }) { return self }
         return "'" + replacingOccurrences(of: "'", with: "'\\''") + "'"
+    }
+}
+
+final class PaneHeaderHost: NSHostingView<AnyView> {
+    override var mouseDownCanMoveWindow: Bool { false }
+}
+
+/// Title bar of one pane in a split tab: icon, title, activity; chat toggle and close on the right.
+struct PaneHeader: View {
+    static let height: CGFloat = 30
+    @EnvironmentObject var model: AppModel
+    let sessionId: String
+    @State private var hover = false
+
+    var body: some View {
+        let focused = model.focusedSessionId == sessionId
+        if let s = model.session(sessionId) {
+            HStack(spacing: 7) {
+                AgentIcon(icon: iconName(for: s, model: model), size: 11).opacity(focused ? 1 : 0.6)
+                Text(s.displayTitle)
+                    .font(.system(size: 12, weight: focused ? .semibold : .medium))
+                    .foregroundStyle(focused ? T.text : T.text3)
+                    .lineLimit(1).truncationMode(.tail)
+                ActivityIndicator(session: s)
+                Spacer(minLength: 6)
+                Group {
+                    if model.canChat(s) {
+                        Button { model.toggleChat(s.id) } label: { Image(systemName: model.isChat(s.id) ? "terminal" : "text.bubble") }
+                            .help(model.isChat(s.id) ? "Show terminal" : "Show as chat")
+                    }
+                    Menu { SessionMenu(session: s) } label: { Image(systemName: "ellipsis").menuHitBox(20, 20) }
+                        .plainMenu().frame(width: 20, height: 20).help("Session")
+                    Button { model.remove(s.id) } label: { Image(systemName: "xmark").font(.system(size: 9, weight: .bold)) }
+                        .help("Close pane (⌘W)")
+                }
+                .buttonStyle(IconButtonStyle(size: 20))
+                .font(.system(size: 10.5, weight: .medium))
+                .foregroundStyle(T.text3)
+                .opacity(hover || focused ? 1 : 0)
+            }
+            .padding(.leading, 12).padding(.trailing, 6)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(focused ? T.hover : Color.clear)
+            .overlay(alignment: .bottom) { Rectangle().fill(T.border).frame(height: 1) }
+            .contentShape(Rectangle())
+            .onHover { hover = $0 }
+            .onTapGesture { model.selectSession(s.id) }
+            .contextMenu { SessionMenu(session: s) }
+        }
     }
 }

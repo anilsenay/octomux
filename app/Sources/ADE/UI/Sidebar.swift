@@ -27,15 +27,15 @@ struct SidebarView: View {
                         .padding(.top, i == 0 ? 0 : 6)
                         if !collapsed.contains(p.id) {
                             let all = model.sessions(ofProject: p.id)
-                            ForEach(all.filter { $0.worktree == nil }) { s in
-                                SessionRow(session: s)
-                                    .reorderable("session:\(p.id)", id: s.id) { a, b in
+                            ForEach(tabGroups(all.filter { $0.worktree == nil }), id: \.first!.id) { group in
+                                SessionGroup(sessions: group, indent: 18)
+                                    .reorderable("session:\(p.id)", id: group[0].id) { a, b in
                                         if let ta = model.tab(containing: a), let tb = model.tab(containing: b) { model.moveTab(ta.id, to: tb.id) }
                                     }
                             }
                             ForEach((model.setting("features.worktrees")?.bool ?? true) ? worktreeGroups(p, all) : [], id: \.path) { g in
                                 WorktreeRow(project: p, path: g.path, branch: g.branch, sessions: g.sessions)
-                                ForEach(g.sessions) { s in SessionRow(session: s, indent: 32) }
+                                ForEach(tabGroups(g.sessions), id: \.first!.id) { group in SessionGroup(sessions: group, indent: 32) }
                             }
                             let dock = model.state.sessions.filter { $0.projectId == p.id && $0.placement == .dock }
                             if !dock.isEmpty {
@@ -479,10 +479,49 @@ func copy(_ s: String) {
     NSPasteboard.general.setString(s, forType: .string)
 }
 
+/// Consecutive sessions that share a tab (split panes) form one group; others stand alone.
+func tabGroups(_ sessions: [Session]) -> [[Session]] {
+    let model = AppModel.shared
+    var out: [[Session]] = []
+    var lastTab: String?
+    for s in sessions {
+        let t = model.tab(containing: s.id)?.id
+        if let t, t == lastTab, !out.isEmpty { out[out.count - 1].append(s) } else { out.append([s]) }
+        lastTab = t
+    }
+    return out
+}
+
+/// Sidebar rows of one tab: a single session as is; split panes inside one frame with a guide line.
+struct SessionGroup: View {
+    @EnvironmentObject var model: AppModel
+    let sessions: [Session]
+    let indent: CGFloat
+
+    var body: some View {
+        if sessions.count == 1 {
+            SessionRow(session: sessions[0], indent: indent)
+        } else {
+            let active = model.activeDoc == nil && model.activeTab.map { t in sessions.contains { t.layout.sessions.contains($0.id) } } == true
+            VStack(spacing: 0) {
+                // Rows keep the icon column of standalone rows: frame starts 8pt left of it (+2 padding).
+                ForEach(sessions) { s in SessionRow(session: s, indent: 6, inGroup: true) }
+            }
+            .padding(2)
+            .background(RoundedRectangle(cornerRadius: T.m.rowR + 2, style: .continuous).fill(T.hover.opacity(active ? 0.9 : 0.45)))
+            .overlay(RoundedRectangle(cornerRadius: T.m.rowR + 2, style: .continuous).stroke(T.border.opacity(active ? 1 : 0.7)))
+            .padding(.leading, indent - 8)
+            .padding(.vertical, 2)
+            .help("\(sessions.count) panes in one tab")
+        }
+    }
+}
+
 struct SessionRow: View {
     @EnvironmentObject var model: AppModel
     let session: Session
     var indent: CGFloat = 18
+    var inGroup = false
     @State private var hover = false
     @State private var editTitle = ""
 
