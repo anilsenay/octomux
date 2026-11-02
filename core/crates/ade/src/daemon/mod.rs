@@ -32,6 +32,8 @@ pub struct Daemon {
     /// First message for agent sessions about to be spawned (`session.create` `prompt`).
     prompts: Mutex<HashMap<String, String>>,
     claude_usage_running: std::sync::atomic::AtomicBool,
+    /// Set when a Claude session finished a turn: the usage loop probes `/usage` shortly after.
+    usage_poke: Mutex<Option<Instant>>,
     cmd_started: Mutex<HashMap<String, Instant>>,
     dirty: Sender<()>,
     login_path: Mutex<Option<String>>,
@@ -100,6 +102,7 @@ pub fn run(paths: Paths) -> Result<()> {
         spawning: Mutex::new(HashSet::new()),
         prompts: Mutex::new(HashMap::new()),
         claude_usage_running: std::sync::atomic::AtomicBool::new(false),
+        usage_poke: Mutex::new(None),
         cmd_started: Mutex::new(HashMap::new()),
         dirty: dirty_tx,
         login_path: Mutex::new(None),
@@ -137,11 +140,21 @@ pub fn run(paths: Paths) -> Result<()> {
     }
     {
         let d = d.clone();
+        // Claude `/usage`: every minute while an app is connected (nobody looks otherwise), and a few
+        // seconds after a Claude session finishes a turn (turns close together share one probe).
         std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_secs(20));   // after the login environment is known
+            std::thread::sleep(Duration::from_secs(15));   // after the login environment is known
+            let mut last: Option<Instant> = None;
             loop {
-                d.poll_claude_usage();
-                std::thread::sleep(Duration::from_secs(600));
+                let watched = !d.subs.lock().unwrap().is_empty();
+                let due = last.is_none_or(|t| t.elapsed() >= Duration::from_secs(60));
+                let poked = d.usage_poke.lock().unwrap().is_some_and(|t| t.elapsed() >= Duration::from_secs(6));
+                if (watched && due) || poked {
+                    *d.usage_poke.lock().unwrap() = None;
+                    d.poll_claude_usage();
+                    last = Some(Instant::now());
+                }
+                std::thread::sleep(Duration::from_secs(3));
             }
         });
     }
@@ -587,6 +600,9 @@ impl Daemon {
             s.last_activity_at = util::now_secs();
             if matches!(new, Activity::Done | Activity::NeedsInput | Activity::Error) {
                 s.unread = true;
+                if s.kind == SessionKind::Agent {
+                    *self.usage_poke.lock().unwrap() = Some(Instant::now());
+                }
             }
             let copy = s.clone();
             let project = st.projects.iter().find(|p| p.id == copy.project_id).map(|p| p.name.clone()).unwrap_or_default();

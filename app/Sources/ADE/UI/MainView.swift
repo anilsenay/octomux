@@ -859,7 +859,7 @@ struct UsagePopover: View {
                     .buttonStyle(ChromeButtonStyle())
                     .help("Refresh now (asks each Claude profile with `claude -p /usage`, re-reads Codex)")
             }
-            Text("Claude: asked every 10 minutes with its own `/usage` command (no tokens used), and after each turn of a Claude session in ADE. Codex: read from its session files while one runs.")
+            Text("Claude: asked with its own `/usage` command (no tokens used) every minute while ADE is open, and right after a Claude session in ADE finishes a turn. Codex: read from its session files while one runs.")
                 .font(T.caption).foregroundStyle(T.text3).fixedSize(horizontal: false, vertical: true)
             let profiles = model.enabledProfiles.filter { p in model.state.usage.contains { $0.profileId == p.id } }
             if profiles.isEmpty {
