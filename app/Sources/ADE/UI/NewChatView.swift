@@ -26,18 +26,24 @@ struct NewChatView: View {
     private var profile: Profile? { profiles.first { $0.id == profileId } ?? profiles.first }
 
     var body: some View {
+        let path = worktree ?? project?.path ?? ""
         VStack(spacing: 0) {
-            Spacer(minLength: 40)
-            VStack(alignment: .leading, spacing: 14) {
-                Text("What should we work on in \(project?.name ?? "this project")?")
-                    .font(.system(size: 18, weight: .semibold)).foregroundStyle(T.text)
-                composer
-                context
+            Spacer(minLength: 24)
+            // Hero, like super.engineering: the agent's mark and a greeting, the composer at the bottom
+            // where the chat's composer will be once it starts (no jump when the first message is sent).
+            VStack(spacing: 14) {
+                AgentIcon(icon: profile?.icon ?? "claude", size: 46)
+                Text(Self.greeting).font(.system(size: 28, weight: .regular, design: .serif)).foregroundStyle(T.text)
+                HStack(spacing: 6) {
+                    Text(project?.name ?? "")
+                    if let b = git.branch(for: path) { Text("·"); Text(b).font(T.mono(12)) }
+                }
+                .font(.system(size: 12.5)).foregroundStyle(T.text3)
             }
-            .frame(maxWidth: 720)
-            .padding(.horizontal, 32)
-            Spacer(minLength: 40)
-            Spacer(minLength: 0)
+            Spacer(minLength: 24)
+            composer
+                .frame(maxWidth: 780)
+                .padding(.horizontal, 28).padding(.bottom, 18)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(CanvasBackground())
@@ -47,30 +53,40 @@ struct NewChatView: View {
         }
     }
 
+    /// "Anıl returns!" with the account's first name, else a plain question.
+    static var greeting: String {
+        let first = NSFullUserName().split(separator: " ").first.map(String.init) ?? ""
+        return first.isEmpty ? "What should we work on?" : "\(first) returns!"
+    }
+
     private var composer: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            TextField("Ask, build, plan… (↩ to send, ⌥↩ for a new line)", text: $draft, axis: .vertical)
-                .textFieldStyle(.plain).font(.system(size: 14)).lineLimit(3...12)
+        let path = worktree ?? project?.path ?? ""
+        return VStack(alignment: .leading, spacing: 12) {
+            TextField("Type a message… (↩ to send, ⌥↩ for a new line)", text: $draft, axis: .vertical)
+                .textFieldStyle(.plain).font(.system(size: 14)).lineLimit(2...12)
                 .focused($focused)
                 .onSubmit(send)
                 .disabled(sending)
-            HStack(spacing: 6) {
+            HStack(spacing: 2) {
                 agentPicker
-                Spacer()
-                if sending { WorkingRing() }
-                Button(action: send) {
-                    Image(systemName: "arrow.up").font(.system(size: 12, weight: .bold)).frame(width: 28, height: 28)
+                ContextChip(icon: worktree == nil ? "folder" : "arrow.triangle.branch",
+                            text: worktree.map { ($0 as NSString).lastPathComponent } ?? "Current checkout",
+                            open: $pickingWorkspace, help: path)
+                    .background(DropdownAnchor(isPresented: $pickingWorkspace) {
+                        WorkspaceChoice(project: project, selected: worktree) { worktree = $0; pickingWorkspace = false }
+                    })
+                if let b = git.branch(for: path) {
+                    ContextChip(icon: "arrow.triangle.branch", text: b, mono: true, open: $pickingBranch, help: "Switch or create a branch in \(path)")
+                        .background(DropdownAnchor(isPresented: $pickingBranch) {
+                            BranchPicker(path: path, mode: .checkout, current: b) { pickingBranch = false }
+                        })
                 }
-                .buttonStyle(.plain).foregroundStyle(.white)
-                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(canSend ? T.accent : T.text3.opacity(0.5)))
-                .disabled(!canSend).pointerCursor()
-                .help("Start \(profile?.name ?? "the agent") with this message (↩)")
+                Spacer()
+                if sending { WorkingRing().padding(.trailing, 6) }
+                SendButton(enabled: canSend, help: "Start \(profile?.name ?? "the agent") with this message (↩)", action: send)
             }
         }
-        .padding(.horizontal, 14).padding(.top, 13).padding(.bottom, 10)
-        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(T.raised.opacity(ThemeStore.shared.isDark ? 0.55 : 1)))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(focused ? WorkspaceTintColor.ring(model).opacity(0.55) : T.border))
-        .shadow(color: .black.opacity(ThemeStore.shared.isDark ? 0 : 0.06), radius: 8, y: 2)
+        .composerCard(focused: focused)
     }
 
     private var canSend: Bool { !sending && profile != nil && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
@@ -88,37 +104,14 @@ struct NewChatView: View {
         } label: {
             HStack(spacing: 5) {
                 if let profile { AgentIcon(icon: profile.icon, size: 11) }
-                Text(profile?.name ?? "No agent").font(.system(size: 11.5, weight: .medium))
+                Text(profile?.name ?? "No agent").font(.system(size: 12, weight: .medium)).foregroundStyle(T.text)
                 Image(systemName: "chevron.down").font(.system(size: 7.5, weight: .bold)).foregroundStyle(T.text3)
             }
-            .foregroundStyle(T.text2)
             .padding(.horizontal, 8).frame(height: 24)
-            .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(T.hover))
             .contentShape(Rectangle())
         }
-        .plainMenu().fixedSize().pointerCursor()
+        .plainMenu().fixedSize().hoverHighlight(radius: 6).pointerCursor()
         .help("Which agent to start")
-    }
-
-    /// Where it runs (project checkout or a worktree) and that checkout's branch, as two buttons.
-    private var context: some View {
-        let path = worktree ?? project?.path ?? ""
-        return HStack(spacing: 4) {
-            ContextChip(icon: worktree == nil ? "folder" : "arrow.triangle.branch",
-                        text: worktree.map { ($0 as NSString).lastPathComponent } ?? "Current checkout",
-                        open: $pickingWorkspace, help: path)
-                .background(DropdownAnchor(isPresented: $pickingWorkspace) {
-                    WorkspaceChoice(project: project, selected: worktree) { worktree = $0; pickingWorkspace = false }
-                })
-            if let b = git.branch(for: path) {
-                ContextChip(icon: "arrow.triangle.branch", text: b, mono: true, open: $pickingBranch, help: "Switch or create a branch in \(path)")
-                    .background(DropdownAnchor(isPresented: $pickingBranch) {
-                        BranchPicker(path: path, mode: .checkout, current: b) { pickingBranch = false }
-                    })
-            }
-            Spacer()
-            Text("Opens as a chat; the terminal is one click away.").font(.system(size: 11)).foregroundStyle(T.text3.opacity(0.8))
-        }
     }
 
     private func send() {
@@ -248,5 +241,34 @@ struct WorkspaceChoice: View {
                 }
             }
         }
+    }
+}
+
+/// The composer card shared by the chat start screen and the chat view (same look and place).
+extension View {
+    func composerCard(focused: Bool) -> some View {
+        self
+            .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 10)
+            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(T.raised.opacity(ThemeStore.shared.isDark ? 0.5 : 1)))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(focused ? WorkspaceTintColor.ring(AppModel.shared).opacity(0.6) : T.border, lineWidth: 1))
+            .shadow(color: .black.opacity(ThemeStore.shared.isDark ? 0.25 : 0.07), radius: 10, y: 3)
+    }
+}
+
+/// Round send button (arrow up), accent when there is something to send.
+struct SendButton: View {
+    let enabled: Bool
+    var help = "Send (↩)"
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "arrow.up").font(.system(size: 11.5, weight: .bold)).frame(width: 26, height: 26)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(enabled ? Color.white : T.text3)
+        .background(Circle().fill(enabled ? T.accent : T.hover))
+        .overlay(Circle().stroke(enabled ? Color.clear : T.border))
+        .disabled(!enabled).pointerCursor().help(help)
     }
 }

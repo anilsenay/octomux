@@ -359,21 +359,27 @@ struct ChatView: View {
     }
 
     private func composer(_ s: Session?) -> some View {
-        HStack(alignment: .bottom, spacing: 8) {
-            TextField("Message \(model.profile(s?.profileId)?.name ?? "the agent") — goes to the same session", text: $draft, axis: .vertical)
-                .textFieldStyle(.plain).font(T.body).lineLimit(1...8)
+        let p = model.profile(s?.profileId)
+        return VStack(alignment: .leading, spacing: 12) {
+            TextField("Message \(p?.name ?? "the agent") — goes to the same session", text: $draft, axis: .vertical)
+                .textFieldStyle(.plain).font(.system(size: 14)).lineLimit(1...10)
                 .focused($composerFocused)
                 .onSubmit(send)
-                .padding(.horizontal, 12).padding(.vertical, 9)
-                .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(T.frame.opacity(0.6)))
-                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(composerFocused ? T.accent.opacity(0.6) : T.border))
-            Button(action: send) { Image(systemName: "arrow.up").font(.system(size: 12, weight: .bold)).frame(width: 30, height: 30) }
-                .buttonStyle(.plain).foregroundStyle(.white).pointerCursor()
-                .background(Circle().fill(draft.isEmpty ? T.text3 : T.accent))
-                .disabled(draft.isEmpty || s?.state != .running)
-                .help("Send (↩)")
+            HStack(spacing: 6) {
+                if let p { AgentIcon(icon: p.icon, size: 11) }
+                Text(p?.name ?? "Agent").font(.system(size: 12, weight: .medium)).foregroundStyle(T.text2)
+                if let b = s.flatMap({ GitInfo.shared.branch(for: $0.worktree ?? model.project($0.projectId)?.path ?? $0.cwd) }) {
+                    Image(systemName: "arrow.triangle.branch").font(.system(size: 10)).foregroundStyle(T.text3).padding(.leading, 6)
+                    Text(b).font(T.mono(11.5)).foregroundStyle(T.text3)
+                }
+                Spacer()
+                SendButton(enabled: !draft.isEmpty && s?.state == .running, action: send)
+            }
         }
-        .padding(12)
+        .composerCard(focused: composerFocused)
+        .frame(maxWidth: 780)
+        .padding(.horizontal, 28).padding(.bottom, 18).padding(.top, 6)
+        .frame(maxWidth: .infinity)
     }
 
     private func send() {

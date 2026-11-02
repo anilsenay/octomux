@@ -311,7 +311,10 @@ struct DropdownAnchor<Content: View>: NSViewRepresentable {
         guard let win = v.window else { return }
         let size = host.fittingSize
         let a = v.convert(v.bounds, to: nil)
-        let origin = win.convertPoint(toScreen: NSPoint(x: a.minX - 4, y: a.minY - 6 - size.height))
+        var origin = win.convertPoint(toScreen: NSPoint(x: a.minX - 4, y: a.minY - 6 - size.height))
+        // No room below (composer at the window's bottom): open above the anchor instead.
+        let floor = max(win.frame.minY, win.screen?.visibleFrame.minY ?? 0) + 4
+        if origin.y < floor { origin = win.convertPoint(toScreen: NSPoint(x: a.minX - 4, y: a.maxY + 6)) }
         let frame = NSRect(origin: origin, size: size)
         if p.frame != frame { p.setFrame(frame, display: true) }
     }
