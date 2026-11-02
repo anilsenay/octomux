@@ -477,7 +477,8 @@ struct PaneHeader: View {
                             .help(model.isChat(s.id) ? "Show terminal" : "Show as chat")
                     }
                     Menu { SessionMenu(session: s) } label: { Image(systemName: "ellipsis").menuHitBox(20, 20) }
-                        .plainMenu().frame(width: 20, height: 20).help("Session")
+                        .plainMenu().frame(width: 20, height: 20)
+                        .hoverHighlight(radius: 5).help("Session")
                     Button { model.remove(s.id) } label: { Image(systemName: "xmark").font(.system(size: 9, weight: .bold)) }
                         .help("Close pane (⌘W)")
                 }
@@ -492,9 +493,11 @@ struct PaneHeader: View {
             .overlay(alignment: .bottom) { Rectangle().fill(T.border).frame(height: 1) }
             .contentShape(Rectangle())
             .onHover { hover = $0 }
+            .grabCursor()
             .onTapGesture { model.selectSession(s.id) }
             .onDrag {
                 DragItem.current = ("pane", s.id)
+                NSCursor.closedHand.set()
                 return NSItemProvider(object: "ade-pane:\(s.id)" as NSString)
             } preview: {
                 PaneDragPreview(session: s)

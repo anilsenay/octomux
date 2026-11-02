@@ -191,11 +191,13 @@ struct Mascot: View {
 
 /// Pointing-hand cursor while the pointer is over the view (clickable chrome).
 struct PointerCursor: ViewModifier {
+    var cursor: NSCursor = .pointingHand
     @State private var inside = false
     func body(content: Content) -> some View {
         content.onHover { h in
+            guard h != inside else { return }
             inside = h
-            if h { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+            if h { cursor.push() } else { NSCursor.pop() }
         }
         .onDisappear { if inside { NSCursor.pop(); inside = false } }
     }
@@ -222,6 +224,8 @@ extension View {
     /// A menu label that is clickable over its whole box (not just the glyph).
     func menuHitBox(_ w: CGFloat, _ h: CGFloat) -> some View { frame(width: w, height: h).contentShape(Rectangle()) }
     func pointerCursor() -> some View { modifier(PointerCursor()) }
+    /// Open-hand cursor: marks a surface that can be grabbed and dragged.
+    func grabCursor() -> some View { modifier(PointerCursor(cursor: .openHand)) }
     func hoverHighlight(radius: CGFloat = 6, padding: CGFloat = 0) -> some View { modifier(HoverHighlight(radius: radius, padding: padding)) }
 }
 
