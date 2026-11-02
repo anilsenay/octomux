@@ -121,6 +121,12 @@ final class TerminalHost {
         }
         let zoomed = model.zoomedPane(in: tab)
         if !force, tab?.id == renderedTabId, tab?.layout == renderedLayout, states == renderedStates, zoomed == renderedZoom { return }
+        // Zoom toggled on the tab already on screen: animate the pane between its slot and full size.
+        if let tab, tab.id == renderedTabId, tab.layout == renderedLayout, states == renderedStates, zoomed != renderedZoom,
+           let id = zoomed ?? renderedZoom, animateZoom(tab: tab, sessionId: id, zoomIn: zoomed != nil) {
+            renderedZoom = zoomed
+            return
+        }
         renderedZoom = zoomed
         renderedTabId = tab?.id
         renderedLayout = tab?.layout
@@ -134,6 +140,77 @@ final class TerminalHost {
         container.setRoot(root)
         updateFocusRings(model.focusedSessionId)
         DispatchQueue.main.async { self.focusCurrent() }
+    }
+
+    private var zoomAnimation = 0
+
+    /// Zoom in: the pane grows from its slot to the whole area, over the split (which then goes away).
+    /// Zoom out: the split comes back underneath and the pane shrinks from full size into its slot.
+    /// The terminal view itself moves between the two pane cards, so it never goes blank.
+    private func animateZoom(tab: Tab, sessionId id: String, zoomIn: Bool) -> Bool {
+        guard container.bounds.width > 0, container.window != nil else { return false }
+        zoomAnimation += 1
+        let gen = zoomAnimation
+        let full = container.bounds
+        let old = container.subviews
+
+        func slotRect() -> NSRect? {
+            container.layoutSubtreeIfNeeded()
+            var found: PaneView?
+            func walk(_ v: NSView) {
+                if found == nil, let p = v as? PaneView, p.sessionId == id { found = p }
+                for c in v.subviews where !(c is TerminalSurfaceView) { walk(c) }
+            }
+            for v in container.subviews { walk(v) }
+            return found.map { $0.convert($0.bounds, to: container) }
+        }
+
+        var from: NSRect, to: NSRect
+        if zoomIn {
+            guard let r = slotRect() else { return false }
+            from = r; to = full
+        } else {
+            old.forEach { $0.removeFromSuperview() }
+            let root = build(tab.layout, tabId: tab.id, path: [])
+            container.setRoot(root)
+            guard let r = slotRect() else { return false }
+            from = full; to = r
+        }
+        let pane = build(.leaf(sessionId: id), tabId: tab.id, path: [])   // takes the terminal out of its slot
+        pane.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(pane)
+        let c = (l: pane.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: from.minX),
+                 t: pane.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: from.maxX - full.width),
+                 top: pane.topAnchor.constraint(equalTo: container.topAnchor, constant: full.height - from.maxY),
+                 b: pane.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -from.minY))
+        NSLayoutConstraint.activate([c.l, c.t, c.top, c.b])
+        (pane as? PaneView)?.focused = true
+        container.layoutSubtreeIfNeeded()
+
+        NSAnimationContext.runAnimationGroup({ ctx in
+            ctx.duration = 0.22
+            ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.25, 1)
+            ctx.allowsImplicitAnimation = true
+            c.l.animator().constant = to.minX
+            c.t.animator().constant = to.maxX - full.width
+            c.top.animator().constant = full.height - to.maxY
+            c.b.animator().constant = -to.minY
+            container.layoutSubtreeIfNeeded()
+        }, completionHandler: { [weak self] in
+            guard let self, gen == self.zoomAnimation else { return }
+            if zoomIn {
+                // Keep the grown pane as the tab's root; drop the split under it.
+                old.forEach { $0.removeFromSuperview() }
+                NSLayoutConstraint.deactivate([c.l, c.t, c.top, c.b])
+                pane.removeFromSuperview()
+                self.container.setRoot(pane)
+                self.updateFocusRings(self.model.focusedSessionId)
+                self.focusCurrent()
+            } else {
+                self.render(force: true)   // puts the terminal back into its slot
+            }
+        })
+        return true
     }
 
     private func build(_ node: PaneNode, tabId: String, path: [Bool]) -> NSView {
