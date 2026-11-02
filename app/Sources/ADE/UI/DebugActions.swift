@@ -123,6 +123,7 @@ enum DebugActions {
             case "pane_to_tab": if let id { m.movePaneToNewTab(id) }
             case "close_tabs": if let id { m.closeTabs(m.tabs(p["value"] as? String == "others" ? .others : p["value"] as? String == "left" ? .left : p["value"] as? String == "all" ? .all : .right, of: id)) }
             case "branch_picker": NotificationCenter.default.post(name: .adeDebugPanel, object: nil, userInfo: ["branchPicker": p["value"] as? String ?? "checkout"])
+            case "notifications": NotificationCenter.default.post(name: .adeDebugPanel, object: nil, userInfo: ["notifications": (p["value"] as? Bool) ?? true])
             case "compare_base": if let wp = m.currentWorkPath { GitInfo.shared.setCompareBase(p["value"] as? String, for: wp) }
             case "close_doc": if let d = m.activeDocId { m.closeDoc(d) }
             case "right_tab": UserDefaults.standard.set(p["value"] as? String ?? "Changes", forKey: "ade.rightTab"); m.rightPanelVisible = true

@@ -112,6 +112,7 @@ final class DaemonClient {
 
     var onState: ((DaemonState) -> Void)?
     var onNotify: ((AppNotification) -> Void)?
+    var onNotificationsChanged: (() -> Void)?
     var onDisconnect: (() -> Void)?
 
     /// Makes sure a daemon is running (installs/kickstarts the launchd agent if needed).
@@ -185,6 +186,8 @@ final class DaemonClient {
                 if let n = try? JSONDecoder().decode(AppNotification.self, from: raw) {
                     DispatchQueue.main.async { self.onNotify?(n) }
                 }
+            case "notifications_changed":
+                DispatchQueue.main.async { self.onNotificationsChanged?() }
             default: break
             }
         } else if obj["id"] != nil, let result = obj["result"] {

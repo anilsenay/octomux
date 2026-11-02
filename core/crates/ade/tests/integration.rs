@@ -823,3 +823,36 @@ fn pane_move_joins_tabs_and_splits_back_out() {
     assert_eq!(ts.len(), 2);
     assert!(ts.iter().all(|t| t["layout"]["type"] == "leaf"));
 }
+
+#[test]
+fn notifications_are_stored_and_history_outlives_sessions() {
+    let e = Env::new();
+    let p = e.project();
+    let id = plain_shell(&e, &p);
+    e.input(&id, "printf '\\033]777;notify;Build;all green\\007'\r");
+    wait_until(Duration::from_secs(5), || !e.call("notifications.list", json!({}))["notifications"].as_array().unwrap().is_empty());
+    let list = e.call("notifications.list", json!({}));
+    let n = &list["notifications"][0];
+    assert_eq!(n["title"], "Build");
+    assert_eq!(n["session_id"], id.as_str());
+    assert_eq!(n["read"], false);
+    assert!(n["id"].as_i64().unwrap() > 0 && n["ts"].as_i64().unwrap() > 0);
+    // Looking at the session marks its notifications read.
+    e.call("session.mark_read", json!({ "id": id }));
+    assert_eq!(e.call("notifications.list", json!({}))["notifications"][0]["read"], true);
+    e.call("notifications.clear", json!({}));
+    assert!(e.call("notifications.list", json!({}))["notifications"].as_array().unwrap().is_empty());
+
+    // Agent sessions stay in the history after removal and can be resumed by their agent id.
+    let script = fake_agent(&e);
+    let prof = e.call("profile.create", json!({ "name": "Claude", "kind": "claude", "command": script, "via_login_shell": false }));
+    let r = e.call("session.create", json!({ "project_id": p, "profile_id": prof["id"] }));
+    let sid = r["session"]["id"].as_str().unwrap().to_string();
+    let agent_id = r["session"]["agent_session_id"].as_str().unwrap().to_string();
+    e.call("session.remove", json!({ "id": sid }));
+    let h = e.call("history.list", json!({ "project_id": p }));
+    assert_eq!(h["sessions"][0]["id"], sid.as_str());
+    assert_eq!(h["sessions"][0]["agent_session_id"], agent_id.as_str());
+    let r2 = e.call("session.create", json!({ "project_id": p, "profile_id": prof["id"], "resume_agent_session_id": agent_id }));
+    assert_eq!(r2["session"]["agent_session_id"], agent_id.as_str());
+}

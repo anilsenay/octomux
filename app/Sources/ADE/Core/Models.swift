@@ -288,9 +288,13 @@ struct AppNotification: Codable {
     var kind: String
     var title: String
     var body: String
+    /// Set when the daemon stored it (notification center); older daemons send none.
+    var id: Int64?
+    var ts: Int?
+    var read: Bool?
 
     enum CodingKeys: String, CodingKey {
-        case kind, title, body
+        case kind, title, body, id, ts, read
         case sessionId = "session_id"
         case projectId = "project_id"
     }

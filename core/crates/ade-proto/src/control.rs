@@ -307,6 +307,16 @@ pub struct Notification {
     pub body: String,
 }
 
+/// A notification as kept by the daemon (notification center): `notify` events carry this too.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct StoredNotification {
+    pub id: i64,
+    pub ts: i64,
+    pub read: bool,
+    #[serde(flatten)]
+    pub n: Notification,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

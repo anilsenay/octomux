@@ -181,7 +181,25 @@ impl Daemon {
     }
 
     fn persist_session(&self, s: &Session) {
-        let _ = self.store.lock().unwrap().put("session", &s.id, s);
+        let store = self.store.lock().unwrap();
+        let _ = store.put("session", &s.id, s);
+        // Agent sessions also go to the history (kept after the session is removed, to resume later).
+        if s.kind == SessionKind::Agent {
+            let _ = store.put_history(s);
+        }
+    }
+
+    /// Stores a notification (notification center) and tells the clients.
+    fn notify(&self, n: Notification) {
+        let stored = self.store.lock().unwrap().add_notification(&n);
+        match stored {
+            Ok(st) => self.emit("notify", serde_json::to_value(st).unwrap()),
+            Err(_) => self.emit("notify", serde_json::to_value(n).unwrap()),
+        }
+    }
+
+    fn notifications_changed(&self) {
+        self.emit("notifications_changed", json!({}));
     }
 
     fn emit(&self, event: &str, data: Value) {
@@ -519,7 +537,7 @@ impl Daemon {
         };
         if let Some((kind, title, body)) = note {
             if self.notifications_enabled(&s.project_id, kind) {
-                self.emit("notify", serde_json::to_value(Notification { session_id: s.id.clone(), project_id: s.project_id.clone(), kind: kind.into(), title, body }).unwrap());
+                self.notify(Notification { session_id: s.id.clone(), project_id: s.project_id.clone(), kind: kind.into(), title, body });
             }
         }
         self.changed();
@@ -567,7 +585,7 @@ impl Daemon {
                 };
                 if self.notifications_enabled(&pid, "program") {
                     let title = if title.is_empty() { name } else { title };
-                    self.emit("notify", serde_json::to_value(Notification { session_id: id.into(), project_id: pid, kind: "program".into(), title, body }).unwrap());
+                    self.notify(Notification { session_id: id.into(), project_id: pid, kind: "program".into(), title, body });
                 }
             }
             HolderEvent::Command { phase, exit_code } => match phase.as_str() {
@@ -586,17 +604,13 @@ impl Daemon {
                     let threshold = self.setting("notifications.command_threshold_secs", Some(&pid)).and_then(|v| v.as_u64()).unwrap_or(10);
                     if kind != SessionKind::Agent && secs >= threshold && self.notifications_enabled(&pid, "command_done") {
                         let ok = exit_code.unwrap_or(0) == 0;
-                        self.emit(
-                            "notify",
-                            serde_json::to_value(Notification {
+                        self.notify(Notification {
                                 session_id: id.into(),
                                 project_id: pid,
                                 kind: "command_done".into(),
                                 title: if ok { "Command finished".into() } else { format!("Command failed (exit {})", exit_code.unwrap_or(-1)) },
                                 body: format!("{title} · {secs}s"),
-                            })
-                            .unwrap(),
-                        );
+                            });
                     }
                 }
                 _ => {}
@@ -994,6 +1008,39 @@ impl Daemon {
                 if changed == Some(true) {
                     self.changed();
                 }
+                if self.store.lock().unwrap().mark_notifications_read(None, Some(&id)).unwrap_or(0) > 0 {
+                    self.notifications_changed();
+                }
+                Ok(json!({ "ok": true }))
+            }
+            "notifications.list" => {
+                let limit = p.get("limit").and_then(|v| v.as_i64()).unwrap_or(200);
+                Ok(json!({ "notifications": self.store.lock().unwrap().notifications(limit)? }))
+            }
+            "notifications.read" => {
+                // ids: [..] | session_id | nothing = all
+                let ids: Option<Vec<i64>> = p.get("ids").and_then(|v| serde_json::from_value(v.clone()).ok());
+                let sid = s("session_id");
+                let n = self.store.lock().unwrap().mark_notifications_read(ids.as_deref(), sid.as_deref())?;
+                if n > 0 {
+                    self.notifications_changed();
+                }
+                Ok(json!({ "ok": true, "changed": n }))
+            }
+            "notifications.clear" => {
+                self.store.lock().unwrap().clear_notifications()?;
+                self.notifications_changed();
+                Ok(json!({ "ok": true }))
+            }
+            "history.list" => {
+                let limit = p.get("limit").and_then(|v| v.as_i64()).unwrap_or(300);
+                let pid = s("project_id");
+                let items = self.store.lock().unwrap().history(pid.as_deref(), limit)?;
+                Ok(json!({ "sessions": items }))
+            }
+            "history.delete" => {
+                let id = req("id")?;
+                self.store.lock().unwrap().delete_history(&id)?;
                 Ok(json!({ "ok": true }))
             }
             "session.move" => {
@@ -1208,6 +1255,8 @@ impl Daemon {
         let command = p.get("command").and_then(|v| v.as_str()).unwrap_or("").to_string();
         let placement: Placement = serde_json::from_value(p.get("placement").cloned().unwrap_or(json!("tab"))).unwrap_or(Placement::Tab);
         let worktree = p.get("worktree").and_then(|v| v.as_str()).filter(|s| !s.is_empty()).map(util::expand_tilde);
+        // Resume an earlier agent conversation (session history) instead of starting a new one.
+        let resume = p.get("resume_agent_session_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()).map(String::from);
         if let Some(w) = &worktree {
             if !std::path::Path::new(w).is_dir() {
                 bail!("worktree not found: {w}");
@@ -1238,7 +1287,7 @@ impl Daemon {
             state: SessionState::Interrupted,
             activity: Activity::Idle,
             unread: false,
-            agent_session_id: None,
+            agent_session_id: resume.clone(),
             created_at: now,
             last_activity_at: now,
             exit_code: None,
@@ -1280,7 +1329,7 @@ impl Daemon {
         let cols = p.get("cols").and_then(|v| v.as_u64()).unwrap_or(120) as u16;
         let rows = p.get("rows").and_then(|v| v.as_u64()).unwrap_or(40) as u16;
         self.spawning.lock().unwrap().insert(session.id.clone());
-        let r = self.spawn_session_inner(&session.id, false, cols, rows);
+        let r = self.spawn_session_inner(&session.id, resume.is_some(), cols, rows);
         self.spawning.lock().unwrap().remove(&session.id);
         r?;
         let s = self.state.lock().unwrap().sessions.iter().find(|s| s.id == session.id).cloned();

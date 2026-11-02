@@ -155,7 +155,7 @@ struct PeekSidebarView: View {
 /// Sidebar toggle + search, next to the traffic lights; stays put whether the sidebar is shown or not.
 struct TopLeftControls: View {
     @EnvironmentObject var model: AppModel
-    static let width: CGFloat = 78 + 60
+    static let width: CGFloat = 78 + 88
 
     var body: some View {
         HStack(spacing: 2) {
@@ -167,6 +167,7 @@ struct TopLeftControls: View {
                 Image(systemName: "magnifyingglass").font(.system(size: 12.5))
             }
             .buttonStyle(IconButtonStyle(size: 26)).help("Search (\(KeyBindings.shared.current("cmd.command-palette")?.display ?? "⌘K"))")
+            NotificationBell()
         }
         .padding(.leading, 78)
         .frame(height: 30)

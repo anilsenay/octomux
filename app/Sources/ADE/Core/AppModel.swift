@@ -61,7 +61,8 @@ final class AppModel: ObservableObject {
 
     func start() {
         client.onState = { [weak self] s in self?.apply(s) }
-        client.onNotify = { n in Notifier.shared.deliver(n) }
+        client.onNotify = { [client] n in NotificationCenterModel.shared.received(n, from: client); Notifier.shared.deliver(n) }
+        client.onNotificationsChanged = { [client] in NotificationCenterModel.shared.refresh(client) }
         client.onDisconnect = { [weak self] in self?.connected = false }
         DispatchQueue.global().async {
             let ok = DaemonClient.ensureDaemon()
@@ -104,8 +105,9 @@ final class AppModel: ObservableObject {
         for id in want where extraClients[id] == nil {
             guard let h = HostStore.withLocal.first(where: { $0.id == id }) else { continue }
             let c = DaemonClient(host: h)
-            c.onState = { [weak self] st in self?.extraStates[id] = st; self?.publish() }
-            c.onNotify = { n in Notifier.shared.deliver(n) }
+            c.onState = { [weak self] st in self?.extraStates[id] = st; self?.publish(); NotificationCenterModel.shared.ensureLoaded(c) }
+            c.onNotify = { n in NotificationCenterModel.shared.received(n, from: c); Notifier.shared.deliver(n) }
+            c.onNotificationsChanged = { NotificationCenterModel.shared.refresh(c) }
             extraClients[id] = c
             c.startSubscription()
         }
@@ -137,6 +139,7 @@ final class AppModel: ObservableObject {
     private var lastMultiHost: Bool?
 
     private func apply(_ s: DaemonState) {
+        NotificationCenterModel.shared.ensureLoaded(client)
         primaryState = s
         let flag = s.settings.first { $0.scope == "global" && $0.key == "features.multi_host" }?.value.bool ?? false
         if flag != lastMultiHost {
