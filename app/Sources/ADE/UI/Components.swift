@@ -478,7 +478,7 @@ struct ReorderDrop: DropDelegate {
     func validateDrop(info: DropInfo) -> Bool { DragItem.current?.kind == kind }
     func dropEntered(info: DropInfo) {
         guard let d = DragItem.current, d.kind == kind, d.id != targetId else { return }
-        move(d.id, targetId)
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) { move(d.id, targetId) }
     }
     func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: .move) }
     func performDrop(info: DropInfo) -> Bool { DragItem.current = nil; return true }

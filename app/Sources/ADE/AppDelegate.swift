@@ -49,6 +49,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         w.titleVisibility = .hidden
         w.title = "ADE"
         w.isReleasedWhenClosed = false
+        // With a full-size content view the title-bar strip moves the window on any mouse-down, even over
+        // our tabs, so tabs could never be dragged. Only `WindowDragArea` (empty top-bar space) moves it.
+        w.isMovable = false
         w.setFrameAutosaveName("ADE.main")
         w.contentView = ContentHostingView(rootView: MainView().environmentObject(AppModel.shared))
         w.minSize = NSSize(width: 640, height: 400)

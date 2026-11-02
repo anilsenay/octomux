@@ -292,6 +292,10 @@ final class AppModel: ObservableObject {
         let old = Dictionary(uniqueKeysWithValues: current)
         for (i, id) in order.enumerated() where old[id] != i {
             client(for: id).call(method, ["id": id, "sort": i])
+            // Apply locally right away (the daemon echoes the same values), so drags reorder
+            // without a round trip and inside the caller's animation.
+            if method == "tab.update", let k = state.tabs.firstIndex(where: { $0.id == id }) { state.tabs[k].sort = i }
+            if method == "project.update", let k = state.projects.firstIndex(where: { $0.id == id }) { state.projects[k].sort = i }
         }
     }
 

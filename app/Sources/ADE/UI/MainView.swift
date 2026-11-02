@@ -651,7 +651,15 @@ struct WindowDragArea: NSViewRepresentable {
     final class DragView: NSView {
         override var mouseDownCanMoveWindow: Bool { true }
         override func mouseDown(with event: NSEvent) {
-            if event.clickCount == 2 { window?.zoom(nil) } else { window?.performDrag(with: event) }
+            guard let win = window else { return }
+            if event.clickCount == 2 { win.zoom(nil); return }
+            // The window is not movable by itself (see AppDelegate); allow it for this one drag.
+            win.isMovable = true
+            win.performDrag(with: event)
+            Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak win] t in
+                guard NSEvent.pressedMouseButtons & 1 == 0 else { return }
+                t.invalidate(); win?.isMovable = false
+            }
         }
     }
     func makeNSView(context: Context) -> NSView { DragView() }
