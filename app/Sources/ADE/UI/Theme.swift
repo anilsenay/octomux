@@ -115,7 +115,16 @@ final class ThemeStore: ObservableObject {
     private var appearanceObs: NSKeyValueObservation?
     private var lastWritten = ""
 
-    var revision: String { "\(preset.id)-\(mode)-\(activeScene?.id ?? "")" }
+    /// Bumped when user scene files are reloaded (same ids, new content).
+    @Published private(set) var sceneGeneration = 0
+    var revision: String { "\(preset.id)-\(mode)-\(activeScene?.id ?? "")-\(sceneGeneration)" }
+
+    func scenesReloaded() {
+        if let s = scene { scene = Scenes.scene(s.id) }
+        if previewing, let p = previewScene { previewScene = Scenes.scene(p.id) }
+        sceneGeneration += 1
+        sceneDidChange()
+    }
 
     /// Colors for an appearance: the active scene's (a scene has one appearance) or the preset's.
     func colors(dark: Bool) -> ThemeColors {
@@ -134,6 +143,7 @@ final class ThemeStore: ObservableObject {
         appearanceObs = NSApp?.observe(\.effectiveAppearance, options: [.new]) { [weak self] _, _ in
             DispatchQueue.main.async { self?.writeTerminalTheme() }
         }
+        DispatchQueue.main.async { UserScenes.startWatching() }
     }
 
     func sync(from model: AppModel) {

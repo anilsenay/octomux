@@ -6,7 +6,7 @@ import SwiftUI
 // (`appearance.scene` at `workspace:<id>`), falling back to the global choice; "none" turns it off.
 
 struct AmbientScene: Identifiable, Equatable {
-    enum Kind { case nightSky, reef, fireflies, embers, rain, sky, sakura, snow }
+    enum Kind { case nightSky, reef, fireflies, embers, rain, sky, sakura, snow, custom }
     let id: String
     let name: String
     let kind: Kind
@@ -14,6 +14,9 @@ struct AmbientScene: Identifiable, Equatable {
     let top: Color
     let bottom: Color
     let colors: ThemeColors
+    /// User scenes (see UserScenes): their elements, and the built-in scene they start from, if any.
+    var spec: SceneSpec? = nil
+    var base: Kind? = nil
     static func == (a: Self, b: Self) -> Bool { a.id == b.id }
 }
 
@@ -22,7 +25,7 @@ private func col(_ hex: String) -> Color { Color(nsColor: nc(hex)) }
 
 enum Scenes {
     /// Chrome and terminal colors from a few seeds; text and ANSI colors come from Ink's dark or light set.
-    private static func palette(dark: Bool, surface: String, frame: String, raised: String, accent: String) -> ThemeColors {
+    static func palette(dark: Bool, surface: String, frame: String, raised: String, accent: String) -> ThemeColors {
         var c = dark ? Themes.ink.dark : Themes.ink.light
         let a = nc(accent), s = nc(surface)
         c.surface = s
@@ -42,7 +45,10 @@ enum Scenes {
                      colors: palette(dark: dark, surface: surface, frame: frame, raised: raised, accent: accent))
     }
 
-    static let all: [AmbientScene] = [
+    /// Built-in scenes, then the user's.
+    static var all: [AmbientScene] { builtIn + UserScenes.loaded }
+
+    static let builtIn: [AmbientScene] = [
         make("night-sky", "Night Sky", .nightSky, dark: true, top: "#060A1C", bottom: "#1A2550",
              surface: "#10152B", frame: "#0B1024", raised: "#1E2546", accent: "#9DB0FF"),
         make("reef", "Reef", .reef, dark: true, top: "#0E4A52", bottom: "#05181F",
@@ -77,8 +83,10 @@ final class AmbientClock: ObservableObject {
     static let backgroundFPS = 6.0
 
     @Published private(set) var fps = AmbientClock.activeFPS
-    /// Scene time in seconds; only advances while running.
+    /// Scene time in seconds; only advances while running (faster while agents work).
     private(set) var time: Double = 1000
+    /// What the current workspace's agents are doing; backdrops react to it (see AmbientMood).
+    private(set) var mood: AmbientMood = .calm
     private var views = NSHashTable<SceneLayerView>.weakObjects()
     private var timer: Timer?
     private var last = CACurrentMediaTime()
@@ -114,6 +122,12 @@ final class AmbientClock: ObservableObject {
     }
 
     func register(_ v: SceneLayerView) { views.add(v); update() }
+
+    func setMood(_ m: AmbientMood) {
+        guard m != mood else { return }
+        mood = m
+        for v in views.allObjects { v.rebuild() }   // same clock time, so nothing jumps; only colors and the glow change
+    }
     func unregister(_ v: SceneLayerView) { views.remove(v); update() }
 
     func update() {
@@ -136,7 +150,7 @@ final class AmbientClock: ObservableObject {
 
     private func tick() {
         let now = CACurrentMediaTime()
-        time += min(now - last, 0.5)
+        time += min(now - last, 0.5) * (mood == .busy ? 1.6 : 1)
         last = now
         CATransaction.begin()
         CATransaction.setDisableActions(true)
@@ -161,6 +175,7 @@ final class SceneLayerView: NSView {
     let root = CALayer()
     private var builtSize: CGSize = .zero
     private var pending: DispatchWorkItem?
+    private var faded = false
 
     init(scene: AmbientScene, still: Bool) {
         self.scene = scene
@@ -211,8 +226,18 @@ final class SceneLayerView: NSView {
         root.position = .zero
         root.setAffineTransform(still ? CGAffineTransform(scaleX: bounds.width / v.width, y: bounds.height / v.height) : .identity)
         root.timeOffset = still ? 37 : AmbientClock.shared.time
-        SceneBuilder(root: root, W: v.width, H: v.height, now: root.timeOffset).build(scene)
+        SceneBuilder(root: root, W: v.width, H: v.height, now: root.timeOffset, mood: still ? .calm : AmbientClock.shared.mood).build(scene)
         CATransaction.commit()
+        // A new scene eases in over the window's frame color (the view's own layer runs on real time).
+        if !still && !faded {
+            faded = true
+            let a = CABasicAnimation(keyPath: "opacity")
+            a.fromValue = 0
+            a.toValue = 1
+            a.duration = 0.45
+            a.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            layer?.add(a, forKey: "fadeIn")
+        }
     }
 }
 
@@ -363,6 +388,7 @@ private struct SceneBuilder {
     let W: CGFloat
     let H: CGFloat
     let now: CFTimeInterval
+    var mood: AmbientMood = .calm
 
     func build(_ s: AmbientScene) {
         let g = CAGradientLayer()
@@ -378,7 +404,35 @@ private struct SceneBuilder {
         case .sky: sky()
         case .sakura: sakura()
         case .snow: snow()
+        case .custom:
+            if let b = s.base { build(kind: b) }
+            if let spec = s.spec { custom(spec, dark: s.dark) }
         }
+        moodGlow(dark: s.dark)
+    }
+
+    private func build(kind: AmbientScene.Kind) {
+        switch kind {
+        case .nightSky: nightSky()
+        case .reef: reef()
+        case .fireflies: fireflies()
+        case .embers: embers()
+        case .rain: rain()
+        case .sky: sky()
+        case .sakura: sakura()
+        case .snow: snow()
+        case .custom: break
+        }
+    }
+
+    /// Agents waiting for input (amber) or failing (red): a glow rises from the bottom and breathes.
+    private func moodGlow(dark: Bool) {
+        guard let hex = mood.glow else { return }
+        let g = CAGradientLayer()
+        g.frame = CGRect(x: 0, y: 0, width: W, height: H * 0.55)
+        g.colors = [cg(hex, dark ? 0.3 : 0.24), cg(hex, 0)]
+        root.addSublayer(g)
+        pulse(g, 0.35, 1, period: 2.8, phase: 0)
     }
 
     // Helpers
@@ -439,7 +493,7 @@ private struct SceneBuilder {
     /// starting over, with a random phase so the screen is full from the first frame. Plain layer
     /// animations (not CAEmitterLayer) so they follow the shared clock and show in still thumbnails.
     func particles(_ count: Int, art: (Int) -> (CGImage?, CGSize), from: (Int) -> CGPoint, to: (Int) -> CGPoint,
-                   duration: (Int) -> Double, opacity: (Int) -> Float, fade: Bool = false, sway: CGFloat = 0, spin: Bool = false) {
+                   duration: (Int) -> Double, opacity: (Int) -> Float, fade: Bool = false, sway: CGFloat = 0, spin: Bool = false, seed: Int = 0) {
         for i in 0..<count {
             let a = art(i), f = from(i), t = to(i), d = duration(i)
             let l = add(a, x: f.x - a.1.width / 2, y: f.y - a.1.height / 2, opacity: opacity(i))
@@ -447,7 +501,7 @@ private struct SceneBuilder {
             move.fromValue = CGPoint(x: f.x, y: H - f.y)
             move.toValue = CGPoint(x: t.x, y: H - t.y)
             move.duration = d
-            let phase = rnd(i, 90) * d
+            let phase = rnd(i + seed, 90) * d
             forever(move, phase: phase)
             l.add(move, forKey: "move")
             if fade {
@@ -458,7 +512,7 @@ private struct SceneBuilder {
                 forever(o, phase: phase)
                 l.add(o, forKey: "fade")
             }
-            if sway > 0 { swing(l, "transform.translation.x", sway * CGFloat(0.5 + rnd(i, 91)), period: 6 + rnd(i, 92) * 8, phase: rnd(i, 93) * 10) }
+            if sway > 0 { swing(l, "transform.translation.x", sway * CGFloat(0.5 + rnd(i + seed, 91)), period: 6 + rnd(i + seed, 92) * 8, phase: rnd(i + seed, 93) * 10) }
             if spin {
                 let r = CABasicAnimation(keyPath: "transform.rotation.z")
                 r.fromValue = 0
@@ -550,7 +604,9 @@ private struct SceneBuilder {
         }
         for i in 0..<28 {
             let bx = rnd(i, 1) * W, by = H * (0.08 + rnd(i, 4) * 0.78)
-            let l = add(Art.glow("#D8F27A", core: "#EEF8A8", radius: 18), x: bx - 18, y: by - 18, opacity: 0)
+            // Fireflies take the mood's color: amber when an agent waits for you, red on an error.
+            let (glowHex, coreHex) = mood == .attention ? ("#F5B841", "#FFE3A0") : mood == .error ? ("#FF6B5B", "#FFC2B8") : ("#D8F27A", "#EEF8A8")
+            let l = add(Art.glow(glowHex, core: coreHex, radius: 18), x: bx - 18, y: by - 18, opacity: 0)
             let wander = CAKeyframeAnimation(keyPath: "position")
             let rx = 30 + rnd(i, 5) * 50, ry = 20 + rnd(i, 6) * 35
             let ellipse = CGPath(ellipseIn: CGRect(x: bx - rx, y: H - by - ry, width: rx * 2, height: ry * 2), transform: nil)
@@ -637,6 +693,76 @@ private struct SceneBuilder {
                   from: { CGPoint(x: rnd($0, 3) * W * 1.1 - W * 0.1, y: -15) },
                   to: { CGPoint(x: rnd($0, 3) * W * 1.1 - W * 0.1 + (H + 30) / (14 + rnd($0, 1) * 22) * 9, y: H + 15) },
                   duration: { Double(H + 30) / (14 + rnd($0, 1) * 22) }, opacity: { 0.5 + 0.35 * Float(rnd($0, 4)) }, sway: 30, spin: true)
+    }
+
+    /// Vertical loop: up (or down) through the whole height at `speed` pt/s.
+    func rise(_ l: CALayer, speed: CGFloat, phase: Double, up: Bool) {
+        let h = l.bounds.height
+        let a = CABasicAnimation(keyPath: "position.y")
+        a.fromValue = up ? -h / 2 : H + h / 2
+        a.toValue = up ? H + h / 2 : -h / 2
+        a.duration = Double((H + h) / speed)
+        forever(a, phase: phase * a.duration)
+        l.add(a, forKey: "rise")
+    }
+
+    /// A user scene's elements (on top of its base scene, if it has one).
+    func custom(_ spec: SceneSpec, dark: Bool) {
+        let ink = dark ? "#FFFFFF" : "#2B2B30"
+        if let t = spec.twinkle {
+            let glyphs = (t.glyphs ?? ["·", "+"]).filter { !$0.isEmpty }
+            let count = min(t.count ?? Int(min(120, W * H / 10000)), 400)
+            for i in 0..<count {
+                let g = glyphs.isEmpty ? "·" : glyphs[i % glyphs.count]
+                let l = add(Art.glyph(g, t.color ?? ink, size: CGFloat(t.size ?? 10)), x: rnd(i + 5000, 1) * W, y: rnd(i + 5000, 2) * H * 0.92, opacity: 0.4)
+                pulse(l, 0.08, 0.8, period: 2.5 + rnd(i + 5000, 3) * 5, phase: rnd(i + 5000, 4) * 8)
+            }
+        }
+        for (si, sp) in (spec.sprites ?? []).enumerated() where !sp.rows.isEmpty {
+            var colors: [Character: String] = [:]
+            for (k, v) in sp.colors { if let c = k.first { colors[c] = v } }
+            for c in 0..<min(sp.count ?? 1, 50) {
+                let i = 6000 + si * 100 + c
+                let art = Art.sprite(sp.rows, colors, ink: sp.ink, seed: i, flip: sp.flip ?? false)
+                let x = CGFloat(sp.x ?? rnd(i, 1)) * W, y = CGFloat(sp.y ?? rnd(i, 2)) * H
+                let l = add(art, x: x, y: y, opacity: Float(sp.opacity ?? 1))
+                if let d = sp.drift, d != 0 { drift(l, speed: CGFloat(abs(d)), phase: rnd(i, 7), leftward: d < 0) }
+                if let r = sp.rise, r != 0 { rise(l, speed: CGFloat(abs(r)), phase: rnd(i, 8), up: r > 0) }
+                if let b = sp.bob, b > 0 { swing(l, "transform.translation.y", CGFloat(b), period: 7 + rnd(i, 9) * 6, phase: rnd(i, 10) * 10) }
+            }
+        }
+        for (pi, p) in (spec.particles ?? []).enumerated() {
+            let glyphs = p.glyphs.filter { !$0.isEmpty }.isEmpty ? ["·"] : p.glyphs.filter { !$0.isEmpty }
+            let colors = p.colors ?? [p.color ?? ink]
+            let size = CGFloat(p.size ?? 11)
+            let lo = CGFloat(p.speed?.first ?? 14), hi = CGFloat(p.speed?.last ?? 40)
+            let seed = 7000 + pi * 1000
+            let speed: (Int) -> CGFloat = { lo + CGFloat(rnd($0 + seed, 1)) * max(0, hi - lo) }
+            let dir = p.direction ?? "down"
+            let horizontal = dir == "left" || dir == "right"
+            let span = horizontal ? W + 30 : H + 30
+            particles(min(p.count ?? 40, 400), art: { Art.glyph(glyphs[$0 % glyphs.count], colors[$0 % colors.count], size: size) },
+                      from: { i in
+                          let r = CGFloat(rnd(i + seed, 2))
+                          switch dir {
+                          case "up": return CGPoint(x: r * W, y: H + 15)
+                          case "left": return CGPoint(x: W + 15, y: r * H)
+                          case "right": return CGPoint(x: -15, y: r * H)
+                          default: return CGPoint(x: r * W, y: -15)
+                          }
+                      },
+                      to: { i in
+                          let r = CGFloat(rnd(i + seed, 2))
+                          switch dir {
+                          case "up": return CGPoint(x: r * W, y: -15)
+                          case "left": return CGPoint(x: -15, y: r * H)
+                          case "right": return CGPoint(x: W + 15, y: r * H)
+                          default: return CGPoint(x: r * W, y: H + 15)
+                          }
+                      },
+                      duration: { Double(span / max(speed($0), 1)) }, opacity: { _ in Float(p.opacity ?? 0.7) },
+                      fade: p.fade ?? false, sway: CGFloat(p.sway ?? 0), spin: p.spin ?? false, seed: seed)
+        }
     }
 
     func snow() {
@@ -920,6 +1046,10 @@ struct SceneSettingsCard: View {
                 Toggle("Show the scene behind terminals (translucent terminals)", isOn: Binding(
                     get: { model.settingValue("appearance.scene_terminals", scope: "global")?.bool ?? false },
                     set: { model.setSetting("appearance.scene_terminals", $0 ? true : nil) }))
+                Toggle("React to agents: faster while they work, a glow while one waits for you (amber) or fails (red)", isOn: Binding(
+                    get: { model.scenesReactToAgents },
+                    set: { model.setSetting("appearance.scene_reactive", $0 ? nil : false) }))
+                UserScenesRow()
             }
             Text("Animates at \(Int(AmbientClock.activeFPS)) fps while ADE is in front, \(Int(AmbientClock.backgroundFPS)) fps when it is visible behind another app, and stops when the window is hidden, in Low Power Mode, or with Reduce Motion.")
                 .font(.caption).foregroundStyle(T.text3)

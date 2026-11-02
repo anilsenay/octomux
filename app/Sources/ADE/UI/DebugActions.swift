@@ -127,6 +127,7 @@ enum DebugActions {
             case "scene":
                 let scope = (p["scope"] as? String).map { $0 == "workspace" ? "workspace:\(m.selectedWorkspaceId ?? "")" : $0 } ?? "global"
                 m.setScene(p["value"] as? String, scope: scope)
+            case "scene_template": UserScenes.writeTemplate()
             case "scene_picker": if (p["value"] as? Bool) ?? true { ScenePickerPanel.shared.show() } else { ScenePickerPanel.shared.close() }
             case "scene_preview": if let v = p["value"] as? String { ThemeStore.shared.preview(Scenes.scene(v)) } else { ThemeStore.shared.endPreview() }
             case "chat_picker": NotificationCenter.default.post(name: .adeDebugPanel, object: nil, userInfo: ["chatPicker": p["value"] as? String ?? ""])

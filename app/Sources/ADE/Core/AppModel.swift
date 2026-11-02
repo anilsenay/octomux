@@ -241,6 +241,7 @@ final class AppModel: ObservableObject {
         }
         Notifier.shared.updateBadge(state: s)
         ThemeStore.shared.sync(from: self)
+        updateAmbientMood()
         if s.workspaces.first(where: { $0.id == selectedWorkspaceId })?.color != lastTintColor { workspaceTintChanged() }
         KeyBindings.shared.sync(from: self)
         TerminalHost.shared.reconcile(with: s)
@@ -701,6 +702,7 @@ final class AppModel: ObservableObject {
     func workspaceTintChanged() {
         lastTintColor = workspace?.color
         ThemeStore.shared.sync(from: self)   // the workspace may have its own scene
+        updateAmbientMood()
         ThemeStore.shared.writeTerminalTheme()
         TerminalHost.shared.refreshPaneBackgrounds()
     }
