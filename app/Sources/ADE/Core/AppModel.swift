@@ -700,6 +700,7 @@ final class AppModel: ObservableObject {
     private var lastTintColor: String?
     func workspaceTintChanged() {
         lastTintColor = workspace?.color
+        ThemeStore.shared.sync(from: self)   // the workspace may have its own scene
         ThemeStore.shared.writeTerminalTheme()
         TerminalHost.shared.refreshPaneBackgrounds()
     }

@@ -405,6 +405,9 @@ struct AppearanceSettings: View {
         if sel.scope == "global" {
             ThemePicker()
         }
+        if sel.scope == "global" || sel.scope.hasPrefix("workspace:") {
+            SceneSettingsCard(scope: sel.scope)
+        }
         if sel.scope.hasPrefix("workspace:"), let w = model.state.workspaces.first(where: { "workspace:\($0.id)" == sel.scope }) {
             SettingsCard {
                 Text("Workspace color").font(.headline)

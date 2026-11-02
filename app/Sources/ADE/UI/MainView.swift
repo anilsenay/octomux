@@ -42,7 +42,7 @@ struct MainView: View {
             }
             .frame(minWidth: 0, maxWidth: .infinity)
         }
-        .background(m.glass ? AnyView(VisualEffect(material: .underWindowBackground)) : AnyView(WorkspaceTintedFrame()))
+        .background(rootBackground)
         .overlay(alignment: .topLeading) { peekStrip }
         .onChange(of: model.sidebarPeek) { SidebarPeek.shared.update() }
         .onChange(of: model.sidebarVisible) { SidebarPeek.shared.update() }
@@ -66,7 +66,14 @@ struct MainView: View {
 
     private func sidebar(floating: Bool = false) -> some View {
         SidebarView(floating: floating)
-            .background(T.m.glass ? AnyView(Color.clear) : T.m.sidebarMaterial ? AnyView(VisualEffect(material: .sidebar)) : AnyView(WorkspaceTintedFrame()))
+            .background(theme.activeScene.map { AnyView(Color(nsColor: $0.colors.frame).opacity($0.dark ? 0.4 : 0.35)) }
+                        ?? (T.m.glass ? AnyView(Color.clear) : T.m.sidebarMaterial ? AnyView(VisualEffect(material: .sidebar)) : AnyView(WorkspaceTintedFrame())))
+    }
+
+    /// Behind everything: the scene's live backdrop, the window glass, or the workspace-tinted frame.
+    private var rootBackground: AnyView {
+        if let s = theme.activeScene { return AnyView(SceneBackdrop(scene: s)) }
+        return T.m.glass ? AnyView(VisualEffect(material: .underWindowBackground)) : AnyView(WorkspaceTintedFrame())
     }
 
     /// Terminal area plus the dock on the chosen side.
@@ -734,7 +741,7 @@ struct EmptyStateView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(CanvasBackground())
+        .background(CanvasBackground(scene: true))
     }
 }
 

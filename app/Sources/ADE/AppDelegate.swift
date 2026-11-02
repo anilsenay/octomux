@@ -154,6 +154,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let ag = item("Toggle Agents View", #selector(toggleAgentsView(_:)), "a")
         ag.keyEquivalentModifierMask = [.command, .option]
         view.addItem(ag)
+        view.addItem(item("Change Scene…", #selector(changeScene(_:)), ""))
         view.addItem(.separator())
         let prev = item("Previous Tab", #selector(prevTab(_:)), "{")
         view.addItem(prev)
@@ -224,6 +225,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc func splitDown(_ s: Any?) { model.newSession(profileId: nil, split: .down) }
     @objc func zoomPane(_ s: Any?) { model.toggleZoom() }
     @objc func newChat(_ s: Any?) { model.openNewChat() }
+    @objc func changeScene(_ s: Any?) { ScenePickerPanel.shared.toggle() }
+
     @objc func toggleAgentsView(_ s: Any?) {
         withAnimation(.easeOut(duration: 0.15)) { model.sidebarAgents.toggle() }
         if !model.sidebarVisible { model.toggleSidebar() }

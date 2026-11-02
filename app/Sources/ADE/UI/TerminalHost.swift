@@ -447,7 +447,7 @@ final class PaneView: NSView {
         layer.borderWidth = m.cardR > 0 ? 1 : 0
         effectiveAppearance.performAsCurrentDrawingAppearance {
             let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            layer.backgroundColor = m.glass ? NSColor.clear.cgColor : WorkspaceTint.canvas(dark: dark).cgColor
+            layer.backgroundColor = ThemeStore.shared.transparentPanes ? NSColor.clear.cgColor : WorkspaceTint.canvas(dark: dark).cgColor
             layer.borderColor = (focused ? WorkspaceTint.accent(dark: dark).withAlphaComponent(dark ? 0.6 : 0.7) : T.ns(\.border)).cgColor
         }
     }

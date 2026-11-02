@@ -103,11 +103,32 @@ final class ThemeStore: ObservableObject {
     static let shared = ThemeStore()
     @Published private(set) var preset: ThemePreset = Themes.ink
     @Published private(set) var mode = "system"
+    /// The current workspace's scene (see Scenes.swift), and a scene shown while hovering a picker.
+    @Published private(set) var scene: AmbientScene?
+    @Published private(set) var previewing = false
+    private(set) var previewScene: AmbientScene?
+    var activeScene: AmbientScene? { previewing ? previewScene : scene }
     private(set) var terminalColors = true
+    /// `appearance.scene_terminals`: terminals are translucent so the scene shows behind them.
+    private(set) var sceneTerminals = false
+    var transparentPanes: Bool { metrics.glass || (activeScene != nil && sceneTerminals) }
     private var appearanceObs: NSKeyValueObservation?
     private var lastWritten = ""
 
-    var revision: String { "\(preset.id)-\(mode)" }
+    var revision: String { "\(preset.id)-\(mode)-\(activeScene?.id ?? "")" }
+
+    /// Colors for an appearance: the active scene's (a scene has one appearance) or the preset's.
+    func colors(dark: Bool) -> ThemeColors {
+        if let s = activeScene { return s.colors }
+        return dark ? preset.dark : preset.light
+    }
+
+    /// The preset's metrics; a scene draws its own backdrop, so no window glass or sidebar material.
+    var metrics: ThemeMetrics {
+        var m = preset.metrics
+        if activeScene != nil { m.glass = false; m.sidebarMaterial = false }
+        return m
+    }
 
     init() {
         appearanceObs = NSApp?.observe(\.effectiveAppearance, options: [.new]) { [weak self] _, _ in
@@ -121,31 +142,72 @@ final class ThemeStore: ObservableObject {
         let id = model.settingValue("appearance.theme", scope: "global")?.string ?? "ink"
         let m = model.settingValue("appearance.mode", scope: "global")?.string ?? "system"
         let tc = model.settingValue("appearance.terminal_colors", scope: "global")?.bool ?? true
-        let changed = id != preset.id || m != mode || tc != terminalColors
+        let sc = Scenes.scene(model.sceneId(workspace: model.selectedWorkspaceId))
+        let sceneChanged = sc?.id != scene?.id
+        let st = model.settingValue("appearance.scene_terminals", scope: "global")?.bool ?? false
+        let changed = id != preset.id || m != mode || tc != terminalColors || sceneChanged || st != sceneTerminals
         guard changed || lastWritten.isEmpty else { return }
-        if id != preset.id {
-            preset = Themes.preset(id)
-            DispatchQueue.main.async {
-                Self.applyWindowGlass()
-                TerminalHost.shared.render(force: true)
-                TerminalHost.shared.renderDock(force: true)
-            }
-        }
+        let before = activeScene?.id
+        if sceneChanged { scene = sc }
+        let restyle = id != preset.id || before != activeScene?.id || st != sceneTerminals
+        sceneTerminals = st
+        if id != preset.id { preset = Themes.preset(id) }
         if m != mode { mode = m }
         terminalColors = tc
-        NSApp.appearance = m == "dark" ? NSAppearance(named: .darkAqua) : m == "light" ? NSAppearance(named: .aqua) : nil
+        if restyle { restyleViews() }
+        applyAppearance()
         writeTerminalTheme()
+    }
+
+    /// Shows `scene` (nil = no scene) until `endPreview()`; the setting is not changed.
+    func preview(_ s: AmbientScene?) {
+        if previewing && previewScene?.id == s?.id { return }
+        let before = activeScene?.id
+        previewScene = s
+        previewing = true
+        if before != activeScene?.id { sceneDidChange() }
+    }
+
+    func endPreview() {
+        guard previewing else { return }
+        let before = activeScene?.id
+        previewing = false
+        previewScene = nil
+        if before != activeScene?.id { sceneDidChange() }
+    }
+
+    private func sceneDidChange() {
+        restyleViews()
+        applyAppearance()
+        writeTerminalTheme()
+    }
+
+    private func restyleViews() {
+        DispatchQueue.main.async {
+            Self.applyWindowGlass()
+            TerminalHost.shared.render(force: true)
+            TerminalHost.shared.renderDock(force: true)
+            TerminalHost.shared.refreshPaneBackgrounds()
+        }
+    }
+
+    /// A scene has a fixed appearance; otherwise the mode setting decides.
+    private func applyAppearance() {
+        let want: NSAppearance? = activeScene.map { NSAppearance(named: $0.dark ? .darkAqua : .aqua)! }
+            ?? (mode == "dark" ? NSAppearance(named: .darkAqua) : mode == "light" ? NSAppearance(named: .aqua) : nil)
+        if NSApp.appearance?.name != want?.name { NSApp.appearance = want }
     }
 
     /// Glass needs a non-opaque window so the behind-window blur shows through the terminals.
     static func applyWindowGlass() {
         guard let w = (NSApp.delegate as? AppDelegate)?.mainWindow else { return }
-        let glass = shared.preset.metrics.glass
+        let glass = shared.metrics.glass
         w.isOpaque = !glass
         w.backgroundColor = glass ? .clear : .windowBackgroundColor
     }
 
     var isDark: Bool {
+        if let s = activeScene { return s.dark }
         switch mode {
         case "dark": return true
         case "light": return false
@@ -155,13 +217,13 @@ final class ThemeStore: ObservableObject {
 
     /// Ghostty config fragment with the preset's terminal colors, loaded after the user's terminal.conf.
     func terminalConfigText(dark: Bool) -> String {
-        let p = dark ? preset.dark : preset.light
+        let p = colors(dark: dark)
         func hex(_ n: NSColor) -> String {
             let x = n.usingColorSpace(.sRGB) ?? n
             return String(format: "#%02X%02X%02X", Int(round(x.redComponent * 255)), Int(round(x.greenComponent * 255)), Int(round(x.blueComponent * 255)))
         }
         var lines = [
-            "# Generated by ADE from the \(preset.name) theme (\(dark ? "dark" : "light")). Edit terminal.conf instead.",
+            "# Generated by ADE from the \(activeScene?.name ?? preset.name) theme (\(dark ? "dark" : "light")). Edit terminal.conf instead.",
             "background = \(hex(WorkspaceTint.canvas(dark: dark)))",
             "foreground = \(hex(p.termFg))",
             "cursor-color = \(hex(p.termCursor))",
@@ -176,7 +238,8 @@ final class ThemeStore: ObservableObject {
         DocHost.shared.refreshTheme()
         let text = terminalColors ? terminalConfigText(dark: isDark) : "# Terminal colors come from terminal.conf\n"
         let padding = "window-padding-x = 12\nwindow-padding-y = 8\nwindow-padding-balance = true\nwindow-padding-color = background\n"
-        let glass = preset.metrics.glass ? "background-opacity = \(isDark ? 0.55 : 0.6)\n" : ""
+        let opacity = metrics.glass ? (isDark ? 0.55 : 0.6) : transparentPanes ? (isDark ? 0.8 : 0.84) : nil
+        let glass = opacity.map { "background-opacity = \($0)\n" } ?? ""
         let full = padding + glass + text
         guard full != lastWritten else { return }
         lastWritten = full
@@ -194,15 +257,11 @@ final class ThemeStore: ObservableObject {
 /// Token accessors. `T.frame`, `T.text2`, `T.m.rowH`…
 enum T {
     private static func dyn(_ key: KeyPath<ThemeColors, NSColor>) -> Color {
-        Color(nsColor: NSColor(name: nil) { a in
-            let p = ThemeStore.shared.preset
-            return a.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? p.dark[keyPath: key] : p.light[keyPath: key]
-        })
+        Color(nsColor: ns(key))
     }
     static func ns(_ key: KeyPath<ThemeColors, NSColor>) -> NSColor {
         NSColor(name: nil) { a in
-            let p = ThemeStore.shared.preset
-            return a.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? p.dark[keyPath: key] : p.light[keyPath: key]
+            ThemeStore.shared.colors(dark: a.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua)[keyPath: key]
         }
     }
 
@@ -222,7 +281,7 @@ enum T {
     static var red: Color { dyn(\.red) }
     static var blue: Color { dyn(\.blue) }
 
-    static var m: ThemeMetrics { ThemeStore.shared.preset.metrics }
+    static var m: ThemeMetrics { ThemeStore.shared.metrics }
 
     // Typography
     static let monoName: String? = ["JetBrainsMono-Regular", "JetBrains Mono"].first { NSFont(name: $0, size: 12) != nil }

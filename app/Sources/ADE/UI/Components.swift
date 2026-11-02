@@ -545,8 +545,7 @@ struct WorkspaceTintedFrame: View {
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        let p = ThemeStore.shared.preset
-        let base = scheme == .dark ? p.dark.frame : p.light.frame
+        let base = ThemeStore.shared.colors(dark: scheme == .dark).frame
         Rectangle()
             .fill(Color(nsColor: WorkspaceTint.washed(base, toward: model.workspace?.color, strength: WorkspaceTint.strength(dark: scheme == .dark))))
             .animation(.easeOut(duration: 0.4), value: model.selectedWorkspaceId)
@@ -562,8 +561,9 @@ enum WorkspaceTint {
 
     /// Terminal / pane background for the current workspace.
     static func canvas(dark: Bool) -> NSColor {
-        let p = ThemeStore.shared.preset
-        return washed(dark ? p.dark.surface : p.light.surface, toward: AppModel.shared.workspace?.color,
+        let c = ThemeStore.shared.colors(dark: dark)
+        if ThemeStore.shared.activeScene != nil { return c.surface }
+        return washed(c.surface, toward: AppModel.shared.workspace?.color,
                       strength: strength(dark: dark) * canvasScale)
     }
 
@@ -571,6 +571,7 @@ enum WorkspaceTint {
     /// saturation capped so neon picks don't glare, brightness lifted on dark and lowered on light so
     /// every hue keeps similar contrast. Gray or no workspace color → the theme accent.
     static func accent(dark: Bool, hex: String? = AppModel.shared.workspace?.color) -> NSColor {
+        if let s = ThemeStore.shared.activeScene { return s.colors.accent }
         guard let hex, let c = NSColor(Color(hex: hex)).usingColorSpace(.sRGB) else { return T.ns(\.accent) }
         var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
         c.getHue(&h, saturation: &s, brightness: &b, alpha: &a)
@@ -582,7 +583,7 @@ enum WorkspaceTint {
 
     /// `base` with its hue pushed toward `hex`'s hue; brightness and alpha unchanged.
     static func washed(_ base: NSColor, toward hex: String?, strength: Double = strength) -> NSColor {
-        guard let hex, let b0 = base.usingColorSpace(.sRGB),
+        guard ThemeStore.shared.activeScene == nil, let hex, let b0 = base.usingColorSpace(.sRGB),
               let tint = NSColor(Color(hex: hex)).usingColorSpace(.sRGB) else { return base }
         var th: CGFloat = 0, ts: CGFloat = 0, tb: CGFloat = 0, ta: CGFloat = 0
         tint.getHue(&th, saturation: &ts, brightness: &tb, alpha: &ta)
@@ -595,7 +596,7 @@ enum WorkspaceTint {
 
     /// Selected-row fill: the workspace color when there is one, else the theme's selection.
     static func selection(_ model: AppModel) -> Color {
-        guard let hex = model.workspace?.color else { return T.selection }
+        guard ThemeStore.shared.activeScene == nil, let hex = model.workspace?.color else { return T.selection }
         return Color(hex: hex).opacity(0.13)
     }
 }
@@ -622,7 +623,16 @@ extension NSColor {
 struct CanvasBackground: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.colorScheme) private var scheme
-    var body: some View { Rectangle().fill(Color(nsColor: WorkspaceTint.canvas(dark: scheme == .dark))) }
+    /// Empty panes and the new-chat screen show the active scene's backdrop instead.
+    var scene = false
+    var body: some View {
+        if scene, let s = ThemeStore.shared.activeScene { SceneBackdrop(scene: s) }
+        else {
+            // Translucent like the terminals when the scene shows behind them.
+            let see = ThemeStore.shared.activeScene != nil && ThemeStore.shared.transparentPanes
+            Rectangle().fill(Color(nsColor: WorkspaceTint.canvas(dark: scheme == .dark)).opacity(see ? 0.82 : 1))
+        }
+    }
 }
 
 /// An NSPopover shown from a SwiftUI view, on a fixed side (SwiftUI's popover may cover its anchor near the

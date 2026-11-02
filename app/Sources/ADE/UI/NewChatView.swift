@@ -56,7 +56,7 @@ struct NewChatView: View {
                 .padding(.horizontal, 28).padding(.bottom, 18)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(CanvasBackground())
+        .background(CanvasBackground(scene: true))
         .onAppear { DispatchQueue.main.async { focused = true } }
         .onReceive(NotificationCenter.default.publisher(for: .adeDebugPanel)) { n in
             if let v = n.userInfo?["chatPicker"] as? String {
