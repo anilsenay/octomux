@@ -40,6 +40,7 @@ impl Env {
             .env("CLAUDE_CODE_CHILD_SESSION", "1")
             .env("CLAUDECODE", "1")
             .env("CLAUDE_CONFIG_DIR", "/should/not/leak")
+            .env("ADE_NO_USAGE_PROBE", "1")
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())

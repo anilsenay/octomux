@@ -576,3 +576,130 @@ mod usage_tests {
         let _ = std::fs::remove_dir_all(&home);
     }
 }
+
+// MARK: Claude usage via its own `/usage` command
+
+/// `claude -p /usage`: a local command (no model call, no tokens), as the profile would run Claude
+/// (its args, aliases, login shell). `--no-session-persistence` keeps it out of the resume list.
+pub fn claude_usage_argv(profile: &Profile, aliases: &[(String, String)]) -> Vec<String> {
+    let mut args = strip_session_flags(&profile.args, profile.kind);
+    args.extend(["-p", "/usage", "--output-format", "json", "--no-session-persistence"].map(String::from));
+    let command = expand_tilde(&profile.command);
+    if profile.via_login_shell {
+        let mut line = match expand_alias(&profile.command, aliases) {
+            Some(text) => text.to_string(),
+            None => shell_quote(&command),
+        };
+        for a in &args {
+            line.push(' ');
+            line.push_str(&shell_quote(a));
+        }
+        login_shell_argv(&line)
+    } else {
+        let mut v = vec![command];
+        v.extend(args);
+        v
+    }
+}
+
+/// Reads `/usage` output: "Current session: 8% used · resets Nov 3 at 2:30am (Europe/Istanbul)",
+/// "Current week (all models): 6% used · resets Nov 9 at 2pm (…)", "Current week (Fable): 0% used …".
+/// Returns (window, percent, resets_at) with the same window names the status line uses.
+pub fn parse_claude_usage(text: &str, now: i64) -> Vec<(String, f64, Option<i64>)> {
+    let mut out = Vec::new();
+    for line in text.lines() {
+        let l = line.trim();
+        let Some(rest) = l.strip_prefix("Current ") else { continue };
+        let Some((label, tail)) = rest.split_once(':') else { continue };
+        let window = if label.trim() == "session" {
+            "five_hour".to_string()
+        } else if let Some(inner) = label.trim().strip_prefix("week") {
+            let inner = inner.trim().trim_start_matches('(').trim_end_matches(')').trim().to_lowercase();
+            if inner.is_empty() || inner == "all models" { "seven_day".to_string() } else { format!("seven_day_{}", inner.replace(' ', "_")) }
+        } else {
+            continue;
+        };
+        let tail = tail.trim();
+        let Some(pct_end) = tail.find('%') else { continue };
+        let Ok(pct) = tail[..pct_end].trim().parse::<f64>() else { continue };
+        let resets = tail.split_once("resets").map(|(_, r)| r.trim()).and_then(|r| parse_reset_time(r, now));
+        out.push((window, pct, resets));
+    }
+    out
+}
+
+/// "Nov 3 at 2:30am (Europe/Istanbul)", "Nov 9 at 2pm", "2:30am", "Nov 9" in local time → unix time.
+/// The zone in parentheses is the machine's own (that is how Claude prints it), so local time is used.
+pub fn parse_reset_time(s: &str, now: i64) -> Option<i64> {
+    let s = s.split('(').next().unwrap_or(s).trim().trim_end_matches(',');
+    let (date, time) = match s.split_once(" at ") {
+        Some((d, t)) => (Some(d.trim()), Some(t.trim())),
+        None if s.chars().next().is_some_and(|c| c.is_ascii_digit()) => (None, Some(s)),
+        None => (Some(s), None),
+    };
+    let mut tm: libc::tm = unsafe { std::mem::zeroed() };
+    let t = now as libc::time_t;
+    unsafe { libc::localtime_r(&t, &mut tm) };
+    if let Some(d) = date {
+        let mut parts = d.split_whitespace();
+        let mon = parts.next()?;
+        let months = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+        let m = months.iter().position(|x| mon.to_lowercase().starts_with(x))? as i32;
+        let day: i32 = parts.next()?.trim_end_matches(',').parse().ok()?;
+        if let Some(y) = parts.next().and_then(|y| y.parse::<i32>().ok()) {
+            tm.tm_year = y - 1900;
+        }
+        tm.tm_mon = m;
+        tm.tm_mday = day;
+    }
+    let (mut hour, mut min) = (0, 0);
+    if let Some(t) = time {
+        let t = t.to_lowercase();
+        let pm = t.ends_with("pm");
+        let am = t.ends_with("am");
+        let digits = t.trim_end_matches("am").trim_end_matches("pm").trim();
+        let (h, m) = match digits.split_once(':') {
+            Some((h, m)) => (h.parse::<i32>().ok()?, m.parse::<i32>().ok()?),
+            None => (digits.parse::<i32>().ok()?, 0),
+        };
+        hour = if pm && h < 12 { h + 12 } else if am && h == 12 { 0 } else { h };
+        min = m;
+    }
+    tm.tm_hour = hour;
+    tm.tm_min = min;
+    tm.tm_sec = 0;
+    tm.tm_isdst = -1;
+    let mut at = unsafe { libc::mktime(&mut tm) } as i64;
+    if at < 0 {
+        return None;
+    }
+    // "Jan 2" printed in late December is next year; a bare time already past is tomorrow.
+    if date.is_some() && at < now - 86_400 {
+        tm.tm_year += 1;
+        tm.tm_isdst = -1;
+        at = unsafe { libc::mktime(&mut tm) } as i64;
+    } else if date.is_none() && at < now {
+        at += 86_400;
+    }
+    Some(at)
+}
+
+#[cfg(test)]
+mod claude_usage_tests {
+    use super::*;
+
+    #[test]
+    fn parses_usage_command_output() {
+        let now = parse_reset_time("Nov 2 at 11pm", 1_793_600_000).unwrap();
+        let text = "You are currently using your subscription\n\nCurrent session: 8% used · resets Nov 3 at 2:30am (Europe/Istanbul)\nCurrent week (all models): 6% used · resets Nov 9 at 2pm (Europe/Istanbul)\nCurrent week (Fable): 0% used · resets Nov 9 at 2pm (Europe/Istanbul)\n\nLast 24h · 1830 requests\n  91%  Start fresh";
+        let r = parse_claude_usage(text, now);
+        assert_eq!(r.len(), 3, "{r:?}");
+        assert_eq!((r[0].0.as_str(), r[0].1), ("five_hour", 8.0));
+        assert_eq!((r[1].0.as_str(), r[1].1), ("seven_day", 6.0));
+        assert_eq!(r[2].0, "seven_day_fable");
+        // 3:30 hours after "Nov 2 at 11pm", and the week resets 6 days 15 hours later.
+        assert_eq!(r[0].2.unwrap() - now, 3 * 3600 + 1800);
+        assert_eq!(r[1].2.unwrap() - now, 6 * 86_400 + 15 * 3600);
+        assert_eq!(parse_reset_time("12am", now).unwrap() - now, 3600);
+    }
+}

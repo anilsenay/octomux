@@ -822,7 +822,7 @@ struct UsageStatus: View {
             .fixedSize()
             .hoverHighlight(radius: 5, padding: 3)
             .help(shown.contains { $0.1.contains(where: \.isReset) }
-                  ? "Usage limits — “—” means the window reset and no newer reading came in yet (readings arrive when a Claude session started in ADE finishes a turn). Click for details"
+                  ? "Usage limits — “—” means the window reset and no newer reading came in yet. Click for details"
                   : "Usage limits — click for details")
             .popover(isPresented: open, arrowEdge: .top) { UsagePopover().environmentObject(model) }
         }
@@ -857,9 +857,9 @@ struct UsagePopover: View {
                     for c in model.extraClients.values { c.call("usage.refresh", [:]) }
                 } label: { Image(systemName: "arrow.clockwise").font(.system(size: 11, weight: .medium)) }
                     .buttonStyle(ChromeButtonStyle())
-                    .help("Refresh now (Codex is re-read; Claude updates with its next status line)")
+                    .help("Refresh now (asks each Claude profile with `claude -p /usage`, re-reads Codex)")
             }
-            Text("Readings come from Claude and Codex sessions started in ADE: Claude reports with each turn, Codex is re-read on refresh. Usage from Claude running elsewhere (another terminal, the desktop app) shows up only after the next turn here.")
+            Text("Claude: asked every 10 minutes with its own `/usage` command (no tokens used), and after each turn of a Claude session in ADE. Codex: read from its session files while one runs.")
                 .font(T.caption).foregroundStyle(T.text3).fixedSize(horizontal: false, vertical: true)
             let profiles = model.enabledProfiles.filter { p in model.state.usage.contains { $0.profileId == p.id } }
             if profiles.isEmpty {

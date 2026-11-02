@@ -31,6 +31,7 @@ pub struct Daemon {
     spawning: Mutex<HashSet<String>>,
     /// First message for agent sessions about to be spawned (`session.create` `prompt`).
     prompts: Mutex<HashMap<String, String>>,
+    claude_usage_running: std::sync::atomic::AtomicBool,
     cmd_started: Mutex<HashMap<String, Instant>>,
     dirty: Sender<()>,
     login_path: Mutex<Option<String>>,
@@ -98,6 +99,7 @@ pub fn run(paths: Paths) -> Result<()> {
         monitored: Mutex::new(HashSet::new()),
         spawning: Mutex::new(HashSet::new()),
         prompts: Mutex::new(HashMap::new()),
+        claude_usage_running: std::sync::atomic::AtomicBool::new(false),
         cmd_started: Mutex::new(HashMap::new()),
         dirty: dirty_tx,
         login_path: Mutex::new(None),
@@ -131,6 +133,16 @@ pub fn run(paths: Paths) -> Result<()> {
         std::thread::spawn(move || loop {
             std::thread::sleep(Duration::from_secs(60));
             d.poll_codex_usage();
+        });
+    }
+    {
+        let d = d.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_secs(20));   // after the login environment is known
+            loop {
+                d.poll_claude_usage();
+                std::thread::sleep(Duration::from_secs(600));
+            }
         });
     }
     {
@@ -430,6 +442,59 @@ impl Daemon {
         }
         self.changed();
         n
+    }
+
+    /// Claude limits from `claude -p /usage` (a local command: no model call), per Claude profile, so the
+    /// numbers are current even when no Claude session in ADE ran a turn lately (usage from other
+    /// terminals or apps counts too). One run at a time; each is cut off after 30 s.
+    fn poll_claude_usage(self: &Arc<Self>) {
+        if std::env::var_os("ADE_NO_USAGE_PROBE").is_some() || self.claude_usage_running.swap(true, std::sync::atomic::Ordering::SeqCst) {
+            return;
+        }
+        let profiles: Vec<Profile> = {
+            let st = self.state.lock().unwrap();
+            st.profiles.iter().filter(|p| p.kind == AgentKind::Claude && p.enabled).cloned().collect()
+        };
+        let aliases = self.aliases.lock().unwrap().clone();
+        let path = self.login_path.lock().unwrap().clone();
+        for p in profiles {
+            let argv = agents::claude_usage_argv(&p, &aliases);
+            let Some((exe, rest)) = argv.split_first() else { continue };
+            let mut cmd = std::process::Command::new(exe);
+            cmd.args(rest).current_dir(&self.paths.home).stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null());
+            if let Some(path) = &path {
+                cmd.env("PATH", path);
+            }
+            for (k, v) in &p.env {
+                cmd.env(k, util::expand_tilde(v));
+            }
+            let Ok(mut child) = cmd.spawn() else { continue };
+            let deadline = Instant::now() + Duration::from_secs(30);
+            let ok = loop {
+                match child.try_wait() {
+                    Ok(Some(st)) => break st.success(),
+                    Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(100)),
+                    _ => {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                        break false;
+                    }
+                }
+            };
+            if !ok {
+                continue;
+            }
+            let mut out = String::new();
+            if let Some(mut so) = child.stdout.take() {
+                use std::io::Read;
+                let _ = so.read_to_string(&mut out);
+            }
+            let text = serde_json::from_str::<Value>(out.trim()).ok().and_then(|v| v["result"].as_str().map(String::from)).unwrap_or_default();
+            let readings = agents::parse_claude_usage(&text, util::now_secs() as i64);
+            self.store_usage(&p.id, readings);
+        }
+        self.claude_usage_running.store(false, std::sync::atomic::Ordering::SeqCst);
     }
 
     /// Every minute: Codex rate limits from its rollout files, for profiles with a running session.
@@ -1207,6 +1272,8 @@ impl Daemon {
             "usage.refresh" => {
                 // Re-reads what can be read on demand now (Codex rollouts); Claude readings arrive with its status line.
                 self.poll_codex_usage();
+                let d = self.clone();
+                std::thread::spawn(move || d.poll_claude_usage());
                 self.changed();
                 Ok(json!({ "ok": true }))
             }
