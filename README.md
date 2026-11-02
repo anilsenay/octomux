@@ -37,9 +37,9 @@ mv vendor/ghostty/macos/GhosttyKit.xcframework vendor/
 tools/build-app.sh            # release
 tools/build-app.sh debug      # faster, debug
 
-# Tests (Rust core: unit + 17 end-to-end tests over real PTYs)
-(cd core && cargo test          # core: unit + integration
-cd app && swift test           # app logic: palette, shortcuts, worktrees, chat parsing, usage)
+# Tests
+(cd core && cargo test)        # Rust core: unit + 24 end-to-end tests over real PTYs
+(cd app && swift test)         # app logic: palette, shortcuts, worktrees, chat parsing, usage
 ```
 
 ## Run
