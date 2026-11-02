@@ -497,7 +497,7 @@ final class AppModel: ObservableObject {
     }
 
     /// Creates a terminal (profileId nil) or agent session. With `split`, it joins the focused pane's tab.
-    func newSession(profileId: String?, projectId: String? = nil, split: SplitDir? = nil, command: String? = nil, title: String? = nil, placement: Placement = .tab, worktree: String? = nil) {
+    func newSession(profileId: String?, projectId: String? = nil, split: SplitDir? = nil, command: String? = nil, title: String? = nil, placement: Placement = .tab, worktree: String? = nil, resume: String? = nil) {
         guard let pid = projectId ?? currentProject?.id else {
             lastError = "Add a project first (⌘⇧O)."
             return
@@ -510,6 +510,7 @@ final class AppModel: ObservableObject {
         if let profileId { params["profile_id"] = profileId }
         if let command { params["command"] = command }
         if let title { params["title"] = title }
+        if let resume { params["resume_agent_session_id"] = resume }
         if let split, let target = focusedSessionId, tab(containing: target)?.projectId == pid {
             params["split_target"] = target
             params["split_dir"] = split.rawValue

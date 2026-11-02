@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-enum RightTab: String, CaseIterable { case changes = "Changes", history = "History", files = "Files" }
+enum RightTab: String, CaseIterable { case changes = "Changes", history = "History", files = "Files", sessions = "Sessions" }
 
 /// Right-hand panel: Changes / History / Files of the current work path (project or worktree).
 struct RightPanel: View {
@@ -22,6 +22,7 @@ struct RightPanel: View {
             case .changes: ChangesPanel()
             case .history: HistoryPanel()
             case .files: FilesPanel()
+            case .sessions: SessionsPanel()
             }
         }
     }
