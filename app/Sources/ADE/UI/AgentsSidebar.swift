@@ -43,6 +43,14 @@ struct SidebarModeSwitch: View {
 struct AgentsList: View {
     @EnvironmentObject var model: AppModel
     @AppStorage("ade.agentsGrouping") private var byProject = false
+    /// Collapsed group headers (state raw values or project ids), comma-separated.
+    @AppStorage("ade.agentsCollapsed") private var collapsedRaw = ""
+    private var collapsed: Set<String> { Set(collapsedRaw.split(separator: ",").map(String.init)) }
+    private func toggle(_ key: String) {
+        var c = collapsed
+        if c.contains(key) { c.remove(key) } else { c.insert(key) }
+        withAnimation(.easeOut(duration: 0.15)) { collapsedRaw = c.sorted().joined(separator: ",") }
+    }
 
     enum Group: Int, CaseIterable {
         case needsInput, working, error, finished, idle, stopped
@@ -98,22 +106,25 @@ struct AgentsList: View {
             .padding(.leading, 18).padding(.trailing, 12).padding(.top, 8).padding(.bottom, 2)
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 1) {
-                    if agents.isEmpty {
-                        empty
-                    } else if byProject {
+                    if byProject {
+                        if agents.isEmpty { empty }
                         let projects = orderedProjects(agents)
                         ForEach(projects, id: \.id) { p in
-                            header(p.name, count: nil, color: nil)
-                            ForEach(sorted(agents.filter { $0.projectId == p.id })) { s in AgentRow(session: s, showProject: false) }
+                            let list = sorted(agents.filter { $0.projectId == p.id })
+                            let open = !collapsed.contains("p:" + p.id)
+                            header(p.name, count: list.count, color: nil, open: open) { toggle("p:" + p.id) }
+                            if open { ForEach(list) { s in AgentRow(session: s, showProject: false) } }
                         }
                     } else {
+                        // Every state is listed, empty ones too, so the counts read like a dashboard.
                         ForEach(Group.allCases, id: \.rawValue) { g in
                             let list = sorted(agents.filter { Group.of($0) == g })
-                            if !list.isEmpty {
-                                header(g.title, count: list.count, color: g.color)
-                                ForEach(list) { s in AgentRow(session: s, showProject: true) }
-                            }
+                            let key = "s:\(g.rawValue)"
+                            let open = !collapsed.contains(key) && !list.isEmpty
+                            header(g.title, count: list.count, color: list.isEmpty ? nil : g.color, open: open) { if !list.isEmpty { toggle(key) } }
+                            if open { ForEach(list) { s in AgentRow(session: s, showProject: true) } }
                         }
+                        if agents.isEmpty { empty }
                     }
                 }
                 .padding(.horizontal, 10).padding(.bottom, 8)
@@ -131,12 +142,10 @@ struct AgentsList: View {
         .frame(maxWidth: .infinity).padding(.vertical, 30).padding(.horizontal, 16)
     }
 
-    private func header(_ title: String, count: Int?, color: Color?) -> some View {
-        HStack(spacing: 6) {
-            Text(title).font(.system(size: 11, weight: .semibold)).foregroundStyle(color ?? T.text3)
-            if let count { Text("\(count)").font(.system(size: 11, weight: .medium)).foregroundStyle(T.text3).monospacedDigit() }
-        }
-        .padding(.leading, 8).padding(.top, 10).padding(.bottom, 3)
+    /// A group row: name, then its count and a chevron at the right (like T3 Code's Working / Snoozed / Settled).
+    /// Clicking folds the group; an empty group shows 0 and stays folded.
+    private func header(_ title: String, count: Int, color: Color?, open: Bool, _ action: @escaping () -> Void) -> some View {
+        GroupHeaderRow(title: title, count: count, color: color, open: open, action: action)
     }
 
     /// Most recent activity first; needs-input oldest first would hide new ones, so newest first everywhere.
@@ -150,6 +159,35 @@ struct AgentsList: View {
         let cur = model.projects.filter { ids.contains($0.id) }
         let others = model.state.projects.filter { ids.contains($0.id) && !cur.contains($0) }.sorted { $0.name < $1.name }
         return cur + others
+    }
+}
+
+private struct GroupHeaderRow: View {
+    let title: String
+    let count: Int
+    let color: Color?
+    let open: Bool
+    let action: () -> Void
+    @State private var hover = false
+
+    var body: some View {
+        let empty = count == 0
+        HStack(spacing: 6) {
+            Text(title).font(.system(size: 12, weight: .medium)).foregroundStyle(color ?? (empty ? T.text3 : T.text2))
+            Spacer(minLength: 4)
+            Text("\(count)").font(.system(size: 11, weight: .medium)).monospacedDigit().foregroundStyle(empty ? T.text3.opacity(0.7) : T.text3)
+            Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(T.text3.opacity(empty ? 0.5 : 1))
+                .rotationEffect(.degrees(open ? 90 : 0))
+                .frame(width: 12)
+        }
+        .padding(.horizontal, 8).frame(height: 26)
+        .background(RoundedRectangle(cornerRadius: T.m.rowR, style: .continuous).fill(hover && !empty ? T.hover : .clear))
+        .contentShape(Rectangle())
+        .onHover { hover = $0 }
+        .onTapGesture(perform: action)
+        .padding(.top, 4)
+        .help(empty ? "No agents" : open ? "Collapse" : "Expand")
     }
 }
 
