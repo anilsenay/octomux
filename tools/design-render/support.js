@@ -22,7 +22,7 @@
   const interp = (s, scope) => s.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_, p) => { const v = resolve(p, scope); return v == null ? '' : String(v); });
   function renderInto(parent, nodes, scope) {
     for (const n of nodes) {
-      if (n.nodeType === 3) { parent.appendChild(document.createTextNode(interp(n.textContent, scope))); continue; }
+      if (n.nodeType === 3) { if (!n.textContent.trim() && /\n/.test(n.textContent)) continue; parent.appendChild(document.createTextNode(interp(n.textContent, scope))); continue; }
       if (n.nodeType !== 1) continue;
       const tag = n.tagName.toLowerCase();
       if (tag === 'helmet') { for (const c of n.children) document.head.appendChild(c.cloneNode(true)); continue; }
@@ -38,7 +38,7 @@
         const c = component(load(n.getAttribute('name')), props);
         renderInto(parent, c.tpl.childNodes, c.vals); continue;
       }
-      const el = document.createElementNS(n.namespaceURI, n.tagName);
+      const el = document.createElementNS(n.namespaceURI, n.localName);
       for (const a of n.attributes) el.setAttribute(a.name, interp(a.value, scope));
       renderInto(el, n.childNodes, scope);
       parent.appendChild(el);
