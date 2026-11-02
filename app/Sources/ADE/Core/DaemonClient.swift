@@ -155,6 +155,16 @@ final class DaemonClient {
 
     /// Synchronous call (runs on the request queue; do not call from main for slow methods).
     func callSync(_ method: String, _ params: [String: Any] = [:]) throws -> Any {
+        do {
+            return try callOnce(method, params)
+        } catch DaemonError.unavailable {
+            // The daemon may have restarted: reconnect (starting it if needed) and retry once.
+            if LineSocket(path: Paths.daemonSocket.path) == nil { _ = DaemonClient.ensureDaemon() }
+            return try callOnce(method, params)
+        }
+    }
+
+    private func callOnce(_ method: String, _ params: [String: Any]) throws -> Any {
         try queue.sync {
             if socket == nil { socket = LineSocket(path: Paths.daemonSocket.path) }
             guard let sock = socket else { throw DaemonError.unavailable }

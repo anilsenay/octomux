@@ -23,6 +23,8 @@ final class DebugServer {
         guard DebugServer.enabled else { return }
         registerBuiltins()
         let path = Paths.debugSocket.path
+        try? FileManager.default.createDirectory(at: Paths.debugSocket.deletingLastPathComponent(), withIntermediateDirectories: true,
+                                                 attributes: [.posixPermissions: 0o700])
         unlink(path)
         fd = socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else { return }
