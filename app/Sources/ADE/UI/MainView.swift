@@ -930,8 +930,10 @@ struct GitStatusControls: View {
     let full: Bool
     @State private var picking = false
     @State private var pickingBase = false
+    @State private var hover = false
 
     var body: some View {
+        let base = GitInfo.compareBase(for: path)
         HStack(spacing: 6) {
             Button { picking = true } label: {
                 HStack(spacing: 5) {
@@ -961,25 +963,29 @@ struct GitStatusControls: View {
                     .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(T.amber.opacity(0.13)))
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain).pointerCursor().help("Show changes (\(GitInfo.compareBase(for: path).map { "against " + $0 } ?? "uncommitted"))")
+                .buttonStyle(.plain).pointerCursor().help("Show changes (\(base.map { "against " + $0 } ?? "uncommitted"))")
             }
             if full {
                 Button { pickingBase = true } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "arrow.right").font(.system(size: 8.5, weight: .bold)).foregroundStyle(T.text3)
-                        Text(GitInfo.compareBase(for: path) ?? "uncommitted").font(T.mono(11)).foregroundStyle(GitInfo.compareBase(for: path) == nil ? T.text3 : T.text2).lineLimit(1)
+                        Text(base ?? branch).font(T.mono(11)).foregroundStyle(base == nil ? T.text3 : T.text2).lineLimit(1)
                         Image(systemName: "chevron.up.chevron.down").font(.system(size: 7.5, weight: .bold)).foregroundStyle(T.text3)
                     }
                     .padding(.horizontal, 6).frame(height: 20).contentShape(Rectangle())
                 }
                 .buttonStyle(.plain).hoverHighlight(radius: 6, padding: 0).pointerCursor()
-                .help("Compare against: uncommitted work only, or everything since a branch (e.g. main)")
+                .help(base.map { "Changes compared against \($0): everything since this branch diverged from it" }
+                      ?? "Changes compared against \(branch) (HEAD): uncommitted work only. Click to compare against another branch")
+                .opacity(base != nil || hover || pickingBase ? 1 : 0)
                 .background(PopoverAnchor(isPresented: $pickingBase) {
                     BranchPicker(path: path, mode: .base, current: GitInfo.compareBase(for: path)) { pickingBase = false }
                 })
             }
         }
         .fixedSize()
+        .contentShape(Rectangle())
+        .onHover { h in withAnimation(.easeOut(duration: 0.12)) { hover = h } }
         .onReceive(NotificationCenter.default.publisher(for: .adeDebugPanel)) { n in
             if let v = n.userInfo?["branchPicker"] as? String { if v == "base" { pickingBase = true } else if v == "none" { picking = false; pickingBase = false } else { picking = true } }
         }
@@ -1012,7 +1018,7 @@ struct BranchPicker: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 1) {
                     if mode == .base {
-                        row("Uncommitted changes only", selected: current == nil, mono: false) { choose(nil) }
+                        row("HEAD · uncommitted changes only", selected: current == nil, mono: false) { choose(nil) }
                         Text("Since branch").font(T.label).foregroundStyle(T.text3).padding(.horizontal, 10).padding(.top, 8).padding(.bottom, 3)
                     } else {
                         Text("Recent").font(T.label).foregroundStyle(T.text3).padding(.horizontal, 10).padding(.top, 6).padding(.bottom, 3)
