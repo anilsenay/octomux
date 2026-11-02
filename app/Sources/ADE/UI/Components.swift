@@ -435,3 +435,27 @@ extension View {
             .onDrop(of: [.text], delegate: ReorderDrop(kind: kind, targetId: id, move: move))
     }
 }
+
+/// The selected workspace's color, mixed lightly into the window chrome so each workspace has its own feel.
+struct WorkspaceTintedFrame: View {
+    @EnvironmentObject var model: AppModel
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        ZStack {
+            T.frame
+            if let hex = model.workspace?.color {
+                Color(hex: hex).opacity(scheme == .dark ? 0.075 : 0.05)
+            }
+        }
+        .animation(.easeOut(duration: 0.25), value: model.selectedWorkspaceId)
+    }
+}
+
+enum WorkspaceTint {
+    /// Selected-row fill: the workspace color when there is one, else the theme's selection.
+    static func selection(_ model: AppModel) -> Color {
+        guard let hex = model.workspace?.color else { return T.selection }
+        return Color(hex: hex).opacity(0.2)
+    }
+}

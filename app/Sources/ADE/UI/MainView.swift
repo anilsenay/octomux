@@ -39,7 +39,7 @@ struct MainView: View {
                     .padding(.bottom, m.statusH)
             }
         }
-        .background(m.glass ? AnyView(VisualEffect(material: .underWindowBackground)) : AnyView(T.frame))
+        .background(m.glass ? AnyView(VisualEffect(material: .underWindowBackground)) : AnyView(WorkspaceTintedFrame()))
         .overlay(alignment: .topLeading) { peekStrip }
         .onChange(of: model.sidebarPeek) { SidebarPeek.shared.update() }
         .onChange(of: model.sidebarVisible) { SidebarPeek.shared.update() }
@@ -63,7 +63,7 @@ struct MainView: View {
 
     private func sidebar(floating: Bool = false) -> some View {
         SidebarView(floating: floating)
-            .background(T.m.glass ? AnyView(Color.clear) : T.m.sidebarMaterial ? AnyView(VisualEffect(material: .sidebar)) : AnyView(T.frame))
+            .background(T.m.glass ? AnyView(Color.clear) : T.m.sidebarMaterial ? AnyView(VisualEffect(material: .sidebar)) : AnyView(WorkspaceTintedFrame()))
     }
 
     /// Terminal area plus the dock on the chosen side.
@@ -139,7 +139,7 @@ struct PeekSidebarView: View {
     var body: some View {
         SidebarView(floating: true)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(T.m.glass || T.m.sidebarMaterial ? AnyView(VisualEffect(material: .popover)) : AnyView(T.frame))
+            .background(T.m.glass || T.m.sidebarMaterial ? AnyView(VisualEffect(material: .popover)) : AnyView(WorkspaceTintedFrame()))
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(T.border))
             .foregroundStyle(T.text)

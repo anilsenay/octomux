@@ -63,7 +63,8 @@ final class AppModel: ObservableObject {
         defaults.set(selectedWorkspaceId, forKey: "ade.ws")
         defaults.set(selectedProjectId, forKey: "ade.project")
         defaults.set(activeTabId, forKey: "ade.tab")
-        if let ws = selectedWorkspaceId, let t = activeTabId { lastTabPerWorkspace[ws] = t }
+        if let ws = selectedWorkspaceId, let t = activeTabId, let tab = state.tabs.first(where: { $0.id == t }),
+           project(tab.projectId)?.workspaceId == ws { lastTabPerWorkspace[ws] = t }
         defaults.set(lastTabPerWorkspace, forKey: "ade.lastTabs")
         defaults.set(sidebarVisible, forKey: "ade.sidebar")
     }
@@ -193,6 +194,13 @@ final class AppModel: ObservableObject {
         }
         if let t = activeTabId, !s.tabs.contains(where: { $0.id == t }) {
             activeTabId = tabs(ofProject: selectedProjectId).first?.id
+        }
+        // A tab or project from another workspace (stale saved selection): fall back to this workspace's.
+        if let t = activeTab, project(t.projectId)?.workspaceId != selectedWorkspaceId {
+            activeTabId = nil
+        }
+        if let p = selectedProjectId, project(p)?.workspaceId != selectedWorkspaceId {
+            selectedProjectId = nil
         }
         if let p = selectedProjectId, !s.projects.contains(where: { $0.id == p }) {
             selectedProjectId = nil
@@ -372,7 +380,7 @@ final class AppModel: ObservableObject {
     func selectWorkspace(_ id: String) {
         guard id != selectedWorkspaceId else { return }
         selectedWorkspaceId = id
-        if let t = lastTabPerWorkspace[id], let tab = state.tabs.first(where: { $0.id == t }) {
+        if let t = lastTabPerWorkspace[id], let tab = state.tabs.first(where: { $0.id == t }), project(tab.projectId)?.workspaceId == id {
             activeTabId = tab.id
             selectedProjectId = tab.projectId
         } else {

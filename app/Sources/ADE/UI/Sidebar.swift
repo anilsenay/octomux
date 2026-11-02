@@ -535,7 +535,7 @@ struct SessionRow: View {
         .padding(.leading, indent)
         .padding(.trailing, 8)
         .frame(height: m.rowH)
-        .background(RoundedRectangle(cornerRadius: m.rowR, style: .continuous).fill(selected ? T.selection : hover ? T.hover : .clear))
+        .background(RoundedRectangle(cornerRadius: m.rowR, style: .continuous).fill(selected ? WorkspaceTint.selection(model) : hover ? T.hover : .clear))
         .contentShape(Rectangle())
         .onHover { hover = $0 }
         .pointerCursor()
