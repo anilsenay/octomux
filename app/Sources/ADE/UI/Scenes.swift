@@ -6,7 +6,7 @@ import SwiftUI
 // (`appearance.scene` at `workspace:<id>`), falling back to the global choice; "none" turns it off.
 
 struct AmbientScene: Identifiable, Equatable {
-    enum Kind { case nightSky, reef, fireflies, embers, rain, sky, sakura, snow, custom }
+    enum Kind { case nightSky, reef, fireflies, embers, rain, sky, sakura, snow, aurora, circuit, kites, custom }
     let id: String
     let name: String
     let kind: Kind
@@ -17,6 +17,8 @@ struct AmbientScene: Identifiable, Equatable {
     /// User scenes (see UserScenes): their elements, and the built-in scene they start from, if any.
     var spec: SceneSpec? = nil
     var base: Kind? = nil
+    /// First versions kept for comparison (listed apart in the pickers); they use the original glyph texture.
+    var legacy = false
     static func == (a: Self, b: Self) -> Bool { a.id == b.id }
 }
 
@@ -40,31 +42,40 @@ enum Scenes {
     }
 
     private static func make(_ id: String, _ name: String, _ kind: AmbientScene.Kind, dark: Bool, top: String, bottom: String,
-                             surface: String, frame: String, raised: String, accent: String) -> AmbientScene {
+                             surface: String, frame: String, raised: String, accent: String, legacy: Bool = false) -> AmbientScene {
         AmbientScene(id: id, name: name, kind: kind, dark: dark, top: col(top), bottom: col(bottom),
-                     colors: palette(dark: dark, surface: surface, frame: frame, raised: raised, accent: accent))
+                     colors: palette(dark: dark, surface: surface, frame: frame, raised: raised, accent: accent), legacy: legacy)
     }
 
     /// Built-in scenes, then the user's.
     static var all: [AmbientScene] { builtIn + UserScenes.loaded }
 
     static let builtIn: [AmbientScene] = [
-        make("night-sky", "Night Sky", .nightSky, dark: true, top: "#060A1C", bottom: "#1A2550",
-             surface: "#10152B", frame: "#0B1024", raised: "#1E2546", accent: "#9DB0FF"),
-        make("reef", "Reef", .reef, dark: true, top: "#0E4A52", bottom: "#05181F",
+        make("aurora", "Aurora", .aurora, dark: true, top: "#04121A", bottom: "#0C1A33",
+             surface: "#0D1622", frame: "#09111A", raised: "#18263A", accent: "#5BF0A6"),
+        make("reef-v2", "Reef", .reef, dark: true, top: "#0E4A52", bottom: "#05181F",
              surface: "#0B242A", frame: "#071C21", raised: "#143840", accent: "#5FD8C9"),
-        make("fireflies", "Fireflies", .fireflies, dark: true, top: "#050B07", bottom: "#112418",
-             surface: "#0F1912", frame: "#0A130D", raised: "#1A2A1F", accent: "#C6E26A"),
+        make("circuit", "Circuit", .circuit, dark: true, top: "#060B0A", bottom: "#0C1A16",
+             surface: "#0C1412", frame: "#080F0D", raised: "#16241F", accent: "#4BE3B0"),
         make("embers", "Embers", .embers, dark: true, top: "#0D0807", bottom: "#2E150D",
              surface: "#1A1210", frame: "#140D0B", raised: "#2A1C18", accent: "#FF8F52"),
         make("rain", "Rain", .rain, dark: true, top: "#1A2430", bottom: "#0C1116",
              surface: "#131A21", frame: "#0F151B", raised: "#1F2933", accent: "#7DB4E0"),
-        make("sky", "Sky", .sky, dark: false, top: "#7FC0F2", bottom: "#D8EEFD",
-             surface: "#F5FAFE", frame: "#D6EAFA", raised: "#FFFFFF", accent: "#2C7BD6"),
+        make("kites", "Kites", .kites, dark: false, top: "#9FD6F2", bottom: "#FFE0C4",
+             surface: "#FFFAF4", frame: "#F5E6D8", raised: "#FFFFFF", accent: "#D9622B"),
         make("sakura", "Sakura", .sakura, dark: false, top: "#F5C3D2", bottom: "#FFF1F4",
              surface: "#FFF9FA", frame: "#F8E1E7", raised: "#FFFFFF", accent: "#C94F76"),
         make("snow", "Snowfall", .snow, dark: false, top: "#9DB4CC", bottom: "#E3EBF3",
              surface: "#F6F9FC", frame: "#E1E9F1", raised: "#FFFFFF", accent: "#3F6E9E"),
+        // First versions, too close to a published concept; kept only to compare, then removed.
+        make("night-sky", "Night Sky (old)", .nightSky, dark: true, top: "#060A1C", bottom: "#1A2550",
+             surface: "#10152B", frame: "#0B1024", raised: "#1E2546", accent: "#9DB0FF", legacy: true),
+        make("reef", "Reef (old)", .reef, dark: true, top: "#0E4A52", bottom: "#05181F",
+             surface: "#0B242A", frame: "#071C21", raised: "#143840", accent: "#5FD8C9", legacy: true),
+        make("fireflies", "Fireflies (old)", .fireflies, dark: true, top: "#050B07", bottom: "#112418",
+             surface: "#0F1912", frame: "#0A130D", raised: "#1A2A1F", accent: "#C6E26A", legacy: true),
+        make("sky", "Sky (old)", .sky, dark: false, top: "#7FC0F2", bottom: "#D8EEFD",
+             surface: "#F5FAFE", frame: "#D6EAFA", raised: "#FFFFFF", accent: "#2C7BD6", legacy: true),
     ]
 
     static func scene(_ id: String?) -> AmbientScene? { all.first { $0.id == id } }
@@ -257,7 +268,11 @@ private enum Art {
     static let scale: CGFloat = 2
     static let cell: CGFloat = 12
     private static var cache: [String: CGImage] = [:]
-    static let glyphs: [Character] = ["t", "%", "S", "x", ":", "s", "#", "X"]
+    /// The glyphs inside character cells: code characters; the first versions used letters.
+    static let codeGlyphs: [Character] = ["{", "}", ";", "=", "<", ">", "/", "*", "0", "1", "(", ")"]
+    static let classicGlyphs: [Character] = ["t", "%", "S", "x", ":", "s", "#", "X"]
+    /// Set by SceneBuilder for the scene being built (main thread only).
+    static var glyphs: [Character] = codeGlyphs
 
     static func bitmap(_ key: String, _ size: CGSize, _ draw: (CGContext) -> Void) -> CGImage? {
         if let c = cache[key] { return c }
@@ -291,7 +306,7 @@ private enum Art {
     static func sprite(_ rows: [String], _ colors: [Character: String], ink: String?, seed: Int, flip: Bool = false) -> (CGImage?, CGSize) {
         let cols = rows.map(\.count).max() ?? 0
         let size = CGSize(width: CGFloat(cols) * cell, height: CGFloat(rows.count) * cell)
-        let key = "s\(rows.joined(separator: "|"))\(colors.sorted { $0.key < $1.key })\(ink ?? "")\(seed)\(flip)"
+        let key = "s\(rows.joined(separator: "|"))\(colors.sorted { $0.key < $1.key })\(ink ?? "")\(seed)\(flip)\(String(glyphs))"
         return (bitmap(key, size) { ctx in
             for (r, row) in rows.enumerated() {
                 let chars = Array(row)
@@ -318,6 +333,19 @@ private enum Art {
             ctx.drawRadialGradient(g, startCenter: CGPoint(x: radius, y: radius), startRadius: 0, endCenter: CGPoint(x: radius, y: radius), endRadius: radius, options: [])
             ctx.setFillColor(cg(core))
             ctx.addPath(CGPath(roundedRect: CGRect(x: radius - 4, y: radius - 4, width: 8, height: 8), cornerWidth: 1.5, cornerHeight: 1.5, transform: nil)); ctx.fillPath()
+        }, size)
+    }
+
+    /// A vertical strip of cells, bright at the bottom and fading upward (aurora curtains).
+    static func curtain(_ h: Int, _ hex: String) -> (CGImage?, CGSize) {
+        let size = CGSize(width: cell, height: CGFloat(h) * cell)
+        return (bitmap("curtain\(h)\(hex)\(String(glyphs))", size) { ctx in
+            for k in 0..<h {
+                let r = CGRect(x: 0.75, y: CGFloat(k) * cell + 0.75, width: cell - 1.5, height: cell - 1.5)
+                ctx.setFillColor(cg(hex, 0.12 + 0.78 * (1 - CGFloat(k) / CGFloat(h))))
+                ctx.addPath(CGPath(roundedRect: r, cornerWidth: 1.5, cornerHeight: 1.5, transform: nil)); ctx.fillPath()
+                text(String(glyphs[hash(h * 31 + k, hex.count) % glyphs.count]), in: r, cg("#000000", 0.3), size: cell * 0.72, ctx)
+            }
         }, size)
     }
 
@@ -370,6 +398,25 @@ private enum Sprites {
         "######o",
         "#  ###",
     ]
+    static let kite = [
+        "   a",
+        "  aab",
+        " aaabb",
+        "aaaabbb",
+        " bbbaa",
+        "  bba",
+        "   b",
+    ]
+    static let balloon = [
+        "  ####",
+        " ##oo##",
+        "########",
+        "##oo####",
+        " ######",
+        "  ####",
+        "   ||",
+        "   []",
+    ]
     static let branch = [
         "##########   o",
         "     ###oo#######o",
@@ -391,6 +438,7 @@ private struct SceneBuilder {
     var mood: AmbientMood = .calm
 
     func build(_ s: AmbientScene) {
+        Art.glyphs = s.legacy ? Art.classicGlyphs : Art.codeGlyphs
         let g = CAGradientLayer()
         g.frame = root.bounds
         g.colors = [NSColor(s.bottom).cgColor, NSColor(s.top).cgColor]   // layer space is y-up
@@ -404,6 +452,9 @@ private struct SceneBuilder {
         case .sky: sky()
         case .sakura: sakura()
         case .snow: snow()
+        case .aurora: aurora()
+        case .circuit: circuit()
+        case .kites: kites()
         case .custom:
             if let b = s.base { build(kind: b) }
             if let spec = s.spec { custom(spec, dark: s.dark) }
@@ -421,6 +472,9 @@ private struct SceneBuilder {
         case .sky: sky()
         case .sakura: sakura()
         case .snow: snow()
+        case .aurora: aurora()
+        case .circuit: circuit()
+        case .kites: kites()
         case .custom: break
         }
     }
@@ -695,6 +749,160 @@ private struct SceneBuilder {
                   duration: { Double(H + 30) / (14 + rnd($0, 1) * 22) }, opacity: { 0.5 + 0.35 * Float(rnd($0, 4)) }, sway: 30, spin: true)
     }
 
+    private func line(_ points: [CGPoint], stroke: CGColor, width: CGFloat, dash: [NSNumber]? = nil) -> CAShapeLayer {
+        let p = CGMutablePath()
+        p.addLines(between: points.map { CGPoint(x: $0.x, y: H - $0.y) })
+        let l = CAShapeLayer()
+        l.path = p
+        l.fillColor = nil
+        l.strokeColor = stroke
+        l.lineWidth = width
+        l.lineJoin = .round
+        l.lineCap = .round
+        l.lineDashPattern = dash
+        root.addSublayer(l)
+        return l
+    }
+
+    func aurora() {
+        for i in 0..<Int(min(90, W * H / 14000)) {
+            let l = add(Art.glyph("·", "#FFFFFF", size: 10), x: rnd(i, 1) * W, y: rnd(i, 2) * H * 0.9, opacity: 0.3)
+            pulse(l, 0.05, 0.5, period: 3 + rnd(i, 3) * 5, phase: rnd(i, 4) * 8)
+        }
+        // Curtains: columns of cells along a wavy band, brightening and dimming in a wave that travels sideways.
+        let bands: [(String, CGFloat, Float)] = [("#5BF0A6", 0.2, 0.42), ("#4FD6E8", 0.3, 0.3), ("#B58CFF", 0.13, 0.24)]
+        let cols = Int(W / 12) + 1
+        for (b, band) in bands.enumerated() {
+            for c in 0..<cols {
+                let h = 3 + Int((sin(Double(c) * 0.09 + Double(b) * 2) + 1) * 2.5 + (sin(Double(c) * 0.031 + Double(b)) + 1) * 1.5)
+                let cy = H * band.1 + CGFloat(sin(Double(c) * 0.045 + Double(b) * 1.7)) * 46
+                let l = add(Art.curtain(h, band.0), x: CGFloat(c) * 12, y: cy - CGFloat(h) * 6, opacity: band.2)
+                pulse(l, band.2 * 0.2, band.2, period: 8 + Double(b) * 2.5, phase: Double(c) * 0.11 + Double(b) * 3)
+                swing(l, "transform.translation.y", 9, period: 12 + Double(b) * 3, phase: Double(c) * 0.09)
+            }
+        }
+        // Constellations: a few stars joined by faint dashed lines.
+        for k in 0..<5 {
+            let cx = W * (0.06 + 0.88 * CGFloat(rnd(k, 60))), cy = H * (0.06 + 0.55 * CGFloat(rnd(k, 61)))
+            let n = 4 + hash(k, 62) % 3
+            let pts = (0..<n).map { j in CGPoint(x: cx + (CGFloat(rnd(k * 10 + j, 63)) - 0.5) * 170, y: cy + (CGFloat(rnd(k * 10 + j, 64)) - 0.5) * 110) }
+                .sorted { $0.x < $1.x }
+            pulse(line(pts, stroke: cg("#FFFFFF", 0.2), width: 1, dash: [2, 4]), 0.3, 1, period: 10, phase: Double(k) * 2)
+            for (j, pt) in pts.enumerated() {
+                let a = Art.glyph(j % 2 == 0 ? "+" : "*", "#FFFFFF", size: 11)
+                pulse(add(a, x: pt.x - a.1.width / 2, y: pt.y - a.1.height / 2, opacity: 0.6), 0.25, 0.95,
+                      period: 3 + rnd(k * 10 + j, 65) * 3, phase: rnd(k * 10 + j, 66) * 6)
+            }
+        }
+    }
+
+    func circuit() {
+        let step: CGFloat = 24
+        let gx = Int(W / step), gy = Int(H / step)
+        // Signals take the mood's color: amber when an agent waits for you, red on an error.
+        let (sig, core) = mood == .attention ? ("#F5B841", "#FFE3A0") : mood == .error ? ("#FF6B5B", "#FFC2B8") : ("#4BE3B0", "#C8FFE9")
+        for i in 0..<Int(min(18, W * H / 50000) + 4) {
+            var x = Int(rnd(i, 1) * Double(gx)), y = Int(rnd(i, 2) * Double(gy))
+            func pt(_ x: Int, _ y: Int) -> CGPoint { CGPoint(x: CGFloat(x) * step + 6, y: CGFloat(y) * step + 6) }
+            var pts = [pt(x, y)]
+            var horizontal = i % 2 == 0
+            for seg in 0..<(3 + hash(i, 3) % 4) {
+                let len = 2 + hash(i * 7 + seg, 4) % 7
+                let sign = hash(i * 7 + seg, 5) % 2 == 0 ? 1 : -1
+                if horizontal { x = max(0, min(gx, x + sign * len)) } else { y = max(0, min(gy, y + sign * len)) }
+                pts.append(pt(x, y))
+                horizontal.toggle()
+            }
+            _ = line(pts, stroke: cg("#1E4A3C", 0.9), width: 2)
+            for (j, p) in [pts.first!, pts.last!].enumerated() {
+                let pad = add(Art.sprite(["#"], ["#": "#1E4A3C"], ink: "#4BE3B0", seed: i * 2 + j), x: p.x - 6, y: p.y - 6)
+                if j == 1 { pulse(pad, 0.5, 1, period: 3 + rnd(i, 6) * 3, phase: rnd(i, 7) * 4) }
+            }
+            // A signal runs the trace, then the trace rests.
+            var length: CGFloat = 0
+            for k in 1..<pts.count { length += abs(pts[k].x - pts[k - 1].x) + abs(pts[k].y - pts[k - 1].y) }
+            let travel = Double(max(length, 24) / 70), rest = 2 + rnd(i, 8) * 5
+            let path = CGMutablePath()
+            path.addLines(between: pts.map { CGPoint(x: $0.x, y: H - $0.y) })
+            let g = add(Art.glow(sig, core: core, radius: 10), x: pts[0].x - 10, y: pts[0].y - 10, opacity: 0)
+            let move = CAKeyframeAnimation(keyPath: "position")
+            move.path = path
+            move.calculationMode = .paced
+            move.duration = travel
+            let show = CAKeyframeAnimation(keyPath: "opacity")
+            show.values = [0, 1, 1, 0]
+            show.keyTimes = [0, 0.05, 0.9, 1]
+            show.duration = travel
+            let group = CAAnimationGroup()
+            group.animations = [move, show]
+            group.duration = travel + rest
+            forever(group, phase: rnd(i, 9) * (travel + rest))
+            g.add(group, forKey: "signal")
+        }
+        // Scattered bits blinking on the grid.
+        for i in 0..<Int(min(50, W * H / 20000)) {
+            let a = Art.glyph(i % 2 == 0 ? "0" : "1", "#2E7A60", size: 10)
+            let l = add(a, x: CGFloat(Int(rnd(i, 20) * Double(gx))) * step, y: CGFloat(Int(rnd(i, 21) * Double(gy))) * step, opacity: 0.3)
+            pulse(l, 0, 0.6, period: 2 + rnd(i, 22) * 4, phase: rnd(i, 23) * 6)
+        }
+    }
+
+    func kites() {
+        let sun = CAGradientLayer()
+        sun.type = .radial
+        sun.frame = CGRect(x: W * 0.8 - 320, y: H - H * 0.12 - 320, width: 640, height: 640)
+        sun.colors = [cg("#FFF4E0", 0.75), cg("#FFF4E0", 0)]
+        sun.startPoint = CGPoint(x: 0.5, y: 0.5); sun.endPoint = CGPoint(x: 1, y: 1)
+        root.addSublayer(sun)
+        for i in 0..<3 {
+            let l = add(Art.sprite(Sprites.smallCloud, ["#": "#FFFFFF"], ink: "#E8D2C0", seed: 90 + i), x: 0, y: H * (0.08 + 0.2 * CGFloat(i)), opacity: 0.75)
+            drift(l, speed: 4 + CGFloat(i) * 2, phase: rnd(i, 7))
+        }
+        let balloonColors = [("#E86A5A", "#FFD27A"), ("#6AA8E8", "#FFFFFF")]
+        for (i, c) in balloonColors.enumerated() {
+            let a = Art.sprite(Sprites.balloon, ["#": c.0, "o": c.1, "|": "#7A5A40", "[": "#8A5A3A", "]": "#8A5A3A"], ink: "#5A2A20", seed: 100 + i)
+            let l = add(a, x: W * (0.55 + 0.3 * CGFloat(i)), y: H * 0.5, opacity: 0.95)
+            rise(l, speed: 5 + CGFloat(i) * 2, phase: rnd(i, 30), up: true)
+            swing(l, "transform.translation.x", 14, period: 17, phase: Double(i) * 4)
+        }
+        let kiteColors = [("#E0703A", "#FFC15A"), ("#4E8FD9", "#9FD0FF"), ("#C94F76", "#F4A3BE")]
+        for (k, c) in kiteColors.enumerated() {
+            let kite = Art.sprite(Sprites.kite, ["a": c.0, "b": c.1], ink: "#3A2A20", seed: 110 + k)
+            let tail: CGFloat = 96
+            // A container moves the kite, its tail and its string together (its own coordinates are y-up).
+            let box = CALayer()
+            box.frame = CGRect(x: W * (0.12 + 0.3 * CGFloat(k)), y: H - H * (0.14 + 0.1 * CGFloat(k % 2)) - kite.1.height - tail,
+                               width: kite.1.width, height: kite.1.height + tail)
+            root.addSublayer(box)
+            let string = CAShapeLayer()
+            let sp = CGMutablePath()
+            sp.move(to: CGPoint(x: kite.1.width / 2, y: tail + 6))
+            sp.addQuadCurve(to: CGPoint(x: kite.1.width / 2 - 140, y: -H), control: CGPoint(x: kite.1.width / 2 + 30, y: -H * 0.4))
+            string.path = sp
+            string.fillColor = nil
+            string.strokeColor = cg("#6A5A4A", 0.3)
+            string.lineWidth = 1
+            box.addSublayer(string)
+            for j in 0..<6 {
+                let bow = Art.glyph(j % 2 == 0 ? "<" : ">", c.0, size: 11)
+                let l = CALayer()
+                l.contents = bow.0
+                l.contentsScale = Art.scale
+                l.frame = CGRect(x: kite.1.width / 2 - bow.1.width / 2, y: tail - CGFloat(j + 1) * 15, width: bow.1.width, height: bow.1.height)
+                box.addSublayer(l)
+                swing(l, "transform.translation.x", 2 + CGFloat(j) * 1.8, period: 2.4, phase: Double(j) * 0.25)
+            }
+            let body = CALayer()
+            body.contents = kite.0
+            body.contentsScale = Art.scale
+            body.frame = CGRect(x: 0, y: tail, width: kite.1.width, height: kite.1.height)
+            box.addSublayer(body)
+            swing(box, "transform.rotation.z", 0.08, period: 6 + Double(k), phase: Double(k) * 2)
+            swing(box, "transform.translation.x", 26, period: 14 + Double(k) * 3, phase: Double(k) * 5)
+            swing(box, "transform.translation.y", 10, period: 9 + Double(k) * 2, phase: Double(k) * 3)
+        }
+    }
+
     /// Vertical loop: up (or down) through the whole height at `speed` pt/s.
     func rise(_ l: CALayer, speed: CGFloat, phase: Double, up: Bool) {
         let h = l.bounds.height
@@ -804,6 +1012,12 @@ enum SceneChoice: Hashable {
     }
 }
 
+struct SceneSection: Identifiable {
+    let title: String?
+    let items: [SceneChoice]
+    var id: String { title ?? "" }
+}
+
 /// One tile: a still of the scene, its name, a check when it is the current choice.
 struct SceneTile: View {
     let choice: SceneChoice
@@ -847,9 +1061,17 @@ struct SceneStrip: View {
     var wrapRows = false
     @Binding var highlighted: SceneChoice?
 
-    var choices: [SceneChoice] {
-        (scope.hasPrefix("workspace:") ? [.global] : []) + [.none] + Scenes.all.map { .scene($0.id) }
+    /// Picker sections: the scenes, the user's own, and the first versions (kept to compare).
+    var sections: [SceneSection] {
+        let all = Scenes.all
+        return [
+            SceneSection(title: nil, items: (scope.hasPrefix("workspace:") ? [.global] : []) + [.none] + all.filter { $0.kind != .custom && !$0.legacy }.map { .scene($0.id) }),
+            SceneSection(title: "Your scenes", items: all.filter { $0.kind == .custom }.map { .scene($0.id) }),
+            SceneSection(title: "Earlier versions · for comparison", items: all.filter(\.legacy).map { .scene($0.id) }),
+        ].filter { !$0.items.isEmpty }
     }
+
+    var choices: [SceneChoice] { sections.flatMap(\.items) }
 
     func current() -> SceneChoice {
         let v = model.settingValue("appearance.scene", scope: scope)?.string
@@ -874,14 +1096,8 @@ struct SceneStrip: View {
         }
     }
 
-    func pick(_ c: SceneChoice) {
-        model.setScene(c.settingValue, scope: scope)
-        store.preview(scene(for: c))
-    }
-
-    var body: some View {
-        let cur = current()
-        let tiles = ForEach(choices, id: \.self) { c in
+    private func tiles(_ list: [SceneChoice], _ cur: SceneChoice) -> some View {
+        ForEach(list, id: \.self) { c in
             SceneTile(choice: c, title: title(for: c), scene: scene(for: c), selected: c == cur, highlighted: c == highlighted, width: tileWidth)
                 .onHover { inside in
                     if inside { highlighted = c; store.preview(scene(for: c)) }
@@ -889,11 +1105,27 @@ struct SceneStrip: View {
                 .onTapGesture { pick(c) }
                 .pointerCursor()
         }
+    }
+
+    func pick(_ c: SceneChoice) {
+        model.setScene(c.settingValue, scope: scope)
+        store.preview(scene(for: c))
+    }
+
+    var body: some View {
+        let cur = current()
         Group {
             if wrapRows {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: tileWidth, maximum: tileWidth), spacing: 12)], alignment: .leading, spacing: 12) { tiles }
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(sections) { sec in
+                        if let t = sec.title { Text(t).font(.system(size: 11, weight: .semibold)).foregroundStyle(T.text3).padding(.top, 4) }
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: tileWidth, maximum: tileWidth), spacing: 12)], alignment: .leading, spacing: 12) {
+                            tiles(sec.items, cur)
+                        }
+                    }
+                }
             } else {
-                HStack(alignment: .top, spacing: 8) { tiles }
+                HStack(alignment: .top, spacing: 8) { tiles(choices, cur) }
             }
         }
         .onHover { inside in
@@ -902,7 +1134,7 @@ struct SceneStrip: View {
     }
 }
 
-/// The quick picker: a strip above the status bar (View › Change Scene…, or the command palette).
+/// The quick picker: a grid over the window (View › Change Scene…, or the command palette).
 /// ←/→ preview, Return picks, Esc closes.
 final class ScenePickerPanel {
     static let shared = ScenePickerPanel()
@@ -966,8 +1198,9 @@ final class ScenePickerPanel {
     func place() {
         guard let p = panel, let win = p.parent ?? (NSApp.delegate as? AppDelegate)?.mainWindow, let host = p.contentView else { return }
         let size = host.fittingSize
-        let x = win.frame.midX - size.width / 2 + (AppModel.shared.sidebarVisible ? AppModel.shared.sidebarWidth / 2 : 0)
-        let frame = NSRect(x: max(win.frame.minX + 8, x), y: win.frame.minY + T.m.statusH + 14, width: size.width, height: size.height)
+        // Centered over the window, like the command palette.
+        let frame = NSRect(x: max(win.frame.minX + 8, win.frame.midX - size.width / 2),
+                           y: max(win.frame.minY + 8, win.frame.midY - size.height / 2 + 40), width: size.width, height: size.height)
         p.setFrame(frame, display: true)
     }
 
@@ -1001,7 +1234,7 @@ struct ScenePickerView: View {
         let scope = state.allWorkspaces || ws == nil ? "global" : "workspace:\(ws!.id)"
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
-                Text("Scene").font(.system(size: 12, weight: .semibold))
+                Text("Scenes").font(.system(size: 13, weight: .semibold))
                 if let ws {
                     Picker("", selection: $state.allWorkspaces) {
                         Text(ws.name).tag(false)
@@ -1010,17 +1243,23 @@ struct ScenePickerView: View {
                     .pickerStyle(.segmented).labelsHidden().fixedSize().controlSize(.small)
                 }
                 Spacer(minLength: 12)
-                Text("←→ preview · ↵ pick · esc close").font(T.mono(10.5)).foregroundStyle(T.text3)
+                Button { ScenePickerPanel.shared.close() } label: {
+                    Image(systemName: "xmark").font(.system(size: 10, weight: .semibold))
+                }
+                .buttonStyle(IconButtonStyle(size: 22)).help("Close (Esc)")
             }
-            SceneStrip(scope: scope, highlighted: $state.highlighted)
+            SceneStrip(scope: scope, tileWidth: 104, wrapRows: true, highlighted: $state.highlighted)
+                .frame(width: 104 * 5 + 12 * 4, alignment: .leading)
+            Text("Point at a scene to try it on the whole window. Click to keep it; Esc puts the old one back.")
+                .font(.system(size: 11)).foregroundStyle(T.text3)
             if scope == "global", let ws, model.workspaceSceneOverride(ws.id) != nil {
                 Text("\(ws.name) has its own scene, so this changes the other workspaces.")
                     .font(.system(size: 11)).foregroundStyle(T.text3)
             }
         }
-        .padding(12)
+        .padding(16)
         .background(T.raised)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(T.border))
         .foregroundStyle(T.text)
         .id(store.revision)
