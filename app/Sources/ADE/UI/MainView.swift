@@ -374,8 +374,14 @@ struct DocChip: View {
         let m = T.m
         let selected = model.activeDocId == doc.id && model.activeDoc != nil
         HStack(spacing: 7) {
-            Image(systemName: doc.icon).font(.system(size: 10.5, weight: .medium))
-                .foregroundStyle(selected ? T.text2 : T.text3)
+            Group {
+                if case .file(let rel) = doc.kind {
+                    FileIcon(name: (rel as NSString).lastPathComponent, size: 10.5)
+                } else {
+                    Image(systemName: doc.icon).font(.system(size: 10.5, weight: .medium)).foregroundStyle(selected ? T.text2 : T.text3)
+                }
+            }
+            .opacity(selected ? 1 : 0.6)
             if width != nil {
                 Text(doc.title).italic(isPreviewLike).lineLimit(1).truncationMode(.middle)
             } else {

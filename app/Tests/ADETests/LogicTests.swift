@@ -147,3 +147,30 @@ final class WorkspaceScrollTests: XCTestCase {
         XCTAssertEqual(steps, [1, -1])
     }
 }
+
+final class GitDiffDataTests: XCTestCase {
+    func testLineCountMatchesGit() {
+        XCTAssertEqual(GitDiffData.lineCount(""), 0)
+        XCTAssertEqual(GitDiffData.lineCount("new\n"), 1)
+        XCTAssertEqual(GitDiffData.lineCount("a\nb"), 2)
+        XCTAssertEqual(GitDiffData.lineCount("a\n\nb\n"), 3)
+    }
+
+    func testNumstatParsesRenames() {
+        let s = GitDiffData.numstat("3\t1\tsrc/a.rs\n-\t-\timg.png\n2\t0\tsrc/{old => new}.rs\n")
+        XCTAssertEqual(s["src/a.rs"]?.0, 3)
+        XCTAssertEqual(s["img.png"]?.2, true)
+        XCTAssertEqual(s["src/new.rs"]?.0, 2)
+    }
+}
+
+final class GraphTests: XCTestCase {
+    func testMergeKeepsMainlineInLaneZero() {
+        func c(_ id: String, _ p: [String]) -> Commit { Commit(id: id, short: id, author: "", when: "", relative: "", subject: id, refs: "", parents: p) }
+        // M merges F2 into A; F1 and B share the base.
+        let rows = GraphRow.layout([c("M", ["A", "F2"]), c("F2", ["F1"]), c("F1", ["B"]), c("A", ["B"]), c("B", [])])
+        XCTAssertEqual(rows.map(\.graph.node), [0, 1, 1, 0, 0])
+        XCTAssertEqual(rows[0].graph.outgoing, [1])
+        XCTAssertEqual(rows[4].graph.incoming, [1])
+    }
+}

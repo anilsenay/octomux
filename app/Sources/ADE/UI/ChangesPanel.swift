@@ -85,10 +85,12 @@ final class ChangesModel: ObservableObject {
             }
             let staged = GitDiffData.numstat(GitInfo.git(["diff", "--cached", "--numstat"], in: path))
             let unstaged = GitDiffData.numstat(GitInfo.git(["diff", "--numstat"], in: path))
+            let untracked = GitDiffData.untrackedStats(path, list.filter { $0.status == "??" }.map(\.path))
             let full = list.map { c -> GitChange in
                 var c = c
                 if let s = staged[c.path] { c.stagedStat = (s.0, s.1) }
                 if let s = unstaged[c.path] { c.unstagedStat = (s.0, s.1) }
+                if let n = untracked[c.path] { c.unstagedStat = (n, 0) }
                 return c
             }
             DispatchQueue.main.async {
@@ -126,25 +128,38 @@ final class ChangesModel: ObservableObject {
         }
     }
 
-    func commit(push: Bool) {
-        guard let path, !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+    func commit(push: Bool, amend: Bool = false) {
+        let msg = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let path, amend || !msg.isEmpty else { return }
         busy = true
-        status = "Committing…"
-        let msg = message
+        status = amend ? "Amending…" : "Committing…"
         DispatchQueue.global(qos: .userInitiated).async {
             // Commit what is staged; with nothing staged, everything.
             let anyStaged = !(GitInfo.git(["diff", "--cached", "--name-only"], in: path) ?? "").isEmpty
             if !anyStaged { _ = GitInfo.git(["add", "-A"], in: path) }
-            let ok = GitInfo.git(["commit", "-m", msg], in: path) != nil
+            var args = ["commit"]
+            if amend { args.append("--amend") }
+            args += msg.isEmpty ? ["--no-edit"] : ["-m", msg]
+            let ok = GitInfo.git(args, in: path) != nil
             var pushed = true
             if ok && push { pushed = GitInfo.git(["push"], in: path) != nil }
             DispatchQueue.main.async {
                 self.busy = false
                 if !ok { self.status = "Commit failed (see a terminal for details)" }
                 else if !pushed { self.status = "Committed; push failed" }
-                else { self.status = push ? "Committed and pushed" : "Committed"; self.message = "" }
+                else { self.status = (amend ? "Amended" : "Committed") + (push ? " and pushed" : ""); self.message = "" }
                 self.refresh()
             }
+        }
+    }
+
+    func push() {
+        guard let path else { return }
+        busy = true
+        status = "Pushing…"
+        DispatchQueue.global(qos: .userInitiated).async {
+            let ok = GitInfo.git(["push"], in: path) != nil
+            DispatchQueue.main.async { self.busy = false; self.status = ok ? "Pushed" : "Push failed (see a terminal for details)" }
         }
     }
 }
@@ -177,17 +192,18 @@ struct ChangesPanel: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 VStack(spacing: 6) {
-                    TextField("Commit message", text: $changes.message, axis: .vertical)
-                        .lineLimit(1...4).textFieldStyle(.plain).font(T.body)
+                    TextField("Message (⌘↩ to commit)", text: $changes.message, axis: .vertical)
+                        .lineLimit(1...5).textFieldStyle(.plain).font(T.body)
                         .padding(.horizontal, 10).padding(.vertical, 7)
                         .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(T.frame.opacity(0.6)))
                         .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(T.border))
-                    HStack(spacing: 6) {
-                        Button("Commit") { changes.commit(push: false) }.buttonStyle(PrimaryButtonStyle())
-                        Button("Commit & Push") { changes.commit(push: true) }.buttonStyle(SecondaryButtonStyle())
-                        Spacer()
-                    }
-                    .disabled(changes.busy || changes.changes.isEmpty || changes.message.isEmpty)
+                        .onKeyPress(.return, phases: .down) { press in
+                            // ⌘↩ commits only while the message field has focus (never from a terminal).
+                            guard press.modifiers.contains(.command) else { return .ignored }
+                            if !changes.busy && !changes.changes.isEmpty { changes.commit(push: false) }
+                            return .handled
+                        }
+                    CommitButton(changes: changes)
                     if !changes.status.isEmpty { Text(changes.status).font(T.caption).foregroundStyle(T.text2).frame(maxWidth: .infinity, alignment: .leading) }
                 }
                 .padding(12)
@@ -284,7 +300,7 @@ private struct ChangeRow: View {
         let key = (staged ? "s:" : "u:") + c.path
         let selected = model.activeDoc?.kind == .changes && changes.selected == key
         HStack(spacing: 6) {
-            Text(badge).font(T.mono(10.5, .bold)).foregroundStyle(GitChange.color(badge)).frame(width: 12)
+            FileIcon(name: (c.path as NSString).lastPathComponent)
             Text((c.path as NSString).lastPathComponent).font(.system(size: 12.5)).foregroundStyle(T.text).lineLimit(1)
             Text((c.path as NSString).deletingLastPathComponent).font(.system(size: 11)).foregroundStyle(T.text3).lineLimit(1).truncationMode(.head)
             Spacer(minLength: 4)
@@ -295,8 +311,9 @@ private struct ChangeRow: View {
                     Image(systemName: staged ? "minus" : "plus").font(.system(size: 10, weight: .semibold))
                 }
                 .buttonStyle(IconButtonStyle(size: 18)).help(staged ? "Unstage" : "Stage")
-            } else if let stat {
-                DiffCount(added: stat.0, removed: stat.1)
+            } else {
+                if let stat { DiffCount(added: stat.0, removed: stat.1) }
+                Text(badge).font(T.mono(10.5, .bold)).foregroundStyle(GitChange.color(badge)).frame(width: 12)
             }
         }
         .padding(.leading, 10).padding(.trailing, 8).frame(height: 26)
@@ -335,5 +352,55 @@ struct DiffView: View {
             .padding(6)
             .textSelection(.enabled)
         }
+    }
+}
+
+/// Full-width Commit with a menu of the other actions (push, amend), like Monocode.
+private struct CommitButton: View {
+    @ObservedObject var changes: ChangesModel
+    @State private var hover = false
+
+    var body: some View {
+        let staged = changes.changes.filter(\.isStaged).count
+        let canCommit = !changes.busy && !changes.changes.isEmpty && !changes.message.trimmingCharacters(in: .whitespaces).isEmpty
+        HStack(spacing: 0) {
+            Button { changes.commit(push: false) } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark").font(.system(size: 10.5, weight: .bold))
+                    Text(staged > 0 ? "Commit \(staged) staged" : "Commit all")
+                }
+                .frame(maxWidth: .infinity, minHeight: 28).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!canCommit)
+            Rectangle().fill(Color.white.opacity(0.25)).frame(width: 1, height: 16)
+            PopupMenuButton(menu: menu) {
+                Image(systemName: "chevron.down").font(.system(size: 9.5, weight: .bold)).frame(width: 28, height: 28)
+            }
+            .help("More commit actions")
+        }
+        .font(.system(size: 12.5, weight: .semibold))
+        .foregroundStyle(.white)
+        .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(T.accent.opacity(hover ? 0.9 : 1)))
+        .opacity(canCommit || !changes.busy ? (canCommit ? 1 : 0.55) : 0.45)
+        .onHover { hover = $0 }
+        .pointerCursor()
+    }
+
+    private func menu() -> NSMenu {
+        let m = NSMenu()
+        let hasMsg = !changes.message.trimmingCharacters(in: .whitespaces).isEmpty
+        let hasChanges = !changes.changes.isEmpty
+        func add(_ title: String, _ enabled: Bool, _ action: @escaping () -> Void) {
+            let i = ClosureMenuItem(title, action)
+            i.isEnabled = enabled
+            m.addItem(i)
+        }
+        m.autoenablesItems = false
+        add("Commit & Push", hasMsg && hasChanges) { changes.commit(push: true) }
+        add("Amend Last Commit" + (hasMsg ? "" : " (keep message)"), true) { changes.commit(push: false, amend: true) }
+        m.addItem(.separator())
+        add("Push", true) { changes.push() }
+        return m
     }
 }

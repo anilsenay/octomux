@@ -135,6 +135,24 @@ enum GitDiffData {
         return r
     }
 
+    /// Lines as git counts them ("a\nb\n" = 2, "a\nb" = 2, "" = 0).
+    static func lineCount(_ s: String) -> Int {
+        guard !s.isEmpty else { return 0 }
+        var n = 0
+        for b in s.utf8 where b == 10 { n += 1 }
+        return s.utf8.last == 10 ? n : n + 1
+    }
+
+    /// Added-line counts of untracked files (whole file is new); binaries and huge files count 0.
+    static func untrackedStats(_ dir: String, _ paths: [String]) -> [String: Int] {
+        var r: [String: Int] = [:]
+        for p in paths.prefix(300) {
+            let (t, bin, big) = worktreeFile(dir, p)
+            r[p] = bin || big ? 0 : lineCount(t)
+        }
+        return r
+    }
+
     static func blob(_ spec: String, in dir: String) -> String? {
         GitInfo.git(["show", spec], in: dir)
     }
@@ -177,7 +195,7 @@ enum GitDiffData {
             if x == "?" {
                 var f = FileDiff(key: "u:" + p, path: p, status: "U")
                 (f.modified, f.binary, f.tooLarge) = worktreeFile(dir, p)
-                f.added = f.modified.isEmpty ? 0 : f.modified.split(separator: "\n", omittingEmptySubsequences: false).count
+                f.added = lineCount(f.modified)
                 unstaged.append(f)
                 continue
             }

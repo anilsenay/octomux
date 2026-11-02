@@ -33,37 +33,148 @@ struct Commit: Identifiable, Equatable {
     let id: String      // full hash
     let short: String
     let author: String
-    let when: String
+    let when: String    // short date ("Oct 22")
+    let relative: String
     let subject: String
     let refs: String
+    var parents: [String] = []
+    var graph = GraphRow()
+    var remotes: [String] = []   // remote names, to tell "origin/x" from a local "feature/x"
+
+    /// Decorations as labels: local branches, tags, remotes ("HEAD -> " dropped).
+    var labels: [(text: String, kind: Int)] {   // kind 0 branch (HEAD), 1 branch, 2 tag, 3 remote
+        refs.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.compactMap { r in
+            if r == "HEAD" { return nil }
+            if r.hasPrefix("HEAD -> ") { return (String(r.dropFirst(8)), 0) }
+            if r.hasPrefix("tag: ") { return (String(r.dropFirst(5)), 2) }
+            if remotes.contains(where: { r.hasPrefix($0 + "/") }) { return (r, 3) }
+            return (r, 1)
+        }
+    }
+}
+
+/// One row of the commit graph: lanes entering from above, the node's lane, lanes leaving below.
+struct GraphRow: Equatable {
+    var node = 0
+    var through: [Int] = []          // lanes passing straight down
+    var incoming: [Int] = []         // lanes (other than node) that end in this commit (merges into it)
+    var outgoing: [Int] = []         // lanes the node's extra parents continue in (merge parents)
+    var nodeFromAbove = false        // a line enters the node from above
+    var nodeToBelow = false          // the first parent continues below in the node lane
+    var width = 1
+
+    /// Assigns lanes to commits in log order (newest first).
+    static func layout(_ commits: [Commit]) -> [Commit] {
+        var lanes: [String?] = []
+        var out = commits
+        for (k, c) in commits.enumerated() {
+            var row = GraphRow()
+            let matches = lanes.indices.filter { lanes[$0] == c.id }
+            let idx: Int
+            if let first = matches.first { idx = first; row.nodeFromAbove = true }
+            else if let free = lanes.firstIndex(where: { $0 == nil }) { idx = free; lanes[free] = c.id }
+            else { lanes.append(c.id); idx = lanes.count - 1 }
+            row.node = idx
+            row.incoming = matches.filter { $0 != idx }
+            for i in row.incoming { lanes[i] = nil }
+            row.through = lanes.indices.filter { $0 != idx && lanes[$0] != nil && !row.incoming.contains($0) }
+            if let p0 = c.parents.first {
+                // The first parent continues in this lane even if another lane waits for it too;
+                // the lanes meet at the parent's row (the leftmost one keeps going).
+                lanes[idx] = p0; row.nodeToBelow = true
+                for p in c.parents.dropFirst() {
+                    if let j = lanes.firstIndex(where: { $0 == p }) { row.outgoing.append(j) }
+                    else if let free = lanes.firstIndex(where: { $0 == nil }) { lanes[free] = p; row.outgoing.append(free) }
+                    else { lanes.append(p); row.outgoing.append(lanes.count - 1) }
+                }
+            } else { lanes[idx] = nil }
+            while lanes.last == .some(nil) { lanes.removeLast() }
+            row.width = max(lanes.count, idx + 1, (row.through + row.incoming + row.outgoing).max().map { $0 + 1 } ?? 1)
+            out[k].graph = row
+        }
+        // One width for every row so the text column stays aligned.
+        let w = min(8, out.map(\.graph.width).max() ?? 1)
+        for k in out.indices { out[k].graph.width = w }
+        return out
+    }
+}
+
+/// Draws one graph row (lane colors cycle).
+struct GraphCell: View {
+    let row: GraphRow
+    let head: Bool
+    static let lane: CGFloat = 12
+    static let colors: [Color] = [Color(red: 0.36, green: 0.62, blue: 1), Color(red: 0.94, green: 0.55, blue: 0.22), Color(red: 0.31, green: 0.76, blue: 0.48),
+                                  Color(red: 0.75, green: 0.45, blue: 0.95), Color(red: 0.95, green: 0.38, blue: 0.45), Color(red: 0.25, green: 0.75, blue: 0.8)]
+
+    var body: some View {
+        Canvas { ctx, size in
+            let x = { (i: Int) in CGFloat(i) * Self.lane + Self.lane / 2 + 2 }
+            let mid = min(size.height / 2, 14)
+            func color(_ i: Int) -> Color { Self.colors[i % Self.colors.count] }
+            func line(_ a: CGPoint, _ b: CGPoint, _ c: Color) {
+                var p = Path()
+                p.move(to: a)
+                if a.x == b.x { p.addLine(to: b) } else {
+                    p.addCurve(to: b, control1: CGPoint(x: a.x, y: (a.y + b.y) / 2), control2: CGPoint(x: b.x, y: (a.y + b.y) / 2))
+                }
+                ctx.stroke(p, with: .color(c), lineWidth: 1.6)
+            }
+            for i in row.through { line(CGPoint(x: x(i), y: 0), CGPoint(x: x(i), y: size.height), color(i)) }
+            let n = CGPoint(x: x(row.node), y: mid)
+            if row.nodeFromAbove { line(CGPoint(x: n.x, y: 0), n, color(row.node)) }
+            if row.nodeToBelow { line(n, CGPoint(x: n.x, y: size.height), color(row.node)) }
+            for i in row.incoming { line(CGPoint(x: x(i), y: 0), n, color(i)) }
+            for j in row.outgoing { line(n, CGPoint(x: x(j), y: size.height), color(j)) }
+            let r: CGFloat = head ? 4.5 : 3.5
+            let dot = Path(ellipseIn: CGRect(x: n.x - r, y: n.y - r, width: r * 2, height: r * 2))
+            if head {
+                ctx.fill(dot, with: .color(Color(nsColor: .windowBackgroundColor)))
+                ctx.stroke(dot, with: .color(color(row.node)), lineWidth: 2)
+            } else {
+                ctx.fill(dot, with: .color(color(row.node)))
+            }
+        }
+        .frame(width: CGFloat(max(1, row.width)) * Self.lane + 4)
+    }
 }
 
 final class HistoryModel: ObservableObject {
     @Published var commits: [Commit] = []
     @Published var selected: String?
-    @Published var detail = ""
     @Published var isRepo = true
+    @Published var branch = ""
+    @Published var all = UserDefaults.standard.bool(forKey: "ade.historyAll") {
+        didSet { UserDefaults.standard.set(all, forKey: "ade.historyAll"); refresh() }
+    }
     private var path: String?
 
     func attach(_ p: String?) {
         guard p != path else { return }
         path = p
         selected = nil
-        detail = ""
         refresh()
     }
 
     func refresh() {
         guard let path else { return }
+        let all = self.all
         DispatchQueue.global(qos: .utility).async {
-            let out = GitInfo.git(["log", "-n", "300", "--date=relative", "--pretty=format:%H%x1f%h%x1f%an%x1f%ad%x1f%s%x1f%D"], in: path)
-            let list = (out ?? "").split(separator: "\n").compactMap { line -> Commit? in
+            let out = GitInfo.git(["log", "-n", "400", "--topo-order"] + (all ? ["--all"] : []) +
+                                  ["--date=format:%b %d", "--pretty=format:%H%x1f%h%x1f%an%x1f%ad%x1f%ar%x1f%s%x1f%D%x1f%P"], in: path)
+            var list = (out ?? "").split(separator: "\n").compactMap { line -> Commit? in
                 let f = line.split(separator: "\u{1f}", omittingEmptySubsequences: false).map(String.init)
-                guard f.count >= 6 else { return nil }
-                return Commit(id: f[0], short: f[1], author: f[2], when: f[3], subject: f[4], refs: f[5])
+                guard f.count >= 8 else { return nil }
+                return Commit(id: f[0], short: f[1], author: f[2], when: f[3], relative: f[4], subject: f[5], refs: f[6],
+                              parents: f[7].split(separator: " ").map(String.init))
             }
+            let remotes = (GitInfo.git(["remote"], in: path) ?? "").split(separator: "\n").map(String.init)
+            for k in list.indices { list[k].remotes = remotes }
+            list = GraphRow.layout(list)
+            let branch = GitInfo.git(["rev-parse", "--abbrev-ref", "HEAD"], in: path)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             DispatchQueue.main.async {
                 self.isRepo = out != nil
+                self.branch = branch
                 if self.commits != list { self.commits = list }
             }
         }
@@ -79,37 +190,41 @@ final class HistoryModel: ObservableObject {
 struct HistoryPanel: View {
     @EnvironmentObject var model: AppModel
     @StateObject private var h = HistoryModel()
+    @State private var query = ""
 
     var body: some View {
         VStack(spacing: 0) {
             if !h.isRepo {
                 PanelEmpty(icon: "clock.arrow.circlepath", text: "Not a git repository")
             } else {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.triangle.branch").font(.system(size: 10.5)).foregroundStyle(T.text3)
+                    Text(h.branch).font(.system(size: 12, weight: .semibold)).foregroundStyle(T.text2).lineLimit(1)
+                    Spacer()
+                    Image(systemName: "magnifyingglass").font(.system(size: 10.5)).foregroundStyle(T.text3)
+                    TextField("Filter", text: $query).textFieldStyle(.plain).font(.system(size: 12)).frame(width: 80)
+                    Button { h.all.toggle() } label: { Text(h.all ? "All" : "Current").font(.system(size: 11, weight: .medium)) }
+                        .buttonStyle(ChromeButtonStyle(active: h.all)).help(h.all ? "Showing all branches" : "Showing the current branch")
+                    Button { h.refresh() } label: { Image(systemName: "arrow.clockwise").font(.system(size: 11)) }.buttonStyle(ChromeButtonStyle())
+                }
+                .padding(.leading, 12).padding(.trailing, 8).frame(height: 32)
+                Hairline()
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 1) {
-                        ForEach(h.commits) { c in
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(c.subject).font(.system(size: 12.5, weight: .medium)).foregroundStyle(T.text).lineLimit(1)
-                                HStack(spacing: 6) {
-                                    Text(c.short).font(T.mono(10.5)).foregroundStyle(T.accent)
-                                    Text(c.author).lineLimit(1)
-                                    Text("·")
-                                    Text(c.when).lineLimit(1)
-                                    if !c.refs.isEmpty {
-                                        Text(c.refs.replacingOccurrences(of: "HEAD -> ", with: "")).font(T.mono(10)).foregroundStyle(T.green).lineLimit(1)
-                                    }
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        let shown = query.isEmpty ? h.commits : h.commits.filter {
+                            $0.subject.localizedCaseInsensitiveContains(query) || $0.author.localizedCaseInsensitiveContains(query) || $0.id.hasPrefix(query.lowercased())
+                        }
+                        ForEach(Array(shown.enumerated()), id: \.element.id) { i, c in
+                            CommitRow(c: c, head: i == 0 && query.isEmpty && !h.all, graph: query.isEmpty,
+                                      selected: { if case .commit(let hh, _) = model.activeDoc?.kind { return hh == c.id }; return false }())
+                                .onTapGesture { h.select(c) }
+                                .contextMenu {
+                                    Button("Copy Hash") { copy(c.id) }
+                                    Button("Copy Subject") { copy(c.subject) }
                                 }
-                                .font(.system(size: 11)).foregroundStyle(T.text3)
-                            }
-                            .padding(.horizontal, 8).padding(.vertical, 6)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(RoundedRectangle(cornerRadius: T.m.rowR, style: .continuous).fill(h.selected == c.id ? T.selection : .clear))
-                            .contentShape(Rectangle())
-                            .onTapGesture { h.select(c) }
-                            .contextMenu { Button("Copy Hash") { copy(c.id) } }
                         }
                     }
-                    .padding(6)
+                    .padding(.horizontal, 6).padding(.vertical, 4)
                 }
             }
         }
@@ -118,6 +233,59 @@ struct HistoryPanel: View {
         .onReceive(NotificationCenter.default.publisher(for: .adeDebugPanel)) { n in
             if let i = n.userInfo?["commit"] as? Int, i < h.commits.count { h.select(h.commits[i]) }
         }
+    }
+}
+
+private struct CommitRow: View {
+    let c: Commit
+    let head: Bool
+    let graph: Bool
+    let selected: Bool
+    @State private var hover = false
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 6) {
+            if graph { GraphCell(row: c.graph, head: head || c.refs.hasPrefix("HEAD")).frame(maxHeight: .infinity) }
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(c.subject).font(.system(size: 12.5, weight: .medium)).foregroundStyle(T.text).lineLimit(1)
+                    Spacer(minLength: 4)
+                    ForEach(Array(c.labels.prefix(2).enumerated()), id: \.offset) { _, l in RefLabel(text: l.text, kind: l.kind) }
+                    if c.labels.count > 2 { Text("+\(c.labels.count - 2)").font(.system(size: 10)).foregroundStyle(T.text3) }
+                }
+                HStack(spacing: 6) {
+                    Text(c.author).lineLimit(1)
+                    Spacer(minLength: 4)
+                    Text(c.when).help(c.relative)
+                    Text(c.short).font(T.mono(10.5))
+                }
+                .font(.system(size: 11)).foregroundStyle(T.text3)
+            }
+            .padding(.vertical, 5)
+        }
+        .padding(.trailing, 6)
+        .frame(height: 42)
+        .background(RoundedRectangle(cornerRadius: T.m.rowR, style: .continuous).fill(selected ? T.selection : hover ? T.hover : .clear))
+        .contentShape(Rectangle())
+        .onHover { hover = $0 }
+        .pointerCursor()
+        .help("\(c.short) · \(c.author) · \(c.relative)")
+    }
+}
+
+private struct RefLabel: View {
+    let text: String
+    let kind: Int
+    var body: some View {
+        let color: Color = kind == 2 ? T.amber : kind == 3 ? T.text3 : T.accent
+        HStack(spacing: 3) {
+            Image(systemName: kind == 2 ? "tag.fill" : kind == 3 ? "cloud" : "arrow.triangle.branch").font(.system(size: 8, weight: .semibold))
+            Text(text).font(.system(size: 10, weight: .semibold)).lineLimit(1)
+        }
+        .foregroundStyle(kind == 0 ? Color.white : color)
+        .padding(.horizontal, 5).frame(height: 16)
+        .background(Capsule().fill(kind == 0 ? color : color.opacity(0.15)))
+        .fixedSize()
     }
 }
 
@@ -140,8 +308,35 @@ final class FilesModel: ObservableObject {
     @Published var selected: String?
     @Published var preview = ""
     @Published var expanded: Set<String> = []
+    /// Git status letter per changed file (M, A, D, U…), and folders that contain changes.
+    @Published var status: [String: String] = [:]
+    @Published var dirtyDirs: Set<String> = []
     private(set) var path: String?
     private var all: [String] = []
+    private var timer: Timer?
+    deinit { timer?.invalidate() }
+
+    func refreshStatus() {
+        guard let path else { return }
+        DispatchQueue.global(qos: .utility).async {
+            var map: [String: String] = [:]
+            var dirs: Set<String> = []
+            for line in (GitInfo.git(["status", "--porcelain=v1", "--untracked-files=all"], in: path) ?? "").split(separator: "\n") where line.count > 3 {
+                let code = Array(line.prefix(2))
+                var p = String(line.dropFirst(3))
+                if let arrow = p.range(of: " -> ") { p = String(p[arrow.upperBound...]) }
+                p = p.trimmingCharacters(in: CharacterSet(charactersIn: "\""))
+                let letter = code[0] == "?" ? "U" : String(code[1] != " " ? code[1] : code[0])
+                map[p] = letter
+                var d = (p as NSString).deletingLastPathComponent
+                while !d.isEmpty { dirs.insert(d); d = (d as NSString).deletingLastPathComponent }
+            }
+            DispatchQueue.main.async {
+                if self.status != map { self.status = map }
+                if self.dirtyDirs != dirs { self.dirtyDirs = dirs }
+            }
+        }
+    }
 
     func attach(_ p: String?) {
         guard p != path else { return }
@@ -150,6 +345,9 @@ final class FilesModel: ObservableObject {
         preview = ""
         expanded = []
         load()
+        refreshStatus()
+        timer?.invalidate()
+        timer = Timer.scheduledTimer(withTimeInterval: 4, repeats: true) { [weak self] _ in self?.refreshStatus() }
     }
 
     func load() {
@@ -274,13 +472,18 @@ struct FilesPanel: View {
         if n.children != nil {
             let open = f.expanded.contains(n.id)
             HStack(spacing: 5) {
-                Image(systemName: open ? "chevron.down" : "chevron.right").font(.system(size: 8.5, weight: .bold)).foregroundStyle(T.text3).frame(width: 10)
-                Image(systemName: "folder.fill").font(.system(size: 11)).foregroundStyle(T.text3)
-                Text(n.name).font(.system(size: 12.5)).foregroundStyle(T.text).lineLimit(1)
+                Image(systemName: "chevron.right").font(.system(size: 8.5, weight: .bold)).foregroundStyle(T.text3)
+                    .rotationEffect(.degrees(open ? 90 : 0)).frame(width: 10)
+                let dirty = f.dirtyDirs.contains(n.id)
+                FolderIcon(open: open, tint: dirty ? T.amber.opacity(0.85) : nil)
+                Text(n.name).font(.system(size: 12.5)).foregroundStyle(dirty ? T.amber : T.text).lineLimit(1)
                 Spacer()
+                if dirty { Circle().fill(T.amber.opacity(0.7)).frame(width: 5, height: 5).padding(.trailing, 6) }
             }
             .padding(.leading, CGFloat(depth) * 14 + 6).frame(height: 24)
+            .background(HoverFill())
             .contentShape(Rectangle())
+            .pointerCursor()
             .onTapGesture { if open { f.expanded.remove(n.id) } else { f.expanded.insert(n.id) } }
         } else {
             fileRow(rel: n.id, label: n.name, depth: depth)
@@ -288,15 +491,19 @@ struct FilesPanel: View {
     }
 
     private func fileRow(rel: String, label: String, depth: Int) -> some View {
-        HStack(spacing: 5) {
+        let st = f.status[rel]
+        let open: Bool = { if case .file(let r) = model.activeDoc?.kind, r == rel { return true }; return false }()
+        return HStack(spacing: 5) {
             Spacer().frame(width: 10)
-            Image(systemName: "doc").font(.system(size: 10.5)).foregroundStyle(T.text3)
-            Text(label).font(.system(size: 12.5)).foregroundStyle(T.text2).lineLimit(1).truncationMode(.middle)
+            FileIcon(name: (rel as NSString).lastPathComponent)
+            Text(label).font(.system(size: 12.5)).foregroundStyle(st.map { GitChange.color($0) } ?? T.text).lineLimit(1).truncationMode(.middle)
             Spacer()
+            if let st { Text(st).font(T.mono(10.5, .bold)).foregroundStyle(GitChange.color(st)).padding(.trailing, 6) }
         }
         .padding(.leading, CGFloat(depth) * 14 + 6).frame(height: 24)
-        .background(RoundedRectangle(cornerRadius: T.m.rowR, style: .continuous).fill(f.selected == rel ? T.selection : .clear))
+        .background(open ? AnyView(RoundedRectangle(cornerRadius: T.m.rowR, style: .continuous).fill(T.selection)) : AnyView(HoverFill()))
         .contentShape(Rectangle())
+        .pointerCursor()
         .onTapGesture { f.open(rel) }
         .contextMenu {
             if let base = f.path {
@@ -323,3 +530,12 @@ struct PanelEmpty: View {
 }
 
 extension Notification.Name { static let adeDebugPanel = Notification.Name("ade.debug.panel") }
+
+/// Row background that lights up under the pointer.
+struct HoverFill: View {
+    @State private var hover = false
+    var body: some View {
+        RoundedRectangle(cornerRadius: T.m.rowR, style: .continuous).fill(hover ? T.hover : .clear)
+            .onHover { hover = $0 }
+    }
+}

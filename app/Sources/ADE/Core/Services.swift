@@ -144,6 +144,12 @@ final class GitInfo: ObservableObject {
                     s.removed += Int(parts[1]) ?? 0
                     s.files += 1
                 }
+                // Untracked files count too (all their lines are new), like the Changes views.
+                if let others = Self.git(["ls-files", "--others", "--exclude-standard"], in: path) {
+                    let list = others.split(separator: "\n").map(String.init)
+                    s.added += GitDiffData.untrackedStats(path, list).values.reduce(0, +)
+                    s.files += list.count
+                }
                 stat = s
             }
             DispatchQueue.main.async {
