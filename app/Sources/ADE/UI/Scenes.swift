@@ -19,6 +19,8 @@ struct AmbientScene: Identifiable, Equatable {
     var base: Kind? = nil
     /// First versions kept for comparison (listed apart in the pickers); they use the original glyph texture.
     var legacy = false
+    /// Colors for the scene's drawing (keys per kind, see SceneBuilder), so one animation has several looks.
+    var art: [String: String] = [:]
     static func == (a: Self, b: Self) -> Bool { a.id == b.id }
 }
 
@@ -42,43 +44,85 @@ enum Scenes {
     }
 
     private static func make(_ id: String, _ name: String, _ kind: AmbientScene.Kind, dark: Bool, top: String, bottom: String,
-                             surface: String, frame: String, raised: String, accent: String, legacy: Bool = false) -> AmbientScene {
+                             surface: String, frame: String, raised: String, accent: String, art: [String: String] = [:]) -> AmbientScene {
         AmbientScene(id: id, name: name, kind: kind, dark: dark, top: col(top), bottom: col(bottom),
-                     colors: palette(dark: dark, surface: surface, frame: frame, raised: raised, accent: accent), legacy: legacy)
+                     colors: palette(dark: dark, surface: surface, frame: frame, raised: raised, accent: accent), art: art)
     }
 
     /// Built-in scenes, then the user's.
     static var all: [AmbientScene] { builtIn + UserScenes.loaded }
 
     static let builtIn: [AmbientScene] = [
+        // Dark
         make("aurora", "Aurora", .aurora, dark: true, top: "#04121A", bottom: "#0C1A33",
              surface: "#0D1622", frame: "#09111A", raised: "#18263A", accent: "#5BF0A6"),
+        make("night-sky", "Nightfall", .nightSky, dark: true, top: "#070B1F", bottom: "#1C1F4A",
+             surface: "#11142C", frame: "#0C0F24", raised: "#1F2346", accent: "#A99BFF",
+             art: ["moon": "#F1E7C8", "moonInk": "#9A8F66", "cloud": "#2E356E", "cloudInk": "#4F5AA8"]),
+        make("dusk-kites", "Dusk Kites", .kites, dark: true, top: "#1A1238", bottom: "#5A2E4A",
+             surface: "#191329", frame: "#130E20", raised: "#271E3C", accent: "#C49BFF",
+             art: ["sun": "#FF9E7A", "cloud": "#3B2E5A", "cloudInk": "#5A4A80", "string": "#C9B8E8"]),
         make("reef-v2", "Reef", .reef, dark: true, top: "#0E4A52", bottom: "#05181F",
              surface: "#0B242A", frame: "#071C21", raised: "#143840", accent: "#5FD8C9"),
         make("circuit", "Circuit", .circuit, dark: true, top: "#060B0A", bottom: "#0C1A16",
              surface: "#0C1412", frame: "#080F0D", raised: "#16241F", accent: "#4BE3B0"),
+        make("fireflies", "Glade", .fireflies, dark: true, top: "#050B07", bottom: "#112418",
+             surface: "#0F1912", frame: "#0A130D", raised: "#1A2A1F", accent: "#C6E26A"),
+        make("meadow", "Golden Meadow", .fireflies, dark: true, top: "#0E0B05", bottom: "#3A2C10",
+             surface: "#17130B", frame: "#110E08", raised: "#262014", accent: "#FFC857",
+             art: ["grass": "#D2B45A", "glow": "#FFC857", "core": "#FFE9A8", "reed": "#8A6E36", "reedHead": "#5E3F22"]),
         make("embers", "Embers", .embers, dark: true, top: "#0D0807", bottom: "#2E150D",
              surface: "#1A1210", frame: "#140D0B", raised: "#2A1C18", accent: "#FF8F52"),
+        make("sakura-night", "Sakura Night", .sakura, dark: true, top: "#120A12", bottom: "#2E1529",
+             surface: "#1A1019", frame: "#140C13", raised: "#2A1A28", accent: "#F08DB4",
+             art: ["branch": "#7A5048", "blossom": "#F08DB4", "branchInk": "#3A1A28"]),
         make("rain", "Rain", .rain, dark: true, top: "#1A2430", bottom: "#0C1116",
              surface: "#131A21", frame: "#0F151B", raised: "#1F2933", accent: "#7DB4E0"),
+        make("snow-night", "Snow Night", .snow, dark: true, top: "#0A1222", bottom: "#1E2A40",
+             surface: "#121A2A", frame: "#0D1422", raised: "#1E283C", accent: "#A9C4F0",
+             art: ["drift": "#6F82A3", "driftInk": "#4C5D7E"]),
+        // Light
+        make("sky", "Daydream", .sky, dark: false, top: "#7FC0F2", bottom: "#D8EEFD",
+             surface: "#F5FAFE", frame: "#D6EAFA", raised: "#FFFFFF", accent: "#2C7BD6"),
+        make("blueprint", "Blueprint", .circuit, dark: false, top: "#D6E4F6", bottom: "#F2F7FD",
+             surface: "#F7FAFE", frame: "#E2ECF8", raised: "#FFFFFF", accent: "#2C6FD6",
+             art: ["trace": "#A9C1E0", "padInk": "#2C6FD6", "sig": "#2C6FD6", "core": "#9CC0FF", "bits": "#8EA9CF"]),
+        make("shallows", "Shallows", .reef, dark: false, top: "#7FE0D6", bottom: "#DDF7F2",
+             surface: "#F4FCFA", frame: "#D2F0EA", raised: "#FFFFFF", accent: "#13897E",
+             art: ["weed1": "#5CC28E", "weed2": "#3FA877", "weedInk": "#1F6B4B", "fishInk": "#7A3A2A"]),
         make("kites", "Kites", .kites, dark: false, top: "#9FD6F2", bottom: "#FFE0C4",
              surface: "#FFFAF4", frame: "#F5E6D8", raised: "#FFFFFF", accent: "#D9622B"),
         make("sakura", "Sakura", .sakura, dark: false, top: "#F5C3D2", bottom: "#FFF1F4",
              surface: "#FFF9FA", frame: "#F8E1E7", raised: "#FFFFFF", accent: "#C94F76"),
+        make("drizzle", "Drizzle", .rain, dark: false, top: "#B9C6D3", bottom: "#E9EEF3",
+             surface: "#F6F8FA", frame: "#E1E7ED", raised: "#FFFFFF", accent: "#4E6E8E",
+             art: ["cloud": "#D5DDE6", "cloudInk": "#B0BCCA", "drop": "#6F86A0"]),
         make("snow", "Snowfall", .snow, dark: false, top: "#9DB4CC", bottom: "#E3EBF3",
              surface: "#F6F9FC", frame: "#E1E9F1", raised: "#FFFFFF", accent: "#3F6E9E"),
-        // First versions, too close to a published concept; kept only to compare, then removed.
-        make("night-sky", "Night Sky (old)", .nightSky, dark: true, top: "#060A1C", bottom: "#1A2550",
-             surface: "#10152B", frame: "#0B1024", raised: "#1E2546", accent: "#9DB0FF", legacy: true),
-        make("reef", "Reef (old)", .reef, dark: true, top: "#0E4A52", bottom: "#05181F",
-             surface: "#0B242A", frame: "#071C21", raised: "#143840", accent: "#5FD8C9", legacy: true),
-        make("fireflies", "Fireflies (old)", .fireflies, dark: true, top: "#050B07", bottom: "#112418",
-             surface: "#0F1912", frame: "#0A130D", raised: "#1A2A1F", accent: "#C6E26A", legacy: true),
-        make("sky", "Sky (old)", .sky, dark: false, top: "#7FC0F2", bottom: "#D8EEFD",
-             surface: "#F5FAFE", frame: "#D6EAFA", raised: "#FFFFFF", accent: "#2C7BD6", legacy: true),
     ]
 
-    static func scene(_ id: String?) -> AmbientScene? { all.first { $0.id == id } }
+    /// Ids that moved: the first Reef became `reef-v2`.
+    static let aliases = ["reef": "reef-v2"]
+
+    static func scene(_ id: String?) -> AmbientScene? {
+        let id = id.map { aliases[$0] ?? $0 }
+        return all.first { $0.id == id }
+    }
+
+    /// Scenes whose accent sits near a workspace color's hue (gray workspaces get the gray-blue ones).
+    static func matching(_ hex: String?, limit: Int = 4) -> [AmbientScene] {
+        guard let hex, let c = NSColor(Color(hex: hex)).usingColorSpace(.sRGB) else { return [] }
+        var h: CGFloat = 0, sat: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        c.getHue(&h, saturation: &sat, brightness: &b, alpha: &a)
+        if sat < 0.15 { return ["rain", "drizzle", "snow", "snow-night"].compactMap { scene($0) } }
+        func dist(_ s: AmbientScene) -> CGFloat {
+            var sh: CGFloat = 0, ss: CGFloat = 0, sb: CGFloat = 0, sa: CGFloat = 0
+            (s.colors.accent.usingColorSpace(.sRGB) ?? s.colors.accent).getHue(&sh, saturation: &ss, brightness: &sb, alpha: &sa)
+            let d = abs(sh - h)
+            return min(d, 1 - d)
+        }
+        return builtIn.filter { dist($0) < 0.09 }.sorted { dist($0) < dist($1) }.prefix(limit).map { $0 }
+    }
 
     /// The scene id a workspace shows: its own `appearance.scene` (where "none" means no scene), else the
     /// global one. nil = no scene.
@@ -252,7 +296,7 @@ final class SceneLayerView: NSView {
         root.position = .zero
         root.setAffineTransform(still ? CGAffineTransform(scaleX: bounds.width / v.width, y: bounds.height / v.height) : .identity)
         root.timeOffset = still ? 37 : AmbientClock.shared.time
-        SceneBuilder(root: root, W: v.width, H: v.height, now: root.timeOffset, mood: still ? .calm : AmbientClock.shared.mood).build(scene)
+        SceneBuilder(root: root, W: v.width, H: v.height, now: root.timeOffset, mood: still ? .calm : AmbientClock.shared.mood, art: scene.art, dark: scene.dark).build(scene)
         CATransaction.commit()
         // A new scene eases in over the window's frame color (the view's own layer runs on real time).
         if !still && !frozen && !faded {
@@ -413,6 +457,14 @@ private enum Sprites {
         "######o",
         "#  ###",
     ]
+    static let sun = [
+        "  ####",
+        " ######",
+        "########",
+        "########",
+        " ######",
+        "  ####",
+    ]
     static let kite = [
         "   a",
         "  aab",
@@ -451,6 +503,11 @@ private struct SceneBuilder {
     let H: CGFloat
     let now: CFTimeInterval
     var mood: AmbientMood = .calm
+    var art: [String: String] = [:]
+    var dark = false
+
+    /// The scene's color for `key`, or the default drawing color.
+    func a(_ key: String, _ fallback: String) -> String { art[key] ?? fallback }
 
     func build(_ s: AmbientScene) {
         Art.glyphs = s.legacy ? Art.classicGlyphs : Art.codeGlyphs
@@ -612,11 +669,19 @@ private struct SceneBuilder {
             let l = add(Art.glyph(big ? "+" : "·", "#FFFFFF", size: big ? 11 : 10), x: rnd(i, 1) * W, y: rnd(i, 2) * H * 0.92, opacity: 0.4)
             pulse(l, 0.08, big ? 0.9 : 0.6, period: 2.5 + rnd(i, 3) * 5, phase: rnd(i, 4) * 8)
         }
-        let moon = add(Art.sprite(Sprites.moon, ["#": "#E9E1C4"], ink: "#8F855F", seed: 3), x: W * 0.62, y: H * 0.1)
+        let halo = CAGradientLayer()
+        halo.type = .radial
+        halo.frame = CGRect(x: W * 0.16 + 30 - 110, y: H - H * 0.09 - 48 - 110, width: 220, height: 220)
+        halo.colors = [cg(a("moon", "#E9E1C4"), 0.16), cg(a("moon", "#E9E1C4"), 0)]
+        halo.startPoint = CGPoint(x: 0.5, y: 0.5); halo.endPoint = CGPoint(x: 1, y: 1)
+        root.addSublayer(halo)
+        pulse(halo, 0.6, 1, period: 12, phase: 0)
+        let moon = add(Art.sprite(Sprites.moon, ["#": a("moon", "#E9E1C4")], ink: a("moonInk", "#8F855F"), seed: 3), x: W * 0.16, y: H * 0.09)
         swing(moon, "transform.translation.y", 3, period: 18, phase: 0)
-        for i in 0..<3 {
-            let l = add(Art.sprite(Sprites.flatCloud, ["#": "#33417F"], ink: "#5B6BB5", seed: 10 + i), x: 0, y: H * (0.16 + CGFloat(i) * 0.24), opacity: 0.8)
-            drift(l, speed: 5 + CGFloat(i) * 3, phase: rnd(i, 7))
+        for i in 0..<2 {
+            let l = add(Art.sprite(i == 0 ? Sprites.flatCloud : Sprites.smallCloud, ["#": a("cloud", "#33417F")], ink: a("cloudInk", "#5B6BB5"), seed: 10 + i),
+                        x: 0, y: H * (0.32 + CGFloat(i) * 0.3), opacity: 0.7)
+            drift(l, speed: 4 + CGFloat(i) * 3, phase: rnd(i, 7))
         }
         // A shooting star every 13 s.
         let streak = Art.bitmap("streak", CGSize(width: 90, height: 14)) { ctx in
@@ -642,24 +707,24 @@ private struct SceneBuilder {
             let p = CGMutablePath()
             p.addLines(between: [CGPoint(x: x0, y: 0), CGPoint(x: x0 + 70, y: 0), CGPoint(x: x0 + 260, y: H), CGPoint(x: x0 + 90, y: H)])
             p.closeSubpath()
-            pulse(shape(p, fill: .white, opacity: 0.035), 0.015, 0.06, period: 9 + Double(i) * 3, phase: Double(i) * 2)
+            pulse(shape(p, fill: cg(a("ray", "#FFFFFF")), opacity: 0.035), 0.015, 0.06, period: 9 + Double(i) * 3, phase: Double(i) * 2)
         }
         for i in 0..<9 {
             let x0 = rnd(i, 20) * W, h = 5 + hash(i, 21) % 8
             for k in 0..<h {
-                let l = add(Art.sprite(["#"], ["#": i % 3 == 0 ? "#3E9E6A" : "#2E7D5B"], ink: "#123A2A", seed: hash(i, k)), x: x0, y: H - CGFloat(k + 1) * 12, opacity: 0.9)
+                let l = add(Art.sprite(["#"], ["#": i % 3 == 0 ? a("weed1", "#3E9E6A") : a("weed2", "#2E7D5B")], ink: a("weedInk", "#123A2A"), seed: hash(i, k)), x: x0, y: H - CGFloat(k + 1) * 12, opacity: 0.9)
                 swing(l, "transform.translation.x", 0.5 + CGFloat(k) * 0.9, period: 7, phase: Double(k) * 0.39 + Double(i))
             }
         }
         let colors = ["#FF8A5C", "#FFC857", "#FF6F91", "#7FD6FF", "#FFB36B", "#C9A2FF"]
         for i in 0..<6 {
             let right = i % 2 == 0
-            let l = add(Art.sprite(i % 3 == 0 ? Sprites.fish : Sprites.smallFish, ["#": colors[i], "o": "#10232A"], ink: "#4A2A20", seed: 30 + i, flip: !right),
+            let l = add(Art.sprite(i % 3 == 0 ? Sprites.fish : Sprites.smallFish, ["#": colors[i], "o": "#10232A"], ink: a("fishInk", "#4A2A20"), seed: 30 + i, flip: !right),
                         x: 0, y: H * (0.12 + 0.13 * CGFloat(i)), opacity: 0.92)
             drift(l, speed: 14 + CGFloat(rnd(i, 8)) * 16, phase: rnd(i, 7), leftward: !right)
             swing(l, "transform.translation.y", 8, period: 7.8, phase: Double(i) * 1.3)
         }
-        particles(30, art: { Art.glyph($0 % 3 == 0 ? "o" : $0 % 3 == 1 ? "°" : ".", "#FFFFFF", size: 10) },
+        particles(30, art: { Art.glyph($0 % 3 == 0 ? "o" : $0 % 3 == 1 ? "°" : ".", a("bubble", "#FFFFFF"), size: 10) },
                   from: { CGPoint(x: rnd($0, 11) * W, y: H + 15) }, to: { CGPoint(x: rnd($0, 11) * W, y: -15) },
                   duration: { Double(H + 30) / (16 + rnd($0, 9) * 30) }, opacity: { _ in 0.45 }, sway: 6)
     }
@@ -668,13 +733,21 @@ private struct SceneBuilder {
         let cols = Int(W / 12) + 1
         for c in 0..<cols {
             let h = 1 + hash(c, 40) % 4
-            let l = add(Art.blade(h, "#5FA35A"), x: CGFloat(c) * 12, y: H - 2 - CGFloat(h) * 12, anchorBottom: true)
+            let l = add(Art.blade(h, a("grass", "#5FA35A")), x: CGFloat(c) * 12, y: H - 2 - CGFloat(h) * 12, anchorBottom: true)
             swing(l, "transform.rotation.z", 0.16, period: 5.7, phase: Double(c) * 0.16)
+        }
+        // Reeds with seed heads standing above the grass.
+        for i in 0..<Int(W / 110) + 1 {
+            let h = 4 + hash(i, 41) % 4
+            let rows = ["o", "o"] + Array(repeating: "|", count: h)
+            let l = add(Art.sprite(rows, ["o": a("reedHead", "#6B4A2A"), "|": a("reed", "#3F6B3A")], ink: nil, seed: 300 + i),
+                        x: rnd(i, 42) * W, y: H - 4 - CGFloat(rows.count) * 12, opacity: 0.85, anchorBottom: true)
+            swing(l, "transform.rotation.z", 0.05, period: 7 + rnd(i, 43) * 3, phase: rnd(i, 44) * 6)
         }
         for i in 0..<28 {
             let bx = rnd(i, 1) * W, by = H * (0.08 + rnd(i, 4) * 0.78)
             // Fireflies take the mood's color: amber when an agent waits for you, red on an error.
-            let (glowHex, coreHex) = mood == .attention ? ("#F5B841", "#FFE3A0") : mood == .error ? ("#FF6B5B", "#FFC2B8") : ("#D8F27A", "#EEF8A8")
+            let (glowHex, coreHex) = mood == .attention ? ("#F5B841", "#FFE3A0") : mood == .error ? ("#FF6B5B", "#FFC2B8") : (a("glow", "#D8F27A"), a("core", "#EEF8A8"))
             let l = add(Art.glow(glowHex, core: coreHex, radius: 18), x: bx - 18, y: by - 18, opacity: 0)
             let wander = CAKeyframeAnimation(keyPath: "position")
             let rx = 30 + rnd(i, 5) * 50, ry = 20 + rnd(i, 6) * 35
@@ -712,10 +785,10 @@ private struct SceneBuilder {
 
     func rain() {
         for i in 0..<4 {
-            let l = add(Art.sprite(i % 2 == 0 ? Sprites.cloud : Sprites.smallCloud, ["#": "#2A3542"], ink: "#4A5868", seed: 50 + i), x: 0, y: H * 0.02 + CGFloat(i % 2) * 30, opacity: 0.9)
+            let l = add(Art.sprite(i % 2 == 0 ? Sprites.cloud : Sprites.smallCloud, ["#": a("cloud", "#2A3542")], ink: a("cloudInk", "#4A5868"), seed: 50 + i), x: 0, y: H * 0.02 + CGFloat(i % 2) * 30, opacity: 0.9)
             drift(l, speed: 3 + CGFloat(i), phase: rnd(i, 7))
         }
-        particles(Int(min(150, W * H / 7000)), art: { _ in Art.glyph("/", "#8FA8C2", size: 11) },
+        particles(Int(min(150, W * H / 7000)), art: { _ in Art.glyph("/", a("drop", "#8FA8C2"), size: 11) },
                   from: { CGPoint(x: rnd($0, 3) * W * 1.25, y: -20) }, to: { CGPoint(x: rnd($0, 3) * W * 1.25 - (H + 40) * 0.18, y: H + 20) },
                   duration: { Double(H + 40) / (240 + rnd($0, 1) * 160) }, opacity: { 0.3 + 0.35 * Float(rnd($0, 4)) })
     }
@@ -727,16 +800,18 @@ private struct SceneBuilder {
         sun.colors = [cg("#FFFFFF", 0.55), cg("#FFFFFF", 0)]
         sun.startPoint = CGPoint(x: 0.5, y: 0.5); sun.endPoint = CGPoint(x: 1, y: 1)
         root.addSublayer(sun)
-        for i in 0..<6 {
-            let l = add(Art.sprite(i % 2 == 0 ? Sprites.cloud : Sprites.smallCloud, ["#": "#FFFFFF"], ink: "#A9CFF0", seed: 60 + i), x: 0, y: H * (0.05 + 0.15 * CGFloat(i)), opacity: 0.95)
+        let disc = add(Art.sprite(Sprites.sun, ["#": a("sun", "#FFE08A")], ink: a("sunInk", "#E0A93A"), seed: 61), x: W * 0.82 - 48, y: 26, opacity: 0.95)
+        pulse(disc, 0.8, 1, period: 6, phase: 0)
+        for i in 0..<5 {
+            let l = add(Art.sprite(i % 2 == 0 ? Sprites.cloud : Sprites.smallCloud, ["#": a("cloud", "#FFFFFF")], ink: a("cloudInk", "#A9CFF0"), seed: 60 + i), x: 0, y: H * (0.2 + 0.15 * CGFloat(i)), opacity: 0.95)
             drift(l, speed: 5 + CGFloat(rnd(i, 1)) * 8, phase: rnd(i, 7))
             swing(l, "transform.translation.y", 4, period: 31, phase: Double(i) * 5)
         }
         let up = Art.bitmap("flock-v", CGSize(width: 44, height: 24)) { ctx in
-            for k in 0..<3 { Art.text("v", in: CGRect(x: CGFloat(k) * 15, y: CGFloat(k % 2) * 9, width: 14, height: 14), cg("#4F6C88", 0.75), size: 12, ctx) }
+            for k in 0..<3 { Art.text("v", in: CGRect(x: CGFloat(k) * 15, y: CGFloat(k % 2) * 9, width: 14, height: 14), cg(a("bird", "#4F6C88"), 0.75), size: 12, ctx) }
         }
         let down = Art.bitmap("flock--", CGSize(width: 44, height: 24)) { ctx in
-            for k in 0..<3 { Art.text("-", in: CGRect(x: CGFloat(k) * 15, y: CGFloat(k % 2) * 9, width: 14, height: 14), cg("#4F6C88", 0.75), size: 12, ctx) }
+            for k in 0..<3 { Art.text("-", in: CGRect(x: CGFloat(k) * 15, y: CGFloat(k % 2) * 9, width: 14, height: 14), cg(a("bird", "#4F6C88"), 0.75), size: 12, ctx) }
         }
         for i in 0..<4 {
             let l = add((up, CGSize(width: 44, height: 24)), x: 0, y: H * (0.2 + CGFloat(rnd(i, 3)) * 0.3))
@@ -752,11 +827,11 @@ private struct SceneBuilder {
     }
 
     func sakura() {
-        let colors: [Character: String] = ["#": "#7A4E3A", "o": "#F49AB4"]
+        let colors: [Character: String] = ["#": a("branch", "#7A4E3A"), "o": a("blossom", "#F49AB4")]
         // Branches reach in from the right edge and the lower left, clear of the sidebar's header.
-        let a = Art.sprite(Sprites.branch, colors, ink: "#B85A78", seed: 70, flip: true)
-        swing(add(a, x: W - a.1.width + 12, y: 54), "transform.translation.y", 1.5, period: 15, phase: 0)
-        swing(add(Art.sprite(Sprites.branch, colors, ink: "#B85A78", seed: 71), x: -12, y: H * 0.7, opacity: 0.85), "transform.translation.y", 1.5, period: 17, phase: 3)
+        let br = Art.sprite(Sprites.branch, colors, ink: a("branchInk", "#B85A78"), seed: 70, flip: true)
+        swing(add(br, x: W - br.1.width + 12, y: 54), "transform.translation.y", 1.5, period: 15, phase: 0)
+        swing(add(Art.sprite(Sprites.branch, colors, ink: a("branchInk", "#B85A78"), seed: 71), x: -12, y: H * 0.7, opacity: 0.85), "transform.translation.y", 1.5, period: 17, phase: 3)
         let pinks = [("*", "#E77C9C"), ("•", "#F2A3BA"), ("+", "#D9668A")]
         particles(48, art: { Art.glyph(pinks[$0 % 3].0, pinks[$0 % 3].1, size: 10 + CGFloat(hash($0, 5) % 4)) },
                   from: { CGPoint(x: rnd($0, 3) * W * 1.1 - W * 0.1, y: -15) },
@@ -815,7 +890,7 @@ private struct SceneBuilder {
         let step: CGFloat = 24
         let gx = Int(W / step), gy = Int(H / step)
         // Signals take the mood's color: amber when an agent waits for you, red on an error.
-        let (sig, core) = mood == .attention ? ("#F5B841", "#FFE3A0") : mood == .error ? ("#FF6B5B", "#FFC2B8") : ("#4BE3B0", "#C8FFE9")
+        let (sig, core) = mood == .attention ? ("#F5B841", "#FFE3A0") : mood == .error ? ("#FF6B5B", "#FFC2B8") : (a("sig", "#4BE3B0"), a("core", "#C8FFE9"))
         for i in 0..<Int(min(18, W * H / 50000) + 4) {
             var x = Int(rnd(i, 1) * Double(gx)), y = Int(rnd(i, 2) * Double(gy))
             func pt(_ x: Int, _ y: Int) -> CGPoint { CGPoint(x: CGFloat(x) * step + 6, y: CGFloat(y) * step + 6) }
@@ -828,9 +903,9 @@ private struct SceneBuilder {
                 pts.append(pt(x, y))
                 horizontal.toggle()
             }
-            _ = line(pts, stroke: cg("#1E4A3C", 0.9), width: 2)
+            _ = line(pts, stroke: cg(a("trace", "#1E4A3C"), 0.9), width: 2)
             for (j, p) in [pts.first!, pts.last!].enumerated() {
-                let pad = add(Art.sprite(["#"], ["#": "#1E4A3C"], ink: "#4BE3B0", seed: i * 2 + j), x: p.x - 6, y: p.y - 6)
+                let pad = add(Art.sprite(["#"], ["#": a("trace", "#1E4A3C")], ink: a("padInk", "#4BE3B0"), seed: i * 2 + j), x: p.x - 6, y: p.y - 6)
                 if j == 1 { pulse(pad, 0.5, 1, period: 3 + rnd(i, 6) * 3, phase: rnd(i, 7) * 4) }
             }
             // A signal runs the trace, then the trace rests.
@@ -856,8 +931,8 @@ private struct SceneBuilder {
         }
         // Scattered bits blinking on the grid.
         for i in 0..<Int(min(50, W * H / 20000)) {
-            let a = Art.glyph(i % 2 == 0 ? "0" : "1", "#2E7A60", size: 10)
-            let l = add(a, x: CGFloat(Int(rnd(i, 20) * Double(gx))) * step, y: CGFloat(Int(rnd(i, 21) * Double(gy))) * step, opacity: 0.3)
+            let bit = Art.glyph(i % 2 == 0 ? "0" : "1", a("bits", "#2E7A60"), size: 10)
+            let l = add(bit, x: CGFloat(Int(rnd(i, 20) * Double(gx))) * step, y: CGFloat(Int(rnd(i, 21) * Double(gy))) * step, opacity: 0.3)
             pulse(l, 0, 0.6, period: 2 + rnd(i, 22) * 4, phase: rnd(i, 23) * 6)
         }
     }
@@ -866,11 +941,11 @@ private struct SceneBuilder {
         let sun = CAGradientLayer()
         sun.type = .radial
         sun.frame = CGRect(x: W * 0.8 - 320, y: H - H * 0.12 - 320, width: 640, height: 640)
-        sun.colors = [cg("#FFF4E0", 0.75), cg("#FFF4E0", 0)]
+        sun.colors = [cg(a("sun", "#FFF4E0"), 0.75), cg(a("sun", "#FFF4E0"), 0)]
         sun.startPoint = CGPoint(x: 0.5, y: 0.5); sun.endPoint = CGPoint(x: 1, y: 1)
         root.addSublayer(sun)
         for i in 0..<3 {
-            let l = add(Art.sprite(Sprites.smallCloud, ["#": "#FFFFFF"], ink: "#E8D2C0", seed: 90 + i), x: 0, y: H * (0.08 + 0.2 * CGFloat(i)), opacity: 0.75)
+            let l = add(Art.sprite(Sprites.smallCloud, ["#": a("cloud", "#FFFFFF")], ink: a("cloudInk", "#E8D2C0"), seed: 90 + i), x: 0, y: H * (0.08 + 0.2 * CGFloat(i)), opacity: 0.75)
             drift(l, speed: 4 + CGFloat(i) * 2, phase: rnd(i, 7))
         }
         let balloonColors = [("#E86A5A", "#FFD27A"), ("#6AA8E8", "#FFFFFF")]
@@ -895,7 +970,7 @@ private struct SceneBuilder {
             sp.addQuadCurve(to: CGPoint(x: kite.1.width / 2 - 140, y: -H), control: CGPoint(x: kite.1.width / 2 + 30, y: -H * 0.4))
             string.path = sp
             string.fillColor = nil
-            string.strokeColor = cg("#6A5A4A", 0.3)
+            string.strokeColor = cg(a("string", "#6A5A4A"), 0.3)
             string.lineWidth = 1
             box.addSublayer(string)
             for j in 0..<6 {
@@ -993,9 +1068,9 @@ private struct SceneBuilder {
         let heights = (0..<cols).map { c in 1 + Int((sin(Double(c) * 0.11) + 1) * 1.4 + (sin(Double(c) * 0.037 + 2) + 1)) }
         let top = heights.max() ?? 1
         let rows = (0..<top).map { r in String((0..<cols).map { heights[$0] >= top - r ? "#" : " " }) }
-        add(Art.sprite(rows, ["#": "#FFFFFF"], ink: "#C3D3E3", seed: 80), x: 0, y: H - CGFloat(top) * 12, opacity: 0.95)
+        add(Art.sprite(rows, ["#": a("drift", "#FFFFFF")], ink: a("driftInk", "#C3D3E3"), seed: 80), x: 0, y: H - CGFloat(top) * 12, opacity: dark ? 0.55 : 0.95)
         let speeds: [CGFloat] = [14, 24, 40]
-        particles(90, art: { Art.glyph($0 % 3 == 2 ? "*" : "·", "#FFFFFF", size: [9, 12, 14][$0 % 3]) },
+        particles(90, art: { Art.glyph($0 % 3 == 2 ? "*" : "·", a("flake", "#FFFFFF"), size: [9, 12, 14][$0 % 3]) },
                   from: { CGPoint(x: rnd($0, 2) * W, y: -15) },
                   to: { CGPoint(x: rnd($0, 2) * W + (H + 30) / speeds[$0 % 3] * 4, y: H + 15) },
                   duration: { Double((H + 30) / speeds[$0 % 3]) }, opacity: { 0.65 + 0.1 * Float($0 % 3) }, sway: 20, spin: false)
@@ -1026,7 +1101,7 @@ enum SceneChoice: Hashable {
 struct SceneSection: Identifiable {
     let title: String?
     let items: [SceneChoice]
-    var id: String { title ?? "" }
+    var id: String { title ?? "-" }
 }
 
 /// One tile: a still of the scene, its name, a check when it is the current choice.
@@ -1078,14 +1153,23 @@ struct SceneStrip: View {
     /// Picker sections: the scenes, the user's own, and the first versions (kept to compare).
     var sections: [SceneSection] {
         let all = Scenes.all
+        let wsId = scope.hasPrefix("workspace:") ? String(scope.dropFirst("workspace:".count)) : model.selectedWorkspaceId
+        let ws = model.state.workspaces.first { $0.id == wsId }
+        let builtIn = all.filter { $0.kind != .custom }
         return [
-            SceneSection(title: nil, items: (scope.hasPrefix("workspace:") ? [.global] : []) + [.none] + all.filter { $0.kind != .custom && !$0.legacy }.map { .scene($0.id) }),
+            SceneSection(title: nil, items: (scope.hasPrefix("workspace:") ? [.global] : []) + [.none]),
+            SceneSection(title: ws.map { "Goes with \($0.name)'s color" }, items: Scenes.matching(ws?.color).map { .scene($0.id) }),
+            SceneSection(title: "Dark", items: builtIn.filter(\.dark).map { .scene($0.id) }),
+            SceneSection(title: "Light", items: builtIn.filter { !$0.dark }.map { .scene($0.id) }),
             SceneSection(title: "Your scenes", items: all.filter { $0.kind == .custom }.map { .scene($0.id) }),
-            SceneSection(title: "Earlier versions · for comparison", items: all.filter(\.legacy).map { .scene($0.id) }),
         ].filter { !$0.items.isEmpty }
     }
 
-    var choices: [SceneChoice] { sections.flatMap(\.items) }
+    /// Every choice once, in picker order (arrow keys).
+    var choices: [SceneChoice] {
+        var seen = Set<SceneChoice>()
+        return sections.flatMap(\.items).filter { seen.insert($0).inserted }
+    }
 
     func current() -> SceneChoice {
         let v = model.settingValue("appearance.scene", scope: scope)?.string
@@ -1163,6 +1247,8 @@ final class ScenePickerPanel {
     final class PickerState: ObservableObject {
         @Published var allWorkspaces = false
         @Published var highlighted: SceneChoice?
+        /// The grid scrolls inside this height (the list is taller than small windows).
+        @Published var gridHeight: CGFloat = 520
     }
 
     var isOpen: Bool { panel != nil }
@@ -1174,6 +1260,7 @@ final class ScenePickerPanel {
         let ws = AppModel.shared.selectedWorkspaceId
         state.allWorkspaces = ws == nil
         state.highlighted = nil
+        state.gridHeight = max(220, min(620, win.frame.height - 210))
         let host = NSHostingView(rootView: ScenePickerView(state: state).environmentObject(AppModel.shared))
         host.sizingOptions = [.intrinsicContentSize]
         let p = DropdownAnchor<EmptyView>.Panel(contentRect: NSRect(origin: .zero, size: host.fittingSize),
@@ -1265,8 +1352,12 @@ struct ScenePickerView: View {
                 }
                 .buttonStyle(IconButtonStyle(size: 22)).help("Close (Esc)")
             }
-            SceneStrip(scope: scope, tileWidth: 104, wrapRows: true, highlighted: $state.highlighted)
-                .frame(width: 104 * 5 + 12 * 4, alignment: .leading)
+            ScrollView {
+                SceneStrip(scope: scope, tileWidth: 104, wrapRows: true, highlighted: $state.highlighted)
+                    .frame(width: 104 * 5 + 12 * 4, alignment: .leading)
+                    .padding(.vertical, 2)
+            }
+            .frame(width: 104 * 5 + 12 * 4 + 14, height: state.gridHeight)
             Text("Point at a scene to try it on the whole window. Click to keep it; Esc puts the old one back.")
                 .font(.system(size: 11)).foregroundStyle(T.text3)
             if scope == "global", let ws, model.workspaceSceneOverride(ws.id) != nil {

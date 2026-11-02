@@ -24,12 +24,25 @@ final class SceneResolveTests: XCTestCase {
         XCTAssertEqual(Scenes.resolve(workspace: "w1", settings: s), "rain")
     }
 
-    func testBuiltInIdsAreUniqueAndLegacyIdsStillResolve() {
+    func testBuiltInIdsAreUniqueAndOldIdsStillResolve() {
         let ids = Scenes.builtIn.map(\.id)
         XCTAssertEqual(Set(ids).count, ids.count)
-        // Settings saved with the first versions keep working until they are mapped to the new scenes.
-        for id in ["night-sky", "reef", "fireflies", "sky"] { XCTAssertEqual(Scenes.scene(id)?.legacy, true, id) }
-        for id in ["aurora", "reef-v2", "circuit", "kites"] { XCTAssertEqual(Scenes.scene(id)?.legacy, false, id) }
+        // Settings saved with the first versions keep working.
+        XCTAssertEqual(Scenes.scene("night-sky")?.name, "Nightfall")
+        XCTAssertEqual(Scenes.scene("fireflies")?.name, "Glade")
+        XCTAssertEqual(Scenes.scene("sky")?.name, "Daydream")
+        XCTAssertEqual(Scenes.scene("reef")?.id, "reef-v2")
+    }
+
+    func testEveryWorkspaceColorHasMatchingScenes() {
+        for hex in Palette.colors { XCTAssertFalse(Scenes.matching(hex).isEmpty, hex) }
+        XCTAssertTrue(Scenes.matching(nil).isEmpty)
+    }
+
+    func testEveryKindHasDarkAndLightOrIsDeliberatelyOneSided() {
+        let dark = Set(Scenes.builtIn.filter(\.dark).map(\.name)), light = Set(Scenes.builtIn.filter { !$0.dark }.map(\.name))
+        XCTAssertGreaterThanOrEqual(dark.count, 8)
+        XCTAssertGreaterThanOrEqual(light.count, 6)
     }
 }
 
