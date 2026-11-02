@@ -17,6 +17,8 @@ final class AppModel: ObservableObject {
     @Published var sidebarVisible = true
     /// Sidebar shown floating over the content while it is hidden (pointer at the left edge).
     @Published var sidebarPeek = false
+    /// Dock terminal opened automatically per project (dropped on close when unused).
+    var autoDockSession: [String: String] = [:]
     /// Debug channel only: shows a project row's hover controls in screenshots.
     @Published var debugHoverProject: String?
     @Published var sidebarWidth: CGFloat = CGFloat(UserDefaults.standard.object(forKey: "ade.sidebarWidth") as? Double ?? 252) {
@@ -280,6 +282,22 @@ final class AppModel: ObservableObject {
             defaults.set(newValue ?? "terminal", forKey: "ade.lastNew")
             objectWillChange.send()
         }
+    }
+
+    /// Closes a tab. With `confirmBusy` (middle click), asks first when an agent in it is working or waiting.
+    func closeTab(_ tabId: String, confirmBusy: Bool) {
+        guard let tab = state.tabs.first(where: { $0.id == tabId }) else { return }
+        let busy = tab.layout.sessions.compactMap { session($0) }
+            .filter { $0.kind == .agent && !$0.isDormant && ($0.activity == .working || $0.activity == .needsInput) }
+        if confirmBusy, let s = busy.first {
+            let a = NSAlert()
+            a.messageText = "Close “\(s.displayTitle)”?"
+            a.informativeText = s.activity == .working ? "The agent is still working. Closing the tab stops it." : "The agent is waiting for your input. Closing the tab stops it."
+            a.addButton(withTitle: "Close Tab")
+            a.addButton(withTitle: "Cancel")
+            guard a.runModal() == .alertFirstButtonReturn else { return }
+        }
+        client(for: tabId).call("tab.close", ["id": tabId], completion: report)
     }
 
     /// Starts a session and remembers the choice for the tab bar's button.

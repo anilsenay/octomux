@@ -18,30 +18,56 @@ enum Palette {
     static var selection: Color { T.selection }
 }
 
-/// Claude's mark: three crossing strokes (drawn, so it scales and tints cleanly).
-struct ClaudeMark: Shape {
+/// Claude's spark: tapered rays of uneven length around a small core.
+struct ClaudeSpark: Shape {
+    static let rays: [(angle: Double, length: Double)] = [
+        (0, 1.0), (31, 0.86), (62, 0.97), (90, 0.8), (118, 0.98), (151, 0.84),
+        (180, 1.0), (209, 0.88), (241, 0.96), (270, 0.82), (299, 0.99), (330, 0.86),
+    ]
     func path(in r: CGRect) -> Path {
         var p = Path()
-        let cx = r.midX, cy = r.midY, rad = min(r.width, r.height) / 2
-        for a in [90.0, 30.0, -30.0] {
-            let t = a * .pi / 180
-            p.move(to: CGPoint(x: cx - cos(t) * rad, y: cy - sin(t) * rad))
-            p.addLine(to: CGPoint(x: cx + cos(t) * rad, y: cy + sin(t) * rad))
+        let c = CGPoint(x: r.midX, y: r.midY), R = min(r.width, r.height) / 2
+        for ray in Self.rays {
+            let t = ray.angle * .pi / 180
+            let len = R * ray.length, base = R * 0.15, inner = 0.0
+            let dir = CGPoint(x: cos(t), y: sin(t)), n = CGPoint(x: -sin(t), y: cos(t))
+            let b0 = CGPoint(x: c.x + dir.x * inner + n.x * base, y: c.y + dir.y * inner + n.y * base)
+            let b1 = CGPoint(x: c.x + dir.x * inner - n.x * base, y: c.y + dir.y * inner - n.y * base)
+            let tip = CGPoint(x: c.x + dir.x * len, y: c.y + dir.y * len)
+            let tipW = R * 0.06
+            p.move(to: b0)
+            p.addLine(to: CGPoint(x: tip.x + n.x * tipW, y: tip.y + n.y * tipW))
+            p.addQuadCurve(to: CGPoint(x: tip.x - n.x * tipW, y: tip.y - n.y * tipW),
+                           control: CGPoint(x: tip.x + dir.x * tipW * 1.6, y: tip.y + dir.y * tipW * 1.6))
+            p.addLine(to: b1)
+            p.closeSubpath()
         }
         return p
     }
 }
 
-struct HexMark: Shape {
+/// Four-point star with concave sides (Gemini-style sparkle).
+struct FourPointStar: Shape {
     func path(in r: CGRect) -> Path {
         var p = Path()
-        let cx = r.midX, cy = r.midY, rad = min(r.width, r.height) / 2
-        for i in 0..<6 {
-            let t = (Double(i) * 60 - 90) * .pi / 180
-            let pt = CGPoint(x: cx + cos(t) * rad, y: cy + sin(t) * rad)
-            if i == 0 { p.move(to: pt) } else { p.addLine(to: pt) }
-        }
+        let c = CGPoint(x: r.midX, y: r.midY), R = min(r.width, r.height) / 2
+        let pts = [CGPoint(x: c.x, y: c.y - R), CGPoint(x: c.x + R, y: c.y), CGPoint(x: c.x, y: c.y + R), CGPoint(x: c.x - R, y: c.y)]
+        p.move(to: pts[0])
+        for i in 1...4 { p.addQuadCurve(to: pts[i % 4], control: c) }
         p.closeSubpath()
+        return p
+    }
+}
+
+/// Three crossed capsules forming a six-petal knot (OpenAI/Codex-style).
+struct Rosette: Shape {
+    func path(in r: CGRect) -> Path {
+        var p = Path()
+        let c = CGPoint(x: r.midX, y: r.midY), R = min(r.width, r.height) / 2
+        for i in 0..<3 {
+            let link = Path(roundedRect: CGRect(x: -R * 0.3, y: -R * 0.92, width: R * 0.6, height: R * 1.84), cornerRadius: R * 0.3)
+            p.addPath(link, transform: CGAffineTransform(translationX: c.x, y: c.y).rotated(by: Double(i) * .pi / 3))
+        }
         return p
     }
 }
@@ -54,16 +80,16 @@ struct AgentIcon: View {
     var body: some View {
         switch icon {
         case "claude":
-            ClaudeMark().stroke(T.claude, style: StrokeStyle(lineWidth: max(1.6, size / 6), lineCap: .round))
-                .frame(width: size, height: size)
+            ClaudeSpark().fill(T.claude).frame(width: size, height: size)
         case "codex":
-            HexMark().stroke(T.text, style: StrokeStyle(lineWidth: max(1.2, size / 8), lineJoin: .round))
+            Rosette().stroke(T.text, style: StrokeStyle(lineWidth: max(1.1, size / 10)))
                 .frame(width: size, height: size)
         case "gemini":
-            Image(systemName: "sparkle").font(.system(size: size)).foregroundStyle(T.blue)
-        case "terminal":
-            Image(systemName: "chevron.right").font(.system(size: size * 0.8, weight: .bold)).foregroundStyle(T.text3)
+            FourPointStar().fill(LinearGradient(colors: [Color(hex: "#4F8DF7"), Color(hex: "#A06CF0")], startPoint: .topLeading, endPoint: .bottomTrailing))
                 .frame(width: size, height: size)
+        case "terminal":
+            Image(systemName: "apple.terminal").font(.system(size: size * 0.92, weight: .regular)).foregroundStyle(T.text2)
+                .frame(width: size + 2, height: size)
         case "action":
             Image(systemName: "play.fill").font(.system(size: size - 2)).foregroundStyle(T.text3)
         default:
@@ -364,4 +390,22 @@ struct Hairline: View {
     var body: some View {
         Rectangle().fill(T.border).frame(width: vertical ? 1 : nil, height: vertical ? nil : 1)
     }
+}
+
+/// Catches middle-button clicks over a view (SwiftUI has no gesture for it); other clicks pass through.
+struct MiddleClick: NSViewRepresentable {
+    let action: () -> Void
+    final class V: NSView {
+        var action: (() -> Void)?
+        override func hitTest(_ point: NSPoint) -> NSView? {
+            guard let e = NSApp.currentEvent, e.type == .otherMouseDown || e.type == .otherMouseUp, e.buttonNumber == 2 else { return nil }
+            return super.hitTest(point)
+        }
+        override func otherMouseDown(with event: NSEvent) {}
+        override func otherMouseUp(with event: NSEvent) {
+            if event.buttonNumber == 2 { action?() }
+        }
+    }
+    func makeNSView(context: Context) -> V { let v = V(); v.action = action; return v }
+    func updateNSView(_ v: V, context: Context) { v.action = action }
 }

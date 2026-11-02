@@ -160,6 +160,9 @@ pub struct Session {
     /// Agent transcript file reported by hooks (`transcript_path`); used by the chat view.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transcript_path: Option<String>,
+    /// Conversation title from the agent's transcript (Claude `custom-title`, else `ai-title`).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub agent_title: String,
 }
 
 /// Pane layout of a tab.

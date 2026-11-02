@@ -769,3 +769,35 @@ fn workspace_icon_is_optional_and_clearable() {
     let w2 = e.call("workspace.create", json!({ "name": "Work", "icon": "🛠" }));
     assert_eq!(w2["icon"], "🛠");
 }
+
+#[test]
+fn agent_title_comes_from_the_transcript() {
+    let e = Env::new();
+    let p = e.project();
+    let script = fake_agent(&e);
+    let prof = e.call("profile.create", json!({ "name": "c", "kind": "claude", "command": script, "via_login_shell": false }));
+    let r = e.call("session.create", json!({ "project_id": p, "profile_id": prof["id"] }));
+    let id = r["session"]["id"].as_str().unwrap().to_string();
+    let tp = e.home.join("conv.jsonl");
+    std::fs::write(&tp, "{\"type\":\"user\",\"message\":{\"content\":\"selam\"}}\n").unwrap();
+    let mut c = Command::new(BIN)
+        .args(["hook", "SessionStart"])
+        .env("ADE_HOME", &e.home)
+        .env("ADE_SESSION_ID", &id)
+        .stdin(Stdio::piped())
+        .spawn()
+        .unwrap();
+    c.stdin.take().unwrap().write_all(json!({ "session_id": "conv", "transcript_path": tp }).to_string().as_bytes()).unwrap();
+    assert!(c.wait().unwrap().success());
+    let title = |e: &Env| e.session(&id)["agent_title"].as_str().unwrap_or("").to_string();
+    // ai-title arrives (written in two parts: a partial line must not be read early).
+    let mut f = std::fs::OpenOptions::new().append(true).open(&tp).unwrap();
+    f.write_all(b"{\"type\":\"ai-title\",\"aiTitle\":\"Turkish Gre").unwrap();
+    std::thread::sleep(Duration::from_secs(4));
+    assert_eq!(title(&e), "");
+    f.write_all(b"eting Discussion\",\"sessionId\":\"conv\"}\n").unwrap();
+    wait_until(Duration::from_secs(10), || title(&e) == "Turkish Greeting Discussion");
+    // A /rename (custom-title) wins over later ai-titles.
+    f.write_all(b"{\"type\":\"custom-title\",\"customTitle\":\"Mine\"}\n{\"type\":\"ai-title\",\"aiTitle\":\"Other\"}\n").unwrap();
+    wait_until(Duration::from_secs(10), || title(&e) == "Mine");
+}

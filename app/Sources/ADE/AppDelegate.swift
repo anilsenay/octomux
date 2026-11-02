@@ -66,6 +66,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     /// Two-finger horizontal swipe over the sidebar switches workspaces.
     private func installSwipeMonitor() {
         NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+            // Scrolling over the workspace switcher steps through workspaces.
+            if let win = event.window, let content = win.contentView {
+                let p = event.locationInWindow
+                let topLeft = CGPoint(x: p.x, y: content.bounds.height - p.y)
+                if WorkspaceScroller.shared.rects[ObjectIdentifier(win)]?.contains(topLeft) == true {
+                    WorkspaceScroller.shared.handle(event)
+                    return nil
+                }
+            }
             guard let self, let win = event.window, win === self.mainWindow, AppModel.shared.sidebarVisible,
                   event.locationInWindow.x < AppModel.shared.sidebarWidth, event.hasPreciseScrollingDeltas else { return event }
             if event.phase == .began { self.swipeAccum = 0 }
@@ -200,7 +209,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
     @objc func showMain(_ s: Any?) { openMainWindow() }
     @objc func newTerminal(_ s: Any?) { model.newSession(profileId: nil) }
-    @objc func newAgent(_ s: Any?) { model.newSession(profileId: (model.pinnedProfiles.first ?? model.enabledProfiles.first)?.id) }
+    @objc func newAgent(_ s: Any?) { model.newSession(profileId: (model.profile(model.lastNewSessionProfile) ?? model.pinnedProfiles.first ?? model.enabledProfiles.first)?.id) }
     @objc func splitRight(_ s: Any?) { model.newSession(profileId: nil, split: .right) }
     @objc func splitDown(_ s: Any?) { model.newSession(profileId: nil, split: .down) }
     @objc func addProject(_ s: Any?) { model.addProject() }

@@ -33,6 +33,39 @@ pub struct Daemon {
     dirty: Sender<()>,
     login_path: Mutex<Option<String>>,
     aliases: Mutex<Vec<(String, String)>>,
+    /// Per session: transcript path, bytes already scanned, titles seen so far (custom, ai).
+    title_scan: Mutex<HashMap<String, TitleScan>>,
+}
+
+#[derive(Default)]
+struct TitleScan {
+    path: String,
+    offset: u64,
+    custom: Option<String>,
+    ai: Option<String>,
+}
+
+/// Title records in a Claude transcript chunk: the last `custom-title` (set by /rename) and `ai-title`.
+pub(crate) fn scan_titles(chunk: &str, custom: &mut Option<String>, ai: &mut Option<String>) {
+    for line in chunk.lines() {
+        if !line.contains("-title\"") {
+            continue;
+        }
+        let Ok(v) = serde_json::from_str::<Value>(line) else { continue };
+        match v.get("type").and_then(|t| t.as_str()) {
+            Some("custom-title") => {
+                if let Some(t) = v.get("customTitle").and_then(|t| t.as_str()).filter(|t| !t.trim().is_empty()) {
+                    *custom = Some(t.trim().to_string());
+                }
+            }
+            Some("ai-title") => {
+                if let Some(t) = v.get("aiTitle").and_then(|t| t.as_str()).filter(|t| !t.trim().is_empty()) {
+                    *ai = Some(t.trim().to_string());
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 pub fn run(paths: Paths) -> Result<()> {
@@ -66,6 +99,7 @@ pub fn run(paths: Paths) -> Result<()> {
         dirty: dirty_tx,
         login_path: Mutex::new(None),
         aliases: Mutex::new(Vec::new()),
+        title_scan: Mutex::new(HashMap::new()),
     });
 
     // Bind under a private name, then atomically publish (never unlink a live socket).
@@ -94,6 +128,13 @@ pub fn run(paths: Paths) -> Result<()> {
         std::thread::spawn(move || loop {
             std::thread::sleep(Duration::from_secs(60));
             d.poll_codex_usage();
+        });
+    }
+    {
+        let d = d.clone();
+        std::thread::spawn(move || loop {
+            std::thread::sleep(Duration::from_secs(3));
+            d.poll_agent_titles();
         });
     }
 
@@ -385,6 +426,69 @@ impl Daemon {
         }
     }
 
+    /// Picks up conversation titles agents write to their transcripts (only the new bytes each time).
+    pub(crate) fn poll_agent_titles(&self) {
+        let targets: Vec<(String, String)> = {
+            let st = self.state.lock().unwrap();
+            st.sessions
+                .iter()
+                .filter(|s| s.state == SessionState::Running)
+                .filter_map(|s| s.transcript_path.clone().map(|p| (s.id.clone(), p)))
+                .collect()
+        };
+        let mut updates = Vec::new();
+        {
+            let mut scans = self.title_scan.lock().unwrap();
+            scans.retain(|id, _| targets.iter().any(|(t, _)| t == id));
+            for (id, path) in targets {
+                let sc = scans.entry(id.clone()).or_default();
+                if sc.path != path {
+                    *sc = TitleScan { path: path.clone(), ..Default::default() };
+                }
+                let Ok(mut f) = std::fs::File::open(&path) else { continue };
+                let len = f.metadata().map(|m| m.len()).unwrap_or(0);
+                if len < sc.offset {
+                    *sc = TitleScan { path: path.clone(), ..Default::default() };
+                }
+                if len == sc.offset {
+                    continue;
+                }
+                use std::io::{Read, Seek, SeekFrom};
+                if f.seek(SeekFrom::Start(sc.offset)).is_err() {
+                    continue;
+                }
+                let mut buf = Vec::new();
+                if f.take(len - sc.offset).read_to_end(&mut buf).is_err() {
+                    continue;
+                }
+                // Only whole lines; a partial last line is read again next time.
+                let Some(end) = buf.iter().rposition(|b| *b == b'\n') else { continue };
+                sc.offset += end as u64 + 1;
+                let (mut c, mut a) = (sc.custom.take(), sc.ai.take());
+                scan_titles(&String::from_utf8_lossy(&buf[..end]), &mut c, &mut a);
+                sc.custom = c;
+                sc.ai = a;
+                if let Some(t) = sc.custom.clone().or_else(|| sc.ai.clone()) {
+                    updates.push((id, t));
+                }
+            }
+        }
+        let mut any = false;
+        for (id, t) in updates {
+            if self.with_session(&id, |s| {
+                let changed = s.agent_title != t;
+                s.agent_title = t.clone();
+                changed
+            }) == Some(true)
+            {
+                any = true;
+            }
+        }
+        if any {
+            self.changed();
+        }
+    }
+
     fn set_activity(&self, id: &str, new: Activity) {
         let info = {
             let mut st = self.state.lock().unwrap();
@@ -405,7 +509,7 @@ impl Daemon {
             (copy, project, profile)
         };
         let (s, project, profile) = info;
-        let name = if !s.custom_title.is_empty() { s.custom_title.clone() } else if !s.title.is_empty() { s.title.clone() } else { profile.clone().unwrap_or("Session".into()) };
+        let name = if !s.custom_title.is_empty() { s.custom_title.clone() } else if !s.agent_title.is_empty() { s.agent_title.clone() } else if !s.title.is_empty() { s.title.clone() } else { profile.clone().unwrap_or("Session".into()) };
         let agent = profile.unwrap_or_else(|| "Terminal".into());
         let note = match new {
             Activity::Done => Some(("done", format!("{agent} finished"), format!("{project} · {name}"))),
@@ -1085,6 +1189,7 @@ impl Daemon {
             command,
             worktree,
             transcript_path: None,
+            agent_title: String::new(),
         };
         {
             let mut st = self.state.lock().unwrap();

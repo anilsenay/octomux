@@ -129,3 +129,21 @@ final class HostTests: XCTestCase {
         XCTAssertFalse(h.controlArgv!.joined(separator: " ").contains("ControlMaster"))
     }
 }
+
+final class WorkspaceScrollTests: XCTestCase {
+    private func wheel(_ dy: Int32) -> NSEvent {
+        let cg = CGEvent(scrollWheelEvent2Source: nil, units: .line, wheelCount: 1, wheel1: dy, wheel2: 0, wheel3: 0)!
+        return NSEvent(cgEvent: cg)!
+    }
+
+    func testWheelStepsOncePerBurst() {
+        let s = WorkspaceScroller()
+        var steps: [Int] = []
+        s.onStep = { steps.append($0) }
+        for _ in 0..<6 { s.handle(wheel(-3)) }          // spinning the wheel: one step
+        XCTAssertEqual(steps, [1])
+        Thread.sleep(forTimeInterval: 0.45)              // pause, then the other way
+        s.handle(wheel(3)); s.handle(wheel(3))
+        XCTAssertEqual(steps, [1, -1])
+    }
+}

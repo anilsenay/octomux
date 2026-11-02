@@ -176,6 +176,12 @@ enum DebugActions {
             let view: AnyView
             switch name {
             case "usage": view = AnyView(UsagePopover().environmentObject(AppModel.shared))
+            case "icons":
+                view = AnyView(HStack(spacing: 24) {
+                    ForEach(["claude", "codex", "gemini", "terminal"], id: \.self) { i in
+                        VStack(spacing: 10) { AgentIcon(icon: i, size: 64); AgentIcon(icon: i, size: 13); Text(i).font(.caption) }
+                    }
+                }.padding(24).background(T.surface))
             case "action_editor":
                 view = AnyView(ActionEditor(action: ProjectAction(name: "Test", icon: "flask", command: "cargo test"), done: {}).environmentObject(AppModel.shared).background(T.surface))
             case "new_worktree":

@@ -49,8 +49,14 @@ extension AppModel {
         guard let p = currentProject?.id else { return }
         let open = !isDockOpen(p)
         setDockOpen(p, open)
-        // Opening an empty dock gives you a terminal right away.
-        if open && dockSessions(p).isEmpty { newDockTerminal() }
+        // Opening an empty dock gives you a terminal right away; closing the dock drops that terminal again
+        // if it was never used, so it doesn't linger as "1 in dock".
+        if open && dockSessions(p).isEmpty {
+            createDockSession(projectId: p, command: nil, title: nil, auto: true)
+        } else if !open, let auto = autoDockSession[p], dockSessions(p).map(\.id) == [auto],
+                  !TerminalSurfaceView.touched.contains(auto) {
+            remove(auto, confirm: false)
+        }
         DispatchQueue.main.async { TerminalHost.shared.renderDock(force: true, focus: open) }
         if !open { TerminalHost.shared.focusCurrent() }
     }
@@ -61,7 +67,7 @@ extension AppModel {
         createDockSession(projectId: p, command: nil, title: nil)
     }
 
-    private func createDockSession(projectId: String, command: String?, title: String?) {
+    private func createDockSession(projectId: String, command: String?, title: String?, auto: Bool = false) {
         var params: [String: Any] = ["project_id": projectId, "placement": "dock"]
         if let command { params["command"] = command }
         if let title { params["title"] = title }
@@ -70,6 +76,7 @@ extension AppModel {
             switch r {
             case .success(let v):
                 if let s = (v as? [String: Any])?["session"] as? [String: Any], let id = s["id"] as? String {
+                    if auto { self.autoDockSession[projectId] = id } else { self.autoDockSession[projectId] = nil }
                     self.selectDock(projectId, id)
                 }
             case .failure(let e): self.lastError = "\(e)"

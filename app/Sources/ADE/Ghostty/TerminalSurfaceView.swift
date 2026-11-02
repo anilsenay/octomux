@@ -155,7 +155,11 @@ final class TerminalSurfaceView: NSView, NSTextInputClient {
 
     // MARK: Keyboard
 
+    /// Sessions the user has typed into (an untouched auto-opened dock terminal can be dropped on close).
+    static var touched = Set<String>()
+
     override func keyDown(with event: NSEvent) {
+        Self.touched.insert(sessionId)
         guard let surface else {
             interpretKeyEvents([event])
             return

@@ -347,6 +347,7 @@ struct TabChip: View {
     var maxChars = 24
     var width: CGFloat? = nil
     @State private var hover = false
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         let m = T.m
@@ -354,7 +355,7 @@ struct TabChip: View {
         let ids = tab.layout.sessions
         let lead = model.session(tab.activeSessionId ?? ids.first)
         HStack(spacing: 7) {
-            if let lead { AgentIcon(icon: iconName(for: lead, model: model), size: 11).opacity(selected ? 1 : 0.75) }
+            if let lead { AgentIcon(icon: iconName(for: lead, model: model), size: 11).opacity(selected ? 1 : 0.5).saturation(selected ? 1 : 0.6) }
             if width != nil {
                 Text(lead?.displayTitle ?? "Tab").lineLimit(1).truncationMode(.tail)
             } else {
@@ -367,13 +368,13 @@ struct TabChip: View {
                 else if s.activity == .working { Circle().fill(T.accent).frame(width: 6, height: 6) }
                 else { Circle().fill(T.green).frame(width: 6, height: 6) }
             }
-            Button { model.client(for: tab.id).call("tab.close", ["id": tab.id]) } label: {
+            Button { model.closeTab(tab.id, confirmBusy: false) } label: {
                 Image(systemName: "xmark").font(.system(size: 8, weight: .bold))
             }
             .buttonStyle(IconButtonStyle(size: 16)).opacity(hover ? 1 : 0)
         }
         .font(.system(size: 12.5, weight: selected ? .semibold : .medium))
-        .foregroundStyle(selected ? T.text : T.text3)
+        .foregroundStyle(selected ? T.text : hover ? T.text2 : T.text3.opacity(0.85))
         .padding(.leading, 11).padding(.trailing, 6)
         .frame(width: width, height: m.tabStyle == .underline ? m.topH : m.tabH)
         .background(background(selected: selected))
@@ -386,6 +387,7 @@ struct TabChip: View {
         .onHover { hover = $0 }
         .pointerCursor()
         .onTapGesture { model.selectTab(tab.id) }
+        .overlay(MiddleClick { model.closeTab(tab.id, confirmBusy: true) })
         .help(index < 9 ? "⌘\(index + 1)" : "")
     }
 
@@ -399,10 +401,12 @@ struct TabChip: View {
         case .underline:
             Rectangle().fill(hover && !selected ? T.hover : .clear)
         case .pill, .segment:
+            let dark = scheme == .dark
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(selected ? T.raised : hover ? T.border : T.hover)
-                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(selected ? T.border : .clear))
-                .shadow(color: .black.opacity(selected ? 0.18 : 0), radius: 1, y: 1)
+                .fill(selected ? (dark ? Color.white.opacity(0.13) : T.raised)
+                      : hover ? (dark ? Color.white.opacity(0.07) : Color.black.opacity(0.06))
+                      : (dark ? Color.white.opacity(0.03) : Color.black.opacity(0.03)))
+                .shadow(color: .black.opacity(selected && !dark ? 0.14 : 0), radius: 1.5, y: 1)
         }
     }
 }
@@ -436,37 +440,40 @@ struct NewSessionItems: View {
 }
 
 /// Tab bar: one button that starts the last used kind of session, with a menu for the others.
+/// The two halves highlight and explain themselves separately.
 struct NewSessionButton: View {
     @EnvironmentObject var model: AppModel
-    @State private var hover = false
+    @State private var hoverMain = false
+    @State private var hoverMenu = false
 
     var body: some View {
         let last = model.profile(model.lastNewSessionProfile)
-        HStack(spacing: 0) {
-            Button { model.newSession(profileId: last?.id) } label: {
-                HStack(spacing: 3) {
-                    AgentIcon(icon: last?.icon ?? "terminal", size: 12).frame(width: 14, height: 14)
-                    Image(systemName: "plus").font(.system(size: 8, weight: .bold)).foregroundStyle(T.text3)
-                }
-                .padding(.leading, 7).padding(.trailing, 2)
-                .frame(height: 26)
+        HStack(spacing: 1) {
+            ZStack(alignment: .topTrailing) {
+                AgentIcon(icon: last?.icon ?? "terminal", size: 13).frame(width: 15, height: 15)
+                Image(systemName: "plus").font(.system(size: 7, weight: .black)).foregroundStyle(hoverMain ? T.text : T.text2)
+                    .offset(x: 5, y: -4)
             }
-            .buttonStyle(.plain)
-            .help("New \(last?.name ?? "Terminal") (\(last == nil ? "⌘T" : "⌘⇧T"))")
+            .frame(width: 30, height: 26)
+            .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(hoverMain ? T.hover : .clear))
+            .contentShape(Rectangle())
+            .onHover { hoverMain = $0 }
+            .pointerCursor()
+            .onTapGesture { model.newSession(profileId: last?.id) }
+            .help("New \(last?.name ?? "Terminal") tab  \(last == nil ? "⌘T" : "⌘⇧T")")
             Menu {
                 NewSessionItems(projectId: model.currentProject?.id, remember: true)
             } label: {
-                Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold)).foregroundStyle(T.text3)
+                Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold)).foregroundStyle(hoverMenu ? T.text : T.text3)
+                    .frame(width: 16, height: 26)
             }
             .plainMenu()
             .frame(width: 16, height: 26)
-            .help("Choose what to start")
+            .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(hoverMenu ? T.hover : .clear))
+            .onHover { hoverMenu = $0 }
+            .pointerCursor()
+            .help("New tab with… (Terminal, agents)")
         }
-        .padding(.trailing, 2)
-        .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(hover ? T.hover : .clear))
-        .contentShape(Rectangle())
-        .onHover { hover = $0 }
-        .pointerCursor()
     }
 }
 

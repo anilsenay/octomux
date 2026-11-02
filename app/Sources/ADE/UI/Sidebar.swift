@@ -35,7 +35,7 @@ struct SidebarView: View {
                             }
                             let dock = model.state.sessions.filter { $0.projectId == p.id && $0.placement == .dock }
                             if !dock.isEmpty {
-                                Text("\(dock.count) in dock").font(T.caption).foregroundStyle(T.text3).padding(.leading, 20).frame(height: 20)
+                                DockCountRow(project: p, count: dock.count)
                             }
                         }
                     }
@@ -169,6 +169,62 @@ struct WorkspaceSwitcher: View {
                 WorkspaceButton(workspace: w, selected: w.id == model.selectedWorkspaceId)
             }
         }
+        .background(WindowRectReporter { win, rect in WorkspaceScroller.shared.rects[ObjectIdentifier(win)] = rect.insetBy(dx: -6, dy: -6) })
+    }
+}
+
+/// Reports a view's rectangle in its window (top-left origin), for event monitors.
+struct WindowRectReporter: NSViewRepresentable {
+    let report: (NSWindow, CGRect) -> Void
+    final class V: NSView {
+        var report: ((NSWindow, CGRect) -> Void)?
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+        override func layout() { super.layout(); send() }
+        override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); send() }
+        override func setFrameSize(_ s: NSSize) { super.setFrameSize(s); send() }
+        override func setFrameOrigin(_ p: NSPoint) { super.setFrameOrigin(p); send() }
+        func send() {
+            guard let win = window, let content = win.contentView else { return }
+            let r = convert(bounds, to: nil)
+            report?(win, CGRect(x: r.minX, y: content.bounds.height - r.maxY, width: r.width, height: r.height))
+        }
+    }
+    func makeNSView(context: Context) -> V { let v = V(); v.report = report; return v }
+    func updateNSView(_ v: V, context: Context) { v.report = report; DispatchQueue.main.async { v.send() } }
+}
+
+/// Wheel / trackpad scrolling over the workspace switcher: one workspace per gesture (trackpad) or per
+/// burst of wheel clicks, so spinning the wheel does not race through every workspace.
+final class WorkspaceScroller {
+    static let shared = WorkspaceScroller()
+    var rects: [ObjectIdentifier: CGRect] = [:]
+    private var accum: CGFloat = 0
+    private var locked = false
+    private var lastWheel = Date.distantPast
+
+    func handle(_ e: NSEvent) {
+        let d = abs(e.scrollingDeltaY) >= abs(e.scrollingDeltaX) ? e.scrollingDeltaY : -e.scrollingDeltaX
+        if e.hasPreciseScrollingDeltas {
+            if !e.momentumPhase.isEmpty { return }               // ignore the coast after lifting fingers
+            if e.phase == .began || e.phase == .mayBegin { accum = 0; locked = false }
+            if !locked {
+                accum += d
+                if abs(accum) > 22 { step(accum < 0 ? 1 : -1) }
+            }
+            if e.phase == .ended || e.phase == .cancelled { accum = 0; locked = false }
+        } else {
+            let now = Date()
+            if now.timeIntervalSince(lastWheel) > 0.35 { locked = false }   // wheel must pause before the next step
+            lastWheel = now
+            if !locked && d != 0 { step(d < 0 ? 1 : -1) }
+        }
+    }
+
+    var onStep: (Int) -> Void = { d in withAnimation(.easeOut(duration: 0.15)) { AppModel.shared.cycleWorkspace(d) } }
+
+    private func step(_ delta: Int) {
+        locked = true
+        onStep(delta)
     }
 }
 
@@ -580,5 +636,37 @@ enum ProjectEditor {
             if FileManager.default.fileExists(atPath: p), NSImage(contentsOfFile: p) != nil { return p }
         }
         return nil
+    }
+}
+
+/// "N in dock" under a project: click to show or hide that project's dock.
+struct DockCountRow: View {
+    @EnvironmentObject var model: AppModel
+    let project: Project
+    let count: Int
+    @State private var hover = false
+
+    var body: some View {
+        let open = model.isDockOpen(project.id) && model.currentProject?.id == project.id
+        HStack(spacing: 6) {
+            Image(systemName: open ? "chevron.down" : "rectangle.bottomthird.inset.filled").font(.system(size: 9, weight: .semibold))
+            Text("\(count) in dock")
+        }
+        .font(T.caption).foregroundStyle(hover ? T.text2 : T.text3)
+        .padding(.horizontal, 6).frame(height: 20)
+        .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(hover ? T.hover : .clear))
+        .contentShape(Rectangle())
+        .onHover { hover = $0 }
+        .pointerCursor()
+        .onTapGesture {
+            if model.currentProject?.id != project.id {
+                model.selectProject(project.id)
+                if !model.isDockOpen(project.id) { model.toggleDock() }
+            } else {
+                model.toggleDock()
+            }
+        }
+        .help(open ? "Hide the dock" : "Show the dock")
+        .padding(.leading, 14)
     }
 }

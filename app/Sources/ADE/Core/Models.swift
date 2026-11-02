@@ -104,10 +104,13 @@ struct Session: Codable, Identifiable, Equatable {
     var command: String?
     var worktree: String?
     var transcriptPath: String?
+    /// Conversation title the agent wrote to its transcript (Claude ai-title / custom-title).
+    var agentTitle: String?
 
     enum CodingKeys: String, CodingKey {
         case id, kind, title, cwd, state, activity, unread, placement, command, worktree
         case transcriptPath = "transcript_path"
+        case agentTitle = "agent_title"
         case projectId = "project_id"
         case profileId = "profile_id"
         case customTitle = "custom_title"
@@ -119,6 +122,7 @@ struct Session: Codable, Identifiable, Equatable {
 
     var displayTitle: String {
         if !customTitle.isEmpty { return customTitle }
+        if let a = agentTitle, !a.isEmpty { return a }
         if kind == .terminal {
             // Shells usually report a (truncated) path: show the folder name instead.
             var t = title.trimmingCharacters(in: .whitespaces)
