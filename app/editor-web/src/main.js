@@ -426,7 +426,8 @@ function showDiff(p) {
 }
 
 function scrollToFile(key) {
-  const c = diffState.cards.get(key) || [...diffState.cards.values()].find((x) => x.f.path === key);
+  const bare = /^[sucb]:/.test(key) ? key.slice(2) : key;
+  const c = diffState.cards.get(key) || [...diffState.cards.values()].find((x) => x.f.path === key || x.f.path === bare);
   if (!c) return;
   if (c.el.classList.contains("collapsed")) { diffState.collapsed.delete(c.f.key); diffState.opened.add(c.f.key); c.setOpen(true); }
   // Mount everything above (and the target) first, so late-mounting editors don't push it away.

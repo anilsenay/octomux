@@ -290,6 +290,7 @@ struct TopBar: View {
                     .help("\(hidden.count + hiddenDocs.count) more tabs")
                 }
             }
+            .onDrop(of: [.text], delegate: PaneToTabDrop(model: model))
             .padding(m.tabStyle == .segment ? 3 : 0)
             .background(m.tabStyle == .segment && !(model.currentTabs.isEmpty && docs.isEmpty) ? RoundedRectangle(cornerRadius: 9, style: .continuous).fill(T.hover) : nil)
             .fixedSize()
@@ -406,6 +407,22 @@ struct DocChip: View {
         .pointerCursor()
         .onTapGesture { model.selectDoc(doc.id) }
         .overlay(MiddleClick { model.closeDoc(doc.id) })
+        .contextMenu {
+            Button("Close Tab") { model.closeDoc(doc.id) }
+            Divider()
+            Button("Close Other Tabs") { model.closeDocs(model.docs(.others, of: doc.id)) }.disabled(model.docs(.others, of: doc.id).isEmpty)
+            Button("Close Tabs to the Right") { model.closeDocs(model.docs(.right, of: doc.id)) }.disabled(model.docs(.right, of: doc.id).isEmpty)
+            Button("Close Tabs to the Left") { model.closeDocs(model.docs(.left, of: doc.id)) }.disabled(model.docs(.left, of: doc.id).isEmpty)
+            Button("Close All File Tabs") { model.closeDocs(model.currentDocs) }
+            if case .file(let rel) = doc.kind {
+                Divider()
+                Button("Copy Path") { copy((doc.workPath as NSString).appendingPathComponent(rel)) }
+                Button("Copy Relative Path") { copy(rel) }
+                if !model.host(forPath: doc.workPath).0.isRemote {
+                    Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: (doc.workPath as NSString).appendingPathComponent(rel))]) }
+                }
+            }
+        }
         .help(helpText)
     }
 
@@ -468,6 +485,7 @@ struct TabChip: View {
         .pointerCursor()
         .onTapGesture { model.selectTab(tab.id) }
         .overlay(MiddleClick { model.closeTab(tab.id, confirmBusy: true) })
+        .contextMenu { TabMenu(tab: tab) }
         .help(index < 9 ? "⌘\(index + 1)" : "")
     }
 
@@ -736,17 +754,11 @@ struct StatusBar: View {
                 .buttonStyle(.plain).foregroundStyle(T.amber).fixedSize().hoverHighlight(radius: 5, padding: 3).help("Jump to the next session waiting for input (⌘⇧U)")
             }
             if working == 0 && waiting == 0 {
-                Text("Idle").foregroundStyle(T.text3).fixedSize()
+                Text(full ? "No agents busy" : "Idle").foregroundStyle(T.text3).fixedSize()
+                    .help("No agent is working or waiting for input, in any project")
             }
-            if full, let wp = model.currentWorkPath, let branch = git.branch(for: wp) {
-                HStack(spacing: 5) {
-                    Image(systemName: "arrow.triangle.branch").font(.system(size: 10))
-                    Text(branch).font(T.mono(11))
-                    if let stat = git.diffStat(for: wp), stat.files > 0 {
-                        Text("· \(stat.files) changed").foregroundStyle(T.text3)
-                    }
-                }
-                .fixedSize()
+            if let wp = model.currentWorkPath, let branch = git.branch(for: wp) {
+                GitStatusControls(path: wp, branch: branch, full: full)
             }
             Spacer(minLength: 8)
             UsageStatus(compact: !full)
@@ -815,7 +827,16 @@ struct UsagePopover: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Usage limits").font(T.headline).foregroundStyle(T.text)
+            HStack {
+                Text("Usage limits").font(T.headline).foregroundStyle(T.text)
+                Spacer()
+                Button {
+                    model.client.call("usage.refresh", [:])
+                    for c in model.extraClients.values { c.call("usage.refresh", [:]) }
+                } label: { Image(systemName: "arrow.clockwise").font(.system(size: 11, weight: .medium)) }
+                    .buttonStyle(ChromeButtonStyle())
+                    .help("Refresh now (Codex is re-read; Claude updates with its next status line)")
+            }
             let profiles = model.enabledProfiles.filter { p in model.state.usage.contains { $0.profileId == p.id } }
             if profiles.isEmpty {
                 Text("No readings yet. They arrive while a Claude or Codex session runs.").font(T.body).foregroundStyle(T.text2)
@@ -859,5 +880,215 @@ struct UsagePopover: View {
         let f = RelativeDateTimeFormatter()
         f.unitsStyle = .short
         return f.localizedString(for: Date(timeIntervalSince1970: t), relativeTo: Date())
+    }
+}
+
+/// Session tab context menu.
+struct TabMenu: View {
+    @EnvironmentObject var model: AppModel
+    let tab: Tab
+
+    var body: some View {
+        let lead = model.session(tab.activeSessionId ?? tab.layout.sessions.first)
+        if let lead {
+            Button("Rename Tab…") { model.selectTab(tab.id); model.renamingSessionId = lead.id }
+        }
+        if model.activeTab?.id != tab.id, model.activeTab != nil {
+            Button("Open in Current Tab Split") { model.mergeTabIntoCurrent(tab.id) }
+        }
+        if tab.layout.sessions.count > 1, let lead {
+            Button("Move “\(TabChip.clip(lead.displayTitle, 24))” to New Tab") { model.movePaneToNewTab(lead.id) }
+        }
+        Divider()
+        Button("Close Tab") { model.closeTab(tab.id, confirmBusy: true) }
+        Button("Close Other Tabs") { model.closeTabs(model.tabs(.others, of: tab.id)) }.disabled(model.tabs(.others, of: tab.id).isEmpty)
+        Button("Close Tabs to the Right") { model.closeTabs(model.tabs(.right, of: tab.id)) }.disabled(model.tabs(.right, of: tab.id).isEmpty)
+        Button("Close Tabs to the Left") { model.closeTabs(model.tabs(.left, of: tab.id)) }.disabled(model.tabs(.left, of: tab.id).isEmpty)
+        Button("Close All Tabs") { model.closeTabs(model.tabs(.all, of: tab.id)) }
+    }
+}
+
+/// A pane header dropped on the tab strip leaves its split and becomes a tab.
+struct PaneToTabDrop: DropDelegate {
+    let model: AppModel
+    func validateDrop(info: DropInfo) -> Bool { DragItem.current?.kind == "pane" }
+    func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: DragItem.current?.kind == "pane" ? .move : .forbidden) }
+    func performDrop(info: DropInfo) -> Bool {
+        guard let d = DragItem.current, d.kind == "pane" else { return false }
+        DragItem.current = nil
+        model.movePaneToNewTab(d.id)
+        return true
+    }
+}
+
+/// Status bar git controls: branch (click to switch), changed-file count (opens Changes), compare base.
+struct GitStatusControls: View {
+    @EnvironmentObject var model: AppModel
+    @ObservedObject var git = GitInfo.shared
+    let path: String
+    let branch: String
+    let full: Bool
+    @State private var picking = false
+    @State private var pickingBase = false
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Button { picking = true } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "arrow.triangle.branch").font(.system(size: 10, weight: .semibold))
+                    Text(branch).font(T.mono(11, .medium)).lineLimit(1)
+                    Image(systemName: "chevron.up.chevron.down").font(.system(size: 7.5, weight: .bold)).foregroundStyle(T.text3)
+                }
+                .padding(.horizontal, 7).frame(height: 20)
+                .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(T.hover))
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain).pointerCursor().help("Switch branch")
+            .background(PopoverAnchor(isPresented: $picking) {
+                BranchPicker(path: path, mode: .checkout, current: branch) { picking = false }
+            })
+            if let stat = git.diffStat(for: path), stat.files > 0 {
+                Button { model.toggleChangesPanel() } label: {
+                    HStack(spacing: 5) {
+                        Text(full ? "\(stat.files) changed" : "\(stat.files)").foregroundStyle(T.amber)
+                        if full {
+                            Text("+\(stat.added)").foregroundStyle(T.green)
+                            Text("−\(stat.removed)").foregroundStyle(T.red)
+                        }
+                    }
+                    .font(T.mono(11, .medium))
+                    .padding(.horizontal, 7).frame(height: 20)
+                    .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(T.amber.opacity(0.13)))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain).pointerCursor().help("Show changes (\(GitInfo.compareBase(for: path).map { "against " + $0 } ?? "uncommitted"))")
+            }
+            if full {
+                Button { pickingBase = true } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.right").font(.system(size: 8.5, weight: .bold)).foregroundStyle(T.text3)
+                        Text(GitInfo.compareBase(for: path) ?? "uncommitted").font(T.mono(11)).foregroundStyle(GitInfo.compareBase(for: path) == nil ? T.text3 : T.text2).lineLimit(1)
+                        Image(systemName: "chevron.up.chevron.down").font(.system(size: 7.5, weight: .bold)).foregroundStyle(T.text3)
+                    }
+                    .padding(.horizontal, 6).frame(height: 20).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain).hoverHighlight(radius: 6, padding: 0).pointerCursor()
+                .help("Compare against: uncommitted work only, or everything since a branch (e.g. main)")
+                .background(PopoverAnchor(isPresented: $pickingBase) {
+                    BranchPicker(path: path, mode: .base, current: GitInfo.compareBase(for: path)) { pickingBase = false }
+                })
+            }
+        }
+        .fixedSize()
+        .onReceive(NotificationCenter.default.publisher(for: .adeDebugPanel)) { n in
+            if let v = n.userInfo?["branchPicker"] as? String { if v == "base" { pickingBase = true } else if v == "none" { picking = false; pickingBase = false } else { picking = true } }
+        }
+    }
+}
+
+/// Searchable branch list: switch branch, or choose what the Changes views compare against.
+struct BranchPicker: View {
+    enum Mode { case checkout, base }
+    @EnvironmentObject var model: AppModel
+    let path: String
+    let mode: Mode
+    let current: String?
+    let done: () -> Void
+    @State private var query = ""
+    @State private var branches: [String] = []
+    @State private var error: String?
+    @State private var busy = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 7) {
+                Image(systemName: "magnifyingglass").font(.system(size: 11)).foregroundStyle(T.text3)
+                TextField(mode == .checkout ? "Search or create branch" : "Search branches", text: $query)
+                    .textFieldStyle(.plain).font(.system(size: 13))
+                    .onSubmit { if let first = filtered.first { pick(first) } else if mode == .checkout, !query.isEmpty { create(query) } }
+            }
+            .padding(.horizontal, 12).frame(height: 36)
+            Hairline()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 1) {
+                    if mode == .base {
+                        row("Uncommitted changes only", selected: current == nil, mono: false) { choose(nil) }
+                        Text("Since branch").font(T.label).foregroundStyle(T.text3).padding(.horizontal, 10).padding(.top, 8).padding(.bottom, 3)
+                    } else {
+                        Text("Recent").font(T.label).foregroundStyle(T.text3).padding(.horizontal, 10).padding(.top, 6).padding(.bottom, 3)
+                    }
+                    ForEach(filtered, id: \.self) { b in row(b, selected: b == current) { pick(b) } }
+                    if mode == .checkout, !query.isEmpty, !branches.contains(query) {
+                        row("Create branch “\(query)”", selected: false, mono: false, icon: "plus") { create(query) }
+                    }
+                    if filtered.isEmpty && (mode == .base || query.isEmpty) {
+                        Text("No branches").font(T.body).foregroundStyle(T.text3).padding(10)
+                    }
+                }
+                .padding(6)
+            }
+            .frame(height: min(320, CGFloat(filtered.count + (mode == .base ? 2 : 1) + (mode == .checkout && !query.isEmpty && !branches.contains(query) ? 1 : 0)) * 29 + 26))
+            if let error {
+                Hairline()
+                Text(error).font(T.caption).foregroundStyle(T.red).fixedSize(horizontal: false, vertical: true).padding(10)
+            }
+        }
+        .frame(width: 300)
+        .background(T.raised)
+        .disabled(busy)
+        .onAppear {
+            DispatchQueue.global(qos: .userInitiated).async {
+                let b = GitInfo.branches(in: path, remotes: mode == .base)
+                DispatchQueue.main.async { branches = b }
+            }
+        }
+    }
+
+    private var filtered: [String] {
+        query.isEmpty ? branches : branches.filter { $0.localizedCaseInsensitiveContains(query) }
+    }
+
+    private func row(_ text: String, selected: Bool, mono: Bool = true, icon: String? = nil, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: icon ?? "checkmark").font(.system(size: 10, weight: .bold)).foregroundStyle(icon != nil ? T.text2 : T.accent)
+                    .opacity(icon != nil || selected ? 1 : 0).frame(width: 12)
+                Text(text).font(mono ? T.mono(12) : .system(size: 12.5)).foregroundStyle(T.text).lineLimit(1).truncationMode(.middle)
+                Spacer()
+            }
+            .padding(.horizontal, 8).frame(height: 28)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background(HoverFill())
+        .pointerCursor()
+    }
+
+    private func pick(_ b: String) {
+        if mode == .base { choose(b); return }
+        guard b != current else { done(); return }
+        run(["checkout", b])
+    }
+
+    private func create(_ name: String) { run(["checkout", "-b", name.trimmingCharacters(in: .whitespaces)]) }
+
+    private func choose(_ b: String?) {
+        GitInfo.shared.setCompareBase(b, for: path)
+        done()
+    }
+
+    private func run(_ args: [String]) {
+        busy = true
+        error = nil
+        DispatchQueue.global(qos: .userInitiated).async {
+            let r = GitInfo.gitResult(args, in: path)
+            DispatchQueue.main.async {
+                busy = false
+                GitInfo.shared.invalidate(path)
+                if r.ok { done() } else {
+                    error = r.err.split(separator: "\n").filter { !$0.hasPrefix("hint:") }.prefix(4).joined(separator: "\n").nilIfEmpty ?? "git \(args.joined(separator: " ")) failed"
+                }
+            }
+        }
     }
 }

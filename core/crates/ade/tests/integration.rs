@@ -801,3 +801,25 @@ fn agent_title_comes_from_the_transcript() {
     f.write_all(b"{\"type\":\"custom-title\",\"customTitle\":\"Mine\"}\n{\"type\":\"ai-title\",\"aiTitle\":\"Other\"}\n").unwrap();
     wait_until(Duration::from_secs(10), || title(&e) == "Mine");
 }
+
+#[test]
+fn pane_move_joins_tabs_and_splits_back_out() {
+    let e = Env::new();
+    let p = e.project();
+    let a = e.call("session.create", json!({ "project_id": p }))["session"]["id"].as_str().unwrap().to_string();
+    let b = e.call("session.create", json!({ "project_id": p }))["session"]["id"].as_str().unwrap().to_string();
+    let tabs = |e: &Env| e.call("state.get", json!({}))["tabs"].as_array().unwrap().clone();
+    assert_eq!(tabs(&e).len(), 2);
+    // b goes left of a: one tab, Split{right, b, a}; b's old tab is gone, both sessions still run.
+    let t = e.call("pane.move", json!({ "session_id": b, "target_session_id": a, "edge": "left" }));
+    assert_eq!(t["layout"]["type"], "split");
+    assert_eq!(t["layout"]["a"]["session_id"], b.as_str());
+    assert_eq!(t["layout"]["b"]["session_id"], a.as_str());
+    assert_eq!(tabs(&e).len(), 1);
+    assert_eq!(e.session(&b)["state"], "running");
+    // Out into its own tab again.
+    e.call("pane.move", json!({ "session_id": b, "new_tab": true }));
+    let ts = tabs(&e);
+    assert_eq!(ts.len(), 2);
+    assert!(ts.iter().all(|t| t["layout"]["type"] == "leaf"));
+}

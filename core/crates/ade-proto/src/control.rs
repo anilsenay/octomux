@@ -207,6 +207,27 @@ impl PaneNode {
         }
     }
 
+    /// Puts `new_id` next to the leaf `target`: split `dir`, before it (left / top) or after it.
+    pub fn insert(self, target: &str, new_id: &str, dir: SplitDir, before: bool) -> (PaneNode, bool) {
+        match self {
+            PaneNode::Leaf { ref session_id } if session_id == target => {
+                let new = Box::new(PaneNode::Leaf { session_id: new_id.to_string() });
+                let old = Box::new(self.clone());
+                let (a, b) = if before { (new, old) } else { (old, new) };
+                (PaneNode::Split { dir, ratio: 0.5, a, b }, true)
+            }
+            PaneNode::Leaf { .. } => (self, false),
+            PaneNode::Split { dir: d, ratio, a, b } => {
+                let (a2, done) = a.insert(target, new_id, dir, before);
+                if done {
+                    return (PaneNode::Split { dir: d, ratio, a: Box::new(a2), b }, true);
+                }
+                let (b2, done) = b.insert(target, new_id, dir, before);
+                (PaneNode::Split { dir: d, ratio, a: Box::new(a2), b: Box::new(b2) }, done)
+            }
+        }
+    }
+
     /// Splits the leaf `target` so that `new_id` appears after it.
     pub fn split(self, target: &str, new_id: &str, dir: SplitDir) -> (PaneNode, bool) {
         match self {

@@ -135,7 +135,9 @@ final class GitInfo: ObservableObject {
         queue.async {
             let branch = Self.git(["rev-parse", "--abbrev-ref", "HEAD"], in: path)?.trimmingCharacters(in: .whitespacesAndNewlines)
             var stat: Stat?
-            if branch != nil, let out = Self.git(["diff", "--numstat", "HEAD"], in: path) {
+            // Against the chosen base branch (merge-base) when one is set, else HEAD (uncommitted work).
+            let rev = Self.diffBase(for: path) ?? "HEAD"
+            if branch != nil, let out = Self.git(["diff", "--numstat", rev], in: path) {
                 var s = Stat()
                 for line in out.split(separator: "\n") {
                     let parts = line.split(separator: "\t")
@@ -158,6 +160,58 @@ final class GitInfo: ObservableObject {
             }
         }
     }
+
+    // MARK: Compare base
+
+    /// Branch the Changes views compare against (per work path); nil = HEAD (only uncommitted work).
+    static func compareBase(for path: String) -> String? {
+        (UserDefaults.standard.dictionary(forKey: "ade.compareBase") as? [String: String])?[path]
+    }
+
+    func setCompareBase(_ base: String?, for path: String) {
+        var d = (UserDefaults.standard.dictionary(forKey: "ade.compareBase") as? [String: String]) ?? [:]
+        d[path] = base
+        UserDefaults.standard.set(d, forKey: "ade.compareBase")
+        lastFetch[path] = nil
+        objectWillChange.send()
+        NotificationCenter.default.post(name: .adeCompareBaseChanged, object: path)
+    }
+
+    /// Merge-base commit of HEAD and the compare branch (nil when none is set or it does not resolve).
+    static func diffBase(for path: String) -> String? {
+        guard let b = compareBase(for: path) else { return nil }
+        return git(["merge-base", "HEAD", b], in: path)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+    }
+
+    /// Local branches, most recently committed first; with `remotes`, remote branches after them.
+    static func branches(in path: String, remotes: Bool) -> [String] {
+        let refs = remotes ? ["refs/heads", "refs/remotes"] : ["refs/heads"]
+        let out = git(["for-each-ref", "--sort=-committerdate", "--format=%(refname:short)"] + refs, in: path) ?? ""
+        return out.split(separator: "\n").map(String.init).filter { !$0.hasSuffix("/HEAD") && $0 != "origin" }
+    }
+
+    /// Like `git`, with stderr kept (for messages such as a failed checkout).
+    static func gitResult(_ args: [String], in dir: String) -> (ok: Bool, out: String, err: String) {
+        let (h, c) = AppModel.shared.host(forPath: dir)
+        if h.isRemote {
+            guard let r = try? c.callSync("git.run", ["cwd": dir, "args": args]) as? [String: Any] else { return (false, "", "Remote host did not answer") }
+            return ((r["ok"] as? Bool) == true, r["stdout"] as? String ?? "", r["stderr"] as? String ?? "")
+        }
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        p.arguments = ["-C", dir] + args
+        let out = Pipe(), err = Pipe()
+        p.standardOutput = out
+        p.standardError = err
+        do { try p.run() } catch { return (false, "", error.localizedDescription) }
+        let o = out.fileHandleForReading.readDataToEndOfFile()
+        let e = err.fileHandleForReading.readDataToEndOfFile()
+        p.waitUntilExit()
+        return (p.terminationStatus == 0, String(decoding: o, as: UTF8.self), String(decoding: e, as: UTF8.self))
+    }
+
+    /// Forces the next `branch` / `diffStat` read to refetch (after checkout, commit…).
+    func invalidate(_ path: String) { lastFetch[path] = nil; objectWillChange.send() }
 
     static func git(_ args: [String], in dir: String) -> String? {
         let (h, c) = AppModel.shared.host(forPath: dir)
@@ -255,4 +309,12 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         }
         completionHandler()
     }
+}
+
+extension String {
+    var nilIfEmpty: String? { isEmpty ? nil : self }
+}
+
+extension Notification.Name {
+    static let adeCompareBaseChanged = Notification.Name("ade.compareBaseChanged")
 }

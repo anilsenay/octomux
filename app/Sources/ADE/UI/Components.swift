@@ -512,3 +512,39 @@ struct CanvasBackground: View {
     @Environment(\.colorScheme) private var scheme
     var body: some View { Rectangle().fill(Color(nsColor: WorkspaceTint.canvas(dark: scheme == .dark))) }
 }
+
+/// An NSPopover shown from a SwiftUI view, on a fixed side (SwiftUI's popover may cover its anchor near the
+/// window edge). Use `.background(PopoverAnchor(isPresented:edge:content:))`.
+struct PopoverAnchor<Content: View>: NSViewRepresentable {
+    @Binding var isPresented: Bool
+    var edge: NSRectEdge = .maxY
+    let content: () -> Content
+
+    final class Coordinator: NSObject, NSPopoverDelegate {
+        var popover: NSPopover?
+        var onClose: () -> Void = {}
+        func popoverDidClose(_ notification: Notification) { popover = nil; onClose() }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+    func makeNSView(context: Context) -> NSView { NSView() }
+
+    func updateNSView(_ v: NSView, context: Context) {
+        let c = context.coordinator
+        c.onClose = { DispatchQueue.main.async { isPresented = false } }
+        if isPresented, c.popover == nil, v.window != nil {
+            let p = NSPopover()
+            p.behavior = .transient
+            p.animates = false
+            p.delegate = c
+            let host = NSHostingController(rootView: content().environmentObject(AppModel.shared))
+            host.sizingOptions = .preferredContentSize
+            p.contentViewController = host
+            c.popover = p
+            p.show(relativeTo: v.bounds, of: v, preferredEdge: edge)
+        } else if !isPresented, let p = c.popover {
+            c.popover = nil
+            p.close()
+        }
+    }
+}

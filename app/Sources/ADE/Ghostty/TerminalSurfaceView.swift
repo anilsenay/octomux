@@ -354,6 +354,47 @@ final class TerminalSurfaceView: NSView, NSTextInputClient {
         }
     }
 
+    /// Right-click (when the program does not take the mouse): copy / paste, splits, pane actions.
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let m = AppModel.shared
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        func add(_ title: String, _ key: String = "", _ mods: NSEvent.ModifierFlags = .command, enabled: Bool = true, _ run: @escaping () -> Void) {
+            let i = ClosureMenuItem(title, run)
+            i.keyEquivalent = key
+            i.keyEquivalentModifierMask = mods
+            i.isEnabled = enabled
+            menu.addItem(i)
+        }
+        let hasSel = surface.map { ghostty_surface_has_selection($0) } ?? false
+        add("Copy", "c", enabled: hasSel) { [weak self] in self?.binding("copy_to_clipboard") }
+        add("Paste", "v") { [weak self] in self?.binding("paste_from_clipboard") }
+        menu.addItem(.separator())
+        let sid = sessionId
+        if m.session(sid)?.placement == .tab {
+            add("Split Right", "d") { m.selectSession(sid); m.newSession(profileId: nil, split: .right) }
+            add("Split Down", "d", [.command, .shift]) { m.selectSession(sid); m.newSession(profileId: nil, split: .down) }
+            if (m.tab(containing: sid)?.layout.sessions.count ?? 1) > 1 {
+                add("Move to New Tab") { m.movePaneToNewTab(sid) }
+            }
+            add("Move to Dock") { m.client(for: sid).call("session.move", ["id": sid, "placement": "dock"]) }
+            menu.addItem(.separator())
+        }
+        add("Clear Screen", "k") { [weak self] in self?.binding("clear_screen") }
+        if let s = m.session(sid), m.canChat(s) {
+            add(m.isChat(sid) ? "Show Terminal" : "Show as Chat") { m.toggleChat(sid) }
+        }
+        add("Rename…") { m.renamingSessionId = sid }
+        menu.addItem(.separator())
+        add("Close Pane", "w") { m.remove(sid) }
+        return menu
+    }
+
+    private func binding(_ action: String) {
+        guard let surface else { return }
+        _ = action.withCString { ghostty_surface_binding_action(surface, $0, UInt(action.utf8.count)) }
+    }
+
     override func rightMouseUp(with event: NSEvent) {
         guard let surface else { return super.rightMouseUp(with: event) }
         if !ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_RIGHT, GhosttyInput.mods(event.modifierFlags)) {

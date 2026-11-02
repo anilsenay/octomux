@@ -227,6 +227,37 @@ enum GitDiffData {
         return (staged, unstaged)
     }
 
+    /// The work tree (committed on this branch + uncommitted + untracked) against a base commit.
+    static func againstBase(_ dir: String, _ base: String) -> [FileDiff] {
+        let names = GitInfo.git(["diff", "--name-status", "-M", base], in: dir) ?? ""
+        let stat = numstat(GitInfo.git(["diff", "--numstat", "-M", base], in: dir))
+        var out: [FileDiff] = []
+        for line in names.split(separator: "\n") {
+            let f = line.split(separator: "\t").map(String.init)
+            guard f.count >= 2 else { continue }
+            let code = String(f[0].prefix(1))
+            let path = f.count >= 3 ? f[2] : f[1], old = f[1]
+            var d = FileDiff(key: "b:" + path, path: path, status: code)
+            let st = stat[path]
+            d.added = st?.0 ?? 0; d.removed = st?.1 ?? 0
+            if st?.2 == true { d.binary = true } else {
+                let a = code == "A" ? ("", false, false) : text(blob("\(base):\(old)", in: dir))
+                let b = code == "D" ? ("", false, false) : worktreeFile(dir, path)
+                d.original = a.0; d.modified = b.0
+                d.binary = a.1 || b.1; d.tooLarge = a.2 || b.2
+            }
+            out.append(d)
+        }
+        let others = (GitInfo.git(["ls-files", "--others", "--exclude-standard"], in: dir) ?? "").split(separator: "\n").map(String.init)
+        for p in others.prefix(300) {
+            var f = FileDiff(key: "b:" + p, path: p, status: "U")
+            (f.modified, f.binary, f.tooLarge) = worktreeFile(dir, p)
+            f.added = lineCount(f.modified)
+            out.append(f)
+        }
+        return out
+    }
+
     /// Files changed by a commit (against its first parent).
     static func commit(_ hash: String, in dir: String) -> [FileDiff] {
         let parent = GitInfo.git(["rev-parse", "--verify", "-q", hash + "^"], in: dir)?.trimmingCharacters(in: .whitespacesAndNewlines)

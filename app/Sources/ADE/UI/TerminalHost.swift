@@ -258,6 +258,91 @@ final class PaneView: NSView {
         wantsLayer = true
         layer?.masksToBounds = true
         layer?.cornerCurve = .continuous
+        if !sessionId.isEmpty { registerForDraggedTypes([.string]) }
+    }
+
+    // MARK: Drop target (pane headers, top-bar tabs, sidebar sessions)
+
+    private var dropOverlay: NSView?
+    private var dropEdge: AppModel.PaneEdge?
+
+    /// What is being dragged, if this pane can take it.
+    private func droppable() -> (kind: String, id: String)? {
+        guard let d = DragItem.current else { return nil }
+        let m = AppModel.shared
+        switch d.kind {
+        case "pane": return d.id != sessionId ? ("pane", d.id) : nil
+        case "tab": return m.state.tabs.first { $0.id == d.id }.map { !$0.layout.sessions.contains(sessionId) } == true ? ("tab", d.id) : nil
+        case let k where k.hasPrefix("session:"):
+            return d.id != sessionId && m.session(d.id)?.placement == .tab ? ("pane", d.id) : nil
+        default: return nil
+        }
+    }
+
+    /// Nearest edge to the pointer (the pane is split in four triangles).
+    private func edge(at p: NSPoint) -> AppModel.PaneEdge {
+        let x = p.x / max(1, bounds.width), y = p.y / max(1, bounds.height)   // y up
+        let d = [(AppModel.PaneEdge.left, x), (.right, 1 - x), (.bottom, y), (.top, 1 - y)]
+        return d.min { $0.1 < $1.1 }!.0
+    }
+
+    /// Debug channel: shows the drop highlight without a drag.
+    func debugShowDrop(_ e: AppModel.PaneEdge?) { if let e { showDrop(e) } else { hideDrop() } }
+
+    private func showDrop(_ e: AppModel.PaneEdge) {
+        guard e != dropEdge || dropOverlay == nil else { return }
+        dropEdge = e
+        let o = dropOverlay ?? {
+            let v = NSView()
+            v.wantsLayer = true
+            v.layer?.cornerRadius = max(4, T.m.cardR - 2)
+            v.layer?.borderWidth = 2
+            addSubview(v, positioned: .above, relativeTo: nil)
+            dropOverlay = v
+            return v
+        }()
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            o.layer?.backgroundColor = T.ns(\.blue).withAlphaComponent(0.18).cgColor
+            o.layer?.borderColor = T.ns(\.blue).withAlphaComponent(0.8).cgColor
+        }
+        let b = bounds.insetBy(dx: 4, dy: 4)
+        let half: NSRect
+        switch e {
+        case .left: half = NSRect(x: b.minX, y: b.minY, width: b.width / 2, height: b.height)
+        case .right: half = NSRect(x: b.midX, y: b.minY, width: b.width / 2, height: b.height)
+        case .top: half = NSRect(x: b.minX, y: b.midY, width: b.width, height: b.height / 2)
+        case .bottom: half = NSRect(x: b.minX, y: b.minY, width: b.width, height: b.height / 2)
+        }
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.12
+            o.animator().frame = half
+        }
+    }
+
+    private func hideDrop() {
+        dropOverlay?.removeFromSuperview()
+        dropOverlay = nil
+        dropEdge = nil
+    }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { draggingUpdated(sender) }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        guard droppable() != nil else { hideDrop(); return [] }
+        showDrop(edge(at: convert(sender.draggingLocation, from: nil)))
+        return .move
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) { hideDrop() }
+    override func draggingEnded(_ sender: NSDraggingInfo) { hideDrop() }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        let e = dropEdge ?? edge(at: convert(sender.draggingLocation, from: nil))
+        hideDrop()
+        guard let d = droppable() else { return false }
+        DragItem.current = nil
+        AppModel.shared.drop(kind: d.kind, id: d.id, onPane: sessionId, edge: e)
+        return true
     }
     required init?(coder: NSCoder) { fatalError() }
 
@@ -377,6 +462,8 @@ struct PaneHeader: View {
         let focused = model.focusedSessionId == sessionId
         if let s = model.session(sessionId) {
             HStack(spacing: 7) {
+                Image(systemName: "circle.grid.2x3.fill").font(.system(size: 7.5)).foregroundStyle(T.text3.opacity(hover ? 0.9 : 0.45))
+                    .frame(width: 8).help("Drag to move this pane")
                 AgentIcon(icon: iconName(for: s, model: model), size: 11).opacity(focused ? 1 : 0.6)
                 Text(s.displayTitle)
                     .font(.system(size: 12, weight: focused ? .semibold : .medium))
@@ -406,7 +493,44 @@ struct PaneHeader: View {
             .contentShape(Rectangle())
             .onHover { hover = $0 }
             .onTapGesture { model.selectSession(s.id) }
-            .contextMenu { SessionMenu(session: s) }
+            .onDrag {
+                DragItem.current = ("pane", s.id)
+                return NSItemProvider(object: "ade-pane:\(s.id)" as NSString)
+            } preview: {
+                PaneDragPreview(session: s)
+            }
+            .contextMenu { PaneMenuItems(session: s) }
         }
+    }
+}
+
+/// The chip shown under the pointer while a pane or tab is dragged.
+struct PaneDragPreview: View {
+    let session: Session
+    var body: some View {
+        HStack(spacing: 6) {
+            AgentIcon(icon: iconName(for: session, model: AppModel.shared), size: 11)
+            Text(session.displayTitle).font(.system(size: 12, weight: .medium)).lineLimit(1)
+        }
+        .padding(.horizontal, 10).frame(height: 26)
+        .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(T.raised))
+        .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(T.accent.opacity(0.7)))
+        .foregroundStyle(T.text)
+    }
+}
+
+/// Pane context menu (header and terminal right-click share these actions).
+struct PaneMenuItems: View {
+    @EnvironmentObject var model: AppModel
+    let session: Session
+
+    var body: some View {
+        Button("Split Right") { model.selectSession(session.id); model.newSession(profileId: nil, split: .right) }
+        Button("Split Down") { model.selectSession(session.id); model.newSession(profileId: nil, split: .down) }
+        if (model.tab(containing: session.id)?.layout.sessions.count ?? 1) > 1 {
+            Button("Move to New Tab") { model.movePaneToNewTab(session.id) }
+        }
+        Divider()
+        SessionMenu(session: session)
     }
 }

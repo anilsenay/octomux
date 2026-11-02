@@ -68,6 +68,11 @@ final class DocController: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         web.loadFileURL(EditorAssets.dir.appendingPathComponent("index.html"), allowingReadAccessTo: EditorAssets.dir)
         applyTheme()
         load()
+        NotificationCenter.default.addObserver(forName: .adeCompareBaseChanged, object: nil, queue: .main) { [weak self] n in
+            guard let self, (n.object as? String) == self.doc.workPath, case .changes = self.doc.kind else { return }
+            self.lastSig = nil
+            self.load()
+        }
     }
 
     func close() {
@@ -239,10 +244,25 @@ final class DocController: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         let dir = doc.workPath
         let prev = lastSig
         DispatchQueue.global(qos: .userInitiated).async {
+            let baseName = GitInfo.compareBase(for: dir)
+            let base = GitInfo.diffBase(for: dir)
             // Cheap signature first; the per-file blobs are read only when something changed.
             let sig = [GitInfo.git(["status", "--porcelain=v1", "--untracked-files=all"], in: dir) ?? "-",
-                       GitInfo.git(["diff", "--numstat"], in: dir) ?? "", GitInfo.git(["diff", "--cached", "--numstat"], in: dir) ?? ""].joined(separator: "\u{1}")
+                       GitInfo.git(["diff", "--numstat"], in: dir) ?? "", GitInfo.git(["diff", "--cached", "--numstat"], in: dir) ?? "",
+                       base ?? "", GitInfo.git(["rev-parse", "HEAD"], in: dir) ?? ""].joined(separator: "\u{1}")
             if sig == prev { DispatchQueue.main.async { self.loading = false }; return }
+            if let base, let baseName {
+                let files = GitDiffData.againstBase(dir, base)
+                DispatchQueue.main.async {
+                    self.loading = false
+                    self.lastSig = sig
+                    var payload: [String: Any] = ["title": "Changes against \(baseName)", "sections": [["title": "", "files": files.map(\.json)]],
+                                                  "empty": "No changes against \(baseName)"]
+                    if let s = self.pendingScroll { payload["scrollTo"] = s; self.pendingScroll = nil }
+                    self.call("showDiff", payload)
+                }
+                return
+            }
             let data = GitDiffData.workingTree(dir)
             DispatchQueue.main.async {
                 self.loading = false

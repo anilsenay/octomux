@@ -1048,6 +1048,57 @@ impl Daemon {
                 self.changed();
                 Ok(serde_json::to_value(t)?)
             }
+            "pane.move" => {
+                // Moves a tab session next to another pane (edge left/right/top/bottom), or into a tab of its own
+                // (`new_tab`). The session keeps running; tabs left empty disappear.
+                let sid = req("session_id")?;
+                let project_id = {
+                    let st = self.state.lock().unwrap();
+                    let s = st.sessions.iter().find(|s| s.id == sid).ok_or_else(|| anyhow!("no session"))?;
+                    if s.placement != Placement::Tab {
+                        bail!("only tab sessions can be moved between panes");
+                    }
+                    s.project_id.clone()
+                };
+                if p.get("new_tab").and_then(|v| v.as_bool()).unwrap_or(false) {
+                    self.detach_from_tabs(&sid);
+                    let t = self.new_tab(&project_id, &sid);
+                    self.changed();
+                    return Ok(serde_json::to_value(t)?);
+                }
+                let target = req("target_session_id")?;
+                if target == sid {
+                    return Ok(json!({ "ok": true }));
+                }
+                let edge = p.get("edge").and_then(|v| v.as_str()).unwrap_or("right");
+                let (dir, before) = match edge {
+                    "left" => (SplitDir::Right, true),
+                    "top" => (SplitDir::Down, true),
+                    "bottom" => (SplitDir::Down, false),
+                    _ => (SplitDir::Right, false),
+                };
+                {
+                    let st = self.state.lock().unwrap();
+                    let tt = st.tabs.iter().find(|t| t.layout.sessions().contains(&target)).ok_or_else(|| anyhow!("target is not in a tab"))?;
+                    if tt.project_id != project_id {
+                        bail!("panes can only move within a project");
+                    }
+                }
+                self.detach_from_tabs(&sid);
+                let mut st = self.state.lock().unwrap();
+                let t = st.tabs.iter_mut().find(|t| t.layout.sessions().contains(&target)).ok_or_else(|| anyhow!("target is not in a tab"))?;
+                let (layout, done) = t.layout.clone().insert(&target, &sid, dir, before);
+                if !done {
+                    bail!("target pane not found");
+                }
+                t.layout = layout;
+                t.active_session_id = Some(sid.clone());
+                let t = t.clone();
+                drop(st);
+                self.store.lock().unwrap().put("tab", &t.id, &t)?;
+                self.changed();
+                Ok(serde_json::to_value(t)?)
+            }
             "tab.close" => {
                 let id = req("id")?;
                 let sessions = self.state.lock().unwrap().tabs.iter().find(|t| t.id == id).map(|t| t.layout.sessions()).unwrap_or_default();
@@ -1061,7 +1112,7 @@ impl Daemon {
             }
             "git.run" => {
                 // Git for clients on other machines (remote hosts): `git -C <cwd> <args…>`, allowlisted.
-                const ALLOWED: &[&str] = &["status", "diff", "log", "show", "ls-files", "rev-parse", "worktree", "add", "commit", "push", "branch"];
+                const ALLOWED: &[&str] = &["status", "diff", "log", "show", "ls-files", "rev-parse", "worktree", "add", "commit", "push", "branch", "restore", "checkout", "switch", "for-each-ref", "merge-base", "remote"];
                 let cwd = util::expand_tilde(&req("cwd")?);
                 let args: Vec<String> = p.get("args").and_then(|v| v.as_array()).map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default();
                 let sub = args.first().cloned().unwrap_or_default();
@@ -1101,6 +1152,12 @@ impl Daemon {
                 let cwd = p.get("cwd").and_then(|v| v.as_str()).unwrap_or("");
                 let since = p.get("since").and_then(|v| v.as_u64()).unwrap_or(0);
                 Ok(json!({ "path": agents::find_rollout(&codex_home, id, cwd, since) }))
+            }
+            "usage.refresh" => {
+                // Re-reads what can be read on demand now (Codex rollouts); Claude readings arrive with its status line.
+                self.poll_codex_usage();
+                self.changed();
+                Ok(json!({ "ok": true }))
             }
             "usage.report" => {
                 // { session_id, rate_limits: { five_hour: {used_percentage, resets_at}, ... } }

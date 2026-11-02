@@ -110,6 +110,19 @@ enum DebugActions {
             case "open_changes": m.openChanges(scrollTo: p["value"] as? String)
             case "open_commit": if let v = p["value"] as? String { m.openCommit(v, subject: p["subject"] as? String ?? "") }
             case "doc_js": if let d = m.activeDoc, let v = p["value"] as? String { DocHost.shared.controller(for: d).web.evaluateJavaScript(v) }
+            case "drop_preview", "drop":
+                // value: edge; id: target session; for "drop", kind + source in p["kind"], p["source"].
+                let edge = AppModel.PaneEdge(rawValue: p["value"] as? String ?? "") ?? .right
+                if name == "drop", let k = p["kind"] as? String, let src = p["source"] as? String, let id {
+                    m.drop(kind: k, id: src, onPane: id, edge: edge)
+                } else {
+                    func walk(_ v: NSView) { if let pv = v as? PaneView, pv.sessionId == id { pv.debugShowDrop(p["value"] == nil ? nil : edge) }; v.subviews.forEach(walk) }
+                    walk(TerminalHost.shared.container)
+                }
+            case "pane_to_tab": if let id { m.movePaneToNewTab(id) }
+            case "close_tabs": if let id { m.closeTabs(m.tabs(p["value"] as? String == "others" ? .others : p["value"] as? String == "left" ? .left : p["value"] as? String == "all" ? .all : .right, of: id)) }
+            case "branch_picker": NotificationCenter.default.post(name: .adeDebugPanel, object: nil, userInfo: ["branchPicker": p["value"] as? String ?? "checkout"])
+            case "compare_base": if let wp = m.currentWorkPath { GitInfo.shared.setCompareBase(p["value"] as? String, for: wp) }
             case "close_doc": if let d = m.activeDocId { m.closeDoc(d) }
             case "right_tab": UserDefaults.standard.set(p["value"] as? String ?? "Changes", forKey: "ade.rightTab"); m.rightPanelVisible = true
             case "sidebar_peek": m.sidebarPeek = (p["value"] as? Bool) ?? true
