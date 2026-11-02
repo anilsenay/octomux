@@ -1067,6 +1067,9 @@ struct SceneStrip: View {
     let scope: String
     var tileWidth: CGFloat = 96
     var wrapRows = false
+    /// Hovering tries a scene on the whole window. Off in Settings: the preview restyles the Settings
+    /// window itself, which rebuilds the tile under the pointer and makes hover flicker on and off.
+    var previewOnHover = true
     @Binding var highlighted: SceneChoice?
 
     /// Picker sections: the scenes, the user's own, and the first versions (kept to compare).
@@ -1108,7 +1111,9 @@ struct SceneStrip: View {
         ForEach(list, id: \.self) { c in
             SceneTile(choice: c, title: title(for: c), scene: scene(for: c), selected: c == cur, highlighted: c == highlighted, width: tileWidth)
                 .onHover { inside in
-                    if inside { highlighted = c; store.preview(scene(for: c)) }
+                    guard inside else { return }
+                    highlighted = c
+                    if previewOnHover { store.preview(scene(for: c)) }
                 }
                 .onTapGesture { pick(c) }
                 .pointerCursor()
@@ -1117,7 +1122,8 @@ struct SceneStrip: View {
 
     func pick(_ c: SceneChoice) {
         model.setScene(c.settingValue, scope: scope)
-        store.preview(scene(for: c))
+        // Keep showing it until the setting comes back from the daemon (no flash of the old scene).
+        if previewOnHover { store.preview(scene(for: c)) }
     }
 
     var body: some View {
@@ -1137,7 +1143,7 @@ struct SceneStrip: View {
             }
         }
         .onHover { inside in
-            if !inside { highlighted = nil; store.endPreview() }
+            if !inside { highlighted = nil; if previewOnHover { store.endPreview() } }
         }
     }
 }
@@ -1270,7 +1276,8 @@ struct ScenePickerView: View {
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(T.border))
         .foregroundStyle(T.text)
-        .id(store.revision)
+        // No `.id(store.revision)`: previews restyle the window behind; rebuilding this panel under the
+        // pointer would end the hover and the preview with it.
         .onChange(of: state.allWorkspaces) { DispatchQueue.main.async { ScenePickerPanel.shared.place() } }
     }
 }
@@ -1288,7 +1295,7 @@ struct SceneSettingsCard: View {
                  ? "A palette and a live backdrop drawn in characters, behind the sidebar, bars and empty panes. Workspaces can pick their own."
                  : "This workspace's scene. “Global” follows the choice in the global settings.")
                 .font(.caption).foregroundStyle(T.text2)
-            SceneStrip(scope: scope, tileWidth: 110, wrapRows: true, highlighted: $highlighted)
+            SceneStrip(scope: scope, tileWidth: 110, wrapRows: true, previewOnHover: false, highlighted: $highlighted)
             if scope == "global" {
                 Toggle("Show the scene behind terminals (translucent terminals)", isOn: Binding(
                     get: { model.settingValue("appearance.scene_terminals", scope: "global")?.bool ?? false },
