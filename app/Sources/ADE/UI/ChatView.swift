@@ -249,7 +249,7 @@ struct ChatView: View {
             }
             composer(s)
         }
-        .background(T.surface)
+        .background(CanvasBackground())
         .onAppear {
             if let s, model.host(for: s.id).isRemote { chat.remoteClient = model.client(for: s.id) }
             chat.attach(resolvePath(s))
