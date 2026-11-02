@@ -15,6 +15,9 @@ final class AppModel: ObservableObject {
     @Published var activeTabId: String? { didSet { saveSelection() } }
     @Published var focusedSessionId: String?
     @Published var sidebarVisible = true
+    @Published var rightPanelVisible = UserDefaults.standard.bool(forKey: "ade.rightPanel") {
+        didSet { UserDefaults.standard.set(rightPanelVisible, forKey: "ade.rightPanel") }
+    }
     @Published var lastError: String?
     @Published var renamingSessionId: String?
 

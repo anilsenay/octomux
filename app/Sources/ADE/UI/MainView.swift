@@ -25,6 +25,10 @@ struct MainView: View {
                 StatusBar()
             }
             .background(Palette.chromeBG)
+            if model.rightPanelVisible {
+                Divider()
+                ChangesPanel().frame(width: 300).background(Palette.sidebarBG)
+            }
         }
         .overlay(alignment: .top) {
             if let err = model.lastError {
@@ -85,6 +89,14 @@ struct TopBar: View {
             Button { model.newSession(profileId: nil) } label: { Image(systemName: "terminal").font(.system(size: 12)) }
                 .buttonStyle(ChromeButtonStyle()).help("New Terminal (⌘T)")
             Spacer(minLength: 8)
+            if let p = model.currentProject, let stat = git.diffStat(for: p.path), stat.files > 0 {
+                Button { model.rightPanelVisible = true } label: {
+                    HStack(spacing: 3) {
+                        Text("+\(stat.added)").foregroundStyle(.green)
+                        Text("−\(stat.removed)").foregroundStyle(.red)
+                    }.font(.system(size: 11, weight: .medium, design: .monospaced))
+                }.buttonStyle(ChromeButtonStyle()).help("\(stat.files) changed files")
+            }
             if let p = model.currentProject {
                 OpenInButton(path: p.path)
             }
@@ -92,6 +104,9 @@ struct TopBar: View {
                 .buttonStyle(ChromeButtonStyle()).help("Split Right (⌘D)")
             Button { model.newSession(profileId: nil, split: .down) } label: { Image(systemName: "rectangle.split.1x2") }
                 .buttonStyle(ChromeButtonStyle()).help("Split Down (⌘⇧D)")
+            Button { model.rightPanelVisible.toggle() } label: { Image(systemName: "sidebar.right") }
+                .buttonStyle(ChromeButtonStyle()).help("Changes panel (⌘⌥B)")
+                .foregroundStyle(model.rightPanelVisible ? Color.accentColor : .secondary)
             if let s = model.session(model.focusedSessionId) {
                 Menu {
                     SessionMenu(session: s)

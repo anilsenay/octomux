@@ -130,6 +130,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let view = submenu(main, "View")
         view.addItem(item("Toggle Sidebar", #selector(toggleSidebar(_:)), "b"))
         view.addItem(item("Toggle Dock", #selector(toggleDock(_:)), "j"))
+        let rp = item("Toggle Changes Panel", #selector(toggleRightPanel(_:)), "b")
+        rp.keyEquivalentModifierMask = [.command, .option]
+        view.addItem(rp)
         view.addItem(.separator())
         let prev = item("Previous Tab", #selector(prevTab(_:)), "{")
         view.addItem(prev)
@@ -198,6 +201,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc func renameSession(_ s: Any?) { model.renamingSessionId = model.focusedSessionId }
     @objc func toggleSidebar(_ s: Any?) { model.toggleSidebar() }
     @objc func toggleDock(_ s: Any?) { model.toggleDock() }
+    @objc func toggleRightPanel(_ s: Any?) { model.rightPanelVisible.toggle() }
     @objc func prevTab(_ s: Any?) { model.cycleTab(-1) }
     @objc func nextTab(_ s: Any?) { model.cycleTab(1) }
     @objc func goToTab(_ s: NSMenuItem) { model.selectTab(index: s.tag == 9 ? -1 : s.tag - 1) }

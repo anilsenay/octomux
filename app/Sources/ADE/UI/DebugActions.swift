@@ -53,6 +53,7 @@ enum DebugActions {
             case "close_pane": if let id = m.focusedSessionId { m.remove(id, confirm: false) }
             case "toggle_sidebar": m.toggleSidebar()
             case "toggle_dock": m.toggleDock()
+            case "toggle_right_panel": m.rightPanelVisible.toggle()
             case "add_action":
                 guard let pid = m.currentProject?.id else { throw DebugServer.DebugError.bad("no project") }
                 m.saveActions(pid, m.actions(pid) + [ProjectAction(name: p["value"] as? String ?? "Test", icon: "flask", command: p["command"] as? String ?? "echo hi")])
