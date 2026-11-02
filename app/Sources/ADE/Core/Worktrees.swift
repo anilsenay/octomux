@@ -12,6 +12,13 @@ struct Worktree: Identifiable, Equatable {
     let path: String
     let branch: String     // "feat/x" or "(detached)"
     let isMain: Bool
+    var head = ""          // short commit
+    var detached = false
+    /// `git worktree lock` reason ("" when locked without one); nil when not locked.
+    var locked: String? = nil
+
+    /// Sidebar label: the branch, or for a detached HEAD the folder name.
+    var label: String { detached ? (path as NSString).lastPathComponent : branch }
 }
 
 /// `git worktree list` per project, refreshed in the background; create / remove.
@@ -24,8 +31,23 @@ final class Worktrees: ObservableObject {
     /// Linked worktrees (not the main checkout) of a project.
     func linked(_ projectPath: String) -> [Worktree] {
         refreshIfStale(projectPath)
-        return (lists[projectPath] ?? []).filter { !$0.isMain }
+        return (lists[projectPath] ?? []).filter { !$0.isMain && !hidden.contains($0.path) }
     }
+
+    /// Worktrees the user hid from the sidebar (e.g. ones another tool made and manages).
+    @Published private(set) var hidden = Set(UserDefaults.standard.stringArray(forKey: "ade.hiddenWorktrees") ?? [])
+    func hide(_ path: String) {
+        hidden.insert(path)
+        UserDefaults.standard.set(Array(hidden), forKey: "ade.hiddenWorktrees")
+    }
+    func hiddenPaths(of projectPath: String) -> [String] {
+        (lists[projectPath] ?? []).map(\.path).filter { hidden.contains($0) }
+    }
+    func unhide(_ paths: [String]) {
+        hidden.subtract(paths)
+        UserDefaults.standard.set(Array(hidden), forKey: "ade.hiddenWorktrees")
+    }
+    func info(_ path: String) -> Worktree? { lists.values.lazy.flatMap { $0 }.first { $0.path == path } }
 
     func refresh(_ projectPath: String) {
         fetched[projectPath] = nil
@@ -44,12 +66,18 @@ final class Worktrees: ObservableObject {
     static func parse(_ out: String) -> [Worktree] {
         var res: [Worktree] = []
         for block in out.components(separatedBy: "\n\n") {
-            var path = "", branch = "(detached)"
+            var path = "", branch = "(detached)", head = "", detached = false
+            var locked: String?
             for line in block.split(separator: "\n") {
                 if line.hasPrefix("worktree ") { path = String(line.dropFirst(9)) }
                 if line.hasPrefix("branch ") { branch = String(line.dropFirst(7)).replacingOccurrences(of: "refs/heads/", with: "") }
+                if line.hasPrefix("HEAD ") { head = String(line.dropFirst(5).prefix(7)) }
+                if line == "detached" { detached = true }
+                if line == "locked" { locked = "" } else if line.hasPrefix("locked ") { locked = String(line.dropFirst(7)) }
             }
-            if !path.isEmpty { res.append(Worktree(path: path, branch: branch, isMain: res.isEmpty)) }
+            if !path.isEmpty {
+                res.append(Worktree(path: path, branch: branch, isMain: res.isEmpty, head: head, detached: detached, locked: locked))
+            }
         }
         return res
     }
@@ -74,9 +102,10 @@ final class Worktrees: ObservableObject {
         return ok ? .success(path) : .failure(GitError(message: err))
     }
 
-    static func remove(project: String, path: String, force: Bool) -> Result<Void, GitError> {
+    static func remove(project: String, path: String, force: Bool, locked: Bool = false) -> Result<Void, GitError> {
         var args = ["worktree", "remove"]
-        if force { args.append("--force") }
+        if force || locked { args.append("--force") }
+        if locked { args.append("--force") }   // git wants -f twice for a locked worktree
         args.append(path)
         let (ok, err) = gitWithError(args, in: project)
         shared.refresh(project)
@@ -121,12 +150,27 @@ extension AppModel {
 
     /// Closes the worktree's sessions and removes it (asks before discarding changes).
     func removeWorktree(project: Project, path: String) {
+        let lock = Worktrees.shared.info(path)?.locked
         let a = NSAlert()
         a.messageText = "Remove worktree “\((path as NSString).lastPathComponent)”?"
-        a.informativeText = "Its sessions are closed and the folder is deleted. The branch is kept."
-        a.addButton(withTitle: "Remove").hasDestructiveAction = true
+        if let lock {
+            a.informativeText = "It is locked\(lock.isEmpty ? "" : " (“\(lock)”)"), usually by the tool that created it, which may still be using it. "
+                + "Removing it deletes the folder, uncommitted changes included. To only get it out of the sidebar, use Hide instead."
+            a.addButton(withTitle: "Unlock and Remove").hasDestructiveAction = true
+        } else {
+            a.informativeText = "Its sessions are closed and the folder is deleted. The branch is kept."
+            a.addButton(withTitle: "Remove").hasDestructiveAction = true
+        }
         a.addButton(withTitle: "Cancel")
         guard a.runModal() == .alertFirstButtonReturn else { return }
+        if lock != nil {
+            for s in state.sessions where s.worktree == path { remove(s.id, confirm: false) }
+            DispatchQueue.global(qos: .userInitiated).async {
+                let r = Worktrees.remove(project: project.path, path: path, force: true, locked: true)
+                DispatchQueue.main.async { if case .failure(let e) = r { self.lastError = "git worktree remove failed: \(e)" } }
+            }
+            return
+        }
         for s in state.sessions where s.worktree == path { remove(s.id, confirm: false) }
         DispatchQueue.global(qos: .userInitiated).async {
             var r = Worktrees.remove(project: project.path, path: path, force: false)

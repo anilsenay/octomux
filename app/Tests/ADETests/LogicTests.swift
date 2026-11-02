@@ -190,3 +190,18 @@ final class TerminalTitleTests: XCTestCase {
         XCTAssertEqual(title("a@host: ~", cwd: "/x"), "~")
     }
 }
+
+final class WorktreeLockTests: XCTestCase {
+    func testDetachedAndLocked() {
+        let out = "worktree /r\nHEAD 01ee341aaf\nbranch refs/heads/main\n\nworktree /x/.orca-preparing/25795-d7f8\nHEAD 01ee341aaf\ndetached\nlocked orca-create-preparation:v1\n\nworktree /r.worktrees/f\nHEAD abcdef123\nbranch refs/heads/f\nlocked\n"
+        let w = Worktrees.parse(out)
+        XCTAssertEqual(w.count, 3)
+        XCTAssertTrue(w[1].detached)
+        XCTAssertEqual(w[1].label, "25795-d7f8")
+        XCTAssertEqual(w[1].head, "01ee341")
+        XCTAssertEqual(w[1].locked, "orca-create-preparation:v1")
+        XCTAssertEqual(w[2].label, "f")
+        XCTAssertEqual(w[2].locked, "")
+        XCTAssertNil(w[0].locked)
+    }
+}

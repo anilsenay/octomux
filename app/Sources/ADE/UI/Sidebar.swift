@@ -62,7 +62,7 @@ struct SidebarView: View {
         var seen = Set<String>()
         for w in wt.linked(p.path) {
             seen.insert(w.path)
-            out.append(WorktreeGroup(path: w.path, branch: w.branch, sessions: sessions.filter { $0.worktree == w.path }))
+            out.append(WorktreeGroup(path: w.path, branch: w.label, sessions: sessions.filter { $0.worktree == w.path }))
         }
         for path in Set(sessions.compactMap(\.worktree)) where !seen.contains(path) {
             out.append(WorktreeGroup(path: path, branch: (path as NSString).lastPathComponent, sessions: sessions.filter { $0.worktree == path }))
@@ -367,12 +367,20 @@ struct WorktreeRow: View {
     let path: String
     let branch: String
     let sessions: [Session]
+    @ObservedObject private var wt = Worktrees.shared
     @State private var hover = false
 
     var body: some View {
+        let info = wt.info(path)
         HStack(spacing: 7) {
             Image(systemName: "arrow.triangle.branch").font(.system(size: 10.5, weight: .medium)).foregroundStyle(T.text3).frame(width: 14)
             Text(branch).font(T.mono(11.5)).foregroundStyle(T.text2).lineLimit(1).truncationMode(.middle)
+            if let info, info.detached {
+                Text(info.head.isEmpty ? "detached" : "@\(info.head)").font(T.mono(10)).foregroundStyle(T.text3).fixedSize()
+            }
+            if info?.locked != nil {
+                Image(systemName: "lock.fill").font(.system(size: 8.5)).foregroundStyle(T.text3)
+            }
             Spacer(minLength: 4)
             if hover {
                 Menu {
@@ -391,7 +399,7 @@ struct WorktreeRow: View {
         .background(RoundedRectangle(cornerRadius: T.m.rowR, style: .continuous).fill(hover ? T.hover : .clear))
         .contentShape(Rectangle())
         .onHover { hover = $0 }
-        .help(path)
+        .help(tooltip(info))
         .contextMenu {
             Button("New Terminal Here") { model.newSession(profileId: nil, projectId: project.id, worktree: path) }
             ForEach(model.enabledProfiles) { p in
@@ -402,8 +410,17 @@ struct WorktreeRow: View {
             OpenInMenu(path: path)
             Button("Copy Path") { copy(path) }
             Divider()
+            Button("Hide from Sidebar") { wt.hide(path) }
             Button("Remove Worktree…", role: .destructive) { model.removeWorktree(project: project, path: path) }
         }
+    }
+
+    private func tooltip(_ w: Worktree?) -> String {
+        var lines = [path]
+        if let w, w.detached { lines.append("Detached HEAD at \(w.head) (no branch)") }
+        if let lock = w?.locked { lines.append("Locked" + (lock.isEmpty ? "" : ": \(lock)")) }
+        if !path.hasPrefix(project.path + ".worktrees/") { lines.append("Not created by ADE") }
+        return lines.joined(separator: "\n")
     }
 }
 
@@ -418,6 +435,10 @@ struct ProjectMenu: View {
         }
         if model.setting("features.worktrees")?.bool ?? true {
             Button("New Worktree…") { model.newWorktreeFor = project }
+            let hidden = Worktrees.shared.hiddenPaths(of: project.path)
+            if !hidden.isEmpty {
+                Button("Show \(hidden.count) Hidden Worktree\(hidden.count == 1 ? "" : "s")") { Worktrees.shared.unhide(hidden) }
+            }
         }
         Divider()
         Button("Rename…") { ProjectEditor.rename(project) }
