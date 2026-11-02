@@ -746,6 +746,8 @@ struct HostEditor: View {
             .pickerStyle(.segmented)
             if host.kind == "ssh" {
                 TextField("SSH destination (user@host, or a Host from ~/.ssh/config)", text: $host.target).textFieldStyle(.roundedBorder)
+                TextField("Extra ssh options (optional, e.g. -p 2222 -i ~/.ssh/devbox)", text: Binding(get: { host.sshOptions ?? "" }, set: { host.sshOptions = $0.isEmpty ? nil : $0 }))
+                    .textFieldStyle(.roundedBorder).font(T.mono(12))
                 Text("Uses your ssh config and keys; BatchMode, so keys/agent must work without prompts.").font(T.caption).foregroundStyle(T.text3)
             } else {
                 TextField("Command prefix (e.g. ssh -p 2222 box, or env ADE_HOME=/tmp/x)", text: $host.prefix).textFieldStyle(.roundedBorder).font(T.mono(12))

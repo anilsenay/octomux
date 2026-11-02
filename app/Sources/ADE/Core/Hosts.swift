@@ -12,16 +12,20 @@ struct Host: Codable, Identifiable, Equatable {
     var ade: String = "ade"   // path of `ade` on that host
     var prefix: String = ""   // for kind == "command"
     var attachPrefix: String? // command kind: prefix for panes if it needs a TTY flag (e.g. `docker exec -it …`)
+    var sshOptions: String?   // ssh kind: extra options, e.g. `-i ~/.ssh/devbox -p 2222`
 
     static let local = Host(id: "local", name: "This Mac", kind: "local")
     var isRemote: Bool { kind != "local" }
 
     private static let sshOpts = ["-o", "BatchMode=yes", "-o", "ServerAliveInterval=15", "-o", "ConnectTimeout=8"]
+    private var extraSSH: [String] {
+        (sshOptions ?? "").split(separator: " ").map { NSString(string: String($0)).expandingTildeInPath }
+    }
 
     /// argv that yields a byte pipe to this host's daemon (nil = local socket).
     var controlArgv: [String]? {
         switch kind {
-        case "ssh": return ["/usr/bin/ssh"] + Self.sshOpts + [target, ade, "stdio"]
+        case "ssh": return ["/usr/bin/ssh"] + Self.sshOpts + extraSSH + [target, ade, "stdio"]
         case "command": return ["/bin/sh", "-c", "\(prefix) \(ade.shellQuoted) stdio"]
         default: return nil
         }
@@ -33,7 +37,7 @@ struct Host: Codable, Identifiable, Equatable {
     func attachCommand(_ session: String) -> String {
         switch kind {
         case "ssh":
-            let cmd = (["/usr/bin/ssh", "-t"] + Self.sshOpts + [target, ade, "attach", session]).map(\.shellQuoted).joined(separator: " ")
+            let cmd = (["/usr/bin/ssh", "-t"] + Self.sshOpts + extraSSH + [target, ade, "attach", session]).map(\.shellQuoted).joined(separator: " ")
             return "/bin/sh -c " + cmd.shellQuoted
         case "command":
             let pre = (attachPrefix?.isEmpty == false) ? attachPrefix! : prefix
