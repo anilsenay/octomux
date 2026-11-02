@@ -9,7 +9,7 @@ ADE=${ADE_BIN:-$ROOT/core/target/debug/ade}
 P=/tmp/adeU-proj
 "$ADE" ctl daemon.shutdown >/dev/null 2>&1 || true
 pkill -f "holder.*$ADE_HOME" 2>/dev/null || true
-rm -rf "$ADE_HOME" "$P"; mkdir -p "$P"
+rm -rf "$ADE_HOME" "$P" /tmp/adeU-claude; mkdir -p "$P"
 for name in new-ade cimri-web dotfiles; do
   d=$P/$name; mkdir -p "$d/src"; cd "$d"; git init -q -b main
   printf 'fn main() {}\n' > src/main.rs; printf '# %s\n' "$name" > README.md
@@ -27,7 +27,7 @@ p1=$(mkproj new-ade "#EF8C39"); p2=$(mkproj cimri-web "#459CF7"); p3=$(mkproj do
 FA=$ROOT/tools/fake-agent.sh
 pid_of() { j state.get | python3 -c "import sys,json; print([p['id'] for p in json.load(sys.stdin)['profiles'] if p['name'].lower()=='$1'.lower()][0])"; }
 # Point the default profiles at the fake agent (fixture only).
-j profile.update "{\"id\":\"$(pid_of Claude)\",\"kind\":\"generic\",\"command\":\"$FA\",\"args\":[\"working\"]}" >/dev/null
+j profile.update "{\"id\":\"$(pid_of Claude)\",\"kind\":\"claude\",\"command\":\"$ROOT/tools/fake-claude.py\",\"args\":[],\"env\":{\"CLAUDE_CONFIG_DIR\":\"/tmp/adeU-claude\"},\"via_login_shell\":false}" >/dev/null
 j profile.update "{\"id\":\"$(pid_of Codex)\",\"kind\":\"generic\",\"command\":\"$FA\",\"args\":[\"done\"]}" >/dev/null
 work=$(j profile.create "{\"name\":\"Claude (work)\",\"icon\":\"claude\",\"kind\":\"generic\",\"command\":\"$FA\",\"pinned\":true,\"args\":[\"input\"],\"env\":{},\"resume_template\":\"\"}" | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])')
 agent() {

@@ -104,6 +104,13 @@ like the hooks). It reports `rate_limits` (5-hour / weekly) to the daemon at mos
 rollout files once a minute while a Codex session runs. The status bar shows the focused agent's profile plus
 profiles marked "Always show" (in the usage popover or the agent's settings).
 
+## Chat view (Claude)
+
+⌘⇧C (or the speech-bubble button in the top bar) shows a Claude session as a chat: its own transcript, live,
+with tool calls as cards. What you type there goes into the same session, as if typed in the terminal.
+Permission prompts and menus are answered in the terminal (the chat offers a one-click switch). Nothing else
+runs: same process, same login. Turn it off in Settings → Features.
+
 ## Remote hosts
 
 1. Build `ade` for the server: `rustup target add x86_64-unknown-linux-gnu && tools/build-linux.sh x86_64`

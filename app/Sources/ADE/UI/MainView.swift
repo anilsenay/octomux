@@ -163,6 +163,10 @@ struct TopBar: View {
                     Button { model.newSession(profileId: nil, split: .down) } label: { Image(systemName: "rectangle.split.1x2") }
                         .buttonStyle(ChromeButtonStyle()).help("Split Down (⌘⇧D)")
                 }
+                if let fs = model.session(model.focusedSessionId), model.canChat(fs) {
+                    Button { model.toggleChat(fs.id) } label: { Image(systemName: model.isChat(fs.id) ? "terminal" : "text.bubble") }
+                        .buttonStyle(ChromeButtonStyle(active: model.isChat(fs.id))).help(model.isChat(fs.id) ? "Show terminal (⌘⇧C)" : "Show as chat (⌘⇧C)")
+                }
                 Button { model.rightPanelVisible.toggle() } label: { Image(systemName: "sidebar.right") }
                     .buttonStyle(ChromeButtonStyle(active: model.rightPanelVisible)).help("Changes / History / Files (⌘⌥B)")
                 if let s = model.session(model.focusedSessionId) {

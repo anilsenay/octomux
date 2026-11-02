@@ -78,9 +78,11 @@ struct Session: Codable, Identifiable, Equatable {
     var placement: Placement
     var command: String?
     var worktree: String?
+    var transcriptPath: String?
 
     enum CodingKeys: String, CodingKey {
         case id, kind, title, cwd, state, activity, unread, placement, command, worktree
+        case transcriptPath = "transcript_path"
         case projectId = "project_id"
         case profileId = "profile_id"
         case customTitle = "custom_title"

@@ -116,7 +116,10 @@ final class TerminalHost {
         case .leaf(let id):
             guard let s = model.session(id) else { return PlaceholderPane(text: "Session missing") }
             let pane = PaneView(sessionId: id)
-            if s.state == .running || s.state == .interrupted {
+            if (s.state == .running || s.state == .interrupted) && model.isChat(id) && model.canChat(s) {
+                _ = surface(for: s)   // keep the terminal attached while the chat shows
+                pane.setContent(NSHostingView(rootView: ChatView(sessionId: id).environmentObject(model)))
+            } else if s.state == .running || s.state == .interrupted {
                 pane.setContent(surface(for: s))
             } else {
                 pane.setContent(NSHostingView(rootView: DormantPaneView(sessionId: id).environmentObject(model)))

@@ -117,6 +117,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         session.addItem(item("Next Waiting for Input", #selector(nextWaiting(_:)), "U"))
         session.addItem(item("Stop Session", #selector(stopSession(_:)), "."))
         session.addItem(item("Rename Session", #selector(renameSession(_:)), ""))
+        session.addItem(item("Toggle Chat View", #selector(toggleChat(_:)), "C"))
         session.addItem(.separator())
         for (title, sel, key, mods) in [("Focus Left", #selector(focusLeft(_:)), NSLeftArrowFunctionKey, NSEvent.ModifierFlags([.command, .option])),
                                         ("Focus Right", #selector(focusRight(_:)), NSRightArrowFunctionKey, [.command, .option]),
@@ -180,7 +181,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func item(_ title: String, _ action: Selector, _ key: String) -> NSMenuItem {
         let i = NSMenuItem(title: title, action: action, keyEquivalent: key.lowercased() == key ? key : key.lowercased())
-        if key != key.lowercased() || ["{", "}", "U", "T", "D", "O"].contains(key) {
+        if key != key.lowercased() || ["{", "}", "U", "T", "D", "O", "C"].contains(key) {
             i.keyEquivalent = key == "{" ? "[" : key == "}" ? "]" : key.lowercased()
             i.keyEquivalentModifierMask = [.command, .shift]
         }
@@ -209,6 +210,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc func nextWaiting(_ s: Any?) { model.nextNeedingInput() }
     @objc func stopSession(_ s: Any?) { if let id = model.focusedSessionId { model.stop(id) } }
     @objc func renameSession(_ s: Any?) { model.renamingSessionId = model.focusedSessionId }
+    @objc func toggleChat(_ s: Any?) { model.toggleChat() }
     @objc func toggleSidebar(_ s: Any?) { model.toggleSidebar() }
     @objc func toggleDock(_ s: Any?) { model.toggleDock() }
     @objc func toggleRightPanel(_ s: Any?) { model.rightPanelVisible.toggle() }

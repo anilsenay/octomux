@@ -522,6 +522,17 @@ impl Daemon {
     }
 
     fn on_hook(self: &Arc<Self>, id: &str, event: &str, payload: &Value) {
+        if let Some(tp) = payload.get("transcript_path").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+            let tp = tp.to_string();
+            if self.with_session(id, |s| {
+                let changed = s.transcript_path.as_deref() != Some(&tp);
+                s.transcript_path = Some(tp.clone());
+                changed
+            }) == Some(true)
+            {
+                self.changed();
+            }
+        }
         match event {
             "SessionStart" => {
                 if let Some(sid) = payload.get("session_id").and_then(|v| v.as_str()) {
@@ -1026,6 +1037,7 @@ impl Daemon {
             placement,
             command,
             worktree,
+            transcript_path: None,
         };
         {
             let mut st = self.state.lock().unwrap();

@@ -29,7 +29,7 @@ struct SidebarView: View {
                             ForEach(all.filter { $0.worktree == nil }) { s in
                                 SessionRow(session: s)
                             }
-                            ForEach(worktreeGroups(p, all), id: \.path) { g in
+                            ForEach((model.setting("features.worktrees")?.bool ?? true) ? worktreeGroups(p, all) : [], id: \.path) { g in
                                 WorktreeRow(project: p, path: g.path, branch: g.branch, sessions: g.sessions)
                                 ForEach(g.sessions) { s in SessionRow(session: s, indent: 46) }
                             }
@@ -77,12 +77,12 @@ struct SidebarView: View {
                     Button((w.id == model.selectedWorkspaceId ? "✓ " : "") + w.name) { model.selectWorkspace(w.id) }
                 }
                 Divider()
-                Section("Host") {
+                if (model.setting("features.remote")?.bool ?? true) || model.host.isRemote { Section("Host") {
                     ForEach(HostStore.withLocal) { h in
                         Button((h.id == model.hostId ? "✓ " : "") + h.name) { model.switchHost(h.id) }
                     }
                     Button("Manage Hosts…") { SettingsWindow.show(section: .hosts) }
-                }
+                } }
                 Divider()
                 Button("Workspace Settings…") { SettingsWindow.show(section: .workspaces) }
             } label: {
@@ -282,7 +282,9 @@ struct ProjectMenu: View {
         ForEach(model.enabledProfiles) { p in
             Button("New \(p.name)") { model.newSession(profileId: p.id, projectId: project.id) }
         }
-        Button("New Worktree…") { model.newWorktreeFor = project }
+        if model.setting("features.worktrees")?.bool ?? true {
+            Button("New Worktree…") { model.newWorktreeFor = project }
+        }
         Divider()
         Button("Rename…") { ProjectEditor.rename(project) }
         Menu("Color") {
@@ -410,6 +412,9 @@ struct SessionMenu: View {
 
     var body: some View {
         Button("Rename") { model.renamingSessionId = session.id }
+        if model.canChat(session) {
+            Button(model.isChat(session.id) ? "Show Terminal" : "Show as Chat") { model.toggleChat(session.id) }
+        }
         if let aid = session.agentSessionId {
             Button("Copy Session ID") { copy(aid) }
         }

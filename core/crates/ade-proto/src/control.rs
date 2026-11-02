@@ -147,6 +147,9 @@ pub struct Session {
     /// Git worktree directory this session belongs to (None = the project's main checkout).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub worktree: Option<String>,
+    /// Agent transcript file reported by hooks (`transcript_path`); used by the chat view.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_path: Option<String>,
 }
 
 /// Pane layout of a tab.

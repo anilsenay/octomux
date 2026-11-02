@@ -576,19 +576,19 @@ struct FeatureSettings: View {
 
     var body: some View {
         SettingsCard {
-            feature("Git worktrees", key: "features.worktrees", desc: "Run sessions in isolated git worktrees. (Planned for phase 2.)", available: false)
+            feature("Git worktrees", key: "features.worktrees", desc: "New Worktree… in the project menu and worktree groups in the sidebar.", available: true, defaultOn: true)
             Divider()
-            feature("Remote workspaces", key: "features.remote", desc: "Run the daemon on a server and attach over SSH. (Planned for phase 2.)", available: false)
+            feature("Remote hosts", key: "features.remote", desc: "Connect the window to an ADE daemon on another machine over SSH (Settings → Hosts).", available: true, defaultOn: true)
             Divider()
-            feature("Chat view for agents", key: "features.chat", desc: "Switch an agent session between the terminal and a chat UI. (Experimental, phase 3.)", available: false)
+            feature("Chat view for Claude", key: "features.chat", desc: "Show a Claude session as a chat (its transcript) and type into the same session. ⌘⇧C.", available: true, defaultOn: true)
             Divider()
             feature("Usage via OAuth API", key: "features.usage_oauth", desc: "Read Claude plan limits from Anthropic's usage endpoint even with no session open. (Phase 2.)", available: false)
         }
     }
 
-    func feature(_ title: String, key: String, desc: String, available: Bool) -> some View {
+    func feature(_ title: String, key: String, desc: String, available: Bool, defaultOn: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 3) {
-            Toggle(title, isOn: Binding(get: { model.setting(key)?.bool ?? false }, set: { model.setSetting(key, $0) }))
+            Toggle(title, isOn: Binding(get: { model.setting(key)?.bool ?? defaultOn }, set: { model.setSetting(key, $0) }))
                 .toggleStyle(.switch).disabled(!available)
             Text(desc).font(.caption).foregroundStyle(.secondary)
         }

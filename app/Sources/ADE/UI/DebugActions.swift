@@ -95,6 +95,8 @@ enum DebugActions {
                     HostStore.all = all
                 }
             case "switch_host": m.switchHost(p["value"] as? String ?? "local")
+            case "toggle_chat": m.toggleChat(id)
+            case "chat_send": if let id { m.sendToSession(id, text: p["value"] as? String ?? "") }
             case "usage_popover": m.usagePopoverOpen = (p["value"] as? Bool) ?? true
             case "palette_run":
                 // Runs the top result for `value`, like typing it and pressing Return.

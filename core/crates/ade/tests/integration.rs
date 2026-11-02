@@ -426,8 +426,9 @@ fn session_start_hook_updates_agent_id_and_activity_flows() {
         assert!(out.status.success());
         assert!(out.stdout.is_empty(), "hooks must stay silent");
     };
-    hook("SessionStart", json!({ "session_id": "new-conv-after-clear", "source": "clear" }));
+    hook("SessionStart", json!({ "session_id": "new-conv-after-clear", "source": "clear", "transcript_path": "/tmp/t/new-conv-after-clear.jsonl" }));
     assert_eq!(e.session(&id)["agent_session_id"], "new-conv-after-clear");
+    assert_eq!(e.session(&id)["transcript_path"], "/tmp/t/new-conv-after-clear.jsonl");
     hook("UserPromptSubmit", json!({}));
     assert_eq!(e.session(&id)["activity"], "working");
     hook("Notification", json!({ "notification_type": "permission_prompt", "message": "Claude needs your permission" }));
