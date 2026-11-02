@@ -151,7 +151,7 @@ struct AddMenu: View {
             }
             Button("New Workspace…") { WorkspaceEditor.create() }
         } label: {
-            Image(systemName: "plus").font(.system(size: 13, weight: .medium)).foregroundStyle(T.text2)
+            Image(systemName: "plus").font(.system(size: 13, weight: .medium)).foregroundStyle(T.text2).menuHitBox(26, 26)
         }
         .plainMenu()
         .frame(width: 26, height: 26)
@@ -380,7 +380,7 @@ struct WorktreeRow: View {
                     ForEach(model.enabledProfiles) { p in
                         Button(p.name) { model.newSession(profileId: p.id, projectId: project.id, worktree: path) }
                     }
-                } label: { Image(systemName: "plus").font(.system(size: 10, weight: .semibold)).foregroundStyle(T.text2) }
+                } label: { Image(systemName: "plus").font(.system(size: 10, weight: .semibold)).foregroundStyle(T.text2).menuHitBox(20, 20) }
                     .plainMenu().frame(width: 20, height: 20).hoverHighlight(radius: 5)
             } else if sessions.isEmpty {
                 Text("empty").font(T.caption).foregroundStyle(T.text3)

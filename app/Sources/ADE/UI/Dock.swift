@@ -160,7 +160,7 @@ struct DockView: View {
                         }
                     }
                 } label: {
-                    Image(systemName: Self.positionIcon(position)).font(.system(size: 11.5)).foregroundStyle(T.text2)
+                    Image(systemName: Self.positionIcon(position)).font(.system(size: 11.5)).foregroundStyle(T.text2).menuHitBox(22, 22)
                 }
                 .plainMenu()
                 .frame(width: 22, height: 22).hoverHighlight()
@@ -282,11 +282,14 @@ struct ActionsControl: View {
                 }
                 Button("Add Action…") { adding = true }
             } label: {
-                if list.isEmpty {
-                    HStack(spacing: 5) { Image(systemName: "play.fill").font(.system(size: 9)); Text("Actions") }.foregroundStyle(T.text2)
-                } else { Image(systemName: "chevron.down").font(.system(size: 8, weight: .semibold)).foregroundStyle(T.text2) }
+                Group {
+                    if list.isEmpty {
+                        HStack(spacing: 5) { Image(systemName: "play.fill").font(.system(size: 9)); Text("Actions") }.foregroundStyle(T.text2)
+                    } else { Image(systemName: "chevron.down").font(.system(size: 8, weight: .semibold)).foregroundStyle(T.text2) }
+                }
+                .padding(4).contentShape(Rectangle())
             }
-            .plainMenu().fixedSize().hoverHighlight(padding: 4)
+            .plainMenu().fixedSize().hoverHighlight()
         }
         .disabled(pid == nil)
         .sheet(isPresented: $adding) { ActionEditor(action: nil) { adding = false } }

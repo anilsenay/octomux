@@ -16,28 +16,31 @@ struct MainView: View {
                     .overlay(alignment: .trailing) { SidebarResizeHandle() }
                 if flat { Hairline(vertical: true) }
             }
+            // Top bar and status bar span the window (the right panel opens below the top bar, so the
+            // bar's tools stay at the right edge).
             VStack(spacing: 0) {
                 TopBar()
                 if flat { Hairline() }
-                workArea
-                    .padding(.trailing, model.rightPanelVisible ? 0 : m.inset)
-                    .padding(.leading, model.sidebarVisible ? 0 : m.inset)
+                HStack(spacing: 0) {
+                    workArea
+                        .padding(.trailing, model.rightPanelVisible ? 0 : m.inset)
+                        .padding(.leading, model.sidebarVisible ? 0 : m.inset)
+                        .frame(minWidth: 0, maxWidth: .infinity)
+                    if model.rightPanelVisible {
+                        if flat { Hairline(vertical: true) }
+                        RightPanel()
+                            .frame(width: 320)
+                            .background(T.surface)
+                            .clipShape(RoundedRectangle(cornerRadius: m.cardR, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: m.cardR, style: .continuous).stroke(T.border))
+                            .padding(.leading, m.inset)
+                            .padding(.trailing, m.inset)
+                    }
+                }
                 if flat { Hairline() }
                 StatusBar()
             }
             .frame(minWidth: 0, maxWidth: .infinity)
-            if model.rightPanelVisible {
-                if flat { Hairline(vertical: true) }
-                RightPanel()
-                    .frame(width: 320)
-                    .background(T.surface)
-                    .clipShape(RoundedRectangle(cornerRadius: m.cardR, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: m.cardR, style: .continuous).stroke(T.border))
-                    .padding(.leading, m.inset)
-                    .padding(.trailing, m.inset)
-                    .padding(.top, m.topH)
-                    .padding(.bottom, m.statusH)
-            }
         }
         .background(m.glass ? AnyView(VisualEffect(material: .underWindowBackground)) : AnyView(WorkspaceTintedFrame()))
         .overlay(alignment: .topLeading) { peekStrip }
@@ -269,9 +272,9 @@ struct TopBar: View {
                         }
                     } label: {
                         Text("+\(hidden.count)").font(.system(size: 11.5, weight: .semibold)).foregroundStyle(T.text2)
+                            .padding(.horizontal, 6).frame(height: m.tabH).contentShape(Rectangle())
                     }
                     .plainMenu().fixedSize()
-                    .padding(.horizontal, 6).frame(height: m.tabH)
                     .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(T.hover))
                     .pointerCursor()
                     .help("\(hidden.count) more tabs")
@@ -285,7 +288,7 @@ struct TopBar: View {
             HStack(spacing: 4) {
                 if !fit.compact {
                     if let wp = model.currentWorkPath, let stat = git.diffStat(for: wp), stat.files > 0 {
-                        Button { model.rightPanelVisible = true } label: {
+                        Button { model.toggleChangesPanel() } label: {
                             HStack(spacing: 4) {
                                 Text("+\(stat.added)").foregroundStyle(T.green)
                                 Text("−\(stat.removed)").foregroundStyle(T.red)
@@ -311,7 +314,7 @@ struct TopBar: View {
                 if let s = model.session(model.focusedSessionId) {
                     Menu {
                         SessionMenu(session: s)
-                    } label: { Image(systemName: "ellipsis").foregroundStyle(T.text2) }
+                    } label: { Image(systemName: "ellipsis").foregroundStyle(T.text2).menuHitBox(26, 26) }
                         .plainMenu().frame(width: 26, height: 26)
                         .hoverHighlight().help("Session")
                 }
@@ -519,7 +522,7 @@ struct ProjectQuickActions: View {
                 } else {
                     Menu {
                         ForEach(group) { p in Button(p.name) { model.newSession(profileId: p.id, projectId: project.id) } }
-                    } label: { AgentIcon(icon: group[0].icon, size: 11) }
+                    } label: { AgentIcon(icon: group[0].icon, size: 11).menuHitBox(20, 20) }
                         .plainMenu()
                         .frame(width: 20, height: 20).hoverHighlight(radius: 5)
                         .help(group.map(\.name).joined(separator: " / "))
@@ -527,7 +530,7 @@ struct ProjectQuickActions: View {
             }
             Menu {
                 NewSessionItems(projectId: project.id)
-            } label: { Image(systemName: "plus").font(.system(size: 10, weight: .semibold)).foregroundStyle(T.text2) }
+            } label: { Image(systemName: "plus").font(.system(size: 10, weight: .semibold)).foregroundStyle(T.text2).menuHitBox(20, 20) }
                 .plainMenu()
                 .frame(width: 20, height: 20).hoverHighlight(radius: 5)
                 .help("New session")

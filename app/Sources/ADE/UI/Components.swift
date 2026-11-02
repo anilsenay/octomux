@@ -219,6 +219,8 @@ struct HoverHighlight: ViewModifier {
 extension View {
     /// Menu whose label is drawn as-is (no accent tint, no indicator).
     func plainMenu() -> some View { menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden) }
+    /// A menu label that is clickable over its whole box (not just the glyph).
+    func menuHitBox(_ w: CGFloat, _ h: CGFloat) -> some View { frame(width: w, height: h).contentShape(Rectangle()) }
     func pointerCursor() -> some View { modifier(PointerCursor()) }
     func hoverHighlight(radius: CGFloat = 6, padding: CGFloat = 0) -> some View { modifier(HoverHighlight(radius: radius, padding: padding)) }
 }

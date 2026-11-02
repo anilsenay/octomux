@@ -671,6 +671,17 @@ final class AppModel: ObservableObject {
         TerminalHost.shared.refreshPaneBackgrounds()
     }
 
+    /// The top bar's +N −M button: shows the right panel on Changes, or hides it when it already shows Changes.
+    func toggleChangesPanel() {
+        let onChanges = UserDefaults.standard.string(forKey: "ade.rightTab") == "Changes"
+        if rightPanelVisible && onChanges {
+            rightPanelVisible = false
+        } else {
+            UserDefaults.standard.set("Changes", forKey: "ade.rightTab")
+            rightPanelVisible = true
+        }
+    }
+
     func toggleSidebar() {
         sidebarPeek = false
         sidebarVisible.toggle()
