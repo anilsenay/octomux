@@ -13,7 +13,14 @@ struct MainView: View {
             VStack(spacing: 0) {
                 TopBar()
                 Divider()
-                TerminalArea()
+                if model.isDockOpen(model.currentProject?.id) {
+                    VSplitView {
+                        TerminalArea().frame(minHeight: 120)
+                        DockView().frame(minHeight: 90, idealHeight: 240)
+                    }
+                } else {
+                    TerminalArea()
+                }
                 Divider()
                 StatusBar()
             }
@@ -256,10 +263,16 @@ struct StatusBar: View {
             if let s = model.session(model.focusedSessionId) {
                 Text(s.cwd.replacingOccurrences(of: NSHomeDirectory(), with: "~")).lineLimit(1).truncationMode(.head).foregroundStyle(.tertiary)
             }
+            ActionsControl()
+            Button { model.toggleDock() } label: {
+                Label("Terminal", systemImage: "terminal")
+                    .foregroundStyle(model.isDockOpen(model.currentProject?.id) ? Color.accentColor : .secondary)
+            }
+            .buttonStyle(ChromeButtonStyle()).help("Toggle dock (⌘J)").disabled(model.currentProject == nil)
         }
         .font(.system(size: 11))
         .foregroundStyle(.secondary)
         .padding(.horizontal, 10)
-        .frame(height: 24)
+        .frame(height: 26)
     }
 }

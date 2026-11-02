@@ -8,6 +8,8 @@ final class TerminalHost {
     static let shared = TerminalHost()
 
     let container = PaneContainerView()
+    let dockContainer = PaneContainerView()
+    private var renderedDock: (String?, SessionState?)?
     private var surfaces: [String: TerminalSurfaceView] = [:]
     private var renderedTabId: String?
     private var renderedLayout: PaneNode?
@@ -31,6 +33,7 @@ final class TerminalHost {
                 TerminalRegistry.shared.remove(session.id)
                 v.close()
                 self.render(force: true)
+                self.renderDock(force: true)
             }
         }
         surfaces[session.id] = v
@@ -51,6 +54,28 @@ final class TerminalHost {
             }
         }
         render()
+        renderDock()
+    }
+
+    /// Shows the selected dock session of the current project.
+    func renderDock(force: Bool = false, focus: Bool = false) {
+        let pid = model.currentProject?.id
+        let selId = model.isDockOpen(pid) ? model.dockSelection(pid) : nil
+        let sel = model.session(selId)
+        let key = (selId, sel?.state)
+        if !force, let r = renderedDock, r.0 == key.0, r.1 == key.1 { return }
+        renderedDock = key
+        dockContainer.subviews.forEach { $0.removeFromSuperview() }
+        guard let s = sel else { return }
+        let pane = PaneView(sessionId: s.id)
+        if s.state == .running || s.state == .interrupted {
+            let v = surface(for: s)
+            pane.setContent(v)
+            if focus { DispatchQueue.main.async { v.window?.makeFirstResponder(v) } }
+        } else {
+            pane.setContent(NSHostingView(rootView: DormantPaneView(sessionId: s.id).environmentObject(model)))
+        }
+        dockContainer.setRoot(pane)
     }
 
     func render(force: Bool = false) {

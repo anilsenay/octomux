@@ -382,7 +382,8 @@ impl Daemon {
             HolderEvent::Title { title } => {
                 let t = strip_title(&title);
                 let changed = self.with_session(id, |s| {
-                    if s.title != t && !t.is_empty() {
+                    // Actions keep their name; the shell inside would otherwise rename them.
+                    if s.kind != SessionKind::Action && s.title != t && !t.is_empty() {
                         s.title = t.clone();
                         true
                     } else {

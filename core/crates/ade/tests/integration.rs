@@ -568,3 +568,24 @@ fn enclosing_agent_env_does_not_leak_into_sessions() {
     let text = e.wait_screen(&id, "/1");
     assert!(text.contains("LEAK=none/none/none/1"), "{text}");
 }
+
+#[test]
+fn dock_action_runs_command_once_and_restores_as_shell() {
+    let mut e = Env::new();
+    let p = e.project();
+    let marker = e.home.join("ran-count");
+    let cmd = format!("echo run >> {} && echo ACTION-$((20+1))", marker.display());
+    let r = e.call("session.create", json!({ "project_id": p, "command": cmd, "title": "Test", "placement": "dock" }));
+    let id = r["session"]["id"].as_str().unwrap().to_string();
+    assert_eq!(r["session"]["kind"], "action");
+    assert_eq!(r["session"]["placement"], "dock");
+    assert!(r["tab_id"].is_null(), "dock sessions are not in tabs");
+    e.wait_screen(&id, "ACTION-21");
+    e.kill_daemon();
+    e.hard_kill_holder(&id);
+    e.start_daemon();
+    wait_until(Duration::from_secs(10), || e.holder_alive(&id));
+    std::thread::sleep(Duration::from_millis(800));
+    let runs = std::fs::read_to_string(&marker).unwrap();
+    assert_eq!(runs.lines().count(), 1, "restore must not re-run the action");
+}

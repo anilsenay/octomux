@@ -21,6 +21,10 @@ enum DebugActions {
                 "current_project": m.currentProject?.name ?? NSNull(),
                 "tabs": m.currentTabs.map { t in ["id": t.id, "sessions": t.layout.sessions, "active": t.id == m.activeTabId] as [String: Any] },
                 "focused_session": m.focusedSessionId ?? NSNull(),
+                "dock_open": m.isDockOpen(m.currentProject?.id),
+                "dock_sessions": m.dockSessions(m.currentProject?.id).map { ["id": $0.id, "title": $0.displayTitle, "kind": $0.kind.rawValue, "state": $0.state.rawValue] },
+                "dock_selected": m.dockSelection(m.currentProject?.id) ?? NSNull(),
+                "actions": m.actions(m.currentProject?.id).map { $0.name },
                 "first_responder_session": (NSApp.mainWindow?.firstResponder as? TerminalSurfaceView)?.sessionId ?? NSNull(),
                 "pinned_profiles": m.pinnedProfiles.map { $0.name },
                 "profiles": m.enabledProfiles.map { ["id": $0.id, "name": $0.name, "kind": $0.kind.rawValue] },
@@ -48,6 +52,14 @@ enum DebugActions {
             case "remove": if let id { m.remove(id, confirm: false) }
             case "close_pane": if let id = m.focusedSessionId { m.remove(id, confirm: false) }
             case "toggle_sidebar": m.toggleSidebar()
+            case "toggle_dock": m.toggleDock()
+            case "add_action":
+                guard let pid = m.currentProject?.id else { throw DebugServer.DebugError.bad("no project") }
+                m.saveActions(pid, m.actions(pid) + [ProjectAction(name: p["value"] as? String ?? "Test", icon: "flask", command: p["command"] as? String ?? "echo hi")])
+            case "run_action":
+                guard let a = m.actions(m.currentProject?.id).first(where: { $0.name == (p["value"] as? String) }) ?? m.lastAction(m.currentProject?.id)
+                else { throw DebugServer.DebugError.bad("no action") }
+                m.runAction(a)
             case "add_project":
                 guard let path = p["path"] as? String, let ws = m.selectedWorkspaceId else { throw DebugServer.DebugError.bad("path") }
                 m.addProject(path: path, workspaceId: ws)

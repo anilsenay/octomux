@@ -164,6 +164,9 @@ pub fn build_launch(paths: &Paths, session: &Session, profile: Option<&Profile>,
     let mut env = vec![("ADE_HOME".to_string(), paths.home.to_string_lossy().into_owned())];
     match session.kind {
         SessionKind::Terminal => LaunchSpec { argv: vec![], env, cwd, agent_session_id: None },
+        // After a crash/reboot an action comes back as a plain shell: never re-run
+        // a command (tests, deploys…) behind the user's back.
+        SessionKind::Action if restoring => LaunchSpec { argv: vec![], env, cwd, agent_session_id: None },
         SessionKind::Action => {
             // Run the command, then keep an interactive shell so the output stays visible.
             let shell = util::user_shell();
