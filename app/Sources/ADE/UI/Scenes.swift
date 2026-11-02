@@ -79,6 +79,14 @@ enum Scenes {
     ]
 
     static func scene(_ id: String?) -> AmbientScene? { all.first { $0.id == id } }
+
+    /// The scene id a workspace shows: its own `appearance.scene` (where "none" means no scene), else the
+    /// global one. nil = no scene.
+    static func resolve(workspace: String?, settings: [Setting]) -> String? {
+        func value(_ scope: String) -> String? { settings.first { $0.scope == scope && $0.key == "appearance.scene" }?.value.string }
+        let v = workspace.flatMap { value("workspace:\($0)") } ?? value("global")
+        return v == "none" ? nil : v
+    }
 }
 
 // MARK: Clock
@@ -141,13 +149,17 @@ final class AmbientClock: ObservableObject {
     }
     func unregister(_ v: SceneLayerView) { views.remove(v); update() }
 
-    func update() {
-        let f: Double
+    /// Frames per second for a `reason`: full in front, slow behind another app, 0 otherwise.
+    static func fps(for reason: String) -> Double {
         switch reason {
-        case "active": f = Self.activeFPS
-        case "background": f = Self.backgroundFPS
-        default: f = 0
+        case "active": return activeFPS
+        case "background": return backgroundFPS
+        default: return 0
         }
+    }
+
+    func update() {
+        let f = Self.fps(for: reason)
         if f != fps { fps = f }
         let want = views.count > 0 ? f : 0
         if want == 0 { timer?.invalidate(); timer = nil; return }
@@ -991,11 +1003,7 @@ private struct SceneBuilder {
 
 extension AppModel {
     /// The scene a workspace shows: its own pick, else the global one. nil = none.
-    func sceneId(workspace: String?) -> String? {
-        if let ws = workspace, let v = settingValue("appearance.scene", scope: "workspace:\(ws)")?.string { return v == "none" ? nil : v }
-        let g = settingValue("appearance.scene", scope: "global")?.string
-        return g == "none" ? nil : g
-    }
+    func sceneId(workspace: String?) -> String? { Scenes.resolve(workspace: workspace, settings: state.settings) }
 
     /// The workspace's own pick: nil when it follows the global scene.
     func workspaceSceneOverride(_ ws: String) -> String? { settingValue("appearance.scene", scope: "workspace:\(ws)")?.string }

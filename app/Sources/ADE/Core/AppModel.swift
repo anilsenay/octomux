@@ -405,7 +405,7 @@ final class AppModel: ObservableObject {
     // MARK: Selection
 
     func selectWorkspace(_ id: String) {
-        guard id != selectedWorkspaceId else { return }
+        guard id != selectedWorkspaceId, state.workspaces.contains(where: { $0.id == id }) else { return }
         activeDocId = nil
         selectedWorkspaceId = id
         if let t = lastTabPerWorkspace[id], let tab = state.tabs.first(where: { $0.id == t }), project(tab.projectId)?.workspaceId == id {

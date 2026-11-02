@@ -500,6 +500,10 @@ struct ThemePicker: View {
                 }
                 .pickerStyle(.segmented).labelsHidden().frame(width: 220)
             }
+            if let sc = store.scene {
+                Text("The current workspace's scene (\(sc.name)) is \(sc.dark ? "dark" : "light"), so it decides while it is shown.")
+                    .font(.caption).foregroundStyle(T.text3)
+            }
             Toggle("Use theme colors in the terminal", isOn: Binding(
                 get: { model.settingValue("appearance.terminal_colors", scope: "global")?.bool ?? true },
                 set: { model.setSetting("appearance.terminal_colors", $0 ? nil : false) }))

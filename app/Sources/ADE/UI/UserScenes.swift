@@ -8,6 +8,15 @@ import SwiftUI
 enum AmbientMood: Equatable {
     case calm, busy, attention, error
 
+    /// The most urgent state among the running agents of these projects: error, then input, then working.
+    static func of(_ sessions: [Session], projectIds: Set<String>) -> AmbientMood {
+        let agents = sessions.filter { $0.kind == .agent && !$0.isDormant && projectIds.contains($0.projectId) }
+        if agents.contains(where: { $0.activity == .error }) { return .error }
+        if agents.contains(where: { $0.activity == .needsInput }) { return .attention }
+        if agents.contains(where: { $0.activity == .working }) { return .busy }
+        return .calm
+    }
+
     var glow: String? {
         switch self {
         case .attention: return "#F5B841"
@@ -23,12 +32,7 @@ extension AppModel {
 
     func updateAmbientMood() {
         guard scenesReactToAgents else { AmbientClock.shared.setMood(.calm); return }
-        let ids = Set(projects.map(\.id))
-        let agents = state.sessions.filter { $0.kind == .agent && !$0.isDormant && ids.contains($0.projectId) }
-        let m: AmbientMood = agents.contains { $0.activity == .error } ? .error
-            : agents.contains { $0.activity == .needsInput } ? .attention
-            : agents.contains { $0.activity == .working } ? .busy : .calm
-        AmbientClock.shared.setMood(m)
+        AmbientClock.shared.setMood(AmbientMood.of(state.sessions, projectIds: Set(projects.map(\.id))))
     }
 }
 
@@ -89,8 +93,7 @@ enum UserScenes {
             .filter { $0.pathExtension.lowercased() == "json" }.sorted { $0.lastPathComponent < $1.lastPathComponent }
         for f in files {
             do {
-                let spec = try JSONDecoder().decode(SceneSpec.self, from: Data(contentsOf: f))
-                out.append(scene(from: spec, file: f))
+                out.append(try parse(Data(contentsOf: f), file: f))
             } catch let e as DecodingError {
                 errs.append("\(f.lastPathComponent): \(describe(e))")
             } catch {
@@ -101,7 +104,12 @@ enum UserScenes {
         return out
     }
 
-    private static func describe(_ e: DecodingError) -> String {
+    /// One scene file's contents as a scene (throws DecodingError for bad JSON or fields).
+    static func parse(_ data: Data, file: URL) throws -> AmbientScene {
+        scene(from: try JSONDecoder().decode(SceneSpec.self, from: data), file: file)
+    }
+
+    static func describe(_ e: DecodingError) -> String {
         func path(_ c: DecodingError.Context) -> String { c.codingPath.map { $0.intValue.map(String.init) ?? $0.stringValue }.joined(separator: ".") }
         switch e {
         case .keyNotFound(let k, let c): return "missing “\(k.stringValue)”" + (c.codingPath.isEmpty ? "" : " in \(path(c))")
@@ -182,7 +190,7 @@ enum UserScenes {
         return url
     }
 
-    private static func template(name: String, id: String) -> String { """
+    static func template(name: String, id: String) -> String { """
     {
       "id": "\(id)",
       "name": "\(name)",
