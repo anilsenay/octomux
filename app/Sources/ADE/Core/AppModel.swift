@@ -23,6 +23,7 @@ final class AppModel: ObservableObject {
     @Published var paletteVisible = false
     @Published var paletteQuery = ""
     @Published var usagePopoverOpen = false
+    @Published var newWorktreeFor: Project?
 
     private var lastTabPerWorkspace: [String: String] = [:]
     private let defaults = UserDefaults.standard
@@ -96,6 +97,12 @@ final class AppModel: ObservableObject {
     func project(_ id: String?) -> Project? { state.projects.first { $0.id == id } }
     func session(_ id: String?) -> Session? { state.sessions.first { $0.id == id } }
     func profile(_ id: String?) -> Profile? { state.profiles.first { $0.id == id } }
+
+    /// Folder the current context works in: the focused session's worktree, else the project.
+    var currentWorkPath: String? {
+        if let s = session(focusedSessionId), s.projectId == currentProject?.id, let w = s.worktree { return w }
+        return currentProject?.path
+    }
 
     func sessions(ofProject id: String) -> [Session] {
         state.sessions.filter { $0.projectId == id && $0.placement == .tab }.sorted { $0.createdAt < $1.createdAt }
@@ -229,12 +236,16 @@ final class AppModel: ObservableObject {
     }
 
     /// Creates a terminal (profileId nil) or agent session. With `split`, it joins the focused pane's tab.
-    func newSession(profileId: String?, projectId: String? = nil, split: SplitDir? = nil, command: String? = nil, title: String? = nil, placement: Placement = .tab) {
+    func newSession(profileId: String?, projectId: String? = nil, split: SplitDir? = nil, command: String? = nil, title: String? = nil, placement: Placement = .tab, worktree: String? = nil) {
         guard let pid = projectId ?? currentProject?.id else {
             lastError = "Add a project first (⌘⇧O)."
             return
         }
         var params: [String: Any] = ["project_id": pid, "placement": placement.rawValue]
+        // Explicit worktree, else inherit the focused session's (same project) so splits and ⌘T stay in it.
+        if let wt = worktree ?? (projectId == nil ? session(focusedSessionId).flatMap { $0.projectId == pid ? $0.worktree : nil } : nil) {
+            params["worktree"] = wt
+        }
         if let profileId { params["profile_id"] = profileId }
         if let command { params["command"] = command }
         if let title { params["title"] = title }

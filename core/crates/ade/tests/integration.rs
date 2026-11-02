@@ -641,3 +641,21 @@ fn statusline_reports_usage_and_passes_through_user_statusline() {
     std::fs::create_dir_all(&empty).unwrap();
     assert_eq!(run(&empty).trim(), "Opus");
 }
+
+#[test]
+fn session_in_worktree_runs_there_and_is_tagged() {
+    let e = Env::new();
+    let p = e.project();
+    let wt = e.home.join("wt-feature");
+    std::fs::create_dir_all(&wt).unwrap();
+    let wt = wt.canonicalize().unwrap();
+    let r = e.call("session.create", json!({ "project_id": p, "worktree": wt, "cols": 100, "rows": 20 }));
+    let id = r["session"]["id"].as_str().unwrap().to_string();
+    assert_eq!(r["session"]["worktree"], wt.to_string_lossy().as_ref());
+    e.input(&id, "echo WT=$(pwd)/$((1))\r");
+    let text = e.wait_screen(&id, "/1");
+    assert!(text.contains(&format!("WT={}/1", wt.display())), "{text}");
+    // A missing worktree is an error, not a session in the wrong place.
+    let bad = e.try_call("session.create", json!({ "project_id": p, "worktree": "/nonexistent/wt" })).unwrap_err();
+    assert!(bad.contains("worktree not found"), "{bad}");
+}

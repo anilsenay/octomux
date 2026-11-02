@@ -3,6 +3,7 @@ import SwiftUI
 
 struct SidebarView: View {
     @EnvironmentObject var model: AppModel
+    @ObservedObject var wt = Worktrees.shared
     @State private var collapsed: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "ade.collapsed") ?? [])
 
     var body: some View {
@@ -24,8 +25,13 @@ struct SidebarView: View {
                         }
                         .padding(.top, i == 0 ? 0 : 6)
                         if !collapsed.contains(p.id) {
-                            ForEach(model.sessions(ofProject: p.id)) { s in
+                            let all = model.sessions(ofProject: p.id)
+                            ForEach(all.filter { $0.worktree == nil }) { s in
                                 SessionRow(session: s)
+                            }
+                            ForEach(worktreeGroups(p, all), id: \.path) { g in
+                                WorktreeRow(project: p, path: g.path, branch: g.branch, sessions: g.sessions)
+                                ForEach(g.sessions) { s in SessionRow(session: s, indent: 46) }
                             }
                             let dock = model.state.sessions.filter { $0.projectId == p.id && $0.placement == .dock }
                             if !dock.isEmpty {
@@ -45,6 +51,22 @@ struct SidebarView: View {
             }
             footer
         }
+    }
+
+    struct WorktreeGroup { let path: String; let branch: String; let sessions: [Session] }
+
+    /// Linked git worktrees of the project, plus worktrees sessions still point at.
+    private func worktreeGroups(_ p: Project, _ sessions: [Session]) -> [WorktreeGroup] {
+        var out: [WorktreeGroup] = []
+        var seen = Set<String>()
+        for w in wt.linked(p.path) {
+            seen.insert(w.path)
+            out.append(WorktreeGroup(path: w.path, branch: w.branch, sessions: sessions.filter { $0.worktree == w.path }))
+        }
+        for path in Set(sessions.compactMap(\.worktree)) where !seen.contains(path) {
+            out.append(WorktreeGroup(path: path, branch: (path as NSString).lastPathComponent, sessions: sessions.filter { $0.worktree == path }))
+        }
+        return out
     }
 
     private var header: some View {
@@ -184,6 +206,53 @@ struct ProjectRow: View {
     }
 }
 
+/// A linked git worktree under its project: branch, session count, new-session menu.
+struct WorktreeRow: View {
+    @EnvironmentObject var model: AppModel
+    let project: Project
+    let path: String
+    let branch: String
+    let sessions: [Session]
+    @State private var hover = false
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Image(systemName: "arrow.triangle.branch").font(.system(size: 10.5, weight: .medium)).foregroundStyle(T.text3).frame(width: 14)
+            Text(branch).font(T.mono(11.5)).foregroundStyle(T.text2).lineLimit(1).truncationMode(.middle)
+            Spacer(minLength: 4)
+            if hover {
+                Menu {
+                    Button("Terminal") { model.newSession(profileId: nil, projectId: project.id, worktree: path) }
+                    ForEach(model.enabledProfiles) { p in
+                        Button(p.name) { model.newSession(profileId: p.id, projectId: project.id, worktree: path) }
+                    }
+                } label: { Image(systemName: "plus").font(.system(size: 10, weight: .semibold)).foregroundStyle(T.text2) }
+                    .menuStyle(.borderlessButton).menuIndicator(.hidden).frame(width: 18)
+            } else if sessions.isEmpty {
+                Text("empty").font(T.caption).foregroundStyle(T.text3)
+            }
+        }
+        .padding(.leading, 30).padding(.trailing, 8)
+        .frame(height: max(22, T.m.rowH - 6))
+        .background(RoundedRectangle(cornerRadius: T.m.rowR, style: .continuous).fill(hover ? T.hover : .clear))
+        .contentShape(Rectangle())
+        .onHover { hover = $0 }
+        .help(path)
+        .contextMenu {
+            Button("New Terminal Here") { model.newSession(profileId: nil, projectId: project.id, worktree: path) }
+            ForEach(model.enabledProfiles) { p in
+                Button("New \(p.name) Here") { model.newSession(profileId: p.id, projectId: project.id, worktree: path) }
+            }
+            Divider()
+            Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)]) }
+            OpenInMenu(path: path)
+            Button("Copy Path") { copy(path) }
+            Divider()
+            Button("Remove Worktree…", role: .destructive) { model.removeWorktree(project: project, path: path) }
+        }
+    }
+}
+
 struct ProjectMenu: View {
     @EnvironmentObject var model: AppModel
     let project: Project
@@ -193,6 +262,7 @@ struct ProjectMenu: View {
         ForEach(model.enabledProfiles) { p in
             Button("New \(p.name)") { model.newSession(profileId: p.id, projectId: project.id) }
         }
+        Button("New Worktree…") { model.newWorktreeFor = project }
         Divider()
         Button("Rename…") { ProjectEditor.rename(project) }
         Menu("Color") {
@@ -254,6 +324,7 @@ func copy(_ s: String) {
 struct SessionRow: View {
     @EnvironmentObject var model: AppModel
     let session: Session
+    var indent: CGFloat = 30
     @State private var hover = false
     @State private var editTitle = ""
 
@@ -301,7 +372,7 @@ struct SessionRow: View {
             }
         }
         .opacity(session.isDormant ? 0.45 : 1)
-        .padding(.leading, 30)
+        .padding(.leading, indent)
         .padding(.trailing, 8)
         .frame(height: m.rowH)
         .background(RoundedRectangle(cornerRadius: m.rowR, style: .continuous).fill(selected ? T.selection : hover ? T.hover : .clear))

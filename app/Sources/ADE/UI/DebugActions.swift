@@ -71,6 +71,15 @@ enum DebugActions {
                 m.paletteVisible = true
                 m.paletteQuery = p["value"] as? String ?? ""
             case "close_palette": m.paletteVisible = false
+            case "new_worktree":
+                if let id, let proj = m.project(id) {
+                    m.newWorktree(project: proj, branch: p["value"] as? String ?? "feat/x", open: p["profile_id"] as? String)
+                }
+            case "remove_worktree_noconfirm":
+                if let id, let proj = m.project(id), let path = p["value"] as? String {
+                    for s in m.state.sessions where s.worktree == path { m.remove(s.id, confirm: false) }
+                    _ = Worktrees.remove(project: proj.path, path: path, force: true)
+                }
             case "usage_popover": m.usagePopoverOpen = (p["value"] as? Bool) ?? true
             case "palette_run":
                 // Runs the top result for `value`, like typing it and pressing Return.

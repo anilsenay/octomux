@@ -988,10 +988,16 @@ impl Daemon {
         let profile_id = p.get("profile_id").and_then(|v| v.as_str()).map(String::from);
         let command = p.get("command").and_then(|v| v.as_str()).unwrap_or("").to_string();
         let placement: Placement = serde_json::from_value(p.get("placement").cloned().unwrap_or(json!("tab"))).unwrap_or(Placement::Tab);
+        let worktree = p.get("worktree").and_then(|v| v.as_str()).filter(|s| !s.is_empty()).map(util::expand_tilde);
+        if let Some(w) = &worktree {
+            if !std::path::Path::new(w).is_dir() {
+                bail!("worktree not found: {w}");
+            }
+        }
         let (cwd, kind, title) = {
             let st = self.state.lock().unwrap();
             let pr = st.projects.iter().find(|x| x.id == project_id).ok_or_else(|| anyhow!("no project {project_id}"))?;
-            let cwd = p.get("cwd").and_then(|v| v.as_str()).map(util::expand_tilde).unwrap_or(pr.path.clone());
+            let cwd = p.get("cwd").and_then(|v| v.as_str()).map(util::expand_tilde).or_else(|| worktree.clone()).unwrap_or(pr.path.clone());
             if let Some(pid) = &profile_id {
                 let prof = st.profiles.iter().find(|x| &x.id == pid).ok_or_else(|| anyhow!("no profile {pid}"))?;
                 (cwd, SessionKind::Agent, prof.name.clone())
@@ -1019,6 +1025,7 @@ impl Daemon {
             exit_code: None,
             placement,
             command,
+            worktree,
         };
         {
             let mut st = self.state.lock().unwrap();

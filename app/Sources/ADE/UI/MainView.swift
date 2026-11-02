@@ -49,6 +49,9 @@ struct MainView: View {
         .overlay {
             if model.paletteVisible { CommandPalette() }
         }
+        .sheet(item: $model.newWorktreeFor) { p in
+            NewWorktreeSheet(project: p) { model.newWorktreeFor = nil }.environmentObject(model)
+        }
         .overlay(alignment: .top) {
             if let err = model.lastError {
                 ErrorBanner(text: err) { model.lastError = nil }.padding(.top, 40)
@@ -140,7 +143,7 @@ struct TopBar: View {
                     .buttonStyle(ChromeButtonStyle()).help("New Terminal (⌘T)")
                 Hairline(vertical: true).frame(height: 16).padding(.horizontal, 4)
                 if !fit.compact {
-                    if let p = model.currentProject, let stat = git.diffStat(for: p.path), stat.files > 0 {
+                    if let wp = model.currentWorkPath, let stat = git.diffStat(for: wp), stat.files > 0 {
                         Button { model.rightPanelVisible = true } label: {
                             HStack(spacing: 4) {
                                 Text("+\(stat.added)").foregroundStyle(T.green)
@@ -402,11 +405,11 @@ struct StatusBar: View {
             if working == 0 && waiting == 0 {
                 Text("Idle").foregroundStyle(T.text3).fixedSize()
             }
-            if full, let p = model.currentProject, let branch = git.branch(for: p.path) {
+            if full, let wp = model.currentWorkPath, let branch = git.branch(for: wp) {
                 HStack(spacing: 5) {
                     Image(systemName: "arrow.triangle.branch").font(.system(size: 10))
                     Text(branch).font(T.mono(11))
-                    if let stat = git.diffStat(for: p.path), stat.files > 0 {
+                    if let stat = git.diffStat(for: wp), stat.files > 0 {
                         Text("· \(stat.files) changed").foregroundStyle(T.text3)
                     }
                 }

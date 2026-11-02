@@ -116,6 +116,13 @@ struct ChangesPanel: View {
             HStack(spacing: 8) {
                 Text("Changes").font(T.headline)
                 if !changes.changes.isEmpty { Badge(text: "\(changes.changes.count)", color: T.accent) }
+                if let wp = model.currentWorkPath, wp != model.currentProject?.path, let b = GitInfo.shared.branch(for: wp) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.triangle.branch").font(.system(size: 9.5))
+                        Text(b).font(T.mono(11)).lineLimit(1)
+                    }
+                    .foregroundStyle(T.text3).help("Worktree: \(wp)")
+                }
                 Spacer()
                 Button { changes.refresh() } label: { Image(systemName: "arrow.clockwise").font(.system(size: 11)) }.buttonStyle(ChromeButtonStyle())
             }
@@ -171,9 +178,9 @@ struct ChangesPanel: View {
                 }
             }
         }
-        .onAppear { changes.attach(path: model.currentProject?.path) }
+        .onAppear { changes.attach(path: model.currentWorkPath) }
         .onDisappear { changes.detach() }
-        .onChange(of: model.currentProject?.path) { _, p in changes.attach(path: p) }
+        .onChange(of: model.currentWorkPath) { _, p in changes.attach(path: p) }
     }
 }
 

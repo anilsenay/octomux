@@ -144,6 +144,9 @@ pub struct Session {
     /// For `action` sessions: the command line.
     #[serde(default)]
     pub command: String,
+    /// Git worktree directory this session belongs to (None = the project's main checkout).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub worktree: Option<String>,
 }
 
 /// Pane layout of a tab.
