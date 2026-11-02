@@ -165,6 +165,47 @@ pub fn codex_rate_limits(profile: &Profile) -> Vec<(String, f64, Option<i64>)> {
     vec![]
 }
 
+/// Rollout file of a Codex conversation: the one whose name contains `id`, else the newest whose
+/// `session_meta.cwd` equals `cwd` and that was written after `since`.
+pub fn find_rollout(codex_home: &std::path::Path, id: &str, cwd: &str, since: u64) -> Option<String> {
+    let mut best: Option<(u64, PathBuf)> = None;
+    let mut stack = vec![codex_home.join("sessions")];
+    while let Some(dir) = stack.pop() {
+        let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+        for e in rd.flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                stack.push(p);
+                continue;
+            }
+            let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            if !name.ends_with(".jsonl") {
+                continue;
+            }
+            if !id.is_empty() && name.contains(id) {
+                return Some(p.to_string_lossy().into_owned());
+            }
+            let mtime = e.metadata().and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0);
+            if mtime + 5 < since || best.as_ref().is_some_and(|(t, _)| *t >= mtime) {
+                continue;
+            }
+            let Ok(f) = std::fs::File::open(&p) else { continue };
+            let mut line = String::new();
+            use std::io::BufRead;
+            let _ = std::io::BufReader::new(f).read_line(&mut line);
+            let meta_cwd = serde_json::from_str::<serde_json::Value>(&line).ok().and_then(|v| v.pointer("/payload/cwd").and_then(|c| c.as_str()).map(String::from));
+            let same = meta_cwd.is_some_and(|c| {
+                let canon = |s: &str| std::fs::canonicalize(s).map(|p| p.to_string_lossy().into_owned()).unwrap_or_else(|_| s.to_string());
+                canon(&c) == canon(cwd)
+            });
+            if same {
+                best = Some((mtime, p));
+            }
+        }
+    }
+    best.map(|(_, p)| p.to_string_lossy().into_owned())
+}
+
 /// Finds the newest Codex rollout for `cwd` created after `since` (seconds).
 pub fn discover_codex_session(profile: &Profile, cwd: &str, since: u64) -> Option<String> {
     let root = codex_home(profile).join("sessions");

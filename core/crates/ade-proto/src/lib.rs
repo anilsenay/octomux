@@ -221,7 +221,13 @@ impl Paths {
         }
         // Linux and others: $XDG_DATA_HOME/ade-dev, else ~/.local/share/ade-dev.
         let data = std::env::var_os("XDG_DATA_HOME").filter(|v| !v.is_empty()).map(PathBuf::from).unwrap_or_else(|| base.join(".local/share"));
-        Paths { home: data.join("ade-dev") }
+        let xdg = data.join("ade-dev");
+        // Early Linux builds used the macOS path; keep using it if that is where the data is.
+        let legacy = base.join("Library/Application Support/ade-dev");
+        if !xdg.exists() && legacy.join("ade.sqlite3").exists() {
+            return Paths { home: legacy };
+        }
+        Paths { home: xdg }
     }
 
     pub fn run_dir(&self) -> PathBuf {

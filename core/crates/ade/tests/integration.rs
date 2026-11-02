@@ -717,3 +717,25 @@ fn git_run_and_fs_read_for_remote_clients() {
     assert_eq!(f["text"], "hello\nworld\n");
     assert_eq!(f["binary"], false);
 }
+
+#[test]
+fn codex_rollout_lookup_and_offset_reads() {
+    let e = Env::new();
+    let codex = e.home.join("codex");
+    let day = codex.join("sessions/2026/11/03");
+    std::fs::create_dir_all(&day).unwrap();
+    let proj = e.home.join("proj-codex");
+    std::fs::create_dir_all(&proj).unwrap();
+    let file = day.join("rollout-2026-11-03T01-00-00-abc123.jsonl");
+    let meta = json!({ "type": "session_meta", "payload": { "id": "abc123", "cwd": proj } }).to_string();
+    std::fs::write(&file, format!("{meta}\n")).unwrap();
+    let by_id = e.call("fs.find_rollout", json!({ "codex_home": codex, "id": "abc123" }));
+    assert_eq!(by_id["path"], file.to_string_lossy().as_ref());
+    let by_cwd = e.call("fs.find_rollout", json!({ "codex_home": codex, "cwd": proj, "since": 0 }));
+    assert_eq!(by_cwd["path"], file.to_string_lossy().as_ref());
+    let first = e.call("fs.read", json!({ "path": file }));
+    let off = first["next_offset"].as_u64().unwrap();
+    std::fs::OpenOptions::new().append(true).open(&file).unwrap().write_all(b"{\"type\":\"x\"}\n").unwrap();
+    let more = e.call("fs.read", json!({ "path": file, "offset": off }));
+    assert_eq!(more["text"], "{\"type\":\"x\"}\n");
+}

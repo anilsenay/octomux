@@ -38,16 +38,28 @@ final class ChatModel: ObservableObject {
 
     func stop() { timer?.invalidate(); timer = nil }
 
-    /// Reads whatever was appended since the last poll.
+    /// Reads whatever was appended since the last poll (local file, or `fs.read` on a remote host).
     func poll() {
-        guard let path, let h = FileHandle(forReadingAtPath: path) else { return }
-        defer { try? h.close() }
-        let size = (try? h.seekToEnd()) ?? 0
-        if size < offset { offset = 0; items = []; toolIndex = [:] }   // rewritten
-        guard size > offset else { return }
-        try? h.seek(toOffset: offset)
-        let data = h.readDataToEndOfFile()
-        offset += UInt64(data.count)
+        guard let path else { return }
+        var data = Data()
+        if AppModel.shared.host.isRemote {
+            let off = offset
+            guard let r = try? AppModel.shared.client.callSync("fs.read", ["path": path, "offset": off, "max": 2_000_000]) as? [String: Any] else { return }
+            let size = (r["size"] as? NSNumber)?.uint64Value ?? 0
+            if size < off { offset = 0; items = []; toolIndex = [:]; return }
+            data = (r["text"] as? String ?? "").data(using: .utf8) ?? Data()
+            offset = (r["next_offset"] as? NSNumber)?.uint64Value ?? off
+        } else {
+            guard let h = FileHandle(forReadingAtPath: path) else { return }
+            defer { try? h.close() }
+            let size = (try? h.seekToEnd()) ?? 0
+            if size < offset { offset = 0; items = []; toolIndex = [:] }   // rewritten
+            guard size > offset else { return }
+            try? h.seek(toOffset: offset)
+            data = h.readDataToEndOfFile()
+            offset += UInt64(data.count)
+        }
+        guard !data.isEmpty else { return }
         partial.append(data)
         var lines: [Data] = []
         while let nl = partial.firstIndex(of: 0x0A) {
@@ -63,6 +75,7 @@ final class ChatModel: ObservableObject {
 
     private func ingest(_ line: Data, into out: inout [ChatItem]) {
         guard let o = try? JSONSerialization.jsonObject(with: line) as? [String: Any], let type = o["type"] as? String else { return }
+        if type == "response_item", let p = o["payload"] as? [String: Any] { ingestCodex(p, into: &out); return }
         if (o["isMeta"] as? Bool) == true || (o["isSidechain"] as? Bool) == true { return }
         guard let msg = o["message"] as? [String: Any] else { return }
         switch type {
@@ -101,6 +114,44 @@ final class ChatModel: ObservableObject {
                 default: break
                 }
             }
+        default: break
+        }
+    }
+
+    /// Codex rollout `response_item`s: messages, function calls and their outputs, reasoning summaries.
+    private func ingestCodex(_ p: [String: Any], into out: inout [ChatItem]) {
+        switch p["type"] as? String {
+        case "message":
+            let role = p["role"] as? String ?? ""
+            let text = ((p["content"] as? [[String: Any]]) ?? []).compactMap { $0["text"] as? String }.joined(separator: "\n")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { return }
+            if role == "user" {
+                // Codex injects context blocks as user messages; they start with a tag.
+                if text.hasPrefix("<") { return }
+                out.append(ChatItem(id: newId(), kind: .user, text: text))
+            } else if role == "assistant" {
+                out.append(ChatItem(id: newId(), kind: .assistant, text: text))
+            }
+        case "function_call":
+            let name = p["name"] as? String ?? "tool"
+            var input: [String: Any] = [:]
+            if let a = p["arguments"] as? String, let d = a.data(using: .utf8), let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any] { input = o }
+            if let cmd = input["command"] as? [String] { input["command"] = cmd.joined(separator: " ") }
+            if let cmd = input["cmd"] as? String { input["command"] = cmd }
+            let item = ChatItem(id: newId(), kind: .tool, text: name, tool: name, detail: Self.summary(name, input))
+            toolIndex[p["call_id"] as? String ?? item.id] = out.count
+            out.append(item)
+        case "function_call_output":
+            let id = p["call_id"] as? String ?? ""
+            var text = ""
+            if let s = p["output"] as? String {
+                if let d = s.data(using: .utf8), let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any], let inner = o["output"] as? String { text = inner } else { text = s }
+            }
+            if let i = toolIndex[id], i < out.count { out[i].result = text }
+        case "reasoning":
+            let t = ((p["summary"] as? [[String: Any]]) ?? []).compactMap { $0["text"] as? String }.joined(separator: "\n")
+            if !t.isEmpty { out.append(ChatItem(id: newId(), kind: .thinking, text: t)) }
         default: break
         }
     }
@@ -174,7 +225,7 @@ struct ChatView: View {
             if s?.activity == .needsInput {
                 HStack(spacing: 10) {
                     Image(systemName: "hand.raised.fill").foregroundStyle(T.amber)
-                    Text("Claude is waiting for your answer (permission or question).").font(T.body).foregroundStyle(T.text)
+                    Text("\(model.profile(s?.profileId)?.name ?? "The agent") is waiting for your answer (permission or question).").font(T.body).foregroundStyle(T.text)
                     Spacer()
                     Button("Answer in Terminal") { model.toggleChat(sessionId) }.buttonStyle(PrimaryButtonStyle())
                 }
@@ -185,6 +236,9 @@ struct ChatView: View {
         }
         .background(T.surface)
         .onAppear { chat.attach(resolvePath(s)) }
+        .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in
+            if chat.path == nil { chat.attach(resolvePath(model.session(sessionId))) }   // transcript appears after the first turn
+        }
         .onDisappear { chat.stop() }
         .onChange(of: s?.transcriptPath) { _, _ in chat.attach(resolvePath(model.session(sessionId))) }
         .onChange(of: s?.agentSessionId) { _, _ in chat.attach(resolvePath(model.session(sessionId))) }
@@ -192,13 +246,19 @@ struct ChatView: View {
 
     private func resolvePath(_ s: Session?) -> String? {
         guard let s else { return nil }
-        if let p = s.transcriptPath, FileManager.default.fileExists(atPath: p) { return p }
-        return TranscriptLocator.path(for: s, model: model)
+        let prof = model.profile(s.profileId)
+        if prof?.kind == .codex || prof?.icon == "codex" {
+            var params: [String: Any] = ["id": s.agentSessionId ?? "", "cwd": s.cwd, "since": s.createdAt]
+            if let ch = prof?.env["CODEX_HOME"] { params["codex_home"] = ch }
+            return (try? model.client.callSync("fs.find_rollout", params) as? [String: Any])?["path"] as? String
+        }
+        if let p = s.transcriptPath, model.host.isRemote || FileManager.default.fileExists(atPath: p) { return p }
+        return model.host.isRemote ? nil : TranscriptLocator.path(for: s, model: model)
     }
 
     private func header(_ s: Session?) -> some View {
         HStack(spacing: 8) {
-            AgentIcon(icon: "claude", size: 12)
+            AgentIcon(icon: model.profile(s?.profileId)?.icon ?? "claude", size: 12)
             Text(s?.displayTitle ?? "Chat").font(T.headline).foregroundStyle(T.text).lineLimit(1)
             Text("chat view").font(T.caption).foregroundStyle(T.text3)
             Spacer()
@@ -253,7 +313,7 @@ struct ChatView: View {
 
     private func composer(_ s: Session?) -> some View {
         HStack(alignment: .bottom, spacing: 8) {
-            TextField("Message Claude — goes to the same session", text: $draft, axis: .vertical)
+            TextField("Message \(model.profile(s?.profileId)?.name ?? "the agent") — goes to the same session", text: $draft, axis: .vertical)
                 .textFieldStyle(.plain).font(T.body).lineLimit(1...8)
                 .focused($composerFocused)
                 .onSubmit(send)
@@ -298,7 +358,8 @@ extension AppModel {
 
     func canChat(_ s: Session?) -> Bool {
         guard let s, s.kind == .agent, (setting("features.chat")?.bool ?? true) else { return false }
-        return profile(s.profileId)?.kind == .claude || profile(s.profileId)?.icon == "claude"
+        let p = profile(s.profileId)
+        return p?.kind == .claude || p?.kind == .codex || p?.icon == "claude" || p?.icon == "codex"
     }
 
     func toggleChat(_ id: String? = nil) {

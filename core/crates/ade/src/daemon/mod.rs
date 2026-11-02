@@ -971,13 +971,28 @@ impl Daemon {
                 // File preview for remote clients: first `max` bytes (default 512 KiB).
                 let path = util::expand_tilde(&req("path")?);
                 let max = p.get("max").and_then(|v| v.as_u64()).unwrap_or(512 * 1024).min(4 * 1024 * 1024) as usize;
-                use std::io::Read;
-                let f = std::fs::File::open(&path)?;
+                let offset = p.get("offset").and_then(|v| v.as_u64()).unwrap_or(0);
+                use std::io::{Read, Seek};
+                let mut f = std::fs::File::open(&path)?;
                 let size = f.metadata()?.len();
+                if offset > 0 {
+                    f.seek(std::io::SeekFrom::Start(offset.min(size)))?;
+                }
                 let mut buf = Vec::new();
                 f.take(max as u64).read_to_end(&mut buf)?;
                 let binary = buf.iter().take(8000).any(|b| *b == 0);
-                Ok(json!({ "size": size, "binary": binary, "text": if binary { String::new() } else { String::from_utf8_lossy(&buf).into_owned() }, "truncated": (size as usize) > max }))
+                let read = buf.len() as u64;
+                Ok(json!({ "size": size, "binary": binary, "text": if binary { String::new() } else { String::from_utf8_lossy(&buf).into_owned() }, "truncated": (size as usize) > max, "next_offset": offset + read }))
+            }
+            "fs.find_rollout" => {
+                // Codex transcript for a running session: by conversation id, else the newest rollout for `cwd`
+                // touched after `since`. Returns { path } or { path: null }.
+                let codex_home = p.get("codex_home").and_then(|v| v.as_str()).map(util::expand_tilde).map(std::path::PathBuf::from)
+                    .unwrap_or_else(|| util::home_dir().join(".codex"));
+                let id = p.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                let cwd = p.get("cwd").and_then(|v| v.as_str()).unwrap_or("");
+                let since = p.get("since").and_then(|v| v.as_u64()).unwrap_or(0);
+                Ok(json!({ "path": agents::find_rollout(&codex_home, id, cwd, since) }))
             }
             "usage.report" => {
                 // { session_id, rate_limits: { five_hour: {used_percentage, resets_at}, ... } }
