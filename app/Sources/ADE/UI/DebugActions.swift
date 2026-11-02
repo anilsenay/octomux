@@ -81,6 +81,9 @@ enum DebugActions {
             }
             return ["ok": true]
         }
+        d.register("open_in_info") { _ in
+            ["installed": OpenIn.installed.map { $0.name }, "default": OpenIn.defaultAppId]
+        }
         d.register("screenshot_settings") { p in
             guard let path = p["path"] as? String, let w = SettingsWindow.window, w.isVisible,
                   let cg = CGWindowListCreateImage(.null, .optionIncludingWindow, CGWindowID(w.windowNumber), [.boundsIgnoreFraming, .bestResolution])
