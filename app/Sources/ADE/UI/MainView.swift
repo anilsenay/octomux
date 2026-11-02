@@ -853,13 +853,13 @@ struct UsagePopover: View {
                 Text("Usage limits").font(T.headline).foregroundStyle(T.text)
                 Spacer()
                 Button {
-                    model.client.call("usage.refresh", [:])
-                    for c in model.extraClients.values { c.call("usage.refresh", [:]) }
+                    // The profiles the status bar shows, like the automatic refresh.
+                    for id in model.usageProfileIds { model.client(for: id).call("usage.refresh", ["profile_ids": [id]]) }
                 } label: { Image(systemName: "arrow.clockwise").font(.system(size: 11, weight: .medium)) }
                     .buttonStyle(ChromeButtonStyle())
-                    .help("Refresh now (asks each Claude profile with `claude -p /usage`, re-reads Codex)")
+                    .help("Refresh the agents shown in the status bar now")
             }
-            Text("Claude: asked with its own `/usage` command (no tokens used) every minute while ADE is open, and right after a Claude session in ADE finishes a turn. Codex: read from its session files while one runs.")
+            Text("Only the agents shown in the status bar (the focused one and those set to Always show) are refreshed: every minute while ADE is open, and right after their session finishes a turn. Claude is asked with its own `/usage` command (no tokens used); Codex is read from its session files.")
                 .font(T.caption).foregroundStyle(T.text3).fixedSize(horizontal: false, vertical: true)
             let profiles = model.enabledProfiles.filter { p in model.state.usage.contains { $0.profileId == p.id } }
             if profiles.isEmpty {

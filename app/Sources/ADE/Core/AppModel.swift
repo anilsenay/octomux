@@ -68,6 +68,7 @@ final class AppModel: ObservableObject {
         client.onNotify = { [client] n in NotificationCenterModel.shared.received(n, from: client); Notifier.shared.deliver(n) }
         client.onNotificationsChanged = { [client] in NotificationCenterModel.shared.refresh(client) }
         client.onDisconnect = { [weak self] in self?.connected = false }
+        startUsageRefresh()
         DispatchQueue.global().async {
             let ok = DaemonClient.ensureDaemon()
             DispatchQueue.main.async {
@@ -742,11 +743,36 @@ extension AppModel {
     }
 
     /// Profiles whose limits the status bar shows, with their readings.
-    func usageProfilesShown() -> [(Profile, [UsageReading])] {
+    /// Profiles the status bar shows usage for: the focused agent's, then the "always show" ones.
+    var usageProfileIds: [String] {
         var ids: [String] = []
         if let s = session(focusedSessionId), s.kind == .agent, let pid = s.profileId { ids.append(pid) }
         for p in enabledProfiles where usageAlwaysShown(p.id) && !ids.contains(p.id) { ids.append(p.id) }
-        return ids.compactMap { id in
+        return ids
+    }
+
+    /// Asks the daemons to refresh usage for exactly those profiles: once a minute, and right away when
+    /// the set changes (another agent got focus). Nothing else is polled.
+    func startUsageRefresh() {
+        var last: [String] = []
+        var at = Date.distantPast
+        Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
+            guard let self, NSApp.isActive || NSApp.windows.contains(where: { $0.isVisible }) else { return }
+            let ids = self.usageProfileIds
+            guard !ids.isEmpty, ids != last || Date().timeIntervalSince(at) >= 60 else { return }
+            last = ids
+            at = Date()
+            var byClient: [ObjectIdentifier: (DaemonClient, [String])] = [:]
+            for id in ids {
+                let c = self.client(for: id)
+                byClient[ObjectIdentifier(c), default: (c, [])].1.append(id)
+            }
+            for (c, ids) in byClient.values { c.call("usage.refresh", ["profile_ids": ids]) }
+        }
+    }
+
+    func usageProfilesShown() -> [(Profile, [UsageReading])] {
+        usageProfileIds.compactMap { id in
             guard let p = profile(id) else { return nil }
             let r = usage(of: id).filter { $0.window == "five_hour" || $0.window == "seven_day" || $0.window == "spend_limit" }
             return r.isEmpty ? nil : (p, Array(r.prefix(2)))

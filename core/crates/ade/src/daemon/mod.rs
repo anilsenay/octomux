@@ -33,7 +33,7 @@ pub struct Daemon {
     prompts: Mutex<HashMap<String, String>>,
     claude_usage_running: std::sync::atomic::AtomicBool,
     /// Set when a Claude session finished a turn: the usage loop probes `/usage` shortly after.
-    usage_poke: Mutex<Option<Instant>>,
+    usage_poke: Mutex<Option<(Instant, Vec<String>)>>,
     cmd_started: Mutex<HashMap<String, Instant>>,
     dirty: Sender<()>,
     login_path: Mutex<Option<String>>,
@@ -133,28 +133,21 @@ pub fn run(paths: Paths) -> Result<()> {
     }
     {
         let d = d.clone();
+        // Claude `/usage` a few seconds after a Claude session finishes a turn, for that session's profile
+        // (turns close together share one probe). The periodic refresh comes from the app, which asks
+        // only for the profiles its status bar shows (`usage.refresh` with `profile_ids`).
         std::thread::spawn(move || loop {
-            std::thread::sleep(Duration::from_secs(60));
-            d.poll_codex_usage();
-        });
-    }
-    {
-        let d = d.clone();
-        // Claude `/usage`: every minute while an app is connected (nobody looks otherwise), and a few
-        // seconds after a Claude session finishes a turn (turns close together share one probe).
-        std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_secs(15));   // after the login environment is known
-            let mut last: Option<Instant> = None;
-            loop {
-                let watched = !d.subs.lock().unwrap().is_empty();
-                let due = last.is_none_or(|t| t.elapsed() >= Duration::from_secs(60));
-                let poked = d.usage_poke.lock().unwrap().is_some_and(|t| t.elapsed() >= Duration::from_secs(6));
-                if (watched && due) || poked {
-                    *d.usage_poke.lock().unwrap() = None;
-                    d.poll_claude_usage();
-                    last = Some(Instant::now());
+            std::thread::sleep(Duration::from_secs(3));
+            let due = {
+                let mut poke = d.usage_poke.lock().unwrap();
+                match &*poke {
+                    Some((t, _)) if t.elapsed() >= Duration::from_secs(6) => poke.take().map(|(_, ids)| ids),
+                    _ => None,
                 }
-                std::thread::sleep(Duration::from_secs(3));
+            };
+            if let Some(ids) = due {
+                d.poll_codex_usage(Some(&ids));
+                d.poll_claude_usage(Some(&ids));
             }
         });
     }
@@ -460,13 +453,17 @@ impl Daemon {
     /// Claude limits from `claude -p /usage` (a local command: no model call), per Claude profile, so the
     /// numbers are current even when no Claude session in ADE ran a turn lately (usage from other
     /// terminals or apps counts too). One run at a time; each is cut off after 30 s.
-    fn poll_claude_usage(self: &Arc<Self>) {
+    fn poll_claude_usage(self: &Arc<Self>, only: Option<&[String]>) {
         if std::env::var_os("ADE_NO_USAGE_PROBE").is_some() || self.claude_usage_running.swap(true, std::sync::atomic::Ordering::SeqCst) {
             return;
         }
         let profiles: Vec<Profile> = {
             let st = self.state.lock().unwrap();
-            st.profiles.iter().filter(|p| p.kind == AgentKind::Claude && p.enabled).cloned().collect()
+            st.profiles
+                .iter()
+                .filter(|p| p.kind == AgentKind::Claude && p.enabled && only.is_none_or(|ids| ids.iter().any(|i| i == &p.id)))
+                .cloned()
+                .collect()
         };
         let aliases = self.aliases.lock().unwrap().clone();
         let path = self.login_path.lock().unwrap().clone();
@@ -510,13 +507,14 @@ impl Daemon {
         self.claude_usage_running.store(false, std::sync::atomic::Ordering::SeqCst);
     }
 
-    /// Every minute: Codex rate limits from its rollout files, for profiles with a running session.
-    fn poll_codex_usage(&self) {
+    /// Codex rate limits from its rollout files (profiles with a running session), on `usage.refresh`.
+    fn poll_codex_usage(&self, only: Option<&[String]>) {
         let profiles: Vec<Profile> = {
             let st = self.state.lock().unwrap();
             st.profiles
                 .iter()
-                .filter(|p| p.kind == AgentKind::Codex && st.sessions.iter().any(|s| s.profile_id.as_deref() == Some(&p.id) && s.state == SessionState::Running))
+                .filter(|p| p.kind == AgentKind::Codex && only.is_none_or(|ids| ids.iter().any(|i| i == &p.id)))
+                .filter(|p| st.sessions.iter().any(|s| s.profile_id.as_deref() == Some(&p.id) && s.state == SessionState::Running))
                 .cloned()
                 .collect()
         };
@@ -600,8 +598,13 @@ impl Daemon {
             s.last_activity_at = util::now_secs();
             if matches!(new, Activity::Done | Activity::NeedsInput | Activity::Error) {
                 s.unread = true;
-                if s.kind == SessionKind::Agent {
-                    *self.usage_poke.lock().unwrap() = Some(Instant::now());
+                if let (SessionKind::Agent, Some(pid)) = (s.kind, s.profile_id.clone()) {
+                    let mut poke = self.usage_poke.lock().unwrap();
+                    let mut ids = poke.take().map(|(_, ids)| ids).unwrap_or_default();
+                    if !ids.contains(&pid) {
+                        ids.push(pid);
+                    }
+                    *poke = Some((Instant::now(), ids));
                 }
             }
             let copy = s.clone();
@@ -1287,9 +1290,11 @@ impl Daemon {
             }
             "usage.refresh" => {
                 // Re-reads what can be read on demand now (Codex rollouts); Claude readings arrive with its status line.
-                self.poll_codex_usage();
+                // profile_ids: only these (the app's status bar); none = every profile (Refresh button).
+                let ids: Option<Vec<String>> = p.get("profile_ids").and_then(|v| serde_json::from_value(v.clone()).ok());
+                self.poll_codex_usage(ids.as_deref());
                 let d = self.clone();
-                std::thread::spawn(move || d.poll_claude_usage());
+                std::thread::spawn(move || d.poll_claude_usage(ids.as_deref()));
                 self.changed();
                 Ok(json!({ "ok": true }))
             }
