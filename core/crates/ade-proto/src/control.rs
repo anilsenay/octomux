@@ -163,6 +163,10 @@ pub struct Session {
     /// Conversation title from the agent's transcript (Claude `custom-title`, else `ai-title`).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub agent_title: String,
+    /// Extra CLI flags chosen when the session was started (model, effort, permission mode, images);
+    /// kept so a restore or resume starts the agent the same way.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub extra_args: Vec<String>,
 }
 
 /// Pane layout of a tab.

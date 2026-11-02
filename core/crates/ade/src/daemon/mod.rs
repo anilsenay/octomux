@@ -1308,6 +1308,7 @@ impl Daemon {
             worktree,
             transcript_path: None,
             agent_title: String::new(),
+            extra_args: p.get("extra_args").and_then(|v| serde_json::from_value::<Vec<String>>(v.clone()).ok()).unwrap_or_default(),
         };
         {
             let mut st = self.state.lock().unwrap();

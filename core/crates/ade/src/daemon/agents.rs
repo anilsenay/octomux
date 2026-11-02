@@ -303,6 +303,9 @@ pub fn build_launch_with_prompt(paths: &Paths, session: &Session, profile: Optio
                 env.push((k.clone(), expand_tilde(v)));
             }
             let mut args = strip_session_flags(&profile.args, profile.kind);
+            // Flags picked when the session was started (model, effort, permission mode, images), before any
+            // subcommand (`codex resume`); never one of the session flags managed here.
+            args.extend(strip_session_flags(&session.extra_args, profile.kind));
             let mut agent_id = session.agent_session_id.clone();
             let mut generic_resume: Option<String> = None;
             match profile.kind {

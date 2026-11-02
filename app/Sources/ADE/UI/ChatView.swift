@@ -362,7 +362,8 @@ struct ChatView: View {
         let p = model.profile(s?.profileId)
         return VStack(alignment: .leading, spacing: 12) {
             TextField("Message \(p?.name ?? "the agent") — goes to the same session", text: $draft, axis: .vertical)
-                .textFieldStyle(.plain).font(.system(size: 14)).lineLimit(1...10)
+                .textFieldStyle(.plain).font(.system(size: 14)).lineLimit(2...10)
+                .frame(minHeight: 40, alignment: .topLeading)
                 .focused($composerFocused)
                 .onSubmit(send)
             HStack(spacing: 6) {
@@ -373,6 +374,12 @@ struct ChatView: View {
                     Text(b).font(T.mono(11.5)).foregroundStyle(T.text3)
                 }
                 Spacer()
+                Button {
+                    let kind = model.profile(s?.profileId)?.kind ?? .claude
+                    let refs = AttachmentChips.pick().map { kind == .claude ? "@" + $0.path : $0.path }
+                    if !refs.isEmpty { draft += (draft.isEmpty || draft.hasSuffix(" ") ? "" : " ") + refs.joined(separator: " ") + " " }
+                } label: { Image(systemName: "paperclip").font(.system(size: 12.5)).foregroundStyle(T.text2) }
+                .buttonStyle(IconButtonStyle(size: 26)).help("Attach files (added to the message as paths)")
                 SendButton(enabled: !draft.isEmpty && s?.state == .running, action: send)
             }
         }

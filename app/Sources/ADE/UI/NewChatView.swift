@@ -14,6 +14,11 @@ struct NewChatView: View {
     @State private var sending = false
     @State private var pickingWorkspace = false
     @State private var pickingBranch = false
+    @State private var pickingModel = false
+    @State private var pickingPermission = false
+    @State private var options = ChatLaunchOptions()
+    @State private var files: [URL] = []
+    @State private var dropTarget = false
     @FocusState private var focused: Bool
 
     private var doc: DocTab? { model.docTabs.first { $0.id == docId } }
@@ -49,7 +54,9 @@ struct NewChatView: View {
         .background(CanvasBackground())
         .onAppear { DispatchQueue.main.async { focused = true } }
         .onReceive(NotificationCenter.default.publisher(for: .adeDebugPanel)) { n in
-            if let v = n.userInfo?["chatPicker"] as? String { pickingWorkspace = v == "workspace"; pickingBranch = v == "branch" }
+            if let v = n.userInfo?["chatPicker"] as? String {
+                pickingWorkspace = v == "workspace"; pickingBranch = v == "branch"; pickingModel = v == "model"; pickingPermission = v == "permission"
+            }
         }
     }
 
@@ -61,14 +68,28 @@ struct NewChatView: View {
 
     private var composer: some View {
         let path = worktree ?? project?.path ?? ""
-        return VStack(alignment: .leading, spacing: 12) {
+        let kind = profile?.kind ?? .generic
+        let flags = kind == .claude || kind == .codex
+        return VStack(alignment: .leading, spacing: 10) {
+            AttachmentChips(files: $files)
             TextField("Type a message… (↩ to send, ⌥↩ for a new line)", text: $draft, axis: .vertical)
-                .textFieldStyle(.plain).font(.system(size: 14)).lineLimit(2...12)
+                .textFieldStyle(.plain).font(.system(size: 14)).lineLimit(3...12)
+                .frame(minHeight: 58, alignment: .topLeading)
                 .focused($focused)
                 .onSubmit(send)
                 .disabled(sending)
+                .onPasteCommand(of: [.png, .tiff, .fileURL]) { _ in files += AttachmentChips.pasted() }
             HStack(spacing: 2) {
-                agentPicker
+                modelChip(flags: flags)
+                if flags {
+                    let perm = ChatLaunchOptions.permissions(kind).first { $0.id == options.permission }
+                    ContextChip(icon: perm?.warn == true ? "exclamationmark.shield" : "lock", text: perm?.title ?? "CLI settings",
+                                open: $pickingPermission, help: perm?.detail ?? "Permission mode", tint: perm?.warn == true ? T.amber : nil)
+                        .background(DropdownAnchor(isPresented: $pickingPermission) {
+                            PermissionPicker(kind: kind, options: $options) { pickingPermission = false }
+                        })
+                }
+                Rectangle().fill(T.border).frame(width: 1, height: 14).padding(.horizontal, 4)
                 ContextChip(icon: worktree == nil ? "folder" : "arrow.triangle.branch",
                             text: worktree.map { ($0 as NSString).lastPathComponent } ?? "Current checkout",
                             open: $pickingWorkspace, help: path)
@@ -83,43 +104,64 @@ struct NewChatView: View {
                 }
                 Spacer()
                 if sending { WorkingRing().padding(.trailing, 6) }
+                Button { files += AttachmentChips.pick() } label: {
+                    Image(systemName: "paperclip").font(.system(size: 12.5)).foregroundStyle(T.text2).frame(width: 26, height: 26)
+                }
+                .buttonStyle(IconButtonStyle(size: 26)).help("Attach files (or drop them here, or paste a screenshot)")
                 SendButton(enabled: canSend, help: "Start \(profile?.name ?? "the agent") with this message (↩)", action: send)
             }
         }
-        .composerCard(focused: focused)
-    }
-
-    private var canSend: Bool { !sending && profile != nil && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-
-    private var agentPicker: some View {
-        Menu {
-            ForEach(profiles) { p in
-                Button { profileId = p.id; UserDefaults.standard.set(p.id, forKey: "ade.chatProfile") } label: {
-                    Text((p.id == profile?.id ? "✓ " : "") + p.name)
+        .composerCard(focused: focused || dropTarget)
+        .onDrop(of: [.fileURL], isTargeted: $dropTarget) { providers in
+            for p in providers {
+                _ = p.loadObject(ofClass: URL.self) { u, _ in
+                    if let u { DispatchQueue.main.async { if !files.contains(u) { files.append(u) } } }
                 }
             }
-            if profiles.isEmpty { Text("No Claude or Codex profile") }
-            Divider()
-            Button("Manage Agents…") { SettingsWindow.show(section: .agents) }
-        } label: {
+            return true
+        }
+        .onAppear { if let k = profile?.kind { options = ChatLaunchOptions.load(k) } }
+        .onChange(of: profile?.id) { _, _ in if let k = profile?.kind { options = ChatLaunchOptions.load(k) } }
+        .onChange(of: options) { _, v in if let k = profile?.kind { v.save(k) } }
+    }
+
+    /// "✳ Opus · High ⌄": provider (agent profile), model and effort in one dropdown.
+    private func modelChip(flags: Bool) -> some View {
+        let kind = profile?.kind ?? .generic
+        let effort = options.effort.map(ChatLaunchOptions.label)
+        return Button { pickingModel.toggle() } label: {
             HStack(spacing: 5) {
                 if let profile { AgentIcon(icon: profile.icon, size: 11) }
-                Text(profile?.name ?? "No agent").font(.system(size: 12, weight: .medium)).foregroundStyle(T.text)
+                Text(flags && options.model != nil ? options.modelTitle(kind) : (profile?.name ?? "No agent"))
+                    .font(.system(size: 12, weight: .medium)).foregroundStyle(T.text)
+                if flags, let effort { Text(effort).font(.system(size: 12)).foregroundStyle(T.text3) }
                 Image(systemName: "chevron.down").font(.system(size: 7.5, weight: .bold)).foregroundStyle(T.text3)
             }
             .padding(.horizontal, 8).frame(height: 24)
+            .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(pickingModel ? T.border : .clear))
             .contentShape(Rectangle())
         }
-        .plainMenu().fixedSize().hoverHighlight(radius: 6).pointerCursor()
-        .help("Which agent to start")
+        .buttonStyle(.plain).hoverHighlight(radius: 6).pointerCursor()
+        .help("\(profile?.name ?? "Agent") · model and effort")
+        .background(DropdownAnchor(isPresented: $pickingModel) {
+            ModelEffortPicker(profiles: profiles, selected: profile, options: $options) { p in
+                profileId = p.id; UserDefaults.standard.set(p.id, forKey: "ade.chatProfile")
+            }
+        })
     }
+
+    private var canSend: Bool { !sending && profile != nil && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     private func send() {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard canSend, let project, let profile else { return }
         sending = true
         let docId = self.docId
-        model.newSession(profileId: profile.id, projectId: project.id, worktree: worktree, prompt: text, chat: true) { id in
+        let kind = profile.kind
+        let message = AttachmentChips.message(text, files: files, kind: kind)
+        let images = kind == .codex ? files.filter(AttachmentChips.isImage).map(\.path) : []
+        model.newSession(profileId: profile.id, projectId: project.id, worktree: worktree, prompt: message, chat: true,
+                         extraArgs: options.args(kind, images: images)) { id in
             ChatFirstMessage.set(id, text)
             // The new tab takes the start screen's place.
             if let i = model.docTabs.firstIndex(where: { $0.id == docId }) { model.docTabs.remove(at: i) }
@@ -140,6 +182,7 @@ struct ContextChip: View {
     var mono = false
     @Binding var open: Bool
     var help = ""
+    var tint: Color? = nil
     @State private var hover = false
 
     var body: some View {
@@ -148,7 +191,7 @@ struct ContextChip: View {
                 Image(systemName: icon).font(.system(size: 10.5))
                 Text(text).font(mono ? T.mono(11.5) : .system(size: 11.5, weight: .medium)).lineLimit(1)
             }
-            .foregroundStyle(open || hover ? T.text : T.text2)
+            .foregroundStyle(tint ?? (open || hover ? T.text : T.text2))
             .padding(.horizontal, 8).frame(height: 24)
             .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(open ? T.border : hover ? T.hover : .clear))
             .contentShape(Rectangle())

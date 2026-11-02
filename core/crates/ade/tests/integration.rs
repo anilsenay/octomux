@@ -863,15 +863,19 @@ fn agent_started_with_a_first_message_gets_it_as_cli_prompt() {
     let p = e.project();
     let script = fake_agent(&e);
     let prof = e.call("profile.create", json!({ "name": "Claude", "kind": "claude", "command": script, "via_login_shell": true }));
-    let r = e.call("session.create", json!({ "project_id": p, "profile_id": prof["id"], "prompt": "explain the build, it's slow" }));
+    let r = e.call("session.create", json!({ "project_id": p, "profile_id": prof["id"], "prompt": "explain the build, it's slow",
+                                              "extra_args": ["--model", "opus", "--permission-mode", "acceptEdits", "--resume", "zzz"] }));
     let id = r["session"]["id"].as_str().unwrap().to_string();
     assert_eq!(r["session"]["title"], "explain the build, it's slow");
     let text = e.wait_screen(&id, "FAKE-ARGS");
     assert!(text.contains("explain the build, it's slow"), "{text}");
+    assert!(text.contains("--model opus --permission-mode acceptEdits"), "{text}");
+    assert!(!text.contains("zzz"), "session flags in extra_args are dropped: {text}");
     // A restart resumes without repeating the first message.
     e.call("session.restart", json!({ "id": id }));
     std::thread::sleep(Duration::from_millis(800));
     let text = e.wait_screen(&id, "FAKE-ARGS");
     let last = text.lines().filter(|l| l.contains("FAKE-ARGS")).last().unwrap_or("");
     assert!(!last.contains("explain the build"), "{text}");
+    assert!(last.contains("--permission-mode acceptEdits"), "flags survive a restart: {text}");
 }
