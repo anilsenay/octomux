@@ -44,10 +44,7 @@ struct SidebarView: View {
                         }
                     }
                     if model.projects.isEmpty {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("No projects in this workspace").font(T.body).foregroundStyle(T.text2)
-                            Button("Add Project…") { model.addProject() }.buttonStyle(SecondaryButtonStyle())
-                        }.padding(.horizontal, 10).padding(.vertical, 8)
+                        SidebarEmptyState()
                     }
                 }
                 .padding(.horizontal, 10)
@@ -673,5 +670,69 @@ struct DockCountRow: View {
         }
         .help(open ? "Hide the dock" : "Show the dock")
         .padding(.leading, 14)
+    }
+}
+
+/// Empty workspace in the sidebar: a quiet line of text over a pixel illustration (no loud buttons; the
+/// footer "+" and this link add a project).
+struct SidebarEmptyState: View {
+    @EnvironmentObject var model: AppModel
+    @State private var hover = false
+
+    var body: some View {
+        VStack(spacing: 18) {
+            Text("Projects you add will show up here")
+                .font(.system(size: 12.5)).foregroundStyle(T.text3)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            PixelArt(rows: PixelArt.folderPlus, cell: 5, gap: 1)
+            Text("Add Project…")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(hover ? T.text : T.text3)
+                .padding(.horizontal, 8).padding(.vertical, 3)
+                .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(hover ? T.hover : .clear))
+                .onHover { hover = $0 }
+                .pointerCursor()
+                .onTapGesture { model.addProject() }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 24)
+        .padding(.top, 40)
+    }
+}
+
+/// Small pixel drawing: "#" = line, "o" = dim fill, "." = empty.
+struct PixelArt: View {
+    let rows: [String]
+    var cell: CGFloat = 5
+    var gap: CGFloat = 1
+
+    static let folderPlus = [
+        ".#####..........",
+        "#ooooo##########",
+        "#oooooooooooooo#",
+        "#oooooooooooooo#",
+        "#oooooo##oooooo#",
+        "#oooooo##oooooo#",
+        "#oooo######oooo#",
+        "#oooo######oooo#",
+        "#oooooo##oooooo#",
+        "#oooooo##oooooo#",
+        "#oooooooooooooo#",
+        "################",
+    ]
+
+    var body: some View {
+        let w = CGFloat(rows.map(\.count).max() ?? 0) * (cell + gap)
+        let h = CGFloat(rows.count) * (cell + gap)
+        Canvas { ctx, _ in
+            for (y, row) in rows.enumerated() {
+                for (x, ch) in row.enumerated() where ch != "." {
+                    let r = CGRect(x: CGFloat(x) * (cell + gap), y: CGFloat(y) * (cell + gap), width: cell, height: cell)
+                    ctx.fill(Path(roundedRect: r, cornerRadius: 1), with: .color(ch == "#" ? T.text3.opacity(0.75) : T.text3.opacity(0.14)))
+                }
+            }
+        }
+        .frame(width: w, height: h)
     }
 }
