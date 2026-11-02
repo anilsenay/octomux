@@ -273,3 +273,110 @@ struct UserScenesRow: View {
         .padding(.top, 4)
     }
 }
+
+// MARK: Terminals
+
+/// How much of the scene terminal panes show (`appearance.scene_terminals`, workspace over global).
+enum TerminalSceneMode: String, CaseIterable {
+    /// Opaque terminals in the scene's surface color.
+    case off
+    /// Translucent terminals over the scene's gradient only: no shapes, nothing moves behind text.
+    case color
+    /// Translucent terminals over a still frame of the scene.
+    case still
+    /// Translucent terminals over the live backdrop.
+    case live
+
+    static let defaultOpacity = 0.82
+    static let opacityRange = 0.5...0.95
+
+    var title: String {
+        switch self {
+        case .off: return "Off"
+        case .color: return "Color only"
+        case .still: return "Still"
+        case .live: return "Live"
+        }
+    }
+
+    var help: String {
+        switch self {
+        case .off: return "Terminals stay opaque in the scene's color."
+        case .color: return "Terminals show the scene's gradient, without any shapes behind the text."
+        case .still: return "Terminals show the scene as a still picture; it moves only around them."
+        case .live: return "Terminals show the moving scene behind the text."
+        }
+    }
+
+    /// Accepts the first version's `true` as `live`.
+    init(json: JSONValue?) {
+        switch json {
+        case .bool(true)?: self = .live
+        case .string(let s)?: self = TerminalSceneMode(rawValue: s) ?? .off
+        default: self = .off
+        }
+    }
+
+    private static func value(_ key: String, workspace: String?, settings: [Setting]) -> JSONValue? {
+        func v(_ scope: String) -> JSONValue? { settings.first { $0.scope == scope && $0.key == key }?.value }
+        return workspace.flatMap { v("workspace:\($0)") } ?? v("global")
+    }
+
+    static func resolve(workspace: String?, settings: [Setting]) -> TerminalSceneMode {
+        TerminalSceneMode(json: value("appearance.scene_terminals", workspace: workspace, settings: settings))
+    }
+
+    static func resolveOpacity(workspace: String?, settings: [Setting]) -> Double {
+        guard case .number(let n)? = value("appearance.scene_terminal_opacity", workspace: workspace, settings: settings) else { return defaultOpacity }
+        return min(max(n, opacityRange.lowerBound), opacityRange.upperBound)
+    }
+}
+
+/// Settings › Appearance › Scene: what terminals show of the scene, and how much.
+struct TerminalSceneControls: View {
+    @EnvironmentObject var model: AppModel
+    let scope: String
+    @State private var dragging: Double?
+
+    private var isWorkspace: Bool { scope.hasPrefix("workspace:") }
+    private var own: JSONValue? { model.settingValue("appearance.scene_terminals", scope: scope) }
+    private var ownOpacity: JSONValue? { model.settingValue("appearance.scene_terminal_opacity", scope: scope) }
+    private var wsId: String? { isWorkspace ? String(scope.dropFirst("workspace:".count)) : nil }
+
+    var body: some View {
+        let effective = TerminalSceneMode.resolve(workspace: wsId, settings: model.state.settings)
+        let opacity = dragging ?? TerminalSceneMode.resolveOpacity(workspace: wsId, settings: model.state.settings)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Behind terminals")
+                Spacer()
+                Picker("", selection: Binding<String>(
+                    get: { isWorkspace && own == nil ? "global" : effective.rawValue },
+                    set: { v in model.setSetting("appearance.scene_terminals", v == "global" ? nil : (v == "off" && !isWorkspace ? nil : v), scope: scope) })) {
+                    if isWorkspace { Text("Global").tag("global") }
+                    ForEach(TerminalSceneMode.allCases, id: \.rawValue) { Text($0.title).tag($0.rawValue) }
+                }
+                .pickerStyle(.segmented).labelsHidden().fixedSize()
+            }
+            Text(effective.help + (isWorkspace && own == nil ? " (from Global)" : "")).font(.caption).foregroundStyle(T.text3)
+            if effective != .off {
+                HStack(spacing: 10) {
+                    Text("Terminal opacity")
+                    Slider(value: Binding(get: { opacity }, set: { dragging = $0 }), in: TerminalSceneMode.opacityRange) { editing in
+                        if !editing, let d = dragging {
+                            model.setSetting("appearance.scene_terminal_opacity", (d * 100).rounded() / 100, scope: scope)
+                            dragging = nil
+                        }
+                    }
+                    .frame(maxWidth: 220)
+                    Text("\(Int((opacity * 100).rounded()))%").monospacedDigit().foregroundStyle(T.text2).frame(width: 40, alignment: .trailing)
+                    if isWorkspace && ownOpacity != nil {
+                        Button("Use Global") { model.setSetting("appearance.scene_terminal_opacity", nil, scope: scope) }
+                    }
+                }
+                Text("Lower shows more of the scene; higher keeps text easier to read.").font(.caption).foregroundStyle(T.text3)
+            }
+        }
+        .padding(.top, 4)
+    }
+}

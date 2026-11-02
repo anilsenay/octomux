@@ -110,8 +110,13 @@ final class ThemeStore: ObservableObject {
     var activeScene: AmbientScene? { previewing ? previewScene : scene }
     private(set) var terminalColors = true
     /// `appearance.scene_terminals`: terminals are translucent so the scene shows behind them.
-    private(set) var sceneTerminals = false
-    var transparentPanes: Bool { metrics.glass || (activeScene != nil && sceneTerminals) }
+    /// What terminal panes show of the scene (`appearance.scene_terminals`, per workspace) and how opaque the
+    /// terminal background stays (`appearance.scene_terminal_opacity`).
+    private(set) var sceneTerminals: TerminalSceneMode = .off
+    private(set) var sceneTerminalOpacity = TerminalSceneMode.defaultOpacity
+    /// The terminal-pane mode in effect: `.off` without a scene.
+    var terminalSceneMode: TerminalSceneMode { activeScene == nil || metrics.glass ? .off : sceneTerminals }
+    var transparentPanes: Bool { metrics.glass || terminalSceneMode != .off }
     private var appearanceObs: NSKeyValueObservation?
     private var lastWritten = ""
 
@@ -154,13 +159,16 @@ final class ThemeStore: ObservableObject {
         let tc = model.settingValue("appearance.terminal_colors", scope: "global")?.bool ?? true
         let sc = Scenes.scene(model.sceneId(workspace: model.selectedWorkspaceId))
         let sceneChanged = sc?.id != scene?.id
-        let st = model.settingValue("appearance.scene_terminals", scope: "global")?.bool ?? false
-        let changed = id != preset.id || m != mode || tc != terminalColors || sceneChanged || st != sceneTerminals
+        let ws = model.selectedWorkspaceId
+        let st = TerminalSceneMode.resolve(workspace: ws, settings: model.state.settings)
+        let so = TerminalSceneMode.resolveOpacity(workspace: ws, settings: model.state.settings)
+        let changed = id != preset.id || m != mode || tc != terminalColors || sceneChanged || st != sceneTerminals || so != sceneTerminalOpacity
         guard changed || lastWritten.isEmpty else { return }
         let before = activeScene?.id
         if sceneChanged { scene = sc }
-        let restyle = id != preset.id || before != activeScene?.id || st != sceneTerminals
+        let restyle = id != preset.id || before != activeScene?.id || st != sceneTerminals || so != sceneTerminalOpacity
         sceneTerminals = st
+        sceneTerminalOpacity = so
         if id != preset.id { preset = Themes.preset(id) }
         if m != mode { mode = m }
         terminalColors = tc
@@ -248,7 +256,7 @@ final class ThemeStore: ObservableObject {
         DocHost.shared.refreshTheme()
         let text = terminalColors ? terminalConfigText(dark: isDark) : "# Terminal colors come from terminal.conf\n"
         let padding = "window-padding-x = 12\nwindow-padding-y = 8\nwindow-padding-balance = true\nwindow-padding-color = background\n"
-        let opacity = metrics.glass ? (isDark ? 0.55 : 0.6) : transparentPanes ? (isDark ? 0.8 : 0.84) : nil
+        let opacity = metrics.glass ? (isDark ? 0.55 : 0.6) : transparentPanes ? sceneTerminalOpacity : nil
         let glass = opacity.map { "background-opacity = \($0)\n" } ?? ""
         let full = padding + glass + text
         guard full != lastWritten else { return }

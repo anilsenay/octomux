@@ -124,3 +124,24 @@ final class UserSceneTests: XCTestCase {
         XCTAssertEqual(message("{name"), "not valid JSON")
     }
 }
+
+final class TerminalSceneModeTests: XCTestCase {
+    private func s(_ scope: String, _ key: String, _ v: JSONValue) -> Setting { Setting(scope: scope, key: key, value: v) }
+
+    func testWorkspaceOverridesGlobalAndOldBoolStillWorks() {
+        let k = "appearance.scene_terminals"
+        XCTAssertEqual(TerminalSceneMode.resolve(workspace: "w", settings: []), .off)
+        XCTAssertEqual(TerminalSceneMode.resolve(workspace: "w", settings: [s("global", k, .bool(true))]), .live)
+        XCTAssertEqual(TerminalSceneMode.resolve(workspace: "w", settings: [s("global", k, .string("still")), s("workspace:w", k, .string("off"))]), .off)
+        XCTAssertEqual(TerminalSceneMode.resolve(workspace: "x", settings: [s("global", k, .string("still")), s("workspace:w", k, .string("off"))]), .still)
+        XCTAssertEqual(TerminalSceneMode.resolve(workspace: nil, settings: [s("global", k, .string("bogus"))]), .off)
+    }
+
+    func testOpacityIsClamped() {
+        let k = "appearance.scene_terminal_opacity"
+        XCTAssertEqual(TerminalSceneMode.resolveOpacity(workspace: nil, settings: []), TerminalSceneMode.defaultOpacity)
+        XCTAssertEqual(TerminalSceneMode.resolveOpacity(workspace: "w", settings: [s("workspace:w", k, .number(0.6))]), 0.6)
+        XCTAssertEqual(TerminalSceneMode.resolveOpacity(workspace: nil, settings: [s("global", k, .number(0.1))]), 0.5)
+        XCTAssertEqual(TerminalSceneMode.resolveOpacity(workspace: nil, settings: [s("global", k, .number(2))]), 0.95)
+    }
+}

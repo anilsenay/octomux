@@ -195,14 +195,17 @@ struct SceneBackdrop: NSViewRepresentable {
 final class SceneLayerView: NSView {
     private(set) var scene: AmbientScene
     let still: Bool
+    /// A full-size frame that does not move (behind terminals in the "still" mode).
+    let frozen: Bool
     let root = CALayer()
     private var builtSize: CGSize = .zero
     private var pending: DispatchWorkItem?
     private var faded = false
 
-    init(scene: AmbientScene, still: Bool) {
+    init(scene: AmbientScene, still: Bool, frozen: Bool = false) {
         self.scene = scene
         self.still = still
+        self.frozen = frozen
         super.init(frame: .zero)
         wantsLayer = true
         layer?.masksToBounds = true
@@ -216,7 +219,7 @@ final class SceneLayerView: NSView {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        guard !still else { return }
+        guard !still && !frozen else { return }
         if window != nil { AmbientClock.shared.register(self) } else { AmbientClock.shared.unregister(self) }
     }
 
@@ -252,7 +255,7 @@ final class SceneLayerView: NSView {
         SceneBuilder(root: root, W: v.width, H: v.height, now: root.timeOffset, mood: still ? .calm : AmbientClock.shared.mood).build(scene)
         CATransaction.commit()
         // A new scene eases in over the window's frame color (the view's own layer runs on real time).
-        if !still && !faded {
+        if !still && !frozen && !faded {
             faded = true
             let a = CABasicAnimation(keyPath: "opacity")
             a.fromValue = 0
@@ -1296,10 +1299,8 @@ struct SceneSettingsCard: View {
                  : "This workspace's scene. “Global” follows the choice in the global settings.")
                 .font(.caption).foregroundStyle(T.text2)
             SceneStrip(scope: scope, tileWidth: 110, wrapRows: true, previewOnHover: false, highlighted: $highlighted)
+            TerminalSceneControls(scope: scope)
             if scope == "global" {
-                Toggle("Show the scene behind terminals (translucent terminals)", isOn: Binding(
-                    get: { model.settingValue("appearance.scene_terminals", scope: "global")?.bool ?? false },
-                    set: { model.setSetting("appearance.scene_terminals", $0 ? true : nil) }))
                 Toggle("React to agents: faster while they work, a glow while one waits for you (amber) or fails (red)", isOn: Binding(
                     get: { model.scenesReactToAgents },
                     set: { model.setSetting("appearance.scene_reactive", $0 ? nil : false) }))

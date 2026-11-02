@@ -681,8 +681,9 @@ struct CanvasBackground: View {
         if scene, let s = ThemeStore.shared.activeScene { SceneBackdrop(scene: s) }
         else {
             // Translucent like the terminals when the scene shows behind them.
-            let see = ThemeStore.shared.activeScene != nil && ThemeStore.shared.transparentPanes
-            Rectangle().fill(Color(nsColor: WorkspaceTint.canvas(dark: scheme == .dark)).opacity(see ? 0.82 : 1))
+            let store = ThemeStore.shared
+            let see = store.terminalSceneMode != .off
+            Rectangle().fill(Color(nsColor: WorkspaceTint.canvas(dark: scheme == .dark)).opacity(see ? store.sceneTerminalOpacity : 1))
         }
     }
 }

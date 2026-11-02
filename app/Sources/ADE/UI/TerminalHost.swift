@@ -448,6 +448,7 @@ final class PaneView: NSView {
         effectiveAppearance.performAsCurrentDrawingAppearance {
             let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             layer.backgroundColor = ThemeStore.shared.transparentPanes ? NSColor.clear.cgColor : WorkspaceTint.canvas(dark: dark).cgColor
+            updateSceneBacking()
             layer.borderColor = (focused ? WorkspaceTint.accent(dark: dark).withAlphaComponent(dark ? 0.6 : 0.7) : T.ns(\.border)).cgColor
         }
     }
@@ -455,6 +456,51 @@ final class PaneView: NSView {
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
         updateLayer()
+    }
+
+    // What the pane shows behind a translucent terminal: the window's live backdrop (nothing here),
+    // the scene's gradient only, or a still frame of the scene drawn for this pane.
+    private var sceneGradient: CAGradientLayer?
+    private var sceneStill: SceneLayerView?
+
+    private func updateSceneBacking() {
+        let store = ThemeStore.shared
+        let mode = store.terminalSceneMode
+        let scene = store.activeScene
+        if mode == .color, let scene {
+            let g = sceneGradient ?? {
+                let g = CAGradientLayer()
+                layer?.insertSublayer(g, at: 0)
+                sceneGradient = g
+                return g
+            }()
+            CATransaction.begin(); CATransaction.setDisableActions(true)
+            g.colors = [NSColor(scene.bottom).cgColor, NSColor(scene.top).cgColor]
+            g.frame = bounds
+            CATransaction.commit()
+        } else {
+            sceneGradient?.removeFromSuperlayer(); sceneGradient = nil
+        }
+        if mode == .still, let scene {
+            if let v = sceneStill { v.set(scene) } else {
+                let v = SceneLayerView(scene: scene, still: false, frozen: true)
+                v.frame = bounds
+                v.autoresizingMask = [.width, .height]
+                addSubview(v, positioned: .below, relativeTo: subviews.first)
+                sceneStill = v
+            }
+        } else {
+            sceneStill?.removeFromSuperview(); sceneStill = nil
+        }
+    }
+
+    override func layout() {
+        super.layout()
+        if let g = sceneGradient, g.frame != bounds {
+            CATransaction.begin(); CATransaction.setDisableActions(true)
+            g.frame = bounds
+            CATransaction.commit()
+        }
     }
 
     /// Fills the pane with `v`; with a `header`, the header sits on top (split tabs) and `v` below it.
