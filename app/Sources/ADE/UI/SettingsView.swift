@@ -47,6 +47,9 @@ final class SettingsSelection: ObservableObject {
     @Published var section: SettingsSection = .workspaces
     /// "global" or "workspace:<id>"
     @Published var scope: String = "global"
+    /// Scroll position per section. The view is rebuilt when the theme or scene changes (`.id(revision)`),
+    /// which would otherwise jump back to the top after every pick.
+    var scrollOffsets: [SettingsSection: CGFloat] = [:]
 }
 
 struct SettingsView: View {
@@ -107,6 +110,10 @@ struct SettingsView: View {
                 }
                 .padding(.horizontal, 30).padding(.vertical, 24)
                 .frame(maxWidth: 700, alignment: .leading)
+                .background(ScrollOffsetKeeper(initial: sel.scrollOffsets[sel.section] ?? 0) { [sel] y in
+                    sel.scrollOffsets[sel.section] = y
+                })
+                .id(sel.section)
             }
             .frame(maxWidth: .infinity)
             .background(T.surface)

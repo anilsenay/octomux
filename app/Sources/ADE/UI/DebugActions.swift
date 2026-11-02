@@ -161,6 +161,16 @@ enum DebugActions {
             case "open_settings":
                 SettingsWindow.show(section: SettingsSection(rawValue: p["value"] as? String ?? "Workspaces"))
             case "close_settings": SettingsWindow.window?.orderOut(nil)
+            case "settings_scroll":
+                func find(_ v: NSView) -> NSScrollView? {
+                    if let s = v as? NSScrollView, (s.documentView?.frame.height ?? 0) > s.contentView.bounds.height + 50 { return s }
+                    for c in v.subviews { if let s = find(c) { return s } }
+                    return nil
+                }
+                if let root = SettingsWindow.window?.contentView, let sv = find(root) {
+                    sv.contentView.scroll(to: NSPoint(x: 0, y: CGFloat((p["value"] as? Double) ?? 0)))
+                    sv.reflectScrolledClipView(sv.contentView)
+                }
             case "settings_scope": SettingsWindow.selection.scope = p["value"] as? String ?? "global"
             case "next_waiting": m.nextNeedingInput()
             case "focus": if let dir = p["value"] as? String {

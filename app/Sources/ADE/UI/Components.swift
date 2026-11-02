@@ -620,6 +620,58 @@ extension NSColor {
 }
 
 /// Pane background (empty / stopped panes): the workspace-washed terminal canvas.
+/// Remembers and restores the vertical scroll position of the enclosing scroll view (macOS 14 has no
+/// SwiftUI API to read it). Put it in the scroll view's content as a background.
+struct ScrollOffsetKeeper: NSViewRepresentable {
+    let initial: CGFloat
+    let onChange: (CGFloat) -> Void
+
+    final class KeeperView: NSView {
+        var initial: CGFloat = 0
+        var onChange: ((CGFloat) -> Void)?
+        private var restored = false
+        private var observer: Any?
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if let o = observer { NotificationCenter.default.removeObserver(o); observer = nil }
+            guard window != nil, let sv = enclosingScrollView else { return }
+            let clip = sv.contentView
+            clip.postsBoundsChangedNotifications = true
+            observer = NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: clip, queue: .main) { [weak self] _ in
+                guard let self, self.restored else { return }
+                self.onChange?(clip.bounds.origin.y)
+            }
+            // Content lays out over the next runloop turns; restore after it has its height.
+            for delay in [0.0, 0.05, 0.15] {
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self, weak sv] in
+                    guard let self, let sv, !self.restored || delay > 0 else { return }
+                    let maxY = max(0, (sv.documentView?.frame.height ?? 0) - clip.bounds.height)
+                    let y = min(self.initial, maxY)
+                    if abs(clip.bounds.origin.y - y) > 0.5 {
+                        clip.scroll(to: NSPoint(x: clip.bounds.origin.x, y: y))
+                        sv.reflectScrolledClipView(clip)
+                    }
+                    if delay >= 0.15 { self.restored = true }
+                }
+            }
+        }
+
+        deinit { if let o = observer { NotificationCenter.default.removeObserver(o) } }
+    }
+
+    func makeNSView(context: Context) -> KeeperView {
+        let v = KeeperView()
+        v.initial = initial
+        v.onChange = onChange
+        return v
+    }
+
+    func updateNSView(_ v: KeeperView, context: Context) { v.onChange = onChange }
+}
+
 struct CanvasBackground: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.colorScheme) private var scheme
