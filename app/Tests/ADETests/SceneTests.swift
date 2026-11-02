@@ -158,3 +158,51 @@ final class TerminalSceneModeTests: XCTestCase {
         XCTAssertEqual(TerminalSceneMode.resolveOpacity(workspace: nil, settings: [s("global", k, .number(2))]), 0.95)
     }
 }
+
+final class SceneFormatTests: XCTestCase {
+    func testAdesceneExtensionAndFormat() throws {
+        let f = URL(fileURLWithPath: "/tmp/scenes/lake.adescene.json")
+        let s = try UserScenes.parse(Data(#"{"format": "ade-scene/1", "name": "Lake"}"#.utf8), file: f)
+        XCTAssertEqual(s.id, "user.lake")
+        XCTAssertThrowsError(try UserScenes.parse(Data(#"{"format": "ade-scene/9", "name": "Lake"}"#.utf8), file: f))
+    }
+
+    func testGhosttyThemeParsing() {
+        let t = TerminalThemes.parse("""
+        # comment
+        palette = 0=#45475a
+        palette = 15 = #a6adc8
+        palette = 99=#ffffff
+        background = #1e1e2e
+        foreground = cdd6f4
+        cursor-color = #f5e0dc
+        selection-background = nonsense
+        """)
+        XCTAssertEqual(t.palette[0], "#45475a")
+        XCTAssertEqual(t.palette[15], "#a6adc8")
+        XCTAssertNil(t.palette[99])
+        XCTAssertEqual(t.background, "#1e1e2e")
+        XCTAssertEqual(t.foreground, "#cdd6f4")
+        XCTAssertEqual(t.cursor, "#f5e0dc")
+        XCTAssertNil(t.selection)
+    }
+
+    func testTerminalSchemeAppliesAndUnknownOneFails() throws {
+        let f = URL(fileURLWithPath: "/tmp/scenes/x.json")
+        XCTAssertThrowsError(try UserScenes.parse(Data(#"{"name": "X", "terminal": "No Such Theme 123"}"#.utf8), file: f))
+        guard TerminalThemes.load("Catppuccin Mocha", relativeTo: f) != nil else { throw XCTSkip("no Ghostty themes on this machine") }
+        let s = try UserScenes.parse(Data(#"{"name": "X", "terminal": "Catppuccin Mocha"}"#.utf8), file: f)
+        XCTAssertEqual(s.colors.ansi[1].lowercased(), "#f38ba8")
+        let bg = s.colors.surface.usingColorSpace(.sRGB)!
+        XCTAssertEqual(Int(round(bg.blueComponent * 255)), 0x2e)
+    }
+
+    func testSchemaIsValidJSONAndTemplateParses() throws {
+        let obj = try JSONSerialization.jsonObject(with: Data(UserScenes.schema.utf8)) as? [String: Any]
+        XCTAssertEqual(obj?["title"] as? String, "ADE scene")
+        let props = obj?["properties"] as? [String: Any]
+        // Every field the decoder knows is described in the schema.
+        for k in ["format", "id", "name", "dark", "base", "gradient", "colors", "terminal", "twinkle", "sprites", "particles"] { XCTAssertNotNil(props?[k], k) }
+        XCTAssertNoThrow(try JSONSerialization.jsonObject(with: Data(UserScenes.template(name: "L", id: "l").utf8)))
+    }
+}

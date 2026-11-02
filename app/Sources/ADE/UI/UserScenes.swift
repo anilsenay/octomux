@@ -41,6 +41,8 @@ extension AppModel {
 /// A scene file in `<ADE home>/scenes/*.json`. Every field is optional except `name`; see the README
 /// written next to the template.
 struct SceneSpec: Codable {
+    /// "ade-scene/1"; files without it are read as version 1.
+    var format: String?
     var id: String?
     var name: String
     var dark: Bool?
@@ -52,6 +54,9 @@ struct SceneSpec: Codable {
     var twinkle: Twinkle?
     var sprites: [Sprite]?
     var particles: [Particles]?
+    /// A terminal color scheme for the 16 ANSI colors, text, cursor and selection: a Ghostty theme name
+    /// ("Catppuccin Mocha") or a path to a Ghostty theme file, relative to the scenes folder.
+    var terminal: String?
 
     struct Colors: Codable { var surface, frame, raised, accent: String? }
     struct Twinkle: Codable { var glyphs: [String]?; var color: String?; var count: Int?; var size: Double? }
@@ -90,10 +95,15 @@ enum UserScenes {
     private static func load() -> [AmbientScene] {
         var out: [AmbientScene] = [], errs: [String] = []
         let files = ((try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? [])
-            .filter { $0.pathExtension.lowercased() == "json" }.sorted { $0.lastPathComponent < $1.lastPathComponent }
+            .filter { $0.pathExtension.lowercased() == "json" && !$0.lastPathComponent.hasSuffix(".schema.json") }.sorted { $0.lastPathComponent < $1.lastPathComponent }
         for f in files {
             do {
-                out.append(try parse(Data(contentsOf: f), file: f))
+                let sc = try parse(Data(contentsOf: f), file: f)
+                if out.contains(where: { $0.id == sc.id }) {
+                    errs.append("\(f.lastPathComponent): another file already uses the id “\(sc.id.dropFirst("user.".count))”; set a different \"id\"")
+                } else {
+                    out.append(sc)
+                }
             } catch let e as DecodingError {
                 errs.append("\(f.lastPathComponent): \(describe(e))")
             } catch {
@@ -105,8 +115,33 @@ enum UserScenes {
     }
 
     /// One scene file's contents as a scene (throws DecodingError for bad JSON or fields).
+    static let format = "ade-scene/1"
+
+    struct SceneError: LocalizedError {
+        let message: String
+        var errorDescription: String? { message }
+    }
+
     static func parse(_ data: Data, file: URL) throws -> AmbientScene {
-        scene(from: try JSONDecoder().decode(SceneSpec.self, from: data), file: file)
+        let spec = try JSONDecoder().decode(SceneSpec.self, from: data)
+        if let f = spec.format, f != format {
+            throw SceneError(message: "format “\(f)” is not supported (this ADE reads \(format))")
+        }
+        var theme: TerminalThemes.Theme?
+        if let name = spec.terminal {
+            guard let t = TerminalThemes.load(name, relativeTo: file.deletingLastPathComponent()) else {
+                throw SceneError(message: "terminal theme “\(name)” not found")
+            }
+            theme = t
+        }
+        return scene(from: spec, file: file, terminal: theme)
+    }
+
+    /// `my-lake.adescene.json` and `my-lake.json` both give `my-lake`.
+    static func baseName(_ file: URL) -> String {
+        var n = file.deletingPathExtension().lastPathComponent
+        if n.hasSuffix(".adescene") { n.removeLast(".adescene".count) }
+        return n
     }
 
     static func describe(_ e: DecodingError) -> String {
@@ -119,10 +154,10 @@ enum UserScenes {
         }
     }
 
-    private static func scene(from spec: SceneSpec, file: URL) -> AmbientScene {
+    private static func scene(from spec: SceneSpec, file: URL, terminal: TerminalThemes.Theme? = nil) -> AmbientScene {
         let base = Scenes.builtIn.first { $0.id == spec.base }
         let dark = spec.dark ?? base?.dark ?? true
-        let id = "user." + (spec.id ?? file.deletingPathExtension().lastPathComponent)
+        let id = "user." + (spec.id ?? baseName(file))
         var colors = base?.colors ?? Scenes.palette(dark: dark, surface: dark ? "#14151A" : "#FAFAFA", frame: dark ? "#0F1014" : "#ECECEE",
                                                     raised: dark ? "#24252C" : "#FFFFFF", accent: dark ? "#9DB0FF" : "#2C7BD6")
         if let c = spec.colors {
@@ -133,6 +168,14 @@ enum UserScenes {
             }
             colors = Scenes.palette(dark: dark, surface: c.surface ?? hex(fallback.surface), frame: c.frame ?? hex(fallback.frame),
                                     raised: c.raised ?? hex(fallback.raised), accent: c.accent ?? hex(fallback.accent))
+        }
+        if let t = terminal {
+            colors.ansi = (0..<16).map { t.palette[$0] ?? colors.ansi[$0] }
+            if let fg = t.foreground { colors.termFg = NSColor(Color(hex: fg)) }
+            if let c = t.cursor { colors.termCursor = NSColor(Color(hex: c)) }
+            if let sel = t.selection { colors.termSelection = NSColor(Color(hex: sel)) }
+            // The scheme's background becomes the terminal surface unless the scene sets one.
+            if spec.colors?.surface == nil, let bg = t.background { colors.surface = NSColor(Color(hex: bg)) }
         }
         let top = spec.gradient?.first.map { Color(hex: $0) } ?? base?.top ?? Color(nsColor: colors.frame)
         let bottom = spec.gradient?.last.map { Color(hex: $0) } ?? base?.bottom ?? Color(nsColor: colors.surface)
@@ -162,6 +205,7 @@ enum UserScenes {
         s.setCancelHandler { close(fd) }
         s.resume()
         source = s
+        writeDocs()
         // Editors save files in place too (no directory event): poll the folder's newest date as a backstop.
         Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { _ in
             let stamp = latestChange()
@@ -180,23 +224,26 @@ enum UserScenes {
     @discardableResult
     static func writeTemplate() -> URL {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        var url = dir.appendingPathComponent("lanterns.json")
+        var url = dir.appendingPathComponent("lanterns.adescene.json")
         var n = 2
-        while FileManager.default.fileExists(atPath: url.path) { url = dir.appendingPathComponent("lanterns-\(n).json"); n += 1 }
+        while FileManager.default.fileExists(atPath: url.path) { url = dir.appendingPathComponent("lanterns-\(n).adescene.json"); n += 1 }
         let name = n == 2 ? "Lanterns" : "Lanterns \(n - 1)"
-        try? template(name: name, id: url.deletingPathExtension().lastPathComponent).write(to: url, atomically: true, encoding: .utf8)
-        try? readme.write(to: dir.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+        try? template(name: name, id: baseName(url)).write(to: url, atomically: true, encoding: .utf8)
+        writeDocs()
         reload()
         return url
     }
 
     static func template(name: String, id: String) -> String { """
     {
+      "$schema": "./scene.schema.json",
+      "format": "ade-scene/1",
       "id": "\(id)",
       "name": "\(name)",
       "dark": true,
       "gradient": ["#0B0A1F", "#2A1838"],
       "colors": { "surface": "#15122A", "frame": "#0F0C22", "raised": "#241E3D", "accent": "#FFB35C" },
+      "terminal": "Catppuccin Mocha",
       "twinkle": { "glyphs": ["·", "+"], "color": "#FFFFFF", "count": 60 },
       "sprites": [
         {
@@ -217,11 +264,21 @@ enum UserScenes {
 
     """ }
 
+    /// README and JSON Schema next to the scene files (rewritten on launch, so they match this version).
+    static func writeDocs() {
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try? readme.write(to: dir.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+        try? schema.write(to: dir.appendingPathComponent("scene.schema.json"), atomically: true, encoding: .utf8)
+    }
+
     static let readme = """
     # ADE scenes
 
-    Each `*.json` file here is a scene. ADE reloads them when you save; pick one in
-    View › Change Scene… or Settings › Appearance.
+    Each `*.adescene.json` (or `*.json`) file here is a scene, format `ade-scene/1`. ADE reloads
+    them when you save; pick one in View › Change Scene… or Settings › Appearance.
+
+    Start the file with `"$schema": "./scene.schema.json"` and editors such as VS Code and Zed
+    complete the fields and flag mistakes as you type.
 
     | Field | Meaning |
     |---|---|
@@ -231,6 +288,7 @@ enum UserScenes {
     | `base` | Start from a built-in scene: `night-sky`, `reef`, `fireflies`, `embers`, `rain`, `sky`, `sakura`, `snow` |
     | `gradient` | `[top, bottom]` background colors |
     | `colors` | `surface` (terminals, panels), `frame` (sidebar), `raised` (popovers), `accent` |
+    | `terminal` | A terminal color scheme: a Ghostty theme name (`"Catppuccin Mocha"`, `"Nord"`, `"Dracula"`…) or a path to a Ghostty theme file. Sets the 16 ANSI colors, text, cursor, selection and (unless `colors.surface` is set) the terminal background |
     | `twinkle` | Blinking glyphs: `glyphs`, `color`, `count`, `size` |
     | `sprites` | Pictures made of character cells (below) |
     | `particles` | Moving glyphs (below) |
@@ -388,5 +446,174 @@ struct TerminalSceneControls: View {
         .onChange(of: stored) { _, v in
             if pending, let d = dragging, abs(d - v) < 0.005 { pending = false; dragging = nil }
         }
+    }
+}
+
+// MARK: Terminal color schemes
+
+/// Ghostty theme files (`palette = N=#rrggbb`, `background = …`): bundled with ADE, from Ghostty.app,
+/// `~/.config/ghostty/themes`, or a path.
+enum TerminalThemes {
+    struct Theme: Equatable {
+        var palette: [Int: String] = [:]
+        var background, foreground, cursor, selection: String?
+    }
+
+    static var dirs: [URL] {
+        var d: [URL] = []
+        if let r = Bundle.main.resourceURL { d.append(r.appendingPathComponent("terminal-themes")) }
+        d.append(URL(fileURLWithPath: "/Applications/Ghostty.app/Contents/Resources/ghostty/themes"))
+        d.append(URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".config/ghostty/themes"))
+        d.append(UserScenes.dir.appendingPathComponent("terminal-themes"))
+        // Development builds run outside the app bundle: the vendored Ghostty build has the same themes.
+        let repo = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        d.append(repo.appendingPathComponent("vendor/ghostty/zig-out/share/ghostty/themes"))
+        return d
+    }
+
+    static func parse(_ text: String) -> Theme {
+        var t = Theme()
+        for raw in text.split(whereSeparator: \.isNewline) {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            guard !line.hasPrefix("#"), let eq = line.firstIndex(of: "=") else { continue }
+            let key = line[..<eq].trimmingCharacters(in: .whitespaces)
+            let value = line[line.index(after: eq)...].trimmingCharacters(in: .whitespaces)
+            func hex(_ v: String) -> String? {
+                let h = v.hasPrefix("#") ? String(v.dropFirst()) : v
+                return h.count == 6 && h.allSatisfy(\.isHexDigit) ? "#" + h : nil
+            }
+            switch key {
+            case "palette":
+                let parts = value.split(separator: "=", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespaces) }
+                if parts.count == 2, let i = Int(parts[0]), (0..<16).contains(i), let c = hex(parts[1]) { t.palette[i] = c }
+            case "background": t.background = hex(value)
+            case "foreground": t.foreground = hex(value)
+            case "cursor-color": t.cursor = hex(value)
+            case "selection-background": t.selection = hex(value)
+            default: break
+            }
+        }
+        return t
+    }
+
+    /// A theme by name (first folder that has it) or by path (absolute, `~/…`, or relative to `base`).
+    static func load(_ name: String, relativeTo base: URL) -> Theme? {
+        let candidates: [URL]
+        if name.contains("/") {
+            let expanded = (name as NSString).expandingTildeInPath
+            candidates = [expanded.hasPrefix("/") ? URL(fileURLWithPath: expanded) : base.appendingPathComponent(name)]
+        } else {
+            candidates = dirs.map { $0.appendingPathComponent(name) }
+        }
+        for url in candidates {
+            if let text = try? String(contentsOf: url, encoding: .utf8) {
+                let t = parse(text)
+                if !t.palette.isEmpty || t.background != nil { return t }
+            }
+        }
+        return nil
+    }
+
+    /// Theme names available by name (for the schema's suggestions).
+    static func names() -> [String] {
+        var out = Set<String>()
+        for d in dirs { for n in (try? FileManager.default.contentsOfDirectory(atPath: d.path)) ?? [] where !n.hasPrefix(".") { out.insert(n) } }
+        return out.sorted()
+    }
+}
+
+extension UserScenes {
+    /// JSON Schema (draft-07) for scene files; editors use it for completion and validation.
+    static var schema: String {
+        let bases = Scenes.builtIn.filter { $0.kind != .custom }.map(\.id)
+        let themes = TerminalThemes.names()
+        func list(_ a: [String]) -> String { a.map { "\"\($0.replacingOccurrences(of: "\"", with: "\\\""))\"" }.joined(separator: ", ") }
+        return """
+        {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "$id": "https://ade.dev/schemas/ade-scene-1.json",
+          "title": "ADE scene",
+          "description": "A live backdrop and palette for ADE (format ade-scene/1).",
+          "type": "object",
+          "required": ["name"],
+          "additionalProperties": false,
+          "definitions": {
+            "color": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$", "description": "#RRGGBB" },
+            "glyphs": { "type": "array", "items": { "type": "string", "minLength": 1, "maxLength": 2 }, "minItems": 1 }
+          },
+          "properties": {
+            "$schema": { "type": "string" },
+            "format": { "const": "ade-scene/1", "description": "Format version." },
+            "id": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$", "description": "Stable id (default: the file name)." },
+            "name": { "type": "string", "minLength": 1, "description": "Shown in the picker." },
+            "dark": { "type": "boolean", "description": "Dark scene (true) or light (false)." },
+            "base": { "enum": [\(list(bases))], "description": "Start from a built-in scene: its animation, and its colors unless overridden." },
+            "gradient": { "type": "array", "items": { "$ref": "#/definitions/color" }, "minItems": 2, "maxItems": 2, "description": "[top, bottom] background colors." },
+            "colors": {
+              "type": "object", "additionalProperties": false,
+              "properties": {
+                "surface": { "$ref": "#/definitions/color", "description": "Terminals and panels." },
+                "frame": { "$ref": "#/definitions/color", "description": "Sidebar and bars." },
+                "raised": { "$ref": "#/definitions/color", "description": "Popovers and cards." },
+                "accent": { "$ref": "#/definitions/color", "description": "Selection, focus, buttons." }
+              }
+            },
+            "terminal": {
+              "type": "string",
+              "description": "Terminal color scheme: a Ghostty theme name, or a path to a Ghostty theme file (relative to this folder).",
+              "examples": [\(list(themes.isEmpty ? ["Catppuccin Mocha", "Nord", "Dracula"] : themes))]
+            },
+            "twinkle": {
+              "type": "object", "additionalProperties": false, "description": "Blinking glyphs scattered over the sky.",
+              "properties": {
+                "glyphs": { "$ref": "#/definitions/glyphs" },
+                "color": { "$ref": "#/definitions/color" },
+                "count": { "type": "integer", "minimum": 0, "maximum": 400 },
+                "size": { "type": "number", "minimum": 6, "maximum": 30 }
+              }
+            },
+            "sprites": {
+              "type": "array", "description": "Pictures made of character cells.",
+              "items": {
+                "type": "object", "required": ["rows", "colors"], "additionalProperties": false,
+                "properties": {
+                  "rows": { "type": "array", "items": { "type": "string" }, "minItems": 1, "description": "One string per row; each non-space character is a cell." },
+                  "colors": { "type": "object", "additionalProperties": { "$ref": "#/definitions/color" }, "description": "Fill color per character used in rows." },
+                  "ink": { "$ref": "#/definitions/color", "description": "Glyph drawn inside each cell (omit for plain cells)." },
+                  "x": { "type": "number", "minimum": 0, "maximum": 1, "description": "0–1 of the width; random when omitted." },
+                  "y": { "type": "number", "minimum": 0, "maximum": 1, "description": "0–1 of the height; random when omitted." },
+                  "count": { "type": "integer", "minimum": 1, "maximum": 50 },
+                  "drift": { "type": "number", "description": "Sideways speed in pt/s (negative: leftward)." },
+                  "rise": { "type": "number", "description": "Upward speed in pt/s (negative: down)." },
+                  "bob": { "type": "number", "minimum": 0, "description": "Up-and-down bobbing in pt." },
+                  "opacity": { "type": "number", "minimum": 0, "maximum": 1 },
+                  "flip": { "type": "boolean", "description": "Mirror horizontally." }
+                }
+              }
+            },
+            "particles": {
+              "type": "array", "description": "Moving glyphs.",
+              "items": {
+                "type": "object", "required": ["glyphs"], "additionalProperties": false,
+                "properties": {
+                  "glyphs": { "$ref": "#/definitions/glyphs" },
+                  "color": { "$ref": "#/definitions/color" },
+                  "colors": { "type": "array", "items": { "$ref": "#/definitions/color" }, "minItems": 1 },
+                  "size": { "type": "number", "minimum": 6, "maximum": 30 },
+                  "count": { "type": "integer", "minimum": 1, "maximum": 400 },
+                  "direction": { "enum": ["down", "up", "left", "right"] },
+                  "speed": { "type": "array", "items": { "type": "number", "minimum": 1 }, "minItems": 1, "maxItems": 2, "description": "[min, max] pt/s." },
+                  "sway": { "type": "number", "minimum": 0 },
+                  "spin": { "type": "boolean" },
+                  "fade": { "type": "boolean", "description": "Fade out along the way." },
+                  "opacity": { "type": "number", "minimum": 0, "maximum": 1 }
+                }
+              }
+            }
+          }
+        }
+
+        """
     }
 }

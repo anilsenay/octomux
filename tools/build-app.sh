@@ -15,6 +15,9 @@ cp "$BIN" "$APP/Contents/MacOS/ADE"
 cp "$ADE" "$APP/Contents/Resources/bin/ade"
 cp "$ROOT/app/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 cp -R "$ROOT/app/Resources/editor" "$APP/Contents/Resources/editor"   # code viewer (CodeMirror bundle; rebuild: cd app/editor-web && bun run build)
+# Ghostty terminal color schemes, for scenes' "terminal" field (from the vendored Ghostty build).
+THEMES="$ROOT/vendor/ghostty/zig-out/share/ghostty/themes"
+[ -d "$THEMES" ] && rm -rf "$APP/Contents/Resources/terminal-themes" && cp -R "$THEMES" "$APP/Contents/Resources/terminal-themes"
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
