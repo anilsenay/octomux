@@ -436,26 +436,59 @@ extension View {
     }
 }
 
-/// The selected workspace's color, mixed lightly into the window chrome so each workspace has its own feel.
+/// The selected workspace's color as a light "wash" on the window chrome. Like Unpeel's App color: the
+/// base keeps its brightness and only takes the workspace hue, with saturation scaled by brightness (dark
+/// grays need more to be seen at all, near-white almost none). `strength` keeps it subtler than Unpeel.
 struct WorkspaceTintedFrame: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        ZStack {
-            T.frame
-            if let hex = model.workspace?.color {
-                Color(hex: hex).opacity(scheme == .dark ? 0.03 : 0.025)
-            }
-        }
-        .animation(.easeOut(duration: 0.25), value: model.selectedWorkspaceId)
+        let p = ThemeStore.shared.preset
+        let base = scheme == .dark ? p.dark.frame : p.light.frame
+        Rectangle()
+            .fill(Color(nsColor: WorkspaceTint.washed(base, toward: model.workspace?.color, strength: scheme == .dark ? 0.45 : 0.28)))
+            .animation(.easeOut(duration: 0.4), value: model.selectedWorkspaceId)
     }
 }
 
 enum WorkspaceTint {
+    static let strength = 0.45
+
+    /// `base` with its hue pushed toward `hex`'s hue; brightness and alpha unchanged.
+    static func washed(_ base: NSColor, toward hex: String?, strength: Double = strength) -> NSColor {
+        guard let hex, let b0 = base.usingColorSpace(.sRGB),
+              let tint = NSColor(Color(hex: hex)).usingColorSpace(.sRGB) else { return base }
+        var th: CGFloat = 0, ts: CGFloat = 0, tb: CGFloat = 0, ta: CGFloat = 0
+        tint.getHue(&th, saturation: &ts, brightness: &tb, alpha: &ta)
+        guard ts > 0.08 else { return base }      // gray workspace colors: no wash
+        var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        b0.getHue(&h, saturation: &s, brightness: &b, alpha: &a)
+        let wash = max(s, min(0.5, 0.615 - 0.59 * b) * strength)
+        return NSColor(srgbHue: th, saturation: wash, brightness: b, alpha: a)
+    }
+
     /// Selected-row fill: the workspace color when there is one, else the theme's selection.
     static func selection(_ model: AppModel) -> Color {
         guard let hex = model.workspace?.color else { return T.selection }
-        return Color(hex: hex).opacity(0.16)
+        return Color(hex: hex).opacity(0.13)
+    }
+}
+
+extension NSColor {
+    /// HSB in sRGB (NSColor's own hue initializer is in generic RGB).
+    convenience init(srgbHue h: CGFloat, saturation s: CGFloat, brightness v: CGFloat, alpha a: CGFloat) {
+        let i = floor(h * 6), f = h * 6 - i
+        let p = v * (1 - s), q = v * (1 - f * s), t = v * (1 - (1 - f) * s)
+        let (r, g, b): (CGFloat, CGFloat, CGFloat)
+        switch Int(i) % 6 {
+        case 0: (r, g, b) = (v, t, p)
+        case 1: (r, g, b) = (q, v, p)
+        case 2: (r, g, b) = (p, v, t)
+        case 3: (r, g, b) = (p, q, v)
+        case 4: (r, g, b) = (t, p, v)
+        default: (r, g, b) = (v, p, q)
+        }
+        self.init(srgbRed: r, green: g, blue: b, alpha: a)
     }
 }
