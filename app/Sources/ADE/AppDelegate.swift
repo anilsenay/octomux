@@ -162,7 +162,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.addItem(item("Main Window", #selector(showMain(_:)), "0"))
         NSApp.windowsMenu = window
 
+        let palette = item("Command Palette…", #selector(showPalette(_:)), "k")
+        view.insertItem(palette, at: 0)
+        view.insertItem(.separator(), at: 1)
+
         NSApp.mainMenu = main
+        KeyBindings.shared.capture(main)
     }
 
     private func submenu(_ main: NSMenu, _ title: String) -> NSMenu {
@@ -180,12 +185,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             i.keyEquivalentModifierMask = [.command, .shift]
         }
         i.target = self
+        i.identifier = NSUserInterfaceItemIdentifier("cmd." + title.lowercased().filter { $0.isLetter || $0.isNumber || $0 == " " }.split(separator: " ").joined(separator: "-"))
         return i
     }
 
     var model: AppModel { AppModel.shared }
 
     @objc func showSettings(_ s: Any?) { SettingsWindow.show() }
+    @objc func showPalette(_ s: Any?) {
+        openMainWindow()
+        model.paletteVisible.toggle()
+    }
     @objc func showMain(_ s: Any?) { openMainWindow() }
     @objc func newTerminal(_ s: Any?) { model.newSession(profileId: nil) }
     @objc func newAgent(_ s: Any?) { model.newSession(profileId: (model.pinnedProfiles.first ?? model.enabledProfiles.first)?.id) }

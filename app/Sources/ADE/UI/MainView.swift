@@ -46,6 +46,9 @@ struct MainView: View {
         .background(T.frame)
         .foregroundStyle(T.text)
         .tint(T.accent)
+        .overlay {
+            if model.paletteVisible { CommandPalette() }
+        }
         .overlay(alignment: .top) {
             if let err = model.lastError {
                 ErrorBanner(text: err) { model.lastError = nil }.padding(.top, 40)

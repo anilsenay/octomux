@@ -72,6 +72,19 @@ struct SidebarView: View {
             }
             .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden)
             .help("Switch workspace (⌃⌘← →, or swipe)")
+            Button { model.paletteVisible = true } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass").font(.system(size: 11))
+                    Text("Search")
+                    Spacer()
+                    Text(KeyBindings.shared.current("cmd.command-palette")?.display ?? "").font(T.mono(11))
+                }
+                .font(T.body).foregroundStyle(T.text3)
+                .padding(.horizontal, 10).frame(height: 28)
+                .overlay(RoundedRectangle(cornerRadius: T.m.rowR, style: .continuous).stroke(T.border))
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
         }
         .padding(.horizontal, 10)
     }

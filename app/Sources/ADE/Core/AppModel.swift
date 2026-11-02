@@ -20,6 +20,8 @@ final class AppModel: ObservableObject {
     }
     @Published var lastError: String?
     @Published var renamingSessionId: String?
+    @Published var paletteVisible = false
+    @Published var paletteQuery = ""
 
     private var lastTabPerWorkspace: [String: String] = [:]
     private let defaults = UserDefaults.standard
@@ -78,6 +80,7 @@ final class AppModel: ObservableObject {
         }
         Notifier.shared.updateBadge(state: s)
         ThemeStore.shared.sync(from: self)
+        KeyBindings.shared.sync(from: self)
         TerminalHost.shared.reconcile(with: s)
     }
 

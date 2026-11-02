@@ -66,6 +66,15 @@ enum DebugActions {
                 guard let path = p["path"] as? String, let ws = m.selectedWorkspaceId else { throw DebugServer.DebugError.bad("path") }
                 m.addProject(path: path, workspaceId: ws)
             case "create_workspace": m.createWorkspace(name: p["value"] as? String ?? "Work")
+            case "palette":
+                m.paletteVisible = true
+                m.paletteQuery = p["value"] as? String ?? ""
+            case "close_palette": m.paletteVisible = false
+            case "palette_run":
+                // Runs the top result for `value`, like typing it and pressing Return.
+                let r = PaletteSource.search(p["value"] as? String ?? "", model: m)
+                m.paletteVisible = false
+                r.first?.run()
             case "open_settings":
                 SettingsWindow.show(section: SettingsSection(rawValue: p["value"] as? String ?? "Workspaces"))
             case "close_settings": SettingsWindow.window?.orderOut(nil)
@@ -118,6 +127,12 @@ enum DebugActions {
             guard let path = p["path"] as? String else { throw DebugServer.DebugError.bad("path") }
             OpenIn.open(path, appId: p["app"] as? String ?? OpenIn.defaultAppId)
             return ["ok": true]
+        }
+        d.register("keybindings") { _ in
+            KeyBindings.shared.commands.map { c in
+                ["id": c.id, "title": c.title, "shortcut": KeyBindings.shared.current(c.id)?.display ?? "",
+                 "menu_key": c.item?.keyEquivalent ?? "", "menu_mods": Int(c.item?.keyEquivalentModifierMask.rawValue ?? 0)] as [String: Any]
+            }
         }
         d.register("screenshot_settings") { p in
             guard let path = p["path"] as? String, let w = SettingsWindow.window, w.isVisible,

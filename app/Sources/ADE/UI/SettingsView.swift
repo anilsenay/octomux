@@ -591,26 +591,66 @@ struct FeatureSettings: View {
 // MARK: Keyboard
 
 struct KeyboardSettings: View {
-    static let shortcuts: [(String, String)] = [
-        ("⌘T", "New terminal tab"), ("⌘⇧T", "New tab with the first pinned agent"), ("⌘D", "Split right (terminal)"),
-        ("⌘⇧D", "Split down (terminal)"), ("⌘W", "Close pane"), ("⌘⌥←↑→↓", "Move focus between panes"),
-        ("⌘1…⌘9", "Go to tab"), ("⌘⇧[ / ⌘⇧]", "Previous / next tab"), ("⌃1…⌃9", "Go to workspace"),
-        ("⌃⌘← / ⌃⌘→", "Previous / next workspace"), ("⌘⇧U", "Next session waiting for input"), ("⌘.", "Stop session"),
-        ("⌘B", "Toggle sidebar"), ("⌘O", "Open project in default app"), ("⌘⇧O", "Add project"), ("⌘,", "Settings"),
-    ]
+    @ObservedObject var kb = KeyBindings.shared
+    @State private var recording: String?
+    @State private var monitor: Any?
+    @State private var filter = ""
 
     var body: some View {
-        SettingsCard {
-            ForEach(Self.shortcuts, id: \.0) { k, v in
-                HStack {
-                    Text(k).font(.system(.body, design: .monospaced)).frame(width: 130, alignment: .leading)
-                    Text(v)
-                    Spacer()
+        Text("Click a shortcut to record a new one. Esc cancels, Delete removes it. Keys not bound here go straight to the terminal program.")
+            .font(T.body).foregroundStyle(T.text2)
+        TextField("Filter", text: $filter).textFieldStyle(.roundedBorder).frame(maxWidth: 260)
+        let groups = Dictionary(grouping: kb.commands.filter { filter.isEmpty || $0.title.localizedCaseInsensitiveContains(filter) }, by: \.group)
+        ForEach(["ADE", "File", "Session", "View", "Window"].filter { groups[$0] != nil }, id: \.self) { g in
+            SettingsCard {
+                SectionLabel(g)
+                ForEach(groups[g] ?? []) { c in
+                    HStack {
+                        Text(c.title).font(T.body)
+                        if kb.isOverridden(c.id) {
+                            Text("custom").font(T.caption).foregroundStyle(T.accent)
+                        }
+                        Spacer()
+                        if let sc = kb.current(c.id), recording != c.id, let other = kb.conflict(sc, except: c.id) {
+                            Text("also: \(other.title)").font(T.caption).foregroundStyle(T.amber).lineLimit(1)
+                        }
+                        Button { startRecording(c.id) } label: {
+                            Text(recording == c.id ? "Press keys…" : (kb.current(c.id)?.display ?? "—"))
+                                .font(T.mono(12, .medium))
+                                .foregroundStyle(recording == c.id ? T.accent : T.text)
+                                .frame(minWidth: 86)
+                                .padding(.horizontal, 8).frame(height: 24)
+                                .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(T.surface))
+                                .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(recording == c.id ? T.accent : T.border))
+                        }
+                        .buttonStyle(.plain)
+                        Button { kb.reset(c.id) } label: { Image(systemName: "arrow.uturn.backward").font(.system(size: 10)) }
+                            .buttonStyle(ChromeButtonStyle()).help("Reset to default")
+                            .opacity(kb.isOverridden(c.id) ? 1 : 0).disabled(!kb.isOverridden(c.id))
+                    }
+                    .frame(height: 28)
                 }
             }
         }
-        Text("Custom key bindings are planned. Terminal key handling (Ctrl/Option combos) goes straight to the program.")
-            .font(.caption).foregroundStyle(.secondary)
+        .onDisappear { stopRecording() }
+    }
+
+    private func startRecording(_ id: String) {
+        stopRecording()
+        recording = id
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { e in
+            guard let id = recording else { return e }
+            if e.keyCode == 53 { stopRecording(); return nil }                           // esc
+            if e.keyCode == 51 || e.keyCode == 117 { kb.set(id, nil); stopRecording(); return nil }  // delete
+            if let sc = Shortcut(event: e) { kb.set(id, sc); stopRecording() }
+            return nil
+        }
+    }
+
+    private func stopRecording() {
+        if let m = monitor { NSEvent.removeMonitor(m) }
+        monitor = nil
+        recording = nil
     }
 }
 
