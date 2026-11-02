@@ -187,6 +187,54 @@ enum DebugActions {
             }
             return out
         }
+        // Real confirmation alerts: each modal window is captured, then confirmed with its first button.
+        d.register("remove_worktree_ui") { p in
+            guard let id = p["id"] as? String, let proj = AppModel.shared.project(id), let path = p["value"] as? String else { throw DebugServer.DebugError.bad("id/value") }
+            var shots = p["shots"] as? [String] ?? []
+            var seen = Set<Int>()
+            let start = Date()
+            let t = Timer(timeInterval: 0.5, repeats: true) { t in
+                if Date().timeIntervalSince(start) > 20 { t.invalidate(); return }
+                guard let w = NSApp.modalWindow, !seen.contains(w.windowNumber) else { return }
+                seen.insert(w.windowNumber)
+                if let out = shots.first {
+                    shots.removeFirst()
+                    if let cg = CGWindowListCreateImage(.null, .optionIncludingWindow, CGWindowID(w.windowNumber), [.boundsIgnoreFraming, .bestResolution]),
+                       let png = NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:]) {
+                        try? png.write(to: URL(fileURLWithPath: out))
+                    }
+                }
+                NSApp.stopModal(withCode: .alertFirstButtonReturn)
+            }
+            RunLoop.main.add(t, forMode: .common)
+            AppModel.shared.removeWorktree(project: proj, path: path)
+            return ["ok": true]
+        }
+        // Opens a main-menu submenu, captures its window while it is open, then closes it.
+        d.register("menu_shot") { p in
+            guard let title = p["menu"] as? String, let out = p["path"] as? String,
+                  let menu = NSApp.mainMenu?.items.first(where: { $0.submenu?.title == title })?.submenu, let view = (NSApp.delegate as? AppDelegate)?.mainWindow?.contentView
+            else { throw DebugServer.DebugError.bad("menu/path") }
+            var done = false
+            var layers: [Int] = []
+            let t = Timer(timeInterval: 0.4, repeats: true) { t in
+                let info = (CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]]) ?? []
+                let mine = info.filter { ($0[kCGWindowOwnerPID as String] as? Int32) == getpid() }
+                layers = mine.compactMap { $0[kCGWindowLayer as String] as? Int }
+                if let win = mine.first(where: { ($0[kCGWindowLayer as String] as? Int ?? 0) >= 20 && ($0[kCGWindowLayer as String] as? Int ?? 0) != 25 }),
+                   let num = win[kCGWindowNumber as String] as? UInt32,
+                   let cg = CGWindowListCreateImage(.null, .optionIncludingWindow, num, [.boundsIgnoreFraming, .bestResolution]),
+                   let png = NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:]) {
+                    try? png.write(to: URL(fileURLWithPath: out))
+                    done = true
+                }
+                menu.cancelTracking()
+                t.invalidate()
+            }
+            RunLoop.main.add(t, forMode: .common)
+            menu.popUp(positioning: nil, at: NSPoint(x: 300, y: view.bounds.height - 60), in: view)
+            return ["captured": done, "layers": layers]
+        }
         d.register("keybindings") { _ in
             KeyBindings.shared.commands.map { c in
                 ["id": c.id, "title": c.title, "shortcut": KeyBindings.shared.current(c.id)?.display ?? "",

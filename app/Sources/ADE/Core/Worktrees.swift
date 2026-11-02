@@ -115,7 +115,7 @@ extension AppModel {
         let a = NSAlert()
         a.messageText = "Remove worktree “\((path as NSString).lastPathComponent)”?"
         a.informativeText = "Its sessions are closed and the folder is deleted. The branch is kept."
-        a.addButton(withTitle: "Remove")
+        a.addButton(withTitle: "Remove").hasDestructiveAction = true
         a.addButton(withTitle: "Cancel")
         guard a.runModal() == .alertFirstButtonReturn else { return }
         for s in state.sessions where s.worktree == path { remove(s.id, confirm: false) }
@@ -127,7 +127,7 @@ extension AppModel {
                     let b = NSAlert()
                     b.messageText = "The worktree has uncommitted changes"
                     b.informativeText = "Remove anyway and discard them?"
-                    b.addButton(withTitle: "Discard and Remove")
+                    b.addButton(withTitle: "Discard and Remove").hasDestructiveAction = true
                     b.addButton(withTitle: "Cancel")
                     force = b.runModal() == .alertFirstButtonReturn
                 }
