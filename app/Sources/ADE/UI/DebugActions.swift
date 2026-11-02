@@ -293,6 +293,33 @@ enum DebugActions {
             let f = b.convert(b.bounds, to: nil)
             return ["captured": done, "count": pops.count, "x": Int(f.minX), "y": Int(f.minY), "title": b.menu?.items.first?.title ?? ""]
         }
+        // Right-clicks at a window point (top-left based) to open a SwiftUI context menu, captures it, closes it.
+        d.register("context_shot") { p in
+            guard let out = p["path"] as? String, let x = p["x"] as? Double, let yTop = p["y"] as? Double,
+                  let main = (NSApp.delegate as? AppDelegate)?.mainWindow else { throw DebugServer.DebugError.bad("x/y/path") }
+            let pt = NSPoint(x: x, y: main.contentView!.bounds.height - yTop)
+            var done = false
+            let t = Timer(timeInterval: 0.5, repeats: false) { _ in
+                let info = (CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]]) ?? []
+                if let win = info.first(where: { ($0[kCGWindowOwnerPID as String] as? Int32) == getpid() && ($0[kCGWindowLayer as String] as? Int) == 101 }),
+                   let num = win[kCGWindowNumber as String] as? UInt32,
+                   let cg = CGWindowListCreateImage(.null, .optionIncludingWindow, num, [.boundsIgnoreFraming, .bestResolution]),
+                   let png = NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:]) {
+                    try? png.write(to: URL(fileURLWithPath: out))
+                    done = true
+                }
+                // Close the menu: an Escape key event into the tracking loop.
+                if let esc = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                              windowNumber: 0, context: nil, characters: "\u{1b}", charactersIgnoringModifiers: "\u{1b}", isARepeat: false, keyCode: 53) {
+                    NSApp.postEvent(esc, atStart: true)
+                }
+            }
+            RunLoop.main.add(t, forMode: .common)
+            let down = NSEvent.mouseEvent(with: .rightMouseDown, location: pt, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                          windowNumber: main.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
+            main.sendEvent(down)
+            return ["captured": done]
+        }
         d.register("keybindings") { _ in
             KeyBindings.shared.commands.map { c in
                 ["id": c.id, "title": c.title, "shortcut": KeyBindings.shared.current(c.id)?.display ?? "",
