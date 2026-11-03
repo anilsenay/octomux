@@ -26,27 +26,36 @@ enum Palette {
 /// its tile hops forward.
 struct PaneStackIcon: View {
     struct Item: Equatable { let id: String; let icon: String }
+    /// How the tiles behind the front one show: stacked upward and smaller (sidebar rows), or fanned out
+    /// to the right at a slight angle (tab bar).
+    enum Style { case stack, fan }
     /// Front first.
     let items: [Item]
     var size: CGFloat = 12
+    var style: Style = .fan
     @State private var hop: String?
 
     var body: some View {
         if items.count <= 1 {
             AgentIcon(icon: items.first?.icon ?? "terminal", size: size)
         } else {
-            let tile = size + 5, step: CGFloat = 5
+            let tile = size + 5
             let shown = Array(items.prefix(3))
-            ZStack(alignment: .leading) {
+            let n = CGFloat(shown.count - 1)
+            ZStack(alignment: style == .fan ? .leading : .bottom) {
                 ForEach(Array(shown.enumerated()).reversed(), id: \.element.id) { k, item in
+                    let d = CGFloat(k)
                     PaneTile(icon: item.icon, size: tile)
-                        .scaleEffect(k == 0 ? 1 : 1 - 0.12 * CGFloat(k))
-                        .offset(x: CGFloat(k) * step, y: hop == item.id ? -4 : 0)
-                        .opacity(k == 0 ? 1 : 0.9)
+                        .scaleEffect(style == .stack ? 1 - 0.13 * d : 1 - 0.08 * d, anchor: style == .stack ? .bottom : .bottomLeading)
+                        .rotationEffect(.degrees(style == .fan ? 9 * Double(k) : 0), anchor: .bottomLeading)
+                        .offset(x: style == .fan ? d * 5.5 : 0,
+                                y: (style == .stack ? -d * 4.5 : 0) + (hop == item.id ? -4 : 0))
+                        .opacity(k == 0 ? 1 : 1 - 0.12 * Double(k))
                         .zIndex(Double(10 - k))
                 }
             }
-            .frame(width: tile + step * CGFloat(shown.count - 1), height: tile, alignment: .leading)
+            .frame(width: style == .fan ? tile + 5.5 * n + 2 : tile,
+                   height: style == .stack ? tile + 4.5 * n : tile, alignment: style == .fan ? .leading : .bottom)
             .animation(.spring(response: 0.32, dampingFraction: 0.68), value: shown.map(\.id))
             .animation(.spring(response: 0.22, dampingFraction: 0.6), value: hop)
             .onChange(of: items.first?.id) { _, front in
