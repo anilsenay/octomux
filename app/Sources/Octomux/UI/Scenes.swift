@@ -6,7 +6,7 @@ import SwiftUI
 // (`appearance.scene` at `workspace:<id>`), falling back to the global choice; "none" turns it off.
 
 struct AmbientScene: Identifiable, Equatable {
-    enum Kind { case nightSky, reef, fireflies, embers, rain, sky, sakura, snow, aurora, circuit, kites, custom }
+    enum Kind { case nightSky, reef, fireflies, embers, rain, sky, sakura, snow, aurora, circuit, kites, octopus, tentacles, custom }
     let id: String
     let name: String
     let kind: Kind
@@ -55,6 +55,23 @@ enum Scenes {
     static var all: [AmbientScene] { builtIn + UserScenes.loaded }
 
     static let builtIn: [AmbientScene] = [
+        // Octomux's own: the logo's octopus.
+        make("octo-deep", "Octo Deep", .octopus, dark: true, top: "#2A1A5E", bottom: "#0A0618",
+             surface: "#150F2C", frame: "#100A22", raised: "#241A44", accent: "#A78BFA"),
+        make("midnight-coral", "Midnight Coral", .octopus, dark: true, top: "#1C2440", bottom: "#0A0E1C",
+             surface: "#121830", frame: "#0D1224", raised: "#1E2744", accent: "#FF8A75",
+             art: ["body": "#FF7A66", "hi": "#FFC4B8", "shade": "#D9503F", "eye": "#1A1030", "cheek": "#FFD6A0", "octoInk": "#B23A2C",
+                   "ink": "#05070F", "rock": "#222B4A", "rockInk": "#3A466E", "weed1": "#2E8F7A", "weed2": "#246E63", "weedInk": "#0E3A33"]),
+        make("kraken", "Kraken", .tentacles, dark: true, top: "#1A0F2E", bottom: "#05030B",
+             surface: "#130C20", frame: "#0E0918", raised: "#21173A", accent: "#C084FC"),
+        make("lavender", "Lavender", .octopus, dark: false, top: "#F3EFFF", bottom: "#D9CFFD",
+             surface: "#FBFAFF", frame: "#ECE6FD", raised: "#FFFFFF", accent: "#7C3AED",
+             art: ["octoInk": "#5B21B6", "ink": "#6E5BC0", "bubble": "#7F6BD6", "ray": "#FFFFFF", "rock": "#C6B8F4", "rockInk": "#9F8BE6",
+                   "weed1": "#A78BFA", "weed2": "#8B6CF0", "weedInk": "#5B3FC4"]),
+        make("tide-pool", "Tide Pool", .tentacles, dark: false, top: "#BDE7EE", bottom: "#F6E7CF",
+             surface: "#FBF8F2", frame: "#EEF2EC", raised: "#FFFFFF", accent: "#D9503F",
+             art: ["arm": "#F07B62", "armInk": "#A8402E", "sucker": "#FFD3C4", "lid": "#D9604A", "eye": "#FFFFFF", "pupil": "#1E1B4B",
+                   "speck": "#5E9AA8", "bubble": "#4F8C9A", "glow": "#FFFFFF"]),
         // Dark
         make("aurora", "Aurora", .aurora, dark: true, top: "#04121A", bottom: "#0C1A33",
              surface: "#0D1622", frame: "#09111A", raised: "#18263A", accent: "#5BF0A6"),
@@ -438,6 +455,58 @@ private enum Art {
 }
 
 private enum Sprites {
+    /// The logo's octopus (design/brand/octomux-logo.html): `#` body, `h` highlight, `s` shade, `e` eyes, `w` glints,
+    /// `c` cheeks. Frames, all 14 rows (padded on top, the legs stay put): idle, squish (a head row dropped, legs
+    /// out), stretch (a row doubled, legs trailing: the push), blink. Like the menu bar's bounce.
+    static let octoBody = [
+        "     ######     ",
+        "   #hhh######   ",
+        "  #hhh########  ",
+        " ##hh#########s ",
+        " #############s ",
+        " ###we####we##s ",
+        " ###ee####ee##s ",
+        " ###ee####ee##s ",
+        " #c##########cs ",
+        "  ###########s  ",
+    ]
+    static let octoFrames: [[String]] = {
+        let legs = [" ## ## ## ## ## ", "##  #  ##  #  ##", "#   #  ##  #   #"]
+        let spread = ["##  ##    ##  ##", "#   #      #   #"]
+        let tuck = ["   ## #### ##   ", "   #  #  #  #   ", "  #   #  #   #  "]
+        func pad(_ r: [String]) -> [String] { Array(repeating: String(repeating: " ", count: 16), count: 14 - r.count) + r }
+        let b = octoBody
+        let idle = pad(b + legs)
+        let squish = pad(Array(b[0..<4]) + Array(b[5...]) + spread)
+        let stretch = pad(Array(b[0..<5]) + [b[4]] + Array(b[5...]) + tuck)
+        let blink = idle.map { $0.replacingOccurrences(of: "e", with: "#").replacingOccurrences(of: "w", with: "#") }
+        return [idle, squish, stretch, blink]
+    }()
+    /// Little ones, legs in and out.
+    static let babyFrames = [
+        ["  ####  ", " ###### ", " #e##e# ", " ###### ", " # ## # ", "#  ##  #"],
+        ["  ####  ", " ###### ", " #e##e# ", " ###### ", "  ####  ", "  #  #  "],
+    ]
+    static let inkPuff = [
+        "  ####  ",
+        " ###### ",
+        "########",
+        " ###### ",
+        "  ## #  ",
+    ]
+    static let rock = [
+        "   ####   ",
+        " ######## ",
+        "##########",
+    ]
+    /// A big eye peeking out of the sand: `#` lid, `y` eye, `p` pupil.
+    static let bigEye = [
+        "  ####  ",
+        " #yyyy# ",
+        "#yyppyy#",
+        "#yyppyy#",
+        " #yyyy# ",
+    ]
     static let cloud = [
         "      ######",
         "   ############",
@@ -562,6 +631,8 @@ private struct SceneBuilder {
         case .aurora: aurora()
         case .circuit: circuit()
         case .kites: kites()
+        case .octopus: octopus()
+        case .tentacles: tentacles()
         case .custom:
             if let b = s.base { build(kind: b) }
             if let spec = s.spec { custom(spec, dark: s.dark) }
@@ -582,6 +653,8 @@ private struct SceneBuilder {
         case .aurora: aurora()
         case .circuit: circuit()
         case .kites: kites()
+        case .octopus: octopus()
+        case .tentacles: tentacles()
         case .custom: break
         }
     }
@@ -1030,6 +1103,159 @@ private struct SceneBuilder {
             swing(box, "transform.rotation.z", 0.08, period: 6 + Double(k), phase: Double(k) * 2)
             swing(box, "transform.translation.x", 26, period: 14 + Double(k) * 3, phase: Double(k) * 5)
             swing(box, "transform.translation.y", 10, period: 9 + Double(k) * 2, phase: Double(k) * 3)
+        }
+    }
+
+
+    /// The logo's octopus swims in place right of the sidebar (squish, push, drift back down, blink; faster while
+    /// agents work, since the clock runs faster), puffs ink now and then, and shows a "!" while an agent waits.
+    /// Little ones rise past, bubbles go up, rocks and weeds on the floor.
+    func octopus() {
+        for i in 0..<3 {
+            let x0 = W * (0.12 + 0.32 * CGFloat(i))
+            let p = CGMutablePath()
+            p.addLines(between: [CGPoint(x: x0, y: 0), CGPoint(x: x0 + 60, y: 0), CGPoint(x: x0 + 230, y: H), CGPoint(x: x0 + 80, y: H)])
+            p.closeSubpath()
+            pulse(shape(p, fill: cg(a("ray", "#FFFFFF")), opacity: 0.03), 0.012, dark ? 0.05 : 0.18, period: 10 + Double(i) * 3, phase: Double(i) * 2)
+        }
+        // Floor: rocks and weeds, right of the sidebar.
+        for i in 0..<3 {
+            let r = Art.sprite(Sprites.rock, ["#": a("rock", dark ? "#2A2150" : "#C6B8F4")], ink: a("rockInk", dark ? "#43367A" : "#9F8BE6"), seed: 420 + i, flip: i == 1)
+            add(r, x: px(0.08 + 0.4 * CGFloat(i)), y: H - r.1.height + 2, opacity: 0.9)
+        }
+        for i in 0..<7 {
+            let x0 = px(0.03 + 0.94 * CGFloat(rnd(i, 430))), h = 3 + hash(i, 431) % 6
+            for k in 0..<h {
+                let l = add(Art.sprite(["#"], ["#": i % 3 == 0 ? a("weed1", "#4E8F7A") : a("weed2", "#3A7366")], ink: a("weedInk", "#143A30"), seed: hash(i + 40, k)),
+                            x: x0, y: H - CGFloat(k + 1) * 12, opacity: 0.85)
+                swing(l, "transform.translation.x", 0.5 + CGFloat(k) * 0.9, period: 7.5, phase: Double(k) * 0.39 + Double(i))
+            }
+        }
+        particles(26, art: { Art.glyph($0 % 3 == 0 ? "o" : $0 % 3 == 1 ? "°" : ".", a("bubble", "#FFFFFF"), size: 10) },
+                  from: { CGPoint(x: rnd($0, 411) * W, y: H + 15) }, to: { CGPoint(x: rnd($0, 411) * W, y: -15) },
+                  duration: { Double(H + 30) / (16 + rnd($0, 412) * 28) }, opacity: { _ in dark ? 0.4 : 0.5 }, sway: 6, seed: 410)
+        // Little ones in the logo's other colors, rising slowly.
+        let babyColors = [a("baby1", "#A78BFA"), a("baby2", "#60A5FA"), a("baby3", "#FF8A7A"), a("baby4", "#F9A8D4")]
+        for i in 0..<5 {
+            let colors: [Character: String] = ["#": babyColors[i % babyColors.count], "e": a("eye", "#1E1B4B")]
+            let frames = Sprites.babyFrames.map { Art.sprite($0, colors, ink: a("babyInk", "#000000"), seed: 440 + i) }
+            let l = add(frames[0], x: rnd(i, 441) * (W - frames[0].1.width), y: H * 0.5, opacity: dark ? 0.8 : 0.9)
+            rise(l, speed: 7 + CGFloat(rnd(i, 442)) * 7, phase: rnd(i, 443), up: true)
+            swing(l, "transform.translation.x", 16, period: 9 + rnd(i, 444) * 6, phase: rnd(i, 445) * 9)
+            let legs = CAKeyframeAnimation(keyPath: "contents")
+            legs.values = [frames[0].0 as Any, frames[1].0 as Any]
+            legs.keyTimes = [0, 0.7, 1]
+            legs.calculationMode = .discrete
+            legs.duration = 1.4 + rnd(i, 446)
+            forever(legs, phase: rnd(i, 447) * legs.duration)
+            l.add(legs, forKey: "legs")
+        }
+        // The octopus.
+        let colors: [Character: String] = ["#": a("body", "#8B5CF6"), "h": a("hi", "#C4B5FD"), "s": a("shade", "#6D28D9"),
+                                           "e": a("eye", "#1E1B4B"), "w": "#FFFFFF", "c": a("cheek", "#F9A8D4")]
+        let frames = Sprites.octoFrames.map { Art.sprite($0, colors, ink: a("octoInk", "#5B21B6"), seed: 400) }
+        let size = frames[0].1
+        let cx = px(0.7), top = max(H * 0.1, H - size.height - H * 0.22)
+        let period = 4.4
+        // Ink first, so it stays behind the body.
+        let puff = Art.sprite(Sprites.inkPuff, ["#": a("ink", "#0B061A")], ink: nil, seed: 401)
+        let ink = add(puff, x: cx - puff.1.width / 2, y: top + size.height - puff.1.height, opacity: 0)
+        let inkShow = CAKeyframeAnimation(keyPath: "opacity")
+        inkShow.values = [0, 0, dark ? 0.75 : 0.35, dark ? 0.45 : 0.2, 0, 0]
+        inkShow.keyTimes = [0, 0.48, 0.52, 0.62, 0.8, 1]
+        let inkGrow = CAKeyframeAnimation(keyPath: "transform.scale")
+        inkGrow.values = [0.3, 0.3, 0.9, 1.7, 2.3, 2.3]
+        inkGrow.keyTimes = inkShow.keyTimes
+        let inkSink = CAKeyframeAnimation(keyPath: "transform.translation.y")
+        inkSink.values = [0, 0, -6, -24, -36, -36]
+        inkSink.keyTimes = inkShow.keyTimes
+        let inkGroup = CAAnimationGroup()
+        inkGroup.animations = [inkShow, inkGrow, inkSink]
+        inkGroup.duration = period * 3        // every third push
+        forever(inkGroup, phase: period * 1.1)
+        ink.add(inkGroup, forKey: "ink")
+        let body = add(frames[0], x: cx - size.width / 2, y: top)
+        // idle … squish, stretch (the push), idle … blink, idle.
+        let swim = CAKeyframeAnimation(keyPath: "contents")
+        swim.values = [0, 1, 2, 0, 3, 0].map { frames[$0].0 as Any }
+        swim.keyTimes = [0, 0.4, 0.48, 0.6, 0.9, 0.94, 1]
+        swim.calculationMode = .discrete
+        swim.duration = period
+        forever(swim, phase: 0)
+        body.add(swim, forKey: "swim")
+        let lift = CAKeyframeAnimation(keyPath: "transform.translation.y")   // y-up: a dip, the push up, a slow sink
+        lift.values = [0, 0, -4, 16, 6, 0]
+        lift.keyTimes = [0, 0.4, 0.48, 0.6, 0.85, 1]
+        lift.isAdditive = true
+        lift.timingFunctions = [.init(name: .linear), .init(name: .easeIn), .init(name: .easeOut), .init(name: .easeInEaseOut), .init(name: .easeInEaseOut)]
+        lift.duration = period
+        forever(lift, phase: 0)
+        body.add(lift, forKey: "lift")
+        swing(body, "transform.translation.x", 34, period: 27, phase: 5)
+        swing(body, "transform.rotation.z", 0.035, period: 11, phase: 2)
+        // The ink cloud follows the octopus sideways.
+        swing(ink, "transform.translation.x", 34, period: 27, phase: 5)
+        if mood == .attention || mood == .error {
+            let mark = Art.glyph(mood == .error ? "×" : "!", mood == .error ? "#FF6B5B" : "#F5B841", size: 22)
+            let l = CALayer()
+            l.contents = mark.0
+            l.contentsScale = Art.scale
+            l.frame = CGRect(x: size.width - 26, y: size.height - 8, width: mark.1.width, height: mark.1.height)
+            body.addSublayer(l)
+            pulse(l, 0.35, 1, period: 1.4, phase: 0)
+        }
+    }
+
+    /// Something big lives under the sand: tentacles rise from the floor right of the sidebar and wave (a wave runs
+    /// up each one), two eyes peek out and blink (amber while an agent waits, red on an error). Specks and bubbles.
+    func tentacles() {
+        particles(Int(min(60, W * H / 16000)), art: { Art.glyph($0 % 4 == 0 ? "*" : "·", a("speck", "#B9A6FF"), size: 10) },
+                  from: { CGPoint(x: rnd($0, 501) * W, y: H + 10) }, to: { CGPoint(x: rnd($0, 501) * W + 40, y: -10) },
+                  duration: { Double(H + 20) / (5 + rnd($0, 502) * 9) }, opacity: { 0.25 + 0.3 * Float(rnd($0, 503)) }, fade: true, sway: 14, seed: 500)
+        particles(14, art: { Art.glyph($0 % 2 == 0 ? "o" : "°", a("bubble", "#D8CCFF"), size: 10) },
+                  from: { CGPoint(x: rnd($0, 511) * W, y: H + 15) }, to: { CGPoint(x: rnd($0, 511) * W, y: -15) },
+                  duration: { Double(H + 30) / (18 + rnd($0, 512) * 24) }, opacity: { _ in 0.4 }, sway: 5, seed: 510)
+        // The eyes, between the middle tentacles.
+        let (eyeHex, pupilHex) = mood == .attention ? ("#F5B841", "#2A1A05") : mood == .error ? ("#FF6B5B", "#2A0805") : (a("eye", "#FDE68A"), a("pupil", "#1A0A2A"))
+        let eye = Art.sprite(Sprites.bigEye, ["#": a("lid", "#4C1D95"), "y": eyeHex, "p": pupilHex], ink: nil, seed: 520)
+        // Above the status bar, which covers the window's bottom ~30 pt.
+        let ex = px(0.51), ey = H - eye.1.height - 40
+        let glow = CAGradientLayer()
+        glow.type = .radial
+        glow.frame = CGRect(x: ex - 150, y: 0, width: 300, height: 200)
+        glow.colors = [cg(mood == .calm || mood == .busy ? a("glow", "#FDE68A") : eyeHex, dark ? 0.16 : 0.35), cg(eyeHex, 0)]
+        glow.startPoint = CGPoint(x: 0.5, y: 0.5); glow.endPoint = CGPoint(x: 1, y: 1)
+        root.addSublayer(glow)
+        pulse(glow, 0.5, 1, period: 6, phase: 0)
+        for (j, dx) in [-eye.1.width - 10, 10].enumerated() {
+            let l = add(eye, x: ex + dx, y: ey)
+            let blink = CAKeyframeAnimation(keyPath: "transform.scale.y")
+            blink.values = [1, 1, 0.12, 1, 1, 0.12, 1, 1]
+            blink.keyTimes = [0, 0.6, 0.63, 0.66, 0.7, 0.73, 0.76, 1]
+            blink.duration = 9
+            forever(blink, phase: Double(j) * 0.02)
+            l.add(blink, forKey: "blink")
+            // Looking around: the eyes drift a little together.
+            swing(l, "transform.translation.x", 5, period: 13, phase: 1)
+        }
+        // Tentacles: rows of cells, wide at the floor and thin at the tip, which curls; suckers on the inner side.
+        let colors: [Character: String] = ["#": a("arm", "#6D3FD0"), "o": a("sucker", "#C4B5FD")]
+        let bases: [CGFloat] = W - textColumn > 700 ? [0.07, 0.29, 0.73, 0.94] : [0.12, 0.88]
+        for (t, f) in bases.enumerated() {
+            let base = px(f)
+            let h = max(6, Int(H * (0.34 + 0.2 * CGFloat(rnd(t, 530))) / 12))
+            let lean: CGFloat = f < 0.5 ? 1 : -1
+            for k in 0..<h {
+                let u = CGFloat(k) / CGFloat(h)
+                let w = max(1, Int((4.4 * (1 - u) + 0.6).rounded()))
+                var row = Array(String(repeating: "#", count: w))
+                if w >= 2 && k % 2 == 0 { row[lean > 0 ? w - 1 : 0] = "o" }
+                let curl = lean * pow(max(0, u - 0.55) / 0.45, 2) * 42
+                let l = add(Art.sprite([String(row)], colors, ink: a("armInk", "#2E1065"), seed: t * 100 + k),
+                            x: base - CGFloat(w) * 6 + curl, y: H - CGFloat(k + 1) * 12 + 2)
+                swing(l, "transform.translation.x", 0.8 + CGFloat(k) * 1.15, period: 8 + Double(t) * 1.3, phase: Double(t) * 2.2 - Double(k) * 0.2)
+                if u > 0.55 { swing(l, "transform.translation.y", (u - 0.55) * 14, period: 8 + Double(t) * 1.3, phase: Double(t) * 2.2 - Double(k) * 0.2 + 2) }
+            }
         }
     }
 

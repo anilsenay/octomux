@@ -313,7 +313,7 @@ enum UserScenes {
     | `name` | Shown in the picker (required) |
     | `id` | Stable id (default: the file name) |
     | `dark` | `true` for a dark scene, `false` for light |
-    | `base` | Start from a built-in scene: `night-sky`, `reef`, `fireflies`, `embers`, `rain`, `sky`, `sakura`, `snow` |
+    | `base` | Start from a built-in scene by id, for example `night-sky`, `reef`, `fireflies`, `embers`, `rain`, `sky`, `sakura`, `snow`, `octo-deep`, `kraken` |
     | `gradient` | `[top, bottom]` background colors |
     | `colors` | `surface` (terminals, panels), `frame` (sidebar), `raised` (popovers), `accent` |
     | `terminal` | A terminal color scheme: a Ghostty theme name (`"Catppuccin Mocha"`, `"Nord"`, `"Dracula"`…) or a path to a Ghostty theme file. Sets the 16 ANSI colors, text, cursor, selection and (unless `colors.surface` is set) the terminal background |
