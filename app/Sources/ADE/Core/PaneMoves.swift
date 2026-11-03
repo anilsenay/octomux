@@ -60,15 +60,18 @@ extension AppModel {
 
     enum CloseScope { case others, right, left, all }
 
+    /// Tabs a bulk close takes; pinned tabs are never among them (close those one by one).
     func tabs(_ scope: CloseScope, of tabId: String) -> [Tab] {
         let all = currentTabs
         guard let i = all.firstIndex(where: { $0.id == tabId }) else { return [] }
+        let picked: [Tab]
         switch scope {
-        case .others: return all.filter { $0.id != tabId }
-        case .right: return Array(all[(i + 1)...])
-        case .left: return Array(all[..<i])
-        case .all: return all
+        case .others: picked = all.filter { $0.id != tabId }
+        case .right: picked = Array(all[(i + 1)...])
+        case .left: picked = Array(all[..<i])
+        case .all: picked = all
         }
+        return picked.filter { !isPinned($0) }
     }
 
     /// Closes several tabs with one confirmation when agents in them are busy.

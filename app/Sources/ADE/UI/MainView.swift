@@ -255,9 +255,11 @@ struct TopBar: View {
         let newBtn: CGFloat = 52
         let avail = max(120, width - leading - tools - newBtn - 30)
         let tabMin: CGFloat = 120, tabMax: CGFloat = 220
-        let count = model.currentTabs.count + model.currentDocs.count
-        let visible = max(1, min(count, Int(avail / tabMin)))
-        let tabW = max(tabMin, min(tabMax, (avail - (visible < count ? 44 : 0)) / CGFloat(max(1, visible))))
+        let pinned = model.currentTabs.filter(model.isPinned).count
+        let avail2 = pinned > 0 ? avail - CGFloat(pinned) * (PinnedTabChip.width + 2) - 20 : avail
+        let count = model.currentTabs.count - pinned + model.currentDocs.count
+        let visible = max(1, min(max(count, 1), Int(max(avail2, tabMin) / tabMin)))
+        let tabW = max(tabMin, min(tabMax, (max(avail2, tabMin) - (visible < count ? 44 : 0)) / CGFloat(max(1, visible))))
         return (max(4, Int((tabW - 60) / 7)), compact, visible, tabW)
     }
 
@@ -269,7 +271,23 @@ struct TopBar: View {
                 WindowDragArea().frame(width: TopLeftControls.width)
             }
             let docs = model.currentDocs
-            let docSlots = docs.isEmpty ? 0 : max(1, min(docs.count, fit.visible - min(model.currentTabs.count, 1)))
+            let pinnedTabs = Array(model.currentTabs.enumerated()).filter { model.isPinned($0.element) }
+            if !pinnedTabs.isEmpty {
+                // Pinned tabs: icons only, in their own little group, before the others.
+                HStack(spacing: 2) {
+                    ForEach(pinnedTabs, id: \.element.id) { i, t in
+                        PinnedTabChip(tab: t, index: i)
+                            .reorderable("tab", id: t.id) { model.moveTab($0, to: $1) }
+                    }
+                }
+                .padding(2)
+                .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(T.hover.opacity(0.7)))
+                .fixedSize()
+                .transition(.scale(scale: 0.8).combined(with: .opacity))
+                Rectangle().fill(T.border).frame(width: 1, height: 16).padding(.horizontal, 2)
+            }
+            let unpinnedCount = model.currentTabs.count - pinnedTabs.count
+            let docSlots = docs.isEmpty ? 0 : max(1, min(docs.count, fit.visible - min(unpinnedCount, 1)))
             let shown = visibleTabs(max(1, fit.visible - docSlots))
             let shownDocs = visibleDocs(docSlots)
             HStack(spacing: m.tabStyle == .underline ? 0 : 4) {
@@ -281,7 +299,7 @@ struct TopBar: View {
                     DocChip(doc: d, maxChars: fit.chars, width: m.tabStyle == .underline ? nil : fit.tabW)
                         .reorderable("doc", id: d.id) { model.moveDoc($0, before: $1) }
                 }
-                let hidden = Array(model.currentTabs.enumerated()).filter { e in !shown.contains { $0.1.id == e.element.id } }
+                let hidden = Array(model.currentTabs.enumerated()).filter { e in !model.isPinned(e.element) && !shown.contains { $0.1.id == e.element.id } }
                 let hiddenDocs = docs.filter { d in !shownDocs.contains { $0.id == d.id } }
                 if !hidden.isEmpty || !hiddenDocs.isEmpty {
                     Menu {
@@ -356,8 +374,9 @@ struct TopBar: View {
 
 extension TopBar {
     /// The first `n` tabs, swapping in the active tab if it would be hidden.
+    /// The first `n` unpinned tabs (pinned ones have their own group), keeping their ⌘ numbers.
     func visibleTabs(_ n: Int) -> [(Int, Tab)] {
-        let all = Array(model.currentTabs.enumerated()).map { ($0.offset, $0.element) }
+        let all = Array(model.currentTabs.enumerated()).map { ($0.offset, $0.element) }.filter { !model.isPinned($0.1) }
         guard all.count > n else { return all }
         var shown = Array(all.prefix(n))
         if let active = all.first(where: { $0.1.id == model.activeTabId }), !shown.contains(where: { $0.1.id == active.1.id }) {
@@ -942,6 +961,48 @@ struct UsagePopover: View {
 }
 
 /// Session tab context menu.
+/// A pinned tab in the tab bar: the pane stack icon only, an accent bar under the active one, a dot for
+/// activity; the title is in the tooltip.
+struct PinnedTabChip: View {
+    static let width: CGFloat = 32
+    @EnvironmentObject var model: AppModel
+    let tab: Tab
+    let index: Int
+    @State private var hover = false
+
+    var body: some View {
+        let selected = tab.id == model.activeTabId && model.activeDoc == nil
+        let ids = tab.layout.sessions
+        let lead = model.session(tab.activeSessionId ?? ids.first)
+        let busy = ids.compactMap { model.session($0) }.first { $0.activity == .needsInput || $0.activity == .working || $0.unread }
+        ZStack {
+            PaneStackIcon(items: paneStackItems(ids, front: lead?.id, model: model), size: 12)
+                .opacity(selected ? 1 : hover ? 0.85 : 0.6).saturation(selected ? 1 : 0.6)
+        }
+        .frame(width: Self.width, height: T.m.tabH - 4)
+        .overlay(alignment: .topTrailing) {
+            if let busy {
+                Circle().fill(busy.activity == .needsInput ? T.amber : busy.activity == .working ? T.accent : T.green)
+                    .frame(width: 6, height: 6)
+                    .overlay(Circle().stroke(T.frame, lineWidth: 1.5))
+                    .offset(x: -3, y: 3)
+            }
+        }
+        .background(RoundedRectangle(cornerRadius: 7, style: .continuous)
+            .fill(selected ? (ThemeStore.shared.isDark ? Color.white.opacity(0.1) : T.raised) : hover ? T.hover : .clear)
+            .shadow(color: .black.opacity(selected && !ThemeStore.shared.isDark ? 0.1 : 0), radius: 1, y: 0.5))
+        .overlay(alignment: .bottom) {
+            Capsule().fill(selected ? T.accent : .clear).frame(width: 12, height: 2).offset(y: -1)
+        }
+        .contentShape(Rectangle())
+        .onHover { hover = $0 }
+        .pointerCursor()
+        .onTapGesture { model.selectTab(tab.id) }
+        .contextMenu { TabMenu(tab: tab) }
+        .help((lead?.displayTitle ?? "Tab") + (index < 9 ? "  ⌘\(index + 1)" : "") + " · pinned")
+    }
+}
+
 struct TabMenu: View {
     @EnvironmentObject var model: AppModel
     let tab: Tab
@@ -951,6 +1012,7 @@ struct TabMenu: View {
         if let lead {
             Button("Rename Tab…") { model.selectTab(tab.id); model.renamingSessionId = lead.id }
         }
+        Button(model.isPinned(tab) ? "Unpin Tab" : "Pin Tab") { withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { model.togglePin(tab) } }
         if model.activeTab?.id != tab.id, model.activeTab != nil {
             Button("Open in Current Tab Split") { model.mergeTabIntoCurrent(tab.id) }
         }
@@ -962,7 +1024,8 @@ struct TabMenu: View {
         Button("Close Other Tabs") { model.closeTabs(model.tabs(.others, of: tab.id)) }.disabled(model.tabs(.others, of: tab.id).isEmpty)
         Button("Close Tabs to the Right") { model.closeTabs(model.tabs(.right, of: tab.id)) }.disabled(model.tabs(.right, of: tab.id).isEmpty)
         Button("Close Tabs to the Left") { model.closeTabs(model.tabs(.left, of: tab.id)) }.disabled(model.tabs(.left, of: tab.id).isEmpty)
-        Button("Close All Tabs") { model.closeTabs(model.tabs(.all, of: tab.id)) }
+        Button(model.pinnedTabIds(project: tab.projectId).isEmpty ? "Close All Tabs" : "Close All Unpinned Tabs") { model.closeTabs(model.tabs(.all, of: tab.id)) }
+            .disabled(model.tabs(.all, of: tab.id).isEmpty)
     }
 }
 

@@ -587,6 +587,10 @@ struct SessionRow: View {
                     .truncationMode(.tail)
             }
             Spacer(minLength: 4)
+            if !hover, model.isPinned(session: session.id) {
+                Image(systemName: "pin.fill").font(.system(size: 8.5, weight: .semibold)).foregroundStyle(T.text3)
+                    .rotationEffect(.degrees(40)).help("Pinned")
+            }
             if hover {
                 Group {
                     if session.isDormant {
@@ -626,6 +630,9 @@ struct SessionMenu: View {
 
     var body: some View {
         Button("Rename") { model.renamingSessionId = session.id }
+        if session.placement == .tab, let tab = model.tab(containing: session.id) {
+            Button(model.isPinned(tab) ? "Unpin" : "Pin") { withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { model.togglePin(tab) } }
+        }
         if model.canChat(session) {
             Button(model.isChat(session.id) ? "Show Terminal" : "Show as Chat") { model.toggleChat(session.id) }
         }

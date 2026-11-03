@@ -123,6 +123,9 @@ enum DebugActions {
             case "pane_to_tab": if let id { m.movePaneToNewTab(id) }
             case "close_tabs": if let id { m.closeTabs(m.tabs(p["value"] as? String == "others" ? .others : p["value"] as? String == "left" ? .left : p["value"] as? String == "all" ? .all : .right, of: id)) }
             case "branch_picker": NotificationCenter.default.post(name: .adeDebugPanel, object: nil, userInfo: ["branchPicker": p["value"] as? String ?? "checkout"])
+            case "pin_tab":
+                let t = id.flatMap { tid in m.state.tabs.first { $0.id == tid } } ?? m.activeTab
+                if let t { m.setPinned(t, (p["value"] as? Bool) ?? !m.isPinned(t)) }
             case "new_chat": m.openNewChat()
             case "scene":
                 let scope = (p["scope"] as? String).map { $0 == "workspace" ? "workspace:\(m.selectedWorkspaceId ?? "")" : $0 } ?? "global"

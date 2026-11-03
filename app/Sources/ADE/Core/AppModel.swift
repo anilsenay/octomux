@@ -310,8 +310,12 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// The project's tabs: pinned ones first (see Pins.swift), each part in its own sort order.
     func tabs(ofProject id: String?) -> [Tab] {
-        state.tabs.filter { $0.projectId == id }.sorted { $0.sort < $1.sort }
+        let all = state.tabs.filter { $0.projectId == id }.sorted { $0.sort < $1.sort }
+        let pinned = Set(pinnedTabIds(project: id))
+        guard !pinned.isEmpty else { return all }
+        return all.filter { pinned.contains($0.id) } + all.filter { !pinned.contains($0.id) }
     }
 
     var activeTab: Tab? { state.tabs.first { $0.id == activeTabId } }
@@ -396,6 +400,15 @@ final class AppModel: ObservableObject {
 
     func settingValue(_ key: String, scope: String) -> JSONValue? {
         state.settings.first { $0.scope == scope && $0.key == key }?.value
+    }
+
+    /// Applies a setting to the local state before the daemon's echo (for instant UI); nil removes it.
+    func setSettingLocally(_ key: String, _ value: JSONValue?, scope: String) {
+        if let k = state.settings.firstIndex(where: { $0.scope == scope && $0.key == key }) {
+            if let value { state.settings[k].value = value } else { state.settings.remove(at: k) }
+        } else if let value {
+            state.settings.append(Setting(scope: scope, key: key, value: value))
+        }
     }
 
     func setSetting(_ key: String, _ value: Any?, scope: String = "global") {
