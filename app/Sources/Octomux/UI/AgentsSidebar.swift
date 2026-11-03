@@ -1,15 +1,14 @@
 import AppKit
 import SwiftUI
 
-/// The Agents panel pinned to the bottom of the sidebar (like Herdr). Closed it is a header bar that still lists
-/// the agents that need input or are working; open it grows upward to a resizable height (drag its top edge).
+/// The Agents panel pinned to the bottom of the sidebar (like Herdr). Closed it is only a header bar whose right
+/// side shows what agents are doing (working, need input, error, finished); open it grows upward to a resizable
+/// height (drag its top edge). It never opens by itself.
 /// ⌥⌘A or clicking the header opens and closes it.
 struct AgentsPanel: View {
     @EnvironmentObject var model: AppModel
     let maxHeight: CGFloat
     static let minHeight: CGFloat = 140
-    /// Agents shown in the closed panel before "+N more".
-    static let closedRows = 3
     @AppStorage("octomux.agentsPanelHeight") private var height: Double = 300
     @AppStorage("octomux.agentsGrouping") private var byProject = false
     @State private var dragStart: Double?
@@ -18,31 +17,19 @@ struct AgentsPanel: View {
     var body: some View {
         let open = model.sidebarAgents
         let agents = model.state.sessions.filter { $0.kind == .agent && model.project($0.projectId) != nil }
-        let waiting = agents.filter { !$0.isDormant && $0.activity == .needsInput }.count
-        let working = agents.filter { !$0.isDormant && $0.activity == .working }.count
-        let active = agents.filter { !$0.isDormant && ($0.activity == .needsInput || $0.activity == .working) }
-            .sorted { ($0.activity == .needsInput ? 0 : 1, -$0.lastActivityAt) < ($1.activity == .needsInput ? 0 : 1, -$1.lastActivityAt) }
+        let live = agents.filter { !$0.isDormant }
+        let counts = Counts(working: live.filter { $0.activity == .working }.count,
+                            waiting: live.filter { $0.activity == .needsInput }.count,
+                            failed: live.filter { $0.activity == .error }.count,
+                            finished: live.filter { AgentsList.Group.of($0) == .finished }.count)
         VStack(spacing: 0) {
             Rectangle().fill(T.border).frame(height: 1)
-            headerBar(open: open, total: agents.count, waiting: waiting, working: working)
+            headerBar(open: open, total: agents.count, counts: counts)
                 .overlay(alignment: .top) { if open { resizeHandle.offset(y: -3) } }
             if open {
                 AgentsList(embedded: true)
                     .frame(height: CGFloat(min(max(height, Self.minHeight), maxHeight)))
                     .transition(.move(edge: .bottom).combined(with: .opacity))
-            } else if !active.isEmpty {
-                VStack(alignment: .leading, spacing: 1) {
-                    ForEach(active.prefix(Self.closedRows)) { s in AgentRow(session: s, showProject: true) }
-                    if active.count > Self.closedRows {
-                        Button { toggle() } label: {
-                            Text("+\(active.count - Self.closedRows) more").font(T.caption).foregroundStyle(T.text3)
-                                .padding(.leading, 8).frame(height: 22)
-                        }
-                        .buttonStyle(.plain).pointerCursor()
-                    }
-                }
-                .padding(.horizontal, 10).padding(.bottom, 6)
-                .transition(.opacity)
             }
         }
         .clipped()
@@ -52,14 +39,20 @@ struct AgentsPanel: View {
         withAnimation(.easeOut(duration: 0.18)) { model.sidebarAgents.toggle() }
     }
 
-    private func headerBar(open: Bool, total: Int, waiting: Int, working: Int) -> some View {
+    struct Counts { var working = 0, waiting = 0, failed = 0, finished = 0
+        var isEmpty: Bool { working + waiting + failed + finished == 0 } }
+
+    private func headerBar(open: Bool, total: Int, counts: Counts) -> some View {
         HStack(spacing: 6) {
             Image(systemName: "chevron.up").font(.system(size: 9, weight: .semibold)).foregroundStyle(T.text3)
                 .rotationEffect(.degrees(open ? 180 : 0)).frame(width: 12)
             SectionLabel("Agents")
-            if waiting > 0 { badge(waiting, T.amber, "need input") }
-            if working > 0 { badge(working, T.accent, "working") }
             Spacer(minLength: 4)
+            indicators(counts)
+            if counts.isEmpty && !open && total > 0 {
+                Text("\(total)").font(.system(size: 11, weight: .medium)).monospacedDigit().foregroundStyle(T.text3)
+                    .help("\(total) agents, none busy")
+            }
             if open {
                 Menu {
                     Picker("Sort agents", selection: $byProject) {
@@ -72,8 +65,6 @@ struct AgentsPanel: View {
                         .font(.system(size: 11, weight: .medium)).foregroundStyle(T.text3).menuHitBox(22, 20)
                 }
                 .plainMenu().fixedSize().hoverHighlight(radius: 5).help("Sort agents")
-            } else if total > 0 {
-                Text("\(total)").font(.system(size: 11, weight: .medium)).monospacedDigit().foregroundStyle(T.text3)
             }
         }
         .padding(.leading, 12).padding(.trailing, 10).frame(height: 30)
@@ -84,12 +75,36 @@ struct AgentsPanel: View {
         .help(open ? "Hide agents (⌥⌘A)" : "Show every agent across workspaces (⌥⌘A)")
     }
 
-    private func badge(_ n: Int, _ c: Color, _ what: String) -> some View {
-        HStack(spacing: 3) {
-            Circle().fill(c).frame(width: 6, height: 6)
-            Text("\(n)").font(.system(size: 10.5, weight: .semibold)).monospacedDigit().foregroundStyle(c)
+    /// What agents are doing, most urgent first, each with its count; the same marks as the session rows.
+    @ViewBuilder private func indicators(_ c: Counts) -> some View {
+        HStack(spacing: 9) {
+            if c.waiting > 0 {
+                mark(c.waiting, T.amber, "\(c.waiting) need\(c.waiting == 1 ? "s" : "") your input") {
+                    Image(systemName: "hand.raised.fill").font(.system(size: 9.5)).foregroundStyle(T.amber)
+                }
+            }
+            if c.failed > 0 {
+                mark(c.failed, T.red, "\(c.failed) failed") {
+                    Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 9.5)).foregroundStyle(T.red)
+                }
+            }
+            if c.working > 0 {
+                mark(c.working, T.text2, "\(c.working) working") { WorkingRing().scaleEffect(0.85) }
+            }
+            if c.finished > 0 {
+                mark(c.finished, T.green, "\(c.finished) finished, not looked at yet") {
+                    Circle().fill(T.green).frame(width: 7, height: 7)
+                }
+            }
         }
-        .help("\(n) \(what)")
+    }
+
+    private func mark(_ n: Int, _ color: Color, _ help: String, @ViewBuilder _ icon: () -> some View) -> some View {
+        HStack(spacing: 3) {
+            icon().frame(width: 12, height: 12)
+            Text("\(n)").font(.system(size: 10.5, weight: .semibold)).monospacedDigit().foregroundStyle(color)
+        }
+        .help(help)
     }
 
     /// Drag the panel's top edge: up grows it, down shrinks it.
