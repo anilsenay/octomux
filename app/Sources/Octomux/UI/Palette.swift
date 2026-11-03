@@ -52,6 +52,11 @@ enum PaletteSource {
         for t in Themes.all {
             out.append(PaletteItem(id: "th:" + t.id, title: "Theme: \(t.name)", subtitle: t.summary, kind: "Theme", icon: sym("paintpalette")) { ThemeStore.shared.set(theme: t.id) })
         }
+        if (model.activeTab?.layout.sessions.count ?? 0) > 1 {
+            out.append(PaletteItem(id: "pane:equalize", title: "Equalize Panes", subtitle: "Split tab", kind: "Command", icon: sym("rectangle.split.3x1")) {
+                model.equalizePanes()
+            })
+        }
         out.append(PaletteItem(id: "scene:agent", title: "Create Scene with Agent", subtitle: "", kind: "Theme", icon: sym("wand.and.stars")) {
             DispatchQueue.main.async { UserScenes.createWithAgent() }
         })

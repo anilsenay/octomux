@@ -17,6 +17,19 @@ enum SplitSizing {
         return fitted(split, size: size, divider: divider, even: evenPaths(split, newId: newId, dir: dir))
     }
 
+    /// Every row and column of the tab at equal shares (each split as if the panes had just been opened
+    /// in it), then minimum sizes as for a split. If even the minimums don't fit, equal shares only.
+    static func equalized(_ layout: PaneNode, size: CGSize, divider: CGFloat) -> PaneNode {
+        var all: Set<[Bool]> = []
+        func collect(_ n: PaneNode, _ p: [Bool]) {
+            guard case .split(_, _, let a, let b) = n else { return }
+            all.insert(p); collect(a, p + [false]); collect(b, p + [true])
+        }
+        collect(layout, [])
+        return fitted(layout, size: size, divider: divider, even: all)
+            ?? fit(layout, size, divider, all, [], minimums: false)
+    }
+
     /// Pre-order ratios of a tree (what `session.create`'s `split_ratios` takes).
     static func ratios(_ n: PaneNode) -> [Double] {
         guard case .split(_, let r, let a, let b) = n else { return [] }
@@ -65,10 +78,10 @@ enum SplitSizing {
     /// as far as needed for each pane to keep its minimum. nil when the container is too small for all.
     static func fitted(_ n: PaneNode, size: CGSize, divider: CGFloat, even: Set<[Bool]> = []) -> PaneNode? {
         guard need(n, .right, divider: divider) <= size.width + 0.5, need(n, .down, divider: divider) <= size.height + 0.5 else { return nil }
-        return fit(n, size, divider, even, [])
+        return fit(n, size, divider, even, [], minimums: true)
     }
 
-    private static func fit(_ n: PaneNode, _ size: CGSize, _ div: CGFloat, _ even: Set<[Bool]>, _ path: [Bool]) -> PaneNode {
+    private static func fit(_ n: PaneNode, _ size: CGSize, _ div: CGFloat, _ even: Set<[Bool]>, _ path: [Bool], minimums: Bool) -> PaneNode {
         guard case .split(let d, var r, let a, let b) = n else { return n }
         let extent = d == .right ? size.width : size.height
         let total = extent - div
@@ -79,11 +92,11 @@ enum SplitSizing {
             r = Double((na * pane + (na - 1) * div) / total)
         }
         let lo = need(a, d, divider: div) / total, hi = 1 - need(b, d, divider: div) / total
-        if lo <= hi { r = min(max(r, Double(lo)), Double(hi)) }
+        if minimums, lo <= hi { r = min(max(r, Double(lo)), Double(hi)) }
         let first = total * CGFloat(r), second = total - first
         let sa = d == .right ? CGSize(width: first, height: size.height) : CGSize(width: size.width, height: first)
         let sb = d == .right ? CGSize(width: second, height: size.height) : CGSize(width: size.width, height: second)
-        return .split(dir: d, ratio: r, a: fit(a, sa, div, even, path + [false]), b: fit(b, sb, div, even, path + [true]))
+        return .split(dir: d, ratio: r, a: fit(a, sa, div, even, path + [false], minimums: minimums), b: fit(b, sb, div, even, path + [true], minimums: minimums))
     }
 }
 

@@ -171,9 +171,16 @@ enum DebugActions {
                 // Left click at window point (top-left origin), through AppKit hit testing.
                 if let w = (NSApp.delegate as? AppDelegate)?.mainWindow, let x = p["x"] as? Double, let y = p["y"] as? Double {
                     let pt = NSPoint(x: x, y: w.contentView!.bounds.height - y)
-                    for t in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
-                        if let e = NSEvent.mouseEvent(with: t, location: pt, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
-                                                      windowNumber: w.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1) { w.sendEvent(e) }
+                    // "count": 2 sends a double click (a second down/up with click count 2). The up is queued
+                    // before the down is sent: a view that tracks the mouse inside mouseDown (a split divider)
+                    // pulls it from the queue; sent after, it would wait forever.
+                    func ev(_ t: NSEvent.EventType, _ n: Int) -> NSEvent? {
+                        NSEvent.mouseEvent(with: t, location: pt, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                           windowNumber: w.windowNumber, context: nil, eventNumber: 0, clickCount: n, pressure: 1)
+                    }
+                    for n in 1...max(1, (p["count"] as? Int) ?? 1) {
+                        if let up = ev(.leftMouseUp, n) { NSApp.postEvent(up, atStart: false) }
+                        if let down = ev(.leftMouseDown, n) { w.sendEvent(down) }
                     }
                 }
             case "sidebar_width": m.sidebarWidth = CGFloat((p["value"] as? Double) ?? 252)

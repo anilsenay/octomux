@@ -44,6 +44,24 @@ final class SplitSizingTests: XCTestCase {
         for w in ws { XCTAssertGreaterThanOrEqual(w, SplitSizing.minWidth - 0.5) }
     }
 
+    func testEqualizeEvensEveryRowAndColumn() {
+        // A broken tab: L | ((T1 | T2 | T3) / (B1 | B2)) with odd shares everywhere.
+        let top = PaneNode.split(dir: .right, ratio: 0.7, a: .split(dir: .right, ratio: 0.1, a: .leaf(sessionId: "T1"), b: .leaf(sessionId: "T2")),
+                                 b: .leaf(sessionId: "T3"))
+        let bottom = PaneNode.split(dir: .right, ratio: 0.15, a: .leaf(sessionId: "B1"), b: .leaf(sessionId: "B2"))
+        let l = PaneNode.split(dir: .right, ratio: 0.8, a: .leaf(sessionId: "L"), b: .split(dir: .down, ratio: 0.2, a: top, b: bottom))
+        let e = SplitSizing.equalized(l, size: CGSize(width: 1023, height: 744), divider: div)
+        guard case .split(_, let root, _, .split(_, let column, let t, let b)) = e else { return XCTFail() }
+        XCTAssertEqual(root, 0.5, accuracy: 0.01)
+        XCTAssertEqual(column, 0.5, accuracy: 0.01)
+        let right = (1023 - div) * CGFloat(1 - root)
+        for row in [t, b] {
+            let ws = widths(row, right)
+            for w in ws { XCTAssertEqual(w, ws[0], accuracy: 0.5, "\(ws)") }
+        }
+        XCTAssertEqual(widths(t, right).count, 3)
+    }
+
     func testRatiosArePreOrder() {
         let l = PaneNode.split(dir: .right, ratio: 0.3, a: .split(dir: .down, ratio: 0.6, a: .leaf(sessionId: "a"), b: .leaf(sessionId: "b")),
                                b: .leaf(sessionId: "c"))

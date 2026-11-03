@@ -243,6 +243,7 @@ final class TerminalHost {
             split.addArrangedSubview(build(a, tabId: tabId, path: path + [false]))
             split.addArrangedSubview(build(b, tabId: tabId, path: path + [true]))
             split.ratio = ratio
+            split.onEqualize = { [weak self] in self?.model.equalizePanes(tabId: tabId) }
             split.onRatioChange = { [weak self] r in
                 guard let self, let tab = self.model.state.tabs.first(where: { $0.id == tabId }) else { return }
                 let newLayout = tab.layout.withRatio(path: path, ratio: r)
@@ -551,7 +552,11 @@ final class RatioSplitView: NSSplitView, NSSplitViewDelegate {
     private var draggingDivider = false
 
     // Clicks reach the split view itself only on a divider (the panes take the rest).
+    var onEqualize: (() -> Void)?
+
     override func mouseDown(with event: NSEvent) {
+        // Double-click a divider: every pane of the tab at equal shares.
+        if event.clickCount == 2, let onEqualize { onEqualize(); return }
         draggingDivider = true
         defer { draggingDivider = false }
         super.mouseDown(with: event)

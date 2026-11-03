@@ -600,6 +600,15 @@ final class AppModel: ObservableObject {
         if let id = focusedSessionId { remove(id) }
     }
 
+    /// Equal shares for every row and column of a split tab (⌘K "Equalize Panes", double-click a divider).
+    func equalizePanes(tabId: String? = nil) {
+        guard let id = tabId ?? activeTabId, let t = state.tabs.first(where: { $0.id == id }), t.layout.sessions.count > 1 else { return }
+        let size = TerminalHost.shared.container.bounds.size
+        guard size.width > 50, size.height > 50 else { return }
+        let l = SplitSizing.equalized(t.layout, size: size, divider: T.m.inset > 0 ? T.m.inset : 1)
+        if l != t.layout { updateLayout(tabId: t.id, layout: l) }
+    }
+
     func updateLayout(tabId: String, layout: PaneNode) {
         guard let data = try? JSONEncoder().encode(layout), let obj = try? JSONSerialization.jsonObject(with: data) else { return }
         client(for: tabId).call("tab.update", ["id": tabId, "layout": obj])
