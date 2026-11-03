@@ -503,6 +503,27 @@ enum DebugActions {
             else { np.refresh() }
             return ["status": np.debugName, "sound_off": np.soundOff]
         }
+        // Quits the app normally (applicationWillTerminate runs: an update set to install on quit installs).
+        d.register("quit") { _ in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { NSApp.terminate(nil) }
+            return ["ok": true]
+        }
+        // Update toast in a given state: {"show": "available|downloading|ready|failed|uptodate|checking|hide"}.
+        d.register("update_toast") { p in
+            let u = Updater.shared
+            switch p["show"] as? String ?? "" {
+            case "available": u.debugShow(.available(version: "0.2.0"))
+            case "downloading": u.debugShow(.downloading((p["progress"] as? Double) ?? 0.42))
+            case "ready": u.debugShow(.ready(version: "0.2.0"))
+            case "failed": u.debugShow(.failed("The update could not be verified."))
+            case "uptodate": u.debugShow(.upToDate)
+            case "checking": u.debugShow(.checking)
+            case "check": u.checkNow()
+            case "install": u.install()
+            default: u.toastVisible = false
+            }
+            return ["phase": String(describing: u.phase), "enabled": u.isEnabled, "feed": u.feedURL ?? ""]
+        }
         // Clicks the menu bar icon (opens or closes its panel); "screenshot" with "path" captures the icon or the panel.
         d.register("menubar") { p in
             let c = StatusItemController.shared

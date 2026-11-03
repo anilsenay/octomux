@@ -147,7 +147,27 @@ fn app_label(app: &str) -> String {
     }
 }
 
+/// Our binary as it was when this daemon started (inode, mtime); `hello` reports `stale` once the file at
+/// that path is a different one (an app update replaced the bundle; it keeps the archive's mtimes, so only
+/// "changed", not "newer", tells it).
+static STARTED_EXE: std::sync::OnceLock<Option<(u64, std::time::SystemTime)>> = std::sync::OnceLock::new();
+
+fn exe_identity() -> Option<(u64, std::time::SystemTime)> {
+    use std::os::unix::fs::MetadataExt;
+    let m = std::fs::metadata(std::env::current_exe().ok()?).ok()?;
+    Some((m.ino(), m.modified().ok()?))
+}
+
+/// The binary at our path was replaced after we started (an app update): the app restarts us into it.
+fn binary_replaced() -> bool {
+    match (STARTED_EXE.get(), exe_identity()) {
+        (Some(Some(then)), Some(now)) => *then != now,
+        _ => false,
+    }
+}
+
 pub fn run(paths: Paths) -> Result<()> {
+    let _ = STARTED_EXE.set(exe_identity());
     util::ensure_dir_0700(&paths.home)?;
     util::ensure_dir_0700(&paths.run_dir())?;
     util::ensure_dir_0700(&paths.logs_dir())?;
@@ -1167,7 +1187,8 @@ impl Daemon {
         let s = |k: &str| p.get(k).and_then(|v| v.as_str()).map(|v| v.to_string());
         let req = |k: &str| s(k).ok_or_else(|| anyhow!("missing param {k}"));
         match method {
-            "hello" => Ok(json!({ "version": octomux_proto::PROTOCOL_VERSION, "pid": std::process::id(), "home": self.paths.home })),
+            "hello" => Ok(json!({ "version": octomux_proto::PROTOCOL_VERSION, "pid": std::process::id(), "home": self.paths.home,
+                "daemon_version": env!("CARGO_PKG_VERSION"), "stale": binary_replaced() })),
             "state.get" => Ok(serde_json::to_value(&*self.state.lock().unwrap())?),
             "daemon.shutdown" => Ok(json!({ "ok": true })),
             // Stop Octomux entirely (Settings): every session's program, then the daemon (it exits after the

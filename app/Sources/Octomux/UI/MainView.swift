@@ -48,6 +48,8 @@ struct MainView: View {
         .allowsHitTesting(model.power == .running)
         .overlay { if model.power != .running && !model.stopFalling { StoppedOverlay() } }
         .overlay(alignment: .top) { if model.power == .running { DisconnectBanner().padding(.top, T.m.topH + 6) } }
+        // App update offer / download progress / "Relaunch Now", above the status bar.
+        .overlay(alignment: .bottomTrailing) { UpdateToast().padding(.trailing, 14).padding(.bottom, 34) }
         .onChange(of: model.power) { _, p in if p == .running { TerminalHost.shared.render(force: true); TerminalHost.shared.renderDock(force: true) } }
         .background(rootBackground)
         .overlay(alignment: .topLeading) { peekStrip }

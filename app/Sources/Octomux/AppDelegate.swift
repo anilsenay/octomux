@@ -21,9 +21,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             NSApp.activate(ignoringOtherApps: true)
             return
         }
+        // Opened from the disk image or Downloads: move to /Applications first (relaunches from there).
+        if AppLocation.offerMoveIfNeeded() { return }
         buildMenu()
         Notifier.shared.start()
         AppModel.shared.start()
+        Updater.shared.start()
         openMainWindow()
         installSwipeMonitor()
         DebugActions.register()
@@ -96,12 +99,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     // MARK: Menu
 
+    @objc func checkForUpdates(_ sender: Any?) { Updater.shared.checkNow() }
+
     private func buildMenu() {
         let main = NSMenu()
 
         let appItem = NSMenuItem()
         let appMenu = NSMenu()
         appMenu.addItem(withTitle: "About Octomux", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        if Updater.shared.feedURL != nil { appMenu.addItem(item("Check for Updates…", #selector(checkForUpdates(_:)), "")) }
         appMenu.addItem(.separator())
         appMenu.addItem(item("Settings…", #selector(showSettings(_:)), ","))
         appMenu.addItem(.separator())

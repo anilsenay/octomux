@@ -85,8 +85,17 @@ final class AppModel: ObservableObject {
             if self.disconnectedSince == nil { self.disconnectedSince = Date() }
         }
         startUsageRefresh()
-        DispatchQueue.global().async {
-            let ok = DaemonClient.ensureDaemon()
+        DispatchQueue.global().async { [client] in
+            var ok = DaemonClient.ensureDaemon()
+            // After an app update the running daemon is the previous build: restart it into the new binary
+            // (sessions live in their holders and survive; the new daemon adopts them).
+            if ok, !DaemonClient.held, let hello = try? client.callSync("hello") as? [String: Any],
+               hello["stale"] as? Bool == true {
+                NSLog("daemon binary was updated; restarting the daemon")
+                _ = try? client.callSync("daemon.shutdown")
+                for _ in 0..<30 where LineSocket(path: Paths.daemonSocket.path) != nil { usleep(100_000) }
+                ok = DaemonClient.ensureDaemon()
+            }
             DispatchQueue.main.async {
                 if !ok { self.lastError = "Could not start the Octomux daemon (\(Paths.cliBinary))." }
                 self.client.startSubscription()

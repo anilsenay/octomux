@@ -4,14 +4,20 @@ import PackageDescription
 let package = Package(
     name: "Octomux",
     platforms: [.macOS(.v14)],
+    dependencies: [
+        // Auto-update (appcast + EdDSA-signed archives). Our own UI drives it (Updater.swift).
+        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.6.4"),
+    ],
     targets: [
         .binaryTarget(name: "GhosttyKit", path: "Frameworks/GhosttyKit.xcframework"),
         .executableTarget(
             name: "Octomux",
-            dependencies: ["GhosttyKit"],
+            dependencies: ["GhosttyKit", .product(name: "Sparkle", package: "Sparkle")],
             path: "Sources/Octomux",
             swiftSettings: [.unsafeFlags(["-Onone"], .when(configuration: .debug))],
             linkerSettings: [
+                // Sparkle.framework: Contents/Frameworks in the bundle; next to the binary in a dev run.
+                .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks", "-Xlinker", "-rpath", "-Xlinker", "@executable_path"]),
                 .linkedFramework("AppKit"),
                 .linkedFramework("Metal"),
                 .linkedFramework("MetalKit"),

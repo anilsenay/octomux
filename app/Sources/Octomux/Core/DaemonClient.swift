@@ -123,9 +123,11 @@ final class DaemonClient {
         if held { return LineSocket(path: Paths.daemonSocket.path) != nil }
         let agents = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/LaunchAgents")
         let plist = agents.appendingPathComponent("dev.octomux.daemon.plist")
-        if !Paths.homeFromEnv && !FileManager.default.fileExists(atPath: plist.path) {
+        if !Paths.homeFromEnv && agentProgram(plist) != Paths.cliBinary {
             // First run (or first run after the rename): also replaces the pre-rename `dev.ade-dev.daemon` agent,
-            // whose daemon may be serving the socket right now. Sessions survive the daemon restart.
+            // whose daemon may be serving the socket right now. Also when the agent runs another copy's CLI
+            // (the app was moved, or a second copy is opened): the daemon and the agents' hooks follow the
+            // agent's binary. Sessions survive the daemon restart.
             run([Paths.cliBinary, "install-agent"])
         }
         if LineSocket(path: Paths.daemonSocket.path) != nil { return true }
@@ -137,6 +139,12 @@ final class DaemonClient {
             usleep(100_000)
         }
         return false
+    }
+
+    /// The binary the launchd agent starts (`ProgramArguments[0]`), nil without an agent.
+    static func agentProgram(_ plist: URL) -> String? {
+        guard let d = NSDictionary(contentsOf: plist), let args = d["ProgramArguments"] as? [String] else { return nil }
+        return args.first
     }
 
     @discardableResult
