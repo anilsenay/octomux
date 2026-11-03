@@ -239,7 +239,6 @@ final class TerminalHost {
         case .split(let dir, let ratio, let a, let b):
             let split = RatioSplitView()
             split.isVertical = dir == .right
-            split.dividerStyle = .thin
             split.addArrangedSubview(build(a, tabId: tabId, path: path + [false]))
             split.addArrangedSubview(build(b, tabId: tabId, path: path + [true]))
             split.ratio = ratio
@@ -538,78 +537,120 @@ final class PlaceholderPane: NSView {
     required init?(coder: NSCoder) { fatalError() }
 }
 
-/// Split view that applies a stored ratio once laid out and reports drags.
-final class RatioSplitView: NSSplitView, NSSplitViewDelegate {
-    var ratio: Double = 0.5
+/// Two panes side by side (`isVertical`) or stacked, sized by `ratio` with Auto Layout: the first pane's
+/// extent is `ratio × (total − divider)`, so nested splits always fill their slot. (NSSplitView's own sizing
+/// fought stored ratios: a split nested as the first pane got squeezed to its minimum, AppKit's settling
+/// moves were taken for drags, and the panes ended up as slivers.) The divider is ours: drag it to change
+/// the ratio (reported once, on mouse-up), double-click it to equalize the tab.
+final class RatioSplitView: NSView {
+    var isVertical = true
+    var ratio: Double = 0.5 { didSet { if ratio != oldValue { applyRatio() } } }
+    /// The user dragged the divider (called once, when the drag ends).
     var onRatioChange: ((Double) -> Void)?
-    /// The size the ratio was last applied at. The ratio is re-applied whenever the split's size changes:
-    /// a nested split is first laid out before its parent settles (applied once, it kept that tiny
-    /// position and a third pane opened as a sliver); window resizes keep the proportions too.
-    private var appliedTotal: CGFloat = 0
-    private var applying = false
-    private var debounce: DispatchWorkItem?
-    /// True while the user drags this split's divider (NSSplitView tracks the drag inside `mouseDown`).
-    private var draggingDivider = false
-
-    // Clicks reach the split view itself only on a divider (the panes take the rest).
+    /// Double-click on the divider.
     var onEqualize: (() -> Void)?
-
-    override func mouseDown(with event: NSEvent) {
-        // Double-click a divider: every pane of the tab at equal shares.
-        if event.clickCount == 2, let onEqualize { onEqualize(); return }
-        draggingDivider = true
-        defer { draggingDivider = false }
-        super.mouseDown(with: event)
-    }
-
-    override init(frame: NSRect) {
-        super.init(frame: frame)
-        delegate = self
-    }
-    required init?(coder: NSCoder) { fatalError() }
+    private(set) var arrangedSubviews: [NSView] = []
+    private let gap = DividerGap()
+    private let grip = DividerGrip()
+    private var sizeConstraint: NSLayoutConstraint?
 
     // Cards themes: an empty gap, so the window background (workspace tint, glass, scene) shows between
-    // the cards like around them; a flat fill here read as a line. Flat themes: a hairline.
-    override var dividerThickness: CGFloat { T.m.inset > 0 ? T.m.inset : 1 }
-    override var dividerColor: NSColor { T.m.inset > 0 ? .clear : T.ns(\.border) }
-    override func drawDivider(in rect: NSRect) {
-        if T.m.inset > 0 { return }
-        super.drawDivider(in: rect)
+    // the cards like around them. Flat themes: a hairline.
+    var dividerThickness: CGFloat { T.m.inset > 0 ? T.m.inset : 1 }
+
+    override var isFlipped: Bool { true }
+
+    func addArrangedSubview(_ v: NSView) {
+        guard arrangedSubviews.count < 2 else { return }
+        arrangedSubviews.append(v)
+        if arrangedSubviews.count == 2 { setUp() }
     }
 
-    override func layout() {
-        super.layout()
-        let total = isVertical ? bounds.width : bounds.height
-        guard !applying, total > 10, arrangedSubviews.count == 2 else { return }
-        appliedTotal = total
-        // Whatever moved the divider (a nested split laid out before its parent settled, a window resize),
-        // put it back where the ratio says. A drag updates `ratio` first, so it is not fought.
-        let expected = (total - dividerThickness) * ratio
-        let first = isVertical ? arrangedSubviews[0].frame.width : arrangedSubviews[0].frame.height
-        guard abs(first - expected) > 1.5 else { return }
-        applying = true
-        setPosition(expected, ofDividerAt: 0)
-        applying = false
+    private func setUp() {
+        let (a, b) = (arrangedSubviews[0], arrangedSubviews[1])
+        for v in [a, gap, b, grip] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; addSubview(v) }
+        grip.split = self
+        let t = dividerThickness, g = max(t, 7)
+        var c: [NSLayoutConstraint]
+        if isVertical {
+            c = [a.leadingAnchor.constraint(equalTo: leadingAnchor), a.topAnchor.constraint(equalTo: topAnchor), a.bottomAnchor.constraint(equalTo: bottomAnchor),
+                 gap.leadingAnchor.constraint(equalTo: a.trailingAnchor), gap.widthAnchor.constraint(equalToConstant: t),
+                 gap.topAnchor.constraint(equalTo: topAnchor), gap.bottomAnchor.constraint(equalTo: bottomAnchor),
+                 b.leadingAnchor.constraint(equalTo: gap.trailingAnchor), b.trailingAnchor.constraint(equalTo: trailingAnchor),
+                 b.topAnchor.constraint(equalTo: topAnchor), b.bottomAnchor.constraint(equalTo: bottomAnchor),
+                 grip.centerXAnchor.constraint(equalTo: gap.centerXAnchor), grip.widthAnchor.constraint(equalToConstant: g),
+                 grip.topAnchor.constraint(equalTo: topAnchor), grip.bottomAnchor.constraint(equalTo: bottomAnchor)]
+        } else {
+            c = [a.topAnchor.constraint(equalTo: topAnchor), a.leadingAnchor.constraint(equalTo: leadingAnchor), a.trailingAnchor.constraint(equalTo: trailingAnchor),
+                 gap.topAnchor.constraint(equalTo: a.bottomAnchor), gap.heightAnchor.constraint(equalToConstant: t),
+                 gap.leadingAnchor.constraint(equalTo: leadingAnchor), gap.trailingAnchor.constraint(equalTo: trailingAnchor),
+                 b.topAnchor.constraint(equalTo: gap.bottomAnchor), b.bottomAnchor.constraint(equalTo: bottomAnchor),
+                 b.leadingAnchor.constraint(equalTo: leadingAnchor), b.trailingAnchor.constraint(equalTo: trailingAnchor),
+                 grip.centerYAnchor.constraint(equalTo: gap.centerYAnchor), grip.heightAnchor.constraint(equalToConstant: g),
+                 grip.leadingAnchor.constraint(equalTo: leadingAnchor), grip.trailingAnchor.constraint(equalTo: trailingAnchor)]
+        }
+        NSLayoutConstraint.activate(c)
+        applyRatio()
     }
 
-    func splitViewDidResizeSubviews(_ notification: Notification) {
-        // Only the user's drags change the ratio, not our own re-application.
-        guard !applying, appliedTotal > 0, arrangedSubviews.count == 2, notification.userInfo?["NSSplitViewDividerIndex"] != nil else { return }
-        // AppKit also moves the divider (with a divider index) while a new nested split settles; taken as a
-        // drag, that stored the tiny first size as the ratio (clamped to 0.1) and the pane stayed a sliver.
-        // Checking the current event was not enough: closing a pane with its ✕ rebuilds the splits during
-        // that click's mouse-up. Only a drag that started on this divider counts.
-        guard draggingDivider else { return }
-        let total = isVertical ? bounds.width : bounds.height
-        guard total > 10 else { return }
-        let first = isVertical ? arrangedSubviews[0].frame.width : arrangedSubviews[0].frame.height
-        let r = max(0.1, min(0.9, Double(first / max(1, total - dividerThickness))))
-        guard abs(r - ratio) > 0.01 else { return }
-        ratio = r
-        debounce?.cancel()
-        let w = DispatchWorkItem { [weak self] in self?.onRatioChange?(r) }
-        debounce = w
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: w)
+    /// first = ratio × (total − divider), as one constraint (multiplier on the split's own size).
+    private func applyRatio() {
+        guard arrangedSubviews.count == 2 else { return }
+        sizeConstraint?.isActive = false
+        let r = CGFloat(max(0.02, min(0.98, ratio))), t = dividerThickness
+        let a = arrangedSubviews[0]
+        let c = isVertical
+            ? NSLayoutConstraint(item: a, attribute: .width, relatedBy: .equal, toItem: self, attribute: .width, multiplier: r, constant: -t * r)
+            : NSLayoutConstraint(item: a, attribute: .height, relatedBy: .equal, toItem: self, attribute: .height, multiplier: r, constant: -t * r)
+        // Just under required: a pane's own hard minimum (if any) wins instead of breaking the layout.
+        c.priority = NSLayoutConstraint.Priority(999)
+        c.isActive = true
+        sizeConstraint = c
+    }
+
+    /// Divider drag from the grip: live ratio while dragging, reported on mouse-up.
+    fileprivate func trackDrag(from event: NSEvent) {
+        guard let window else { return }
+        let start = ratio
+        var e: NSEvent? = event
+        while let ev = e {
+            if ev.type == .leftMouseUp { break }
+            let p = convert(ev.locationInWindow, from: nil)
+            let total = (isVertical ? bounds.width : bounds.height) - dividerThickness
+            if total > 1 {
+                let pos = (isVertical ? p.x : p.y) - dividerThickness / 2
+                ratio = Double(max(0.1, min(0.9, pos / total)))
+            }
+            e = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp])
+        }
+        if abs(ratio - start) > 0.001 { onRatioChange?(ratio) }
+    }
+}
+
+/// The visible divider: nothing on cards themes (the window shows through), a hairline on flat ones.
+private final class DividerGap: NSView {
+    override init(frame: NSRect) { super.init(frame: frame); wantsLayer = true }
+    required init?(coder: NSCoder) { fatalError() }
+    override var wantsUpdateLayer: Bool { true }
+    override func updateLayer() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            layer?.backgroundColor = T.m.inset > 0 ? NSColor.clear.cgColor : T.ns(\.border).cgColor
+        }
+    }
+    override func viewDidChangeEffectiveAppearance() { super.viewDidChangeEffectiveAppearance(); needsDisplay = true }
+}
+
+/// Invisible handle over the divider, at least 7 pt wide so a hairline is easy to grab.
+private final class DividerGrip: NSView {
+    weak var split: RatioSplitView?
+    override var mouseDownCanMoveWindow: Bool { false }
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: split?.isVertical == false ? .resizeUpDown : .resizeLeftRight)
+    }
+    override func mouseDown(with event: NSEvent) {
+        guard let split else { return }
+        if event.clickCount == 2, let eq = split.onEqualize { eq(); return }
+        split.trackDrag(from: event)
     }
 }
 
