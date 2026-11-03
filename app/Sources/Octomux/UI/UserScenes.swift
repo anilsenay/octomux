@@ -287,11 +287,16 @@ enum UserScenes {
 
     """ }
 
-    /// README and JSON Schema next to the scene files (rewritten on launch, so they match this version).
+    /// README and JSON Schema next to the scene files, refreshed on launch so they match this version. Written only
+    /// when the text differs: every write wakes the folder watcher, which reloads the scenes (a visible flash).
     static func writeDocs() {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        try? readme.write(to: dir.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
-        try? schema.write(to: dir.appendingPathComponent("scene.schema.json"), atomically: true, encoding: .utf8)
+        for (name, text) in [("README.md", readme), ("scene.schema.json", schema)] {
+            let url = dir.appendingPathComponent(name)
+            if (try? String(contentsOf: url, encoding: .utf8)) != text {
+                try? text.write(to: url, atomically: true, encoding: .utf8)
+            }
+        }
     }
 
     static let readme = """
