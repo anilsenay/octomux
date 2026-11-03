@@ -110,7 +110,7 @@ struct NotificationBell: View {
                     .foregroundStyle(Self.badgeInk(model.workspace?.color))
                     .padding(.horizontal, 3.5).frame(minWidth: 13, minHeight: 13)
                     .background(Capsule().fill(Self.badgeFill(model.workspace?.color)))
-                    .offset(x: 3, y: -1)
+                    .offset(x: -1, y: 2)
                     .allowsHitTesting(false)
             }
         }
