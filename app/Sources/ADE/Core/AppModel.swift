@@ -347,15 +347,21 @@ final class AppModel: ObservableObject {
         return order.compactMap { groups[$0] }
     }
 
-    /// What the tab bar's new-session button starts: a profile id, or nil for a terminal.
+    /// What the tab bar's new-session button starts: a profile id, or nil for a terminal. Remembered per
+    /// workspace; a workspace without a pick yet uses its default agent, then the last pick anywhere.
     var lastNewSessionProfile: String? {
         get {
-            let v = defaults.string(forKey: "ade.lastNew")
-            guard let v, v != "terminal", enabledProfiles.contains(where: { $0.id == v }) else { return nil }
+            let ws = selectedWorkspaceId
+            let picked = ws.flatMap { defaults.string(forKey: "ade.lastNew.\($0)") }
+                ?? defaultChatProfile(workspace: ws)?.id
+                ?? defaults.string(forKey: "ade.lastNew")
+            guard let v = picked, v != "terminal", enabledProfiles.contains(where: { $0.id == v }) else { return nil }
             return v
         }
         set {
-            defaults.set(newValue ?? "terminal", forKey: "ade.lastNew")
+            let v = newValue ?? "terminal"
+            if let ws = selectedWorkspaceId { defaults.set(v, forKey: "ade.lastNew.\(ws)") }
+            defaults.set(v, forKey: "ade.lastNew")
             objectWillChange.send()
         }
     }
