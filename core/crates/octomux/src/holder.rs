@@ -216,6 +216,19 @@ fn write_screen(out: &mut Vec<u8>, screen: &vt100::Screen, title: &str, main: Op
     }
 }
 
+/// Rewrites every visible row in place (cursor to the row, erase it, draw it), then the cursor state.
+pub fn repaint_bytes(screen: &vt100::Screen) -> Vec<u8> {
+    let mut out = Vec::new();
+    let (_, cols) = screen.size();
+    for (i, row) in screen.rows_formatted(0, cols).enumerate() {
+        out.extend_from_slice(format!("\x1b[0m\x1b[{};1H\x1b[2K", i + 1).as_bytes());
+        out.extend_from_slice(&row);
+    }
+    out.extend_from_slice(b"\x1b[0m");
+    out.extend_from_slice(&screen.cursor_state_formatted());
+    out
+}
+
 struct Client {
     id: u64,
     role: Role,
@@ -232,6 +245,8 @@ struct Inner {
     last_activity_event: Instant,
     /// Main screen as it was when the alternate screen was entered.
     main_snapshot: Option<Vec<u8>>,
+    /// Bumped on every resize; a pending repaint only runs if no newer resize came.
+    resync_gen: u64,
 }
 
 const ALT_ENTER: &[&[u8]] = &[b"\x1b[?1049h", b"\x1b[?1047h", b"\x1b[?47h"];
@@ -318,13 +333,14 @@ impl Shared {
         }
     }
 
-    fn resize(&self, cols: u16, rows: u16) {
+    /// Returns whether the size changed.
+    fn resize(&self, cols: u16, rows: u16) -> bool {
         if cols == 0 || rows == 0 {
-            return;
+            return false;
         }
         let mut inner = self.inner.lock().unwrap();
         if inner.cols == cols && inner.rows == rows {
-            return;
+            return false;
         }
         inner.cols = cols;
         inner.rows = rows;
@@ -332,6 +348,30 @@ impl Shared {
         drop(inner);
         let _ = self.master.lock().unwrap().resize(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 });
         self.write_info();
+        true
+    }
+
+    /// After a resize settles, repaint the attached terminals' visible main screen from ours. The
+    /// client terminal reflows its old lines to the new width while the shell redraws its prompt at
+    /// the start of what is now a wrapped line, so the prompt showed twice there (our screen, which
+    /// doesn't reflow, had it once). Rows are rewritten in place (no clear: nothing goes to the
+    /// client's scrollback). Programs on the alternate screen redraw themselves.
+    fn schedule_resync(self: &Arc<Self>) {
+        let token = {
+            let mut inner = self.inner.lock().unwrap();
+            inner.resync_gen += 1;
+            inner.resync_gen
+        };
+        let shared = Arc::clone(self);
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(150));
+            let mut inner = shared.inner.lock().unwrap();
+            if inner.resync_gen != token || inner.parser.screen().alternate_screen() {
+                return;
+            }
+            let bytes = repaint_bytes(inner.parser.screen());
+            Self::broadcast_locked(&mut inner, |r| r == Role::Attach, &Frame::new(Kind::Output, bytes));
+        });
     }
 
     fn write_input(&self, data: &[u8]) {
@@ -434,6 +474,7 @@ pub fn run(paths: Paths, args: HolderArgs) -> Result<()> {
             rows,
             last_activity_event: Instant::now() - Duration::from_secs(10),
             main_snapshot: None,
+            resync_gen: 0,
         }),
         pty_writer: Mutex::new(writer),
         master: Mutex::new(pair.master),
@@ -531,7 +572,7 @@ fn serve_client(shared: Arc<Shared>, stream: UnixStream) -> Result<()> {
             // Size first, so the snapshot matches the client's grid.
             if hello.cols > 0 && hello.rows > 0 && (hello.cols != inner.cols || hello.rows != inner.rows) {
                 drop(inner);
-                shared.resize(hello.cols, hello.rows);
+                let _ = shared.resize(hello.cols, hello.rows);
                 inner = shared.inner.lock().unwrap();
             }
             let title = inner.parser.callbacks().title.clone();
@@ -556,7 +597,9 @@ fn serve_client(shared: Arc<Shared>, stream: UnixStream) -> Result<()> {
             Kind::Input if hello.role == Role::Attach || hello.role == Role::Control => shared.write_input(&frame.payload),
             Kind::Resize => {
                 if let Some((c, r)) = frame.parse_resize() {
-                    shared.resize(c, r);
+                    if shared.resize(c, r) {
+                        shared.schedule_resync();
+                    }
                 }
             }
             Kind::Request => {
@@ -680,6 +723,18 @@ mod tests {
         assert!(b.screen().scrollback() >= 41, "history replayed: {}", b.screen().scrollback());
         let top = b.screen().contents();
         assert!(top.starts_with("line 0\n"), "{top}");
+    }
+
+    #[test]
+    fn repaint_rewrites_rows_in_place() {
+        let mut a = vt100::Parser::new(4, 20, 0);
+        a.process(b"one\r\ntwo\r\n$ ");
+        let mut b = vt100::Parser::new(4, 20, 0);
+        // A client that drifted: a duplicated prompt line.
+        b.process(b"one\r\ntwo\r\n$ \r\n$ ");
+        b.process(&repaint_bytes(a.screen()));
+        assert_eq!(b.screen().contents(), a.screen().contents());
+        assert_eq!(b.screen().cursor_position(), a.screen().cursor_position());
     }
 
     #[test]
