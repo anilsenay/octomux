@@ -711,7 +711,14 @@ fn serve_client(shared: Arc<Shared>, stream: UnixStream) -> Result<()> {
             _ => break,
         };
         match frame.kind {
-            Kind::Input if hello.role == Role::Attach || hello.role == Role::Control => shared.write_input(&frame.payload),
+            Kind::Input if hello.role == Role::Attach || hello.role == Role::Control => {
+                shared.write_input(&frame.payload);
+                // Enter: the daemon learns a question the program asked was answered (no hook says so).
+                if frame.payload.contains(&b'\r') {
+                    let mut inner = shared.inner.lock().unwrap();
+                    Shared::broadcast_locked(&mut inner, |r| r == Role::Monitor, &Frame::json(Kind::Event, &HolderEvent::Submit));
+                }
+            }
             Kind::Resize => {
                 if let Some((c, r)) = frame.parse_resize() {
                     if shared.resize(c, r) {

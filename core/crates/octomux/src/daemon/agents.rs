@@ -15,7 +15,7 @@ pub struct LaunchSpec {
 }
 
 pub const HOOK_EVENTS: &[&str] =
-    &["SessionStart", "UserPromptSubmit", "PreToolUse", "Stop", "Notification", "SessionEnd", "PermissionRequest"];
+    &["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop", "Notification", "SessionEnd", "PermissionRequest"];
 
 pub fn hooks_settings_path(paths: &Paths) -> PathBuf {
     paths.agent_dir().join("claude-settings.json")
@@ -35,7 +35,7 @@ pub fn write_hook_settings(paths: &Paths) -> anyhow::Result<()> {
     for ev in HOOK_EVENTS {
         let cmd = format!("{} hook {}", shell_quote(&exe), ev);
         let mut entry = serde_json::json!({ "hooks": [{ "type": "command", "command": cmd, "timeout": 5 }] });
-        if matches!(*ev, "PreToolUse" | "PermissionRequest") {
+        if matches!(*ev, "PreToolUse" | "PostToolUse" | "PermissionRequest") {
             entry["matcher"] = serde_json::json!("*");
         }
         hooks.insert(ev.to_string(), serde_json::json!([entry]));

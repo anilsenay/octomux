@@ -182,6 +182,8 @@ pub enum HolderEvent {
     Bell,
     /// Activity heartbeat (output was produced). Rate limited.
     Activity,
+    /// Input with Enter in it was written to the program.
+    Submit,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]

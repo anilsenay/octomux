@@ -40,6 +40,8 @@ pub struct Daemon {
     aliases: Mutex<Vec<(String, String)>>,
     /// Per session: transcript path, bytes already scanned, titles seen so far (custom, ai).
     title_scan: Mutex<HashMap<String, TitleScan>>,
+    /// Per session: when its activity last changed (ms), so an interrupt marker older than that is ignored.
+    activity_at: Mutex<HashMap<String, u64>>,
 }
 
 #[derive(Default)]
@@ -71,6 +73,34 @@ pub(crate) fn scan_titles(chunk: &str, custom: &mut Option<String>, ai: &mut Opt
             _ => {}
         }
     }
+}
+
+/// The newest turn record in a Claude transcript chunk: `Some((true, ts))` when it is the marker Claude writes
+/// when you press Esc (`[Request interrupted by user]`, `… for tool use]`), `Some((false, ts))` for any other
+/// prompt, reply or tool result. Esc runs no hook (Stop is skipped on an interrupt), so this is how we see it.
+/// `ts` is the record's time in ms. Subagent (sidechain) and meta records are not turns.
+pub(crate) fn last_turn_record(chunk: &str) -> Option<(bool, Option<u64>)> {
+    let mut last = None;
+    for line in chunk.lines() {
+        if !(line.contains("\"type\":\"user\"") || line.contains("\"type\":\"assistant\"")) {
+            continue;
+        }
+        let Ok(v) = serde_json::from_str::<Value>(line) else { continue };
+        let ty = v.get("type").and_then(|t| t.as_str()).unwrap_or("");
+        if !matches!(ty, "user" | "assistant") || v.get("isSidechain").and_then(|b| b.as_bool()) == Some(true) || v.get("isMeta").and_then(|b| b.as_bool()) == Some(true) {
+            continue;
+        }
+        let content = v.pointer("/message/content");
+        let texts: Vec<&str> = match content {
+            Some(Value::String(t)) => vec![t.as_str()],
+            Some(Value::Array(items)) => items.iter().filter_map(|i| i.get("text").and_then(|t| t.as_str())).collect(),
+            _ => vec![],
+        };
+        let interrupted = ty == "user" && texts.iter().any(|t| t.trim_start().starts_with("[Request interrupted by user"));
+        let ts = v.get("timestamp").and_then(|t| t.as_str()).and_then(util::parse_iso_millis);
+        last = Some((interrupted, ts));
+    }
+    last
 }
 
 pub fn run(paths: Paths) -> Result<()> {
@@ -113,6 +143,7 @@ pub fn run(paths: Paths) -> Result<()> {
         login_path: Mutex::new(None),
         aliases: Mutex::new(Vec::new()),
         title_scan: Mutex::new(HashMap::new()),
+        activity_at: Mutex::new(HashMap::new()),
     });
 
     // Bind under a private name, then atomically publish (never unlink a live socket).
@@ -122,6 +153,14 @@ pub fn run(paths: Paths) -> Result<()> {
     util::set_mode_0600(&tmp);
     std::fs::rename(&tmp, &sock)?;
     eprintln!("[ade-daemon] pid {} listening on {}", std::process::id(), sock.display());
+    // Hook events sent while we were down. One that is older than a state change seen since (a live hook
+    // that got here first) is stale and skipped.
+    for (ts, id, event, payload) in crate::hook_spool::take(&paths) {
+        let since = d.activity_at.lock().unwrap().get(&id).copied().unwrap_or(0);
+        if ts >= since {
+            d.on_hook(&id, &event, &payload);
+        }
+    }
 
     {
         let d = d.clone();
@@ -159,7 +198,8 @@ pub fn run(paths: Paths) -> Result<()> {
     {
         let d = d.clone();
         std::thread::spawn(move || loop {
-            std::thread::sleep(Duration::from_secs(3));
+            // Also notices Esc interrupts (see last_turn_record): kept short so the state follows quickly.
+            std::thread::sleep(Duration::from_secs(1));
             d.poll_agent_titles();
         });
     }
@@ -540,6 +580,7 @@ impl Daemon {
                 .collect()
         };
         let mut updates = Vec::new();
+        let mut interrupted = Vec::new();
         {
             let mut scans = self.title_scan.lock().unwrap();
             scans.retain(|id, _| targets.iter().any(|(t, _)| t == id));
@@ -568,13 +609,20 @@ impl Daemon {
                 let Some(end) = buf.iter().rposition(|b| *b == b'\n') else { continue };
                 sc.offset += end as u64 + 1;
                 let (mut c, mut a) = (sc.custom.take(), sc.ai.take());
-                scan_titles(&String::from_utf8_lossy(&buf[..end]), &mut c, &mut a);
+                let chunk = String::from_utf8_lossy(&buf[..end]);
+                scan_titles(&chunk, &mut c, &mut a);
+                if let Some((true, ts)) = last_turn_record(&chunk) {
+                    interrupted.push((id.clone(), ts));
+                }
                 sc.custom = c;
                 sc.ai = a;
                 if let Some(t) = sc.custom.clone().or_else(|| sc.ai.clone()) {
                     updates.push((id, t));
                 }
             }
+        }
+        for (id, ts) in interrupted {
+            self.on_interrupt(&id, ts);
         }
         let mut any = false;
         for (id, t) in updates {
@@ -592,6 +640,23 @@ impl Daemon {
         }
     }
 
+    /// You pressed Esc in a Claude session (its transcript says so): it is no longer working or waiting for you.
+    /// A marker from before the last state change (an old turn, or one read late) changes nothing.
+    fn on_interrupt(&self, id: &str, ts: Option<u64>) {
+        let since = self.activity_at.lock().unwrap().get(id).copied().unwrap_or(0);
+        if ts.is_some_and(|t| t + 500 < since) {
+            return;
+        }
+        let busy = self.with_session(id, |s| matches!(s.activity, Activity::Working | Activity::NeedsInput)) == Some(true);
+        if busy {
+            self.set_activity(id, Activity::Idle);
+            // You were there to press Esc: nothing to come back to.
+            if self.with_session(id, |s| std::mem::replace(&mut s.unread, false)) == Some(true) {
+                self.changed();
+            }
+        }
+    }
+
     fn set_activity(&self, id: &str, new: Activity) {
         let info = {
             let mut st = self.state.lock().unwrap();
@@ -601,6 +666,7 @@ impl Daemon {
             }
             s.activity = new;
             s.last_activity_at = util::now_secs();
+            self.activity_at.lock().unwrap().insert(id.to_string(), util::now_millis());
             if matches!(new, Activity::Done | Activity::NeedsInput | Activity::Error) {
                 s.unread = true;
                 if let (SessionKind::Agent, Some(pid)) = (s.kind, s.profile_id.clone()) {
@@ -729,6 +795,13 @@ impl Daemon {
                 }
             }
             HolderEvent::Bell => {}
+            // Enter while an agent waits on a permission or question dialog: you answered it, so it works on.
+            // (Answering "No" makes Claude write an interrupt marker; the transcript scan then sets it idle.)
+            HolderEvent::Submit => {
+                if self.with_session(id, |s| s.kind == SessionKind::Agent && s.activity == Activity::NeedsInput) == Some(true) {
+                    self.set_activity(id, Activity::Working);
+                }
+            }
         }
     }
 
@@ -762,7 +835,8 @@ impl Daemon {
                 }
                 self.set_activity(id, Activity::Idle);
             }
-            "UserPromptSubmit" | "PreToolUse" => self.set_activity(id, Activity::Working),
+            // PostToolUse: a tool you approved has run, so the agent is working again (no hook marks the approval).
+            "UserPromptSubmit" | "PreToolUse" | "PostToolUse" => self.set_activity(id, Activity::Working),
             "PermissionRequest" => self.set_activity(id, Activity::NeedsInput),
             "Notification" => {
                 let ty = payload.get("notification_type").and_then(|v| v.as_str()).unwrap_or("");
@@ -1508,5 +1582,74 @@ impl Daemon {
         }
         store.delete("project", id)?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod turn_tests {
+    use super::last_turn_record;
+    use crate::util::parse_iso_millis;
+
+    fn rec(ty: &str, content: &str, ts: &str) -> String {
+        format!(r#"{{"type":"{ty}","timestamp":"{ts}","message":{{"role":"{ty}","content":{content}}}}}"#)
+    }
+
+    #[test]
+    fn iso_times() {
+        assert_eq!(parse_iso_millis("1970-01-01T00:00:00Z"), Some(0));
+        assert_eq!(parse_iso_millis("2026-11-03T16:47:52.541Z"), Some(1_793_724_472_541));
+        assert_eq!(parse_iso_millis("2000-02-29T12:00:00.5Z"), Some(951_825_600_500));
+        assert_eq!(parse_iso_millis("nope"), None);
+    }
+
+    #[test]
+    fn esc_while_working_is_the_last_record() {
+        let chunk = [
+            rec("user", r#""fix the test""#, "2026-11-03T10:00:00.000Z"),
+            rec("assistant", r#"[{"type":"text","text":"Looking"}]"#, "2026-11-03T10:00:01.000Z"),
+            rec("user", r#"[{"type":"text","text":"[Request interrupted by user]"}]"#, "2026-11-03T10:00:02.000Z"),
+        ]
+        .join("\n");
+        assert_eq!(last_turn_record(&chunk), Some((true, parse_iso_millis("2026-11-03T10:00:02.000Z"))));
+    }
+
+    #[test]
+    fn esc_at_a_permission_prompt() {
+        let chunk = [
+            rec("assistant", r#"[{"type":"tool_use","id":"t1","name":"Bash","input":{}}]"#, "2026-11-03T10:00:01.000Z"),
+            rec("user", r#"[{"type":"tool_result","tool_use_id":"t1","content":"The user doesn't want to proceed","is_error":true}]"#, "2026-11-03T10:00:05.000Z"),
+            rec("user", r#"[{"type":"text","text":"[Request interrupted by user for tool use]"}]"#, "2026-11-03T10:00:05.001Z"),
+        ]
+        .join("\n");
+        assert_eq!(last_turn_record(&chunk).map(|r| r.0), Some(true));
+    }
+
+    #[test]
+    fn a_new_prompt_after_the_interrupt_wins() {
+        let chunk = [
+            rec("user", r#"[{"type":"text","text":"[Request interrupted by user]"}]"#, "2026-11-03T10:00:02.000Z"),
+            rec("user", r#""try again""#, "2026-11-03T10:00:09.000Z"),
+        ]
+        .join("\n");
+        assert_eq!(last_turn_record(&chunk).map(|r| r.0), Some(false));
+    }
+
+    #[test]
+    fn titles_sidechains_and_meta_are_not_turns() {
+        let chunk = [
+            rec("user", r#"[{"type":"text","text":"[Request interrupted by user]"}]"#, "2026-11-03T10:00:02.000Z"),
+            r#"{"type":"ai-title","aiTitle":"Fix test"}"#.to_string(),
+            r#"{"type":"assistant","isSidechain":true,"message":{"content":[{"type":"text","text":"sub"}]}}"#.to_string(),
+            r#"{"type":"user","isMeta":true,"message":{"content":"<command-name>/model</command-name>"}}"#.to_string(),
+        ]
+        .join("\n");
+        assert_eq!(last_turn_record(&chunk).map(|r| r.0), Some(true));
+        assert_eq!(last_turn_record(r#"{"type":"ai-title","aiTitle":"x"}"#), None);
+    }
+
+    #[test]
+    fn quoting_the_marker_mid_message_is_not_an_interrupt() {
+        let chunk = rec("user", r#""why did I see [Request interrupted by user] earlier?""#, "2026-11-03T10:00:02.000Z");
+        assert_eq!(last_turn_record(&chunk).map(|r| r.0), Some(false));
     }
 }

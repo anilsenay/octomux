@@ -5,6 +5,31 @@ pub fn now_secs() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
 
+/// `2026-11-03T16:47:52.541Z` (UTC, optional fraction) → ms since the epoch.
+pub fn parse_iso_millis(t: &str) -> Option<u64> {
+    let b = t.as_bytes();
+    if b.len() < 19 || b[4] != b'-' || b[10] != b'T' {
+        return None;
+    }
+    let num = |r: std::ops::Range<usize>| t.get(r)?.parse::<i64>().ok();
+    let (y, mo, d) = (num(0..4)?, num(5..7)?, num(8..10)?);
+    let (h, mi, s) = (num(11..13)?, num(14..16)?, num(17..19)?);
+    let mut ms = 0i64;
+    if b.get(19) == Some(&b'.') {
+        let frac: String = t[20..].chars().take_while(|c| c.is_ascii_digit()).collect();
+        ms = format!("{:0<3}", &frac[..frac.len().min(3)]).parse().ok()?;
+    }
+    // Days from the civil date (Howard Hinnant's algorithm).
+    let y2 = if mo <= 2 { y - 1 } else { y };
+    let era = y2.div_euclid(400);
+    let yoe = y2 - era * 400;
+    let mp = (mo + 9) % 12;
+    let doy = (153 * mp + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146_097 + doe - 719_468;
+    u64::try_from(((days * 24 + h) * 60 + mi) * 60 + s).ok().map(|secs| secs * 1000 + ms as u64)
+}
+
 pub fn now_millis() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
 }
