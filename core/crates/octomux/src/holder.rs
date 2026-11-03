@@ -264,8 +264,8 @@ fn process_name(pid: libc::pid_t) -> Option<String> {
     (!name.is_empty()).then_some(name)
 }
 
-/// Interactive shells whose prompt we repaint after a resize. Only the first word counts: terminal
-/// helpers that wrap the shell rename it, e.g. kiro-cli (Amazon Q / Fig) shows `zsh (kiro-cli-term)`.
+/// Shells started from the session's own shell (a nested `bash`) that count as "at a prompt". Only
+/// the first word counts: wrappers rename the shell, e.g. kiro-cli shows `zsh (kiro-cli-term)`.
 /// Behind such a wrapper the program it runs is not visible to us; the alternate-screen and
 /// tainted-screen checks still hold.
 fn is_shell(name: &str) -> bool {
@@ -347,6 +347,9 @@ struct Shared {
     boot_time: u64,
     /// Wakes the repaint thread (started on the first resize); see `schedule_resync`.
     resync: Mutex<Option<std::sync::mpsc::Sender<()>>>,
+    /// We started the user's interactive login shell (a terminal session, no command). Agents and
+    /// commands are never repainted.
+    interactive_shell: bool,
 }
 
 impl Shared {
@@ -461,13 +464,19 @@ impl Shared {
         let ok = !inner.tainted;
         let why = if inner.exited.is_some() {
             Some("exited".to_string())
+        } else if !self.interactive_shell {
+            Some("not a shell session".to_string())
         } else if inner.parser.screen().alternate_screen() {
             Some("alternate screen".to_string())
         } else if !ok {
             Some("lines above the prompt were cut or re-wrapped".to_string())
         } else {
-            let name = self.master.lock().unwrap().process_group_leader().and_then(process_name);
-            (!name.as_deref().is_some_and(is_shell)).then(|| format!("{} in front", name.as_deref().unwrap_or("?")))
+            // At its prompt when the process in front is the shell we started, whatever its name
+            // (any shell; kiro-cli renames it `zsh (kiro-cli-term)`), or a shell started from it.
+            let fg = self.master.lock().unwrap().process_group_leader();
+            let ours = fg.is_some() && fg.map(|p| p as u32) == self.child_pid;
+            let name = fg.and_then(process_name);
+            (!ours && !name.as_deref().is_some_and(is_shell)).then(|| format!("{} in front", name.as_deref().unwrap_or("?")))
         };
         if let Some(why) = why {
             log_line(format!("[holder {}] resize settled: no repaint ({why})", self.id));
@@ -588,6 +597,7 @@ pub fn run(paths: Paths, args: HolderArgs) -> Result<()> {
         started_at: util::now_secs(),
         boot_time: util::boot_time(),
         resync: Mutex::new(None),
+        interactive_shell: args.argv.is_empty(),
     });
 
     let listener = UnixListener::bind(&sock_path).with_context(|| format!("bind {}", sock_path.display()))?;
