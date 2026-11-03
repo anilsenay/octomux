@@ -264,8 +264,12 @@ fn process_name(pid: libc::pid_t) -> Option<String> {
     (!name.is_empty()).then_some(name)
 }
 
-/// Interactive shells whose prompt we repaint after a resize.
+/// Interactive shells whose prompt we repaint after a resize. Only the first word counts: terminal
+/// helpers that wrap the shell rename it, e.g. kiro-cli (Amazon Q / Fig) shows `zsh (kiro-cli-term)`.
+/// Behind such a wrapper the program it runs is not visible to us; the alternate-screen and
+/// tainted-screen checks still hold.
 fn is_shell(name: &str) -> bool {
+    let name = name.split_whitespace().next().unwrap_or("");
     matches!(name, "zsh" | "bash" | "fish" | "sh" | "dash" | "ksh" | "mksh" | "tcsh" | "csh" | "nu" | "elvish" | "xonsh" | "pwsh")
 }
 
@@ -862,6 +866,8 @@ mod tests {
     #[test]
     fn shell_names() {
         assert!(is_shell("zsh") && is_shell("bash") && is_shell("fish"));
+        assert!(is_shell("zsh (kiro-cli-term)"), "a shell wrapped by kiro-cli");
+        assert!(!is_shell("zshell-helper") && !is_shell(""));
         assert!(!is_shell("vim") && !is_shell("claude") && !is_shell("node") && !is_shell("cargo"));
         // This test process is not a shell; its own name comes back.
         let me = process_name(std::process::id() as libc::pid_t).unwrap();
