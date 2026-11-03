@@ -130,7 +130,8 @@ extension Notification.Name {
 }
 
 /// The menu bar icon's panel: unread notifications (or, with none, the agents that are working or waiting), each with
-/// its workspace › project, a spinner while that agent works; "All recent" opens the app's list.
+/// its workspace › project, a spinner while that agent works; "All recent" opens the app's list. Shown in its own
+/// borderless panel under the icon (StatusItemController), opaque and in the app's colors.
 struct MenuBarPanel: View {
     @EnvironmentObject var model: AppModel
     @ObservedObject var center = NotificationCenterModel.shared
@@ -184,6 +185,11 @@ struct MenuBarPanel: View {
             .buttonStyle(.plain).hoverHighlight(radius: 6).padding(6)
         }
         .frame(width: 340)
+        // Opaque, in the app's colors: a translucent panel took the menu bar's / wallpaper's tint.
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(T.raised))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(T.border))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .fixedSize()
     }
 
     private func row(_ r: Row) -> some View {

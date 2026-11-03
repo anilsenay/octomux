@@ -107,7 +107,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var unread = 0
     private var unreadSub: AnyCancellable?
     private let menu = NSMenu()
-    private var popover: NSPopover?
     /// The still icon: with the dot while there are unread notifications.
     private var restingImage: NSImage { unread > 0 ? (style == .mono ? Self.monoDotted : Self.colorDotted) : frames[0] }
 
@@ -180,30 +179,67 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         guard let button = item?.button else { return }
         let e = NSApp.currentEvent
         if e?.type == .rightMouseUp || e?.modifierFlags.contains(.control) == true {
-            popover?.performClose(nil)
+            closePanel()
             item?.menu = menu
             button.performClick(nil)   // shows the menu
             item?.menu = nil
             return
         }
-        if let p = popover, p.isShown { p.performClose(nil); return }
-        let p = NSPopover()
-        p.behavior = .transient
-        p.animates = false
-        let host = NSHostingController(rootView: MenuBarPanel { [weak p] in p?.performClose(nil) }.environmentObject(AppModel.shared))
-        host.sizingOptions = .preferredContentSize
-        p.contentViewController = host
-        popover = p
+        if panel != nil { closePanel(); return }
         NotificationCenterModel.shared.refreshAll()
-        p.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-        p.contentViewController?.view.window?.makeKey()
+        let host = NSHostingView(rootView: MenuBarPanel { [weak self] in self?.closePanel() }.environmentObject(AppModel.shared))
+        let size = host.fittingSize
+        let w = MenuPanelWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        w.isOpaque = false
+        w.backgroundColor = .clear
+        w.hasShadow = true
+        w.level = .popUpMenu
+        w.appearance = NSAppearance(named: ThemeStore.shared.isDark ? .darkAqua : .aqua)
+        w.contentView = host
+        // Under the icon, left edges aligned, kept on screen.
+        if let bw = button.window {
+            let f = bw.convertToScreen(button.convert(button.bounds, to: nil))
+            let vis = bw.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? .zero
+            let x = min(max(f.minX - 8, vis.minX + 6), vis.maxX - size.width - 6)
+            w.setFrameOrigin(NSPoint(x: x, y: f.minY - size.height - 5))
+        }
+        w.orderFrontRegardless()
+        w.makeKey()
+        panel = w
+        button.highlight(true)
+        // Closes on a click anywhere else, Esc, or when the panel loses key.
+        outsideMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in self?.closePanel() }
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown]) { [weak self] e in
+            guard let self, let panel else { return e }
+            if e.type == .keyDown, e.keyCode == 53 { closePanel(); return nil }
+            if e.type == .leftMouseDown, e.window !== panel, e.window !== item?.button?.window { closePanel() }
+            return e
+        }
+        resignObs = NotificationCenter.default.addObserver(forName: NSWindow.didResignKeyNotification, object: w, queue: .main) { [weak self] _ in
+            self?.closePanel()
+        }
+    }
+
+    private var panel: NSPanel?
+    private var outsideMonitor: Any?
+    private var keyMonitor: Any?
+    private var resignObs: Any?
+
+    private func closePanel() {
+        if let m = outsideMonitor { NSEvent.removeMonitor(m) }
+        if let m = keyMonitor { NSEvent.removeMonitor(m) }
+        if let o = resignObs { NotificationCenter.default.removeObserver(o) }
+        outsideMonitor = nil; keyMonitor = nil; resignObs = nil
+        panel?.orderOut(nil)
+        panel = nil
+        item?.button?.highlight(false)
     }
 
     // Debug (DebugActions "menubar")
     func debugClick() { clicked() }
     var debugImage: NSImage? { item?.button?.image }
-    var debugPanelWindow: NSWindow? { popover?.isShown == true ? popover?.contentViewController?.view.window : nil }
-    func debugState() -> [String: Any] { ["unread": unread, "animating": timer != nil, "dot": timer == nil && unread > 0, "panel": popover?.isShown ?? false] }
+    var debugPanelWindow: NSWindow? { panel }
+    func debugState() -> [String: Any] { ["unread": unread, "animating": timer != nil, "dot": timer == nil && unread > 0, "panel": panel != nil] }
 
     // MARK: Menu
 
@@ -222,4 +258,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         NSApp.activate(ignoringOtherApps: true)
         (NSApp.delegate as? AppDelegate)?.openMainWindow()
     }
+}
+
+/// The menu bar panel's window: borderless, can take key (for Esc and to know when to close).
+private final class MenuPanelWindow: NSPanel {
+    override var canBecomeKey: Bool { true }
 }
