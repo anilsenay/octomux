@@ -1,5 +1,5 @@
 [package]
-name = "ade"
+name = "octomux"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -9,7 +9,7 @@ name = "octomux"
 path = "src/main.rs"
 
 [dependencies]
-ade-proto = { path = "../ade-proto" }
+octomux-proto = { path = "../octomux-proto" }
 serde.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true

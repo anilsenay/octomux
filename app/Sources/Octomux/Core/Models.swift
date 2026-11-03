@@ -1,6 +1,6 @@
 import Foundation
 
-// Mirrors ade-proto/src/control.rs (snake_case JSON).
+// Mirrors octomux-proto/src/control.rs (snake_case JSON).
 
 struct Workspace: Codable, Identifiable, Equatable {
     var id: String

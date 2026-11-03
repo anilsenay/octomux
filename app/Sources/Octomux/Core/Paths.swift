@@ -11,14 +11,15 @@ enum Paths {
     /// Whether the data directory was chosen by the environment (dev/fixture runs: no launchd agent).
     static var homeFromEnv: Bool { env("HOME") != nil }
 
-    /// Same resolution as the Rust side (`ade_proto::Paths::from_env`): `OCTOMUX_HOME`/`ADE_HOME`, else
+    /// Same resolution as the Rust side (`octomux_proto::Paths::from_env`): `OCTOMUX_HOME`/`ADE_HOME`, else
     /// ~/Library/Application Support/Octomux, or the pre-rename `ade-dev` folder when only that has data.
     static var home: URL {
         if let h = env("HOME") { return URL(fileURLWithPath: h) }
         let support = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support")
         let current = support.appendingPathComponent("Octomux"), legacy = support.appendingPathComponent("ade-dev")
         let fm = FileManager.default
-        if !fm.fileExists(atPath: current.path) && fm.fileExists(atPath: legacy.appendingPathComponent("ade.sqlite3").path) {
+        let hasData = { (dir: URL) in ["octomux.sqlite3", "ade.sqlite3"].contains { fm.fileExists(atPath: dir.appendingPathComponent($0).path) } }
+        if !fm.fileExists(atPath: current.path) && hasData(legacy) {
             return legacy
         }
         return current

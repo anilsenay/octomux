@@ -18,5 +18,5 @@ eval exec zig cc -target $ARCH-linux-gnu.2.28 \$args
 CC
 chmod +x "$W/cc-$ARCH.sh"
 export "CC_${T//-/_}=$W/cc-$ARCH.sh" "AR_${T//-/_}=$W/zigar.sh" "CARGO_TARGET_${TV}_LINKER=$W/cc-$ARCH.sh"
-cd "$ROOT/core" && cargo build --release --target "$T" -p ade
+cd "$ROOT/core" && cargo build --release --target "$T" -p octomux
 echo "$ROOT/core/target/$T/release/octomux"

@@ -209,6 +209,8 @@ pub fn env_var_os(name: &str) -> Option<std::ffi::OsString> {
     std::env::var_os(format!("OCTOMUX_{name}")).or_else(|| std::env::var_os(format!("ADE_{name}"))).filter(|v| !v.is_empty())
 }
 
+const LEGACY_DB: &str = "ade.sqlite3";
+
 /// Name of the data-directory variable set on child processes.
 pub const HOME_VAR: &str = "OCTOMUX_HOME";
 
@@ -226,7 +228,7 @@ impl Paths {
             return Paths { home: PathBuf::from(h) };
         }
         let base = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/tmp"));
-        let has_data = |p: &PathBuf| p.join("ade.sqlite3").exists();
+        let has_data = |p: &PathBuf| p.join("octomux.sqlite3").exists() || p.join(LEGACY_DB).exists();
         let mac = base.join("Library/Application Support/Octomux");
         let mac_legacy = base.join("Library/Application Support/ade-dev");
         if cfg!(target_os = "macos") {
@@ -266,7 +268,11 @@ impl Paths {
         self.run_dir().join("daemon.sock")
     }
     pub fn db(&self) -> PathBuf {
-        self.home.join("ade.sqlite3")
+        self.home.join("octomux.sqlite3")
+    }
+    /// The pre-rename database file; the daemon copies it to `db()` once and leaves it as a backup.
+    pub fn legacy_db(&self) -> PathBuf {
+        self.home.join(LEGACY_DB)
     }
     pub fn logs_dir(&self) -> PathBuf {
         self.home.join("logs")

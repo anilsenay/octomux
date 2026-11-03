@@ -3,32 +3,6 @@
 version = 4
 
 [[package]]
-name = "ade"
-version = "0.1.0"
-dependencies = [
- "ade-proto",
- "anyhow",
- "clap",
- "libc",
- "portable-pty",
- "rusqlite",
- "serde",
- "serde_json",
- "signal-hook",
- "uuid",
- "vt100",
-]
-
-[[package]]
-name = "ade-proto"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "anstream"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -354,6 +328,32 @@ dependencies = [
  "cfg-if",
  "cfg_aliases",
  "libc",
+]
+
+[[package]]
+name = "octomux"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "libc",
+ "octomux-proto",
+ "portable-pty",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "signal-hook",
+ "uuid",
+ "vt100",
+]
+
+[[package]]
+name = "octomux-proto"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

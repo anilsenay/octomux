@@ -3,7 +3,7 @@
 
 use crate::client::Control;
 use crate::holder::HolderClient;
-use ade_proto::{ExitInfo, Frame, Kind, Paths, Role};
+use octomux_proto::{ExitInfo, Frame, Kind, Paths, Role};
 use anyhow::Result;
 use std::io::{Read, Write};
 use std::os::fd::AsRawFd;

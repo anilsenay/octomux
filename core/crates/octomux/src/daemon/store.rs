@@ -1,7 +1,7 @@
 //! Persistence: the in-memory `State` is the source of truth while running;
 //! every mutation is written through to SQLite as JSON documents.
 
-use ade_proto::control::{Notification, Session, State, StoredNotification};
+use octomux_proto::control::{Notification, Session, State, StoredNotification};
 use anyhow::Result;
 use rusqlite::{Connection, params};
 use serde::Serialize;

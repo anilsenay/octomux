@@ -30,16 +30,16 @@ if not resumed:
     w({"type": "assistant", "message": {"role": "assistant", "content": [
         {"type": "thinking", "thinking": "The holder must capture the main screen when the program switches to the alternate screen, then replay it first on attach."},
         {"type": "text", "text": "I'll look at how the holder builds its snapshot."},
-        {"type": "tool_use", "id": "t1", "name": "Read", "input": {"file_path": os.path.join(os.getcwd(), "core/crates/ade/src/holder.rs")}}]}})
+        {"type": "tool_use", "id": "t1", "name": "Read", "input": {"file_path": os.path.join(os.getcwd(), "core/crates/octomux/src/holder.rs")}}]}})
     w({"type": "user", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": "pub fn snapshot_bytes(...) {\n    // replay history, then the screen\n}"}]}})
     w({"type": "assistant", "message": {"role": "assistant", "content": [
-        {"type": "tool_use", "id": "t2", "name": "Edit", "input": {"file_path": os.path.join(os.getcwd(), "core/crates/ade/src/holder.rs")}}]}})
+        {"type": "tool_use", "id": "t2", "name": "Edit", "input": {"file_path": os.path.join(os.getcwd(), "core/crates/octomux/src/holder.rs")}}]}})
     w({"type": "user", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t2", "content": "Updated with 18 additions and 4 removals"}]}})
     w({"type": "assistant", "message": {"role": "assistant", "content": [
-        {"type": "tool_use", "id": "t3", "name": "Bash", "input": {"command": "cargo test -p ade", "description": "Run tests"}}]}})
+        {"type": "tool_use", "id": "t3", "name": "Bash", "input": {"command": "cargo test -p octomux", "description": "Run tests"}}]}})
     w({"type": "user", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t3", "content": "test result: ok. 26 passed; 0 failed"}]}})
     w({"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text":
-        "Done. The holder now **captures the main screen** right before the alternate screen is entered and replays it first, so reattaching while `vim` runs keeps your shell history.\n\nTests: `cargo test -p ade` — 26 passed."}]}})
+        "Done. The holder now **captures the main screen** right before the alternate screen is entered and replays it first, so reattaching while `vim` runs keeps your shell history.\n\nTests: `cargo test -p octomux` — 26 passed."}]}})
 print(f"{G}⏺{N} Done. The holder now captures the main screen before the alt screen.\n")
 print(f"{D}(type a message; this fake echoes it){N}")
 status("done")

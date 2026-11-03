@@ -8,8 +8,8 @@ pub mod store;
 
 use crate::holder::HolderClient;
 use crate::util;
-use ade_proto::control::*;
-use ade_proto::{Frame, HolderEvent, HolderRequest, Kind, Paths, Role};
+use octomux_proto::control::*;
+use octomux_proto::{Frame, HolderEvent, HolderRequest, Kind, Paths, Role};
 use anyhow::{Context, Result, anyhow, bail};
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
@@ -82,6 +82,11 @@ pub fn run(paths: Paths) -> Result<()> {
         bail!("daemon already running");
     }
 
+    if !paths.db().exists() && paths.legacy_db().exists() {
+        // Pre-rename database: VACUUM INTO writes a consistent copy (WAL included); the old file stays as a backup.
+        let old = rusqlite::Connection::open(paths.legacy_db())?;
+        old.execute("VACUUM INTO ?1", [paths.db().to_string_lossy()])?;
+    }
     let store = Store::open(&paths.db())?;
     let mut state = store.load()?;
     let first_run = state.workspaces.is_empty();
@@ -272,7 +277,7 @@ impl Daemon {
                         self.start_monitor(&id);
                     } else {
                         // Exited while we were away?
-                        let exited = std::fs::read(self.paths.holder_exit(&id)).ok().and_then(|b| serde_json::from_slice::<ade_proto::ExitInfo>(&b).ok());
+                        let exited = std::fs::read(self.paths.holder_exit(&id)).ok().and_then(|b| serde_json::from_slice::<octomux_proto::ExitInfo>(&b).ok());
                         if let (Some(info), false) = (exited, rebooted) {
                             self.with_session(&id, |s| {
                                 s.state = SessionState::Exited;
@@ -329,7 +334,7 @@ impl Daemon {
         }
         cmd.arg("--").args(&spec.argv);
         let log = std::fs::OpenOptions::new().create(true).append(true).open(self.paths.logs_dir().join("holders.log"))?;
-        cmd.env(ade_proto::HOME_VAR, &self.paths.home).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(log);
+        cmd.env(octomux_proto::HOME_VAR, &self.paths.home).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(log);
         {
             use std::os::unix::process::CommandExt;
             unsafe {
@@ -383,7 +388,7 @@ impl Daemon {
                             }
                         }
                         Ok(Some(f)) if f.kind == Kind::Exited => {
-                            exited = f.parse_json::<ade_proto::ExitInfo>().ok();
+                            exited = f.parse_json::<octomux_proto::ExitInfo>().ok();
                         }
                         Ok(Some(_)) => {}
                         _ => break,
@@ -395,7 +400,7 @@ impl Daemon {
         });
     }
 
-    fn on_holder_gone(self: &Arc<Self>, id: &str, exited: Option<ade_proto::ExitInfo>) {
+    fn on_holder_gone(self: &Arc<Self>, id: &str, exited: Option<octomux_proto::ExitInfo>) {
         let exited = exited.or_else(|| std::fs::read(self.paths.holder_exit(id)).ok().and_then(|b| serde_json::from_slice(&b).ok()));
         let profile_id = self.with_session(id, |s| {
             match (s.state, &exited) {
@@ -454,7 +459,7 @@ impl Daemon {
     /// numbers are current even when no Claude session in Octomux ran a turn lately (usage from other
     /// terminals or apps counts too). One run at a time; each is cut off after 30 s.
     fn poll_claude_usage(self: &Arc<Self>, only: Option<&[String]>) {
-        if ade_proto::env_var_os("NO_USAGE_PROBE").is_some() || self.claude_usage_running.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        if octomux_proto::env_var_os("NO_USAGE_PROBE").is_some() || self.claude_usage_running.swap(true, std::sync::atomic::Ordering::SeqCst) {
             return;
         }
         let profiles: Vec<Profile> = {
@@ -819,7 +824,7 @@ impl Daemon {
         let s = |k: &str| p.get(k).and_then(|v| v.as_str()).map(|v| v.to_string());
         let req = |k: &str| s(k).ok_or_else(|| anyhow!("missing param {k}"));
         match method {
-            "hello" => Ok(json!({ "version": ade_proto::PROTOCOL_VERSION, "pid": std::process::id(), "home": self.paths.home })),
+            "hello" => Ok(json!({ "version": octomux_proto::PROTOCOL_VERSION, "pid": std::process::id(), "home": self.paths.home })),
             "state.get" => Ok(serde_json::to_value(&*self.state.lock().unwrap())?),
             "daemon.shutdown" => Ok(json!({ "ok": true })),
 

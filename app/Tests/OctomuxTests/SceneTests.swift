@@ -160,11 +160,29 @@ final class TerminalSceneModeTests: XCTestCase {
 }
 
 final class SceneFormatTests: XCTestCase {
-    func testAdesceneExtensionAndFormat() throws {
-        let f = URL(fileURLWithPath: "/tmp/scenes/lake.adescene.json")
-        let s = try UserScenes.parse(Data(#"{"format": "ade-scene/1", "name": "Lake"}"#.utf8), file: f)
+    func testSceneExtensionAndFormat() throws {
+        let f = URL(fileURLWithPath: "/tmp/scenes/lake.octomuxscene.json")
+        let s = try UserScenes.parse(Data(#"{"format": "octomux-scene/1", "name": "Lake"}"#.utf8), file: f)
         XCTAssertEqual(s.id, "user.lake")
-        XCTAssertThrowsError(try UserScenes.parse(Data(#"{"format": "ade-scene/9", "name": "Lake"}"#.utf8), file: f))
+        XCTAssertThrowsError(try UserScenes.parse(Data(#"{"format": "octomux-scene/9", "name": "Lake"}"#.utf8), file: f))
+        // Pre-rename files keep the same id and still load.
+        let old = try UserScenes.parse(Data(#"{"format": "ade-scene/1", "name": "Lake"}"#.utf8), file: URL(fileURLWithPath: "/tmp/scenes/lake.adescene.json"))
+        XCTAssertEqual(old.id, "user.lake")
+    }
+
+    func testLegacySceneFilesAreRenamed() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("scenes-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try #"{"format": "ade-scene/1", "name": "Lake"}"#.write(to: dir.appendingPathComponent("lake.adescene.json"), atomically: true, encoding: .utf8)
+        try #"{"format": "ade-scene/1", "name": "Plain"}"#.write(to: dir.appendingPathComponent("plain.json"), atomically: true, encoding: .utf8)
+        UserScenes.migrateLegacyFiles(in: dir)
+        let names = try FileManager.default.contentsOfDirectory(atPath: dir.path).sorted()
+        XCTAssertEqual(names, ["lake.octomuxscene.json", "plain.json"])
+        for n in names {
+            let text = try String(contentsOf: dir.appendingPathComponent(n), encoding: .utf8)
+            XCTAssertTrue(text.contains(#""format": "octomux-scene/1""#), n)
+        }
     }
 
     func testGhosttyThemeParsing() {
@@ -209,8 +227,8 @@ final class SceneFormatTests: XCTestCase {
 
 final class SceneSharingTests: XCTestCase {
     func testLinksPointAtRawFiles() {
-        XCTAssertEqual(SceneSharing.downloadURL("https://github.com/me/scenes/blob/main/lake.adescene.json")?.absoluteString,
-                       "https://raw.githubusercontent.com/me/scenes/main/lake.adescene.json")
+        XCTAssertEqual(SceneSharing.downloadURL("https://github.com/me/scenes/blob/main/lake.octomuxscene.json")?.absoluteString,
+                       "https://raw.githubusercontent.com/me/scenes/main/lake.octomuxscene.json")
         XCTAssertEqual(SceneSharing.downloadURL("https://gist.github.com/me/abc123")?.absoluteString, "https://gist.github.com/me/abc123/raw")
         XCTAssertEqual(SceneSharing.downloadURL("https://example.com/a.json")?.absoluteString, "https://example.com/a.json")
         XCTAssertNil(SceneSharing.downloadURL("http://example.com/a.json"))
@@ -226,7 +244,7 @@ final class SceneSharingTests: XCTestCase {
     func testBuiltInExportStartsFromItAndKeepsItsLook() throws {
         let blueprint = try XCTUnwrap(Scenes.scene("blueprint"))
         let data = try XCTUnwrap(SceneSharing.exportData(blueprint))
-        let copy = try UserScenes.parse(data, file: URL(fileURLWithPath: "/tmp/scenes/bp.adescene.json"))
+        let copy = try UserScenes.parse(data, file: URL(fileURLWithPath: "/tmp/scenes/bp.octomuxscene.json"))
         XCTAssertEqual(copy.name, "Blueprint (copy)")
         XCTAssertEqual(copy.base, .circuit)
         XCTAssertEqual(copy.dark, blueprint.dark)

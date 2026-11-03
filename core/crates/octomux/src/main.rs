@@ -5,7 +5,7 @@ mod holder;
 mod statusline;
 mod util;
 
-use ade_proto::Paths;
+use octomux_proto::Paths;
 use clap::{Parser, Subcommand};
 use std::io::Read;
 
@@ -89,7 +89,7 @@ fn run(cli: Cli, paths: Paths) -> anyhow::Result<i32> {
             // Never block or fail the agent: best effort, silent, bounded.
             let mut input = String::new();
             let _ = std::io::stdin().take(1 << 20).read_to_string(&mut input);
-            let Some(session_id) = ade_proto::env_var_os("SESSION_ID").and_then(|v| v.into_string().ok()) else { return Ok(0) };
+            let Some(session_id) = octomux_proto::env_var_os("SESSION_ID").and_then(|v| v.into_string().ok()) else { return Ok(0) };
             let payload: serde_json::Value = serde_json::from_str(&input).unwrap_or(serde_json::Value::Null);
             if let Ok(mut c) = client::Control::connect(&paths) {
                 c.set_timeout(Some(std::time::Duration::from_secs(2)));
@@ -162,7 +162,7 @@ fn install_launch_agent(paths: &Paths) -> anyhow::Result<()> {
 </plist>
 "#,
         label = client::LAUNCH_LABEL,
-        home_var = ade_proto::HOME_VAR,
+        home_var = octomux_proto::HOME_VAR,
         exe = exe.display(),
         home = paths.home.display(),
         log = paths.logs_dir().join("daemon.log").display(),

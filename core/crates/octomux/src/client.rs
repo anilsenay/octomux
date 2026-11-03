@@ -1,7 +1,7 @@
 //! Blocking control-plane client (NDJSON over the daemon socket).
 
-use ade_proto::Paths;
-use ade_proto::control::{Event, Response};
+use octomux_proto::Paths;
+use octomux_proto::control::{Event, Response};
 use anyhow::{Context, Result, anyhow};
 use serde_json::Value;
 use std::io::{BufRead, BufReader, Write};
@@ -104,7 +104,7 @@ pub fn legacy_launch_agent_plist_path() -> std::path::PathBuf {
 
 pub fn start_daemon(paths: &Paths) -> Result<()> {
     // Prefer the launchd job (keeps the daemon out of the caller's process coalition).
-    if ade_proto::env_var_os("HOME").is_none() && launch_agent_plist_path().exists() {
+    if octomux_proto::env_var_os("HOME").is_none() && launch_agent_plist_path().exists() {
         let uid = unsafe { libc::getuid() };
         let status = std::process::Command::new("launchctl")
             .args(["kickstart", &format!("gui/{uid}/{LAUNCH_LABEL}")])
@@ -126,7 +126,7 @@ pub fn spawn_detached(paths: &Paths, args: &[&str]) -> Result<()> {
     let log = std::fs::OpenOptions::new().create(true).append(true).open(paths.logs_dir().join("daemon.log"))?;
     let mut cmd = std::process::Command::new(exe);
     cmd.args(args)
-        .env(ade_proto::HOME_VAR, &paths.home)
+        .env(octomux_proto::HOME_VAR, &paths.home)
         .stdin(std::process::Stdio::null())
         .stdout(log.try_clone()?)
         .stderr(log);

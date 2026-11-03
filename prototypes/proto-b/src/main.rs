@@ -9,7 +9,7 @@
 
 mod keys;
 
-use ade_proto::{Frame, Hello, Kind, Role};
+use octomux_proto::{Frame, Hello, Kind, Role};
 use gpui::{
     App, Bounds, Context, Element, ElementId, Entity, FocusHandle, Focusable, FontWeight,
     GlobalElementId, Hsla, InspectorElementId, KeyDownEvent, LayoutId, Pixels, ShapedLine,

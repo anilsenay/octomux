@@ -1,5 +1,5 @@
 [package]
-name = "ade-proto"
+name = "octomux-proto"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

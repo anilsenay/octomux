@@ -4,7 +4,7 @@
 //!    so their status line looks exactly as before. Without one, prints a short default line.
 
 use crate::client;
-use ade_proto::Paths;
+use octomux_proto::Paths;
 use serde_json::Value;
 use std::io::{Read, Write};
 use std::path::PathBuf;
@@ -16,7 +16,7 @@ pub fn run(paths: &Paths) -> i32 {
     let mut input = String::new();
     let _ = std::io::stdin().take(4 << 20).read_to_string(&mut input);
     let v: Value = serde_json::from_str(&input).unwrap_or(Value::Null);
-    if let (Some(sid), Some(rl)) = (ade_proto::env_var_os("SESSION_ID").and_then(|v| v.into_string().ok()), v.get("rate_limits")) {
+    if let (Some(sid), Some(rl)) = (octomux_proto::env_var_os("SESSION_ID").and_then(|v| v.into_string().ok()), v.get("rate_limits")) {
         report(paths, &sid, rl);
     }
     let cwd = v.pointer("/workspace/current_dir").or_else(|| v.get("cwd")).and_then(|x| x.as_str()).map(PathBuf::from);

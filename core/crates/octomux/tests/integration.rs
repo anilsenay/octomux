@@ -1,7 +1,7 @@
 //! End-to-end tests: real daemon, real holders, real PTYs. The screen is
 //! verified as text through the holder's headless VT.
 
-use ade_proto::{Frame, Hello, Kind, Role};
+use octomux_proto::{Frame, Hello, Kind, Role};
 use serde_json::{Value, json};
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;

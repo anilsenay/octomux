@@ -60,7 +60,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "ade-proto"
+name = "octomux-proto"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -3729,7 +3729,7 @@ dependencies = [
 name = "proto-b"
 version = "0.1.0"
 dependencies = [
- "ade-proto",
+ "octomux-proto",
  "async-channel",
  "gpui-pre",
  "gpui-pre-apple",

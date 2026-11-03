@@ -4,7 +4,7 @@
 //! session keeps running.
 
 use crate::util;
-use ade_proto::{ExitInfo, Frame, Hello, HolderEvent, HolderInfo, HolderRequest, Kind, Paths, Role};
+use octomux_proto::{ExitInfo, Frame, Hello, HolderEvent, HolderInfo, HolderRequest, Kind, Paths, Role};
 use anyhow::{Context, Result};
 use portable_pty::{CommandBuilder, MasterPty, PtySize, native_pty_system};
 use std::io::{Read, Write};
@@ -596,7 +596,7 @@ pub struct HolderClient {
 impl HolderClient {
     pub fn connect(paths: &Paths, id: &str, role: Role, cols: u16, rows: u16) -> std::io::Result<HolderClient> {
         let mut stream = UnixStream::connect(paths.holder_socket(id))?;
-        Frame::json(Kind::Hello, &Hello { version: ade_proto::PROTOCOL_VERSION, role, cols, rows }).write_to(&mut stream)?;
+        Frame::json(Kind::Hello, &Hello { version: octomux_proto::PROTOCOL_VERSION, role, cols, rows }).write_to(&mut stream)?;
         Ok(HolderClient { stream })
     }
 

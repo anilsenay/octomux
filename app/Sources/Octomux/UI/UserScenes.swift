@@ -41,7 +41,7 @@ extension AppModel {
 /// A scene file in `<Octomux home>/scenes/*.json`. Every field is optional except `name`; see the README
 /// written next to the template.
 struct SceneSpec: Codable {
-    /// "ade-scene/1"; files without it are read as version 1.
+    /// "octomux-scene/1" (or the pre-rename "ade-scene/1"); files without it are read as version 1.
     var format: String?
     var id: String?
     var name: String
@@ -92,7 +92,24 @@ enum UserScenes {
     private static var source: DispatchSourceFileSystemObject?
     private static var pending: DispatchWorkItem?
 
+    /// Pre-rename scene files: `*.adescene.json` → `*.octomuxscene.json`, and `"format": "ade-scene/1"` →
+    /// `octomux-scene/1`. The scene id comes from the base name, so picked scenes stay picked.
+    static func migrateLegacyFiles(in dir: URL) {
+        let fm = FileManager.default
+        for f in (try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? [] where f.pathExtension.lowercased() == "json" {
+            var target = f
+            if f.lastPathComponent.hasSuffix(".adescene.json") {
+                let renamed = dir.appendingPathComponent(baseName(f) + ".octomuxscene.json")
+                guard !fm.fileExists(atPath: renamed.path), (try? fm.moveItem(at: f, to: renamed)) != nil else { continue }
+                target = renamed
+            }
+            guard let text = try? String(contentsOf: target, encoding: .utf8), text.contains(legacyFormat) else { continue }
+            try? text.replacingOccurrences(of: "\"\(legacyFormat)\"", with: "\"\(format)\"").write(to: target, atomically: true, encoding: .utf8)
+        }
+    }
+
     private static func load() -> [AmbientScene] {
+        migrateLegacyFiles(in: dir)
         var out: [AmbientScene] = [], errs: [String] = []
         let files = ((try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? [])
             .filter { $0.pathExtension.lowercased() == "json" && !$0.lastPathComponent.hasSuffix(".schema.json") }.sorted { $0.lastPathComponent < $1.lastPathComponent }
@@ -115,7 +132,9 @@ enum UserScenes {
     }
 
     /// One scene file's contents as a scene (throws DecodingError for bad JSON or fields).
-    static let format = "ade-scene/1"
+    static let format = "octomux-scene/1"
+    /// Read as the same version (files written before the rename).
+    static let legacyFormat = "ade-scene/1"
 
     struct SceneError: LocalizedError {
         let message: String
@@ -124,7 +143,7 @@ enum UserScenes {
 
     static func parse(_ data: Data, file: URL) throws -> AmbientScene {
         let spec = try JSONDecoder().decode(SceneSpec.self, from: data)
-        if let f = spec.format, f != format {
+        if let f = spec.format, f != format, f != legacyFormat {
             throw SceneError(message: "format “\(f)” is not supported (this Octomux reads \(format))")
         }
         var theme: TerminalThemes.Theme?
@@ -137,10 +156,10 @@ enum UserScenes {
         return scene(from: spec, file: file, terminal: theme)
     }
 
-    /// `my-lake.adescene.json` and `my-lake.json` both give `my-lake`.
+    /// `my-lake.octomuxscene.json`, the pre-rename `my-lake.octomuxscene.json` and `my-lake.json` all give `my-lake`.
     static func baseName(_ file: URL) -> String {
         var n = file.deletingPathExtension().lastPathComponent
-        if n.hasSuffix(".adescene") { n.removeLast(".adescene".count) }
+        for suffix in [".octomuxscene", ".adescene"] where n.hasSuffix(suffix) { n.removeLast(suffix.count) }
         return n
     }
 
@@ -224,9 +243,9 @@ enum UserScenes {
     @discardableResult
     static func writeTemplate() -> URL {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        var url = dir.appendingPathComponent("lanterns.adescene.json")
+        var url = dir.appendingPathComponent("lanterns.octomuxscene.json")
         var n = 2
-        while FileManager.default.fileExists(atPath: url.path) { url = dir.appendingPathComponent("lanterns-\(n).adescene.json"); n += 1 }
+        while FileManager.default.fileExists(atPath: url.path) { url = dir.appendingPathComponent("lanterns-\(n).octomuxscene.json"); n += 1 }
         let name = n == 2 ? "Lanterns" : "Lanterns \(n - 1)"
         try? template(name: name, id: baseName(url)).write(to: url, atomically: true, encoding: .utf8)
         writeDocs()
@@ -237,7 +256,7 @@ enum UserScenes {
     static func template(name: String, id: String) -> String { """
     {
       "$schema": "./scene.schema.json",
-      "format": "ade-scene/1",
+      "format": "octomux-scene/1",
       "id": "\(id)",
       "name": "\(name)",
       "dark": true,
@@ -274,7 +293,7 @@ enum UserScenes {
     static let readme = """
     # Octomux scenes
 
-    Each `*.adescene.json` (or `*.json`) file here is a scene, format `ade-scene/1`. Octomux reloads
+    Each `*.octomuxscene.json` (or `*.json`) file here is a scene, format `octomux-scene/1`. Octomux reloads
     them when you save; pick one in View › Change Scene… or Settings › Appearance.
 
     Start the file with `"$schema": "./scene.schema.json"` and editors such as VS Code and Zed
@@ -544,9 +563,9 @@ extension UserScenes {
         return """
         {
           "$schema": "http://json-schema.org/draft-07/schema#",
-          "$id": "https://ade.dev/schemas/ade-scene-1.json",
+          "$id": "https://octomux.dev/schemas/octomux-scene-1.json",
           "title": "Octomux scene",
-          "description": "A live backdrop and palette for Octomux (format ade-scene/1).",
+          "description": "A live backdrop and palette for Octomux (format octomux-scene/1).",
           "type": "object",
           "required": ["name"],
           "additionalProperties": false,
@@ -556,7 +575,7 @@ extension UserScenes {
           },
           "properties": {
             "$schema": { "type": "string" },
-            "format": { "const": "ade-scene/1", "description": "Format version." },
+            "format": { "enum": ["octomux-scene/1", "ade-scene/1"], "description": "Format version (ade-scene/1: written before the rename, read the same)." },
             "id": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$", "description": "Stable id (default: the file name)." },
             "name": { "type": "string", "minLength": 1, "description": "Shown in the picker." },
             "dark": { "type": "boolean", "description": "Dark scene (true) or light (false)." },
@@ -655,16 +674,16 @@ enum SceneSharing {
     @discardableResult
     static func install(_ data: Data, suggestedName: String) throws -> (name: String, url: URL) {
         guard data.count <= maxBytes else { throw UserScenes.SceneError(message: "the file is larger than 1 MB") }
-        let probe = try UserScenes.parse(data, file: UserScenes.dir.appendingPathComponent("import.adescene.json"))
+        let probe = try UserScenes.parse(data, file: UserScenes.dir.appendingPathComponent("import.octomuxscene.json"))
         guard let spec = probe.spec else { throw UserScenes.SceneError(message: "not a scene") }
         if let id = spec.id, UserScenes.loaded.contains(where: { $0.id == "user." + id }) {
             throw UserScenes.SceneError(message: "you already have a scene with the id “\(id)”")
         }
         try FileManager.default.createDirectory(at: UserScenes.dir, withIntermediateDirectories: true)
         let base = slug(spec.id ?? (suggestedName.isEmpty ? spec.name : suggestedName))
-        var url = UserScenes.dir.appendingPathComponent("\(base).adescene.json")
+        var url = UserScenes.dir.appendingPathComponent("\(base).octomuxscene.json")
         var n = 2
-        while FileManager.default.fileExists(atPath: url.path) { url = UserScenes.dir.appendingPathComponent("\(base)-\(n).adescene.json"); n += 1 }
+        while FileManager.default.fileExists(atPath: url.path) { url = UserScenes.dir.appendingPathComponent("\(base)-\(n).octomuxscene.json"); n += 1 }
         try data.write(to: url, options: .atomic)
         UserScenes.reload()
         return (spec.name, url)
@@ -673,7 +692,7 @@ enum SceneSharing {
     static func export(_ s: AmbientScene) {
         guard let data = exportData(s) else { return }
         let panel = NSSavePanel()
-        panel.nameFieldStringValue = (s.file.map(UserScenes.baseName) ?? slug(s.name)) + ".adescene.json"
+        panel.nameFieldStringValue = (s.file.map(UserScenes.baseName) ?? slug(s.name)) + ".octomuxscene.json"
         panel.canCreateDirectories = true
         panel.message = "Export “\(s.name)” as a scene file others can import."
         guard panel.runModal() == .OK, let url = panel.url else { return }
@@ -707,7 +726,7 @@ enum SceneSharing {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.json]
         panel.allowsMultipleSelection = true
-        panel.message = "Choose scene files (.adescene.json) to add."
+        panel.message = "Choose scene files (.octomuxscene.json) to add."
         guard panel.runModal() == .OK else { return nil }
         var done: [String] = [], failed: [String] = []
         for url in panel.urls {
@@ -724,9 +743,9 @@ enum SceneSharing {
     static func importLink(_ report: @escaping (String) -> Void) {
         let a = NSAlert()
         a.messageText = "Import a scene from a link"
-        a.informativeText = "A link to a .adescene.json file (GitHub file pages work too)."
+        a.informativeText = "A link to a .octomuxscene.json file (GitHub file pages work too)."
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 360, height: 24))
-        field.placeholderString = "https://…/my-scene.adescene.json"
+        field.placeholderString = "https://…/my-scene.octomuxscene.json"
         a.accessoryView = field
         a.addButton(withTitle: "Import"); a.addButton(withTitle: "Cancel")
         a.window.initialFirstResponder = field
@@ -801,7 +820,7 @@ extension UserScenes {
         Create a scene for Octomux (my terminal app): a live backdrop drawn in character cells plus a color palette, as one JSON file.
 
         - First read \(d)/README.md and the JSON Schema \(d)/scene.schema.json; follow them exactly.
-        - Save it as \(d)/<short-kebab-name>.adescene.json. Start the file with "$schema": "./scene.schema.json" and "format": "ade-scene/1". Do not overwrite or edit other files there.
+        - Save it as \(d)/<short-kebab-name>.octomuxscene.json. Start the file with "$schema": "./scene.schema.json" and "format": "octomux-scene/1". Do not overwrite or edit other files there.
         - To reuse an animation, set "base" to one of: \(bases). For the terminal's 16 colors you can set "terminal" to a Ghostty theme name (for example "Catppuccin Mocha", "Nord", "Tokyo Night").
         - Keep text readable: a dark scene needs dark surface/frame colors, a light one light colors. Keep particle and twinkle counts moderate (under 150).
         - Make sure the file is valid JSON. Octomux reloads the folder on its own; when done, tell me the scene's name (I pick it in View › Change Scene…).
