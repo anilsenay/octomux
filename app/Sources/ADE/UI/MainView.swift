@@ -961,8 +961,7 @@ struct UsagePopover: View {
 }
 
 /// Session tab context menu.
-/// A pinned tab in the tab bar: the pane stack icon only, an accent bar under the active one, a dot for
-/// activity; the title is in the tooltip.
+/// A pinned tab in the tab bar: the pane stack icon only, a dot for activity; the title is in the tooltip.
 struct PinnedTabChip: View {
     static let width: CGFloat = 32
     @EnvironmentObject var model: AppModel
@@ -991,9 +990,6 @@ struct PinnedTabChip: View {
         .background(RoundedRectangle(cornerRadius: 7, style: .continuous)
             .fill(selected ? (ThemeStore.shared.isDark ? Color.white.opacity(0.1) : T.raised) : hover ? T.hover : .clear)
             .shadow(color: .black.opacity(selected && !ThemeStore.shared.isDark ? 0.1 : 0), radius: 1, y: 0.5))
-        .overlay(alignment: .bottom) {
-            Capsule().fill(selected ? T.accent : .clear).frame(width: 12, height: 2).offset(y: -1)
-        }
         .contentShape(Rectangle())
         .onHover { hover = $0 }
         .pointerCursor()
