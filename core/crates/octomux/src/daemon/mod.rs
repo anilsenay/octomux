@@ -109,6 +109,20 @@ pub(crate) fn last_turn_record(chunk: &str) -> Option<(bool, Option<u64>)> {
     last
 }
 
+/// The `sessionId` in a Claude `sessions/<pid>.json` record, if it belongs to this process: same pid, and
+/// started within a minute of the process (`started`, seconds).
+pub(crate) fn claude_session_record(text: &str, pid: i32, started: i64) -> Option<String> {
+    let v: Value = serde_json::from_str(text).ok()?;
+    if v.get("pid")?.as_i64()? != pid as i64 {
+        return None;
+    }
+    let at = v.get("startedAt")?.as_i64()? / 1000;
+    if (at - started).abs() > 60 {
+        return None;
+    }
+    v.get("sessionId")?.as_str().filter(|s| !s.is_empty()).map(str::to_string)
+}
+
 /// OSC 7501 `app` names of coding agents (others, like build tools, also report but aren't agents).
 fn is_agent_app(app: &str) -> bool {
     matches!(app, "claude-code" | "claude" | "codex" | "gemini" | "opencode" | "pi" | "amp" | "cursor-agent" | "copilot" | "kimi" | "kiro" | "grok")
@@ -727,12 +741,13 @@ impl Daemon {
         for id in gone {
             self.on_holder_event(&id, HolderEvent::ProgramStatus { state: "clear".into(), app: String::new(), kind: String::new() });
         }
-        // Without hooks a terminal tab's claude doesn't say which conversation it is: look it up now and then.
+        // Without hooks a terminal tab's claude doesn't tell us its conversation: read Claude's own record of it
+        // now and then (it changes on /clear and /resume).
         for (id, pid) in alive {
             let due = {
                 let mut last = self.resume_scan.lock().unwrap();
                 let t = last.entry(id.clone()).or_insert(Instant::now() - Duration::from_secs(60));
-                (t.elapsed() >= Duration::from_secs(5)).then(|| *t = Instant::now()).is_some()
+                (t.elapsed() >= Duration::from_secs(2)).then(|| *t = Instant::now()).is_some()
             };
             let needed = self.with_session(&id, |s| s.agent_app.as_deref() == Some("claude-code") && !s.resume_agent.as_ref().is_some_and(|r| r.from_hook)) == Some(true);
             if !due || !needed {
@@ -753,46 +768,23 @@ impl Daemon {
         }
     }
 
-    /// The conversation a claude process works on, from its transcripts: the newest `<config>/projects/<cwd>/*.jsonl`
-    /// written since it started (Claude names the folder after its working directory, every other character
-    /// a `-`) that no other tab or agent session already has. Two claudes in one folder may still swap; the
-    /// integration hooks say it exactly.
-    fn find_claude_conversation(&self, id: &str, pid: i32) -> Option<ResumeAgent> {
-        let cwd = crate::procs::cwd(pid)?;
-        let started = crate::procs::start_time(pid)?;
-        let folder: String = cwd.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
-        let claimed: HashSet<String> = {
-            let st = self.state.lock().unwrap();
-            st.sessions
-                .iter()
-                .filter(|s| s.id != id)
-                .flat_map(|s| [s.agent_session_id.clone(), s.resume_agent.as_ref().map(|r| r.session_id.clone())])
-                .flatten()
-                .collect()
-        };
+    /// The conversation a claude process works on, as Claude itself records it: `<config>/sessions/<pid>.json`
+    /// (`pid`, `sessionId`, `startedAt` ms; rewritten on /clear and /resume). The start time must match the
+    /// process's, so a reused pid never picks up another claude's record. No record (an older Claude): None —
+    /// no resume beats resuming the wrong conversation.
+    fn find_claude_conversation(&self, _id: &str, pid: i32) -> Option<ResumeAgent> {
+        let started = crate::procs::start_time(pid)? as i64;
         let home = util::home_dir();
         let mut configs = vec![home.join(".claude")];
         if let Ok(rd) = std::fs::read_dir(&home) {
             configs.extend(rd.flatten().filter(|e| e.file_name().to_string_lossy().starts_with(".claude-") && e.path().is_dir()).map(|e| e.path()));
         }
-        let since = std::time::UNIX_EPOCH + Duration::from_secs(started.saturating_sub(2));
-        let mut best: Option<(std::time::SystemTime, String, std::path::PathBuf)> = None;
         for cfg in configs {
-            let Ok(rd) = std::fs::read_dir(cfg.join("projects").join(&folder)) else { continue };
-            for e in rd.flatten() {
-                let p = e.path();
-                if p.extension().and_then(|x| x.to_str()) != Some("jsonl") {
-                    continue;
-                }
-                let Some(stem) = p.file_stem().and_then(|x| x.to_str()).map(str::to_string) else { continue };
-                let Ok(m) = e.metadata().and_then(|m| m.modified()) else { continue };
-                if m >= since && !claimed.contains(&stem) && best.as_ref().is_none_or(|b| m > b.0) {
-                    best = Some((m, stem, cfg.clone()));
-                }
-            }
+            let Ok(text) = std::fs::read_to_string(cfg.join("sessions").join(format!("{pid}.json"))) else { continue };
+            let Some(r) = claude_session_record(&text, pid, started) else { continue };
+            return Some(ResumeAgent { app: "claude-code".into(), session_id: r, config_dir: (cfg != home.join(".claude")).then(|| cfg.to_string_lossy().into_owned()), from_hook: false });
         }
-        let (_, session_id, cfg) = best?;
-        Some(ResumeAgent { app: "claude-code".into(), session_id, config_dir: (cfg != home.join(".claude")).then(|| cfg.to_string_lossy().into_owned()), from_hook: false })
+        None
     }
 
     /// The reporting program among the session's processes: the shallowest descendant of its shell named
@@ -1897,6 +1889,18 @@ mod turn_tests {
 
     fn rec(ty: &str, content: &str, ts: &str) -> String {
         format!(r#"{{"type":"{ty}","timestamp":"{ts}","message":{{"role":"{ty}","content":{content}}}}}"#)
+    }
+
+    #[test]
+    fn claude_session_records() {
+        use super::claude_session_record as r;
+        let rec = r#"{"pid":4242,"sessionId":"abc-1","cwd":"/x","startedAt":1793652278556,"kind":"interactive"}"#;
+        assert_eq!(r(rec, 4242, 1793652278), Some("abc-1".into()));
+        assert_eq!(r(rec, 4242, 1793652278 + 30), Some("abc-1".into()));
+        assert_eq!(r(rec, 4242, 1793652278 + 3600), None); // the pid was reused by a later process
+        assert_eq!(r(rec, 4243, 1793652278), None);
+        assert_eq!(r(r#"{"pid":4242,"startedAt":1793652278556}"#, 4242, 1793652278), None);
+        assert_eq!(r("not json", 4242, 0), None);
     }
 
     #[test]
