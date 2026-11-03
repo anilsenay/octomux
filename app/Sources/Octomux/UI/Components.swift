@@ -860,13 +860,15 @@ struct CanvasBackground: View {
     @Environment(\.colorScheme) private var scheme
     /// Empty panes and the new-chat screen show the active scene's backdrop instead.
     var scene = false
+    /// Panels of text (the right panel) stay at least this opaque, so small text reads over a moving scene.
+    var minOpacity: Double = 0
     var body: some View {
         if scene, let s = ThemeStore.shared.activeScene { SceneBackdrop(scene: s) }
         else {
             // Translucent like the terminals when the scene shows behind them.
             let store = ThemeStore.shared
             let see = store.terminalSceneMode != .off
-            Rectangle().fill(Color(nsColor: WorkspaceTint.canvas(dark: scheme == .dark)).opacity(see ? store.sceneTerminalOpacity : 1))
+            Rectangle().fill(Color(nsColor: WorkspaceTint.canvas(dark: scheme == .dark)).opacity(see ? max(store.sceneTerminalOpacity, minOpacity) : 1))
         }
     }
 }

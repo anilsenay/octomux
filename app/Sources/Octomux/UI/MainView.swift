@@ -30,7 +30,7 @@ struct MainView: View {
                         if flat { Hairline(vertical: true) }
                         RightPanel()
                             .frame(width: 320)
-                            .background(CanvasBackground())
+                            .background(CanvasBackground(minOpacity: 0.9))
                             .clipShape(RoundedRectangle(cornerRadius: m.cardR, style: .continuous))
                             .overlay(RoundedRectangle(cornerRadius: m.cardR, style: .continuous).stroke(T.border))
                             .padding(.leading, m.inset)
