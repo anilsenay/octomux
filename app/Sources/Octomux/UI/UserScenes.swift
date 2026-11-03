@@ -96,15 +96,19 @@ enum UserScenes {
     /// `octomux-scene/1`. The scene id comes from the base name, so picked scenes stay picked.
     static func migrateLegacyFiles(in dir: URL) {
         let fm = FileManager.default
-        for f in (try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? [] where f.pathExtension.lowercased() == "json" {
+        // Scene files only: scene.schema.json lists the legacy id on purpose, and rewriting it would retrigger the
+        // folder watcher (reload → schema rewrite → reload …).
+        for f in (try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
+        where f.pathExtension.lowercased() == "json" && !f.lastPathComponent.hasSuffix(".schema.json") {
             var target = f
             if f.lastPathComponent.hasSuffix(".adescene.json") {
                 let renamed = dir.appendingPathComponent(baseName(f) + ".octomuxscene.json")
                 guard !fm.fileExists(atPath: renamed.path), (try? fm.moveItem(at: f, to: renamed)) != nil else { continue }
                 target = renamed
             }
-            guard let text = try? String(contentsOf: target, encoding: .utf8), text.contains(legacyFormat) else { continue }
-            try? text.replacingOccurrences(of: "\"\(legacyFormat)\"", with: "\"\(format)\"").write(to: target, atomically: true, encoding: .utf8)
+            guard let text = try? String(contentsOf: target, encoding: .utf8),
+                  let r = text.range(of: #""format"\s*:\s*"ade-scene/1""#, options: .regularExpression) else { continue }
+            try? text.replacingCharacters(in: r, with: "\"format\": \"\(format)\"").write(to: target, atomically: true, encoding: .utf8)
         }
     }
 

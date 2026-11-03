@@ -176,8 +176,12 @@ final class SceneFormatTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: dir) }
         try #"{"format": "ade-scene/1", "name": "Lake"}"#.write(to: dir.appendingPathComponent("lake.adescene.json"), atomically: true, encoding: .utf8)
         try #"{"format": "ade-scene/1", "name": "Plain"}"#.write(to: dir.appendingPathComponent("plain.json"), atomically: true, encoding: .utf8)
+        let schema = dir.appendingPathComponent("scene.schema.json")
+        try #"{"enum": ["octomux-scene/1", "ade-scene/1"]}"#.write(to: schema, atomically: true, encoding: .utf8)
         UserScenes.migrateLegacyFiles(in: dir)
-        let names = try FileManager.default.contentsOfDirectory(atPath: dir.path).sorted()
+        // The schema is not a scene: left untouched (rewriting it looped the folder watcher).
+        XCTAssertEqual(try String(contentsOf: schema, encoding: .utf8), #"{"enum": ["octomux-scene/1", "ade-scene/1"]}"#)
+        let names = try FileManager.default.contentsOfDirectory(atPath: dir.path).filter { !$0.hasSuffix(".schema.json") }.sorted()
         XCTAssertEqual(names, ["lake.octomuxscene.json", "plain.json"])
         for n in names {
             let text = try String(contentsOf: dir.appendingPathComponent(n), encoding: .utf8)
