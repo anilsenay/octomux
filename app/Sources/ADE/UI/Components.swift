@@ -50,10 +50,13 @@ struct PaneStackIcon: View {
                         .rotationEffect(.degrees(style == .fan ? 6 * Double(k) : 0), anchor: .bottomLeading)
                         .offset(x: style == .fan ? d * 5.5 : 0,
                                 y: (style == .stack ? -d * 4.5 : 0) + (hop == item.id ? -4 : 0))
-                        .opacity(k == 0 ? 1 : 1 - 0.12 * Double(k))
+                        // Darker, not translucent: tiles must not show through each other.
+                        .brightness(-0.07 * Double(k))
                         .zIndex(Double(10 - k))
                 }
             }
+            // One layer, so dimming the whole icon (inactive tab) fades it as a picture, not tile by tile.
+            .compositingGroup()
             .frame(width: style == .fan ? tile + 5.5 * n + 2 : tile,
                    height: style == .stack ? tile + 4.5 * n : tile, alignment: style == .fan ? .leading : .bottom)
             .animation(.spring(response: 0.32, dampingFraction: 0.68), value: shown.map(\.id))
