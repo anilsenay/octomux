@@ -70,64 +70,94 @@ struct PaneStackIcon: View {
     }
 }
 
-/// A split tab's stacked icon that fans out on hover: one tile per pane (layout order), its title in the
-/// tooltip and its activity on a dot; clicking a tile focuses that pane. Collapses when the pointer leaves.
+/// A split tab's stacked icon that spreads out in place on hover: the cards slide apart into one chip per
+/// pane (layout order), as if each were its own tab, pushing what follows to the right. Each chip: pane
+/// title in the tooltip, its activity on a dot, accent bar under the front pane; click focuses that pane.
+/// Collapses back into the stack when the pointer leaves.
 struct PaneStackFan: View {
     @EnvironmentObject var model: AppModel
     /// Layout order.
     let sessions: [Session]
     let front: String
     var size: CGFloat = 12
-    var style: PaneStackIcon.Style = .fan
-    @State private var overIcon = false
-    @State private var overFan = false
+    /// Inactive tab: the collapsed stack is faded like the other inactive tab icons.
+    var dim = false
+    @State private var hover = false
     @State private var open = false
+    @State private var hop: String?
+    @Environment(\.colorScheme) private var scheme
 
     private var tile: CGFloat { size + 5 }
+    private var chip: CGFloat { tile + 7 }
+    private let gap: CGFloat = 3
 
     var body: some View {
-        PaneStackIcon(items: paneStackItems(sessions.map(\.id), front: front, model: model), size: size, style: style)
-            .opacity(open ? 0 : 1)
-            .onHover { overIcon = $0; schedule() }
-            .overlay(alignment: .leading) {
-                if open {
-                    HStack(spacing: 3) {
-                        ForEach(sessions) { s in fanTile(s) }
-                    }
-                    .padding(3)
-                    .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(T.raised)
-                        .shadow(color: .black.opacity(0.25), radius: 4, y: 1))
-                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(T.border))
-                    .fixedSize()
-                    .offset(x: -3)
-                    .onHover { overFan = $0; schedule() }
-                    .transition(.scale(scale: 0.6, anchor: .leading).combined(with: .opacity))
-                }
+        let frontFirst = [front] + sessions.map(\.id).filter { $0 != front }
+        let shown = CGFloat(min(sessions.count, 3) - 1)
+        let n = CGFloat(sessions.count)
+        ZStack(alignment: .leading) {
+            ForEach(Array(sessions.enumerated()), id: \.element.id) { j, s in
+                card(s, depth: frontFirst.firstIndex(of: s.id) ?? 0, slot: j)
             }
-            .zIndex(open ? 10 : 0)
-            .onChange(of: model.debugFanStack) { _, v in open = v.map { id in sessions.contains { $0.id == id } } ?? false }
-            .animation(Self.reduceMotion ? nil : .spring(response: 0.26, dampingFraction: 0.78), value: open)
+        }
+        .frame(width: open ? n * chip + (n - 1) * gap : tile + 5.5 * shown + 2, height: chip, alignment: .leading)
+        .compositingGroup()
+        .opacity(dim && !open ? 0.55 : 1).saturation(dim && !open ? 0.5 : 1)
+        .contentShape(Rectangle())
+        .onHover { h in
+            hover = h
+            if h { open = true } else {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { if !hover && model.debugFanStack == nil { open = false } }
+            }
+        }
+        .onChange(of: model.debugFanStack) { _, v in open = v.map { id in sessions.contains { $0.id == id } } ?? false }
+        .onChange(of: front) { _, f in
+            hop = f
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) { if hop == f { hop = nil } }
+        }
+        .animation(Self.reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.8), value: open)
+        .animation(.spring(response: 0.32, dampingFraction: 0.68), value: frontFirst)
+        .animation(.spring(response: 0.22, dampingFraction: 0.6), value: hop)
     }
 
-    private func fanTile(_ s: Session) -> some View {
+    private func card(_ s: Session, depth k: Int, slot j: Int) -> some View {
+        let d: Double = Double(min(k, 2))
         let isFront = s.id == front
-        return Button { model.selectSession(s.id) } label: {
-            PaneTile(icon: iconName(for: s, model: model), size: tile)
-                .padding(.bottom, 3)
-                .overlay(alignment: .bottom) {
-                    Capsule().fill(isFront ? T.accent : .clear).frame(width: tile - 6, height: 2)
-                }
-                .overlay(alignment: .topTrailing) {
-                    if let c = Self.dot(s) {
-                        Circle().fill(c).frame(width: 6, height: 6)
-                            .overlay(Circle().stroke(T.raised, lineWidth: 1.5)).offset(x: 2, y: -2)
-                    }
-                }
-                .contentShape(Rectangle())
+        let dark = scheme == .dark
+        let fill: Color = isFront ? (dark ? Color.white.opacity(0.13) : T.raised) : (dark ? Color.white.opacity(0.06) : Color.black.opacity(0.06))
+        let x: CGFloat = open ? CGFloat(j) * (chip + gap) : CGFloat(d) * 5.5 - 3.5
+        let y: CGFloat = hop == s.id ? -4 : 0
+        let z: Double = open ? (isFront ? 20 : 10) : Double(10 - k)
+        let face = PaneTile(icon: iconName(for: s, model: model), size: tile)
+            .scaleEffect(open ? 1 : 1 - 0.08 * d, anchor: .bottomLeading)
+            .rotationEffect(.degrees(open ? 0 : 6 * d), anchor: .bottomLeading)
+            .brightness(open ? 0 : -0.07 * d)
+            .frame(width: chip, height: chip)
+        let back = RoundedRectangle(cornerRadius: 7, style: .continuous).fill(fill)
+            .shadow(color: .black.opacity(isFront && !dark ? 0.14 : 0), radius: 1.5, y: 1)
+            .opacity(open ? 1 : 0)
+        return face
+            .background(back)
+            .overlay(alignment: .bottom) { underline(open && isFront) }
+            .overlay(alignment: .topTrailing) { activityDot(open ? Self.dot(s) : nil) }
+            .opacity(open || k < 3 ? 1 : 0)
+            // Collapsed: the tile (centered in its chip box) sits at its place in the stack.
+            .offset(x: x, y: y)
+            .zIndex(z)
+            .contentShape(Rectangle())
+            .onTapGesture { model.selectSession(s.id) }
+            .help(open ? s.displayTitle : "")
+    }
+
+    private func underline(_ on: Bool) -> some View {
+        Capsule().fill(T.accent).frame(width: tile - 6, height: 2).offset(y: -1).opacity(on ? 1 : 0)
+    }
+
+    @ViewBuilder private func activityDot(_ c: Color?) -> some View {
+        if let c {
+            Circle().fill(c).frame(width: 6, height: 6)
+                .overlay(Circle().stroke(T.frame, lineWidth: 1.5)).offset(x: 1, y: -1)
         }
-        .buttonStyle(.plain)
-        .pointerCursor()
-        .help(s.displayTitle)
     }
 
     static func dot(_ s: Session) -> Color? {
@@ -141,15 +171,6 @@ struct PaneStackFan: View {
     }
 
     static var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
-
-    /// Opens after a short rest on the icon (no flicker when the pointer passes over); closes a moment
-    /// after it leaves both the icon and the fan, so moving from one to the other keeps it open.
-    private func schedule() {
-        let want = overIcon || overFan
-        DispatchQueue.main.asyncAfter(deadline: .now() + (want ? 0.12 : 0.18)) {
-            if (overIcon || overFan) == want { open = want }
-        }
-    }
 }
 
 /// One pane's tile: a rounded square in the agent's color with its mark in white.

@@ -485,9 +485,14 @@ struct TabChip: View {
         let ids = tab.layout.sessions
         let lead = model.session(tab.activeSessionId ?? ids.first)
         HStack(spacing: 7) {
-            if lead != nil {
-                PaneStackIcon(items: paneStackItems(ids, front: lead?.id, model: model), size: 11)
-                    .opacity(selected ? 1 : 0.55).saturation(selected ? 1 : 0.5)
+            if let lead {
+                let panes = ids.compactMap { model.session($0) }
+                if panes.count > 1 {
+                    PaneStackFan(sessions: panes, front: lead.id, size: 11, dim: !selected)
+                } else {
+                    PaneStackIcon(items: paneStackItems(ids, front: lead.id, model: model), size: 11)
+                        .opacity(selected ? 1 : 0.55).saturation(selected ? 1 : 0.5)
+                }
             }
             // The title follows the front pane and slides in when it changes (split tabs).
             Group {

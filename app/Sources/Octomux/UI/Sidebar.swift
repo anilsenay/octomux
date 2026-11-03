@@ -570,7 +570,7 @@ struct SessionRow: View {
         HStack(spacing: 8) {
             Group {
                 if stack.count > 1 {
-                    PaneStackFan(sessions: stack, front: session.id, size: 12, style: .fan)
+                    PaneStackFan(sessions: stack, front: session.id, size: 12)
                 } else {
                     PaneStackIcon(items: paneStackItems(stack.map(\.id), front: session.id, model: model), size: 12, style: .fan)
                 }
