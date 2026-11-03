@@ -628,7 +628,8 @@ struct SessionRow: View {
         .onTapGesture { model.selectSession(session.id) }
         .contextMenu { SessionMenu(session: session) }
         .help(stack.count > 1 ? "\(stack.count) panes: " + stack.map(\.displayTitle).joined(separator: ", ")
-              : session.kind == .agent ? "\(model.profile(session.profileId)?.name ?? "agent") · \(session.cwd)" : session.cwd)
+              : session.kind == .agent ? "\(model.profile(session.profileId)?.name ?? "agent") · \(session.cwd)"
+              : session.agentApp.map { "\(agentAppLabel($0)) in a terminal · \(session.cwd)" } ?? session.cwd)
     }
 }
 

@@ -259,7 +259,14 @@ struct AgentIcon: View {
 
 func iconName(for session: Session, model: AppModel) -> String {
     switch session.kind {
-    case .terminal: return "terminal"
+    case .terminal:
+        // A claude typed in the tab: its agent's icon while it runs.
+        switch session.agentApp {
+        case "claude-code", "claude": return "claude"
+        case "codex": return "codex"
+        case .some: return "agent"
+        case nil: return "terminal"
+        }
     case .action: return "action"
     case .agent: return model.profile(session.profileId)?.icon ?? "agent"
     }

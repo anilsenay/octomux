@@ -373,7 +373,7 @@ final class AppModel: ObservableObject {
     func closeTab(_ tabId: String, confirmBusy: Bool) {
         guard let tab = state.tabs.first(where: { $0.id == tabId }) else { return }
         let busy = tab.layout.sessions.compactMap { session($0) }
-            .filter { $0.kind == .agent && !$0.isDormant && ($0.activity == .working || $0.activity == .needsInput) }
+            .filter { $0.isAgent && !$0.isDormant && ($0.activity == .working || $0.activity == .needsInput) }
         if confirmBusy, let s = busy.first {
             let a = NSAlert()
             a.messageText = "Close “\(s.displayTitle)”?"

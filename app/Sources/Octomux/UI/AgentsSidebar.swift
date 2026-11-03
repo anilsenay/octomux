@@ -16,7 +16,7 @@ struct AgentsPanel: View {
 
     var body: some View {
         let open = model.sidebarAgents
-        let agents = model.state.sessions.filter { $0.kind == .agent && model.project($0.projectId) != nil }
+        let agents = model.state.sessions.filter { $0.isAgent && model.project($0.projectId) != nil }
         let live = agents.filter { !$0.isDormant }
         let counts = Counts(working: live.filter { $0.activity == .working }.count,
                             waiting: live.filter { $0.activity == .needsInput }.count,
@@ -190,7 +190,7 @@ struct AgentsList: View {
     }
 
     var body: some View {
-        let agents = model.state.sessions.filter { $0.kind == .agent && model.project($0.projectId) != nil }
+        let agents = model.state.sessions.filter { $0.isAgent && model.project($0.projectId) != nil }
         VStack(spacing: 0) {
             if !embedded { HStack {
                 SectionLabel(agents.isEmpty ? "Agents" : "\(agents.count) agents")
@@ -343,7 +343,7 @@ struct AgentRow: View {
         .pointerCursor()
         .onTapGesture { model.selectSession(s.id) }
         .contextMenu { SessionMenu(session: s) }
-        .help("\(model.profile(s.profileId)?.name ?? "Agent") · \(ws.map { $0.name + " › " } ?? "")\(project?.name ?? "")")
+        .help("\(model.profile(s.profileId)?.name ?? s.agentApp.map(agentAppLabel) ?? "Agent") · \(ws.map { $0.name + " › " } ?? "")\(project?.name ?? "")")
     }
 
     static func elapsed(since t: Int) -> String {

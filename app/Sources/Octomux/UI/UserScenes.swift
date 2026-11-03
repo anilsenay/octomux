@@ -10,7 +10,7 @@ enum AmbientMood: Equatable {
 
     /// The most urgent state among the running agents of these projects: error, then input, then working.
     static func of(_ sessions: [Session], projectIds: Set<String>) -> AmbientMood {
-        let agents = sessions.filter { $0.kind == .agent && !$0.isDormant && projectIds.contains($0.projectId) }
+        let agents = sessions.filter { $0.isAgent && !$0.isDormant && projectIds.contains($0.projectId) }
         if agents.contains(where: { $0.activity == .error }) { return .error }
         if agents.contains(where: { $0.activity == .needsInput }) { return .attention }
         if agents.contains(where: { $0.activity == .working }) { return .busy }

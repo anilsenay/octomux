@@ -106,9 +106,18 @@ struct Session: Codable, Identifiable, Equatable {
     var transcriptPath: String?
     /// Conversation title the agent wrote to its transcript (Claude ai-title / custom-title).
     var agentTitle: String?
+    /// An agent running in a terminal tab (a `claude` typed at the prompt), as it names itself ("claude-code").
+    var agentApp: String?
+    /// The program reports its own state (OSC 7501).
+    var reportsStatus: Bool?
+
+    /// Launched as an agent, or a terminal where one runs now.
+    var isAgent: Bool { kind == .agent || agentApp != nil }
 
     enum CodingKeys: String, CodingKey {
         case id, kind, title, cwd, state, activity, unread, placement, command, worktree
+        case agentApp = "agent_app"
+        case reportsStatus = "reports_status"
         case transcriptPath = "transcript_path"
         case agentTitle = "agent_title"
         case projectId = "project_id"
@@ -123,6 +132,11 @@ struct Session: Codable, Identifiable, Equatable {
     var displayTitle: String {
         if !customTitle.isEmpty { return customTitle }
         if let a = agentTitle, !a.isEmpty { return a }
+        if kind == .terminal, let app = agentApp {
+            // The agent's own title (Claude: "✳ Fix the test", with a spinner glyph in front while working).
+            let t = String(title.drop { !$0.isLetter && !$0.isNumber }).trimmingCharacters(in: .whitespaces)
+            return t.isEmpty ? agentAppLabel(app) : t
+        }
         if kind == .terminal {
             // Shells usually report a (truncated) path: show the folder name instead.
             var t = title.trimmingCharacters(in: .whitespaces)
@@ -344,3 +358,12 @@ enum JSONValue: Codable, Equatable {
     }
 }
 
+
+/// Display name for an agent that named itself (OSC 7501 `app`).
+func agentAppLabel(_ app: String) -> String {
+    switch app {
+    case "claude-code", "claude": return "Claude Code"
+    case "codex": return "Codex"
+    default: return app.split(whereSeparator: { $0 == "-" || $0 == "_" }).map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined(separator: " ")
+    }
+}

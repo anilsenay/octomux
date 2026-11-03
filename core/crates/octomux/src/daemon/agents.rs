@@ -21,6 +21,27 @@ pub fn hooks_settings_path(paths: &Paths) -> PathBuf {
     paths.agent_dir().join("claude-settings.json")
 }
 
+/// Only the status line: for config dirs that have the integration installed (hooks come from there).
+pub fn statusline_only_settings_path(paths: &Paths) -> PathBuf {
+    paths.agent_dir().join("claude-settings-statusline.json")
+}
+
+/// The Claude config dir a profile uses: its `CLAUDE_CONFIG_DIR` (env, the command line, or the alias the
+/// command names, e.g. `claude-work` = `CLAUDE_CONFIG_DIR=~/.claude-work claude`), else `~/.claude`.
+pub fn claude_config_dir_resolved(profile: &Profile, aliases: &[(String, String)]) -> PathBuf {
+    if let Some(d) = profile.env.get("CLAUDE_CONFIG_DIR") {
+        return PathBuf::from(expand_tilde(d));
+    }
+    let first = profile.command.split_whitespace().next().unwrap_or("");
+    let expansion = aliases.iter().find(|(n, _)| n == first).map(|(_, v)| v.as_str()).unwrap_or("");
+    for w in profile.command.split_whitespace().chain(expansion.split_whitespace()) {
+        if let Some(d) = w.strip_prefix("CLAUDE_CONFIG_DIR=") {
+            return PathBuf::from(expand_tilde(d.trim_matches(['"', '\''])));
+        }
+    }
+    util::home_dir().join(".claude")
+}
+
 /// Same hooks, without the status line (profiles with `statusline: false`).
 pub fn hooks_only_settings_path(paths: &Paths) -> PathBuf {
     paths.agent_dir().join("claude-settings-hooks-only.json")
@@ -43,8 +64,11 @@ pub fn write_hook_settings(paths: &Paths) -> anyhow::Result<()> {
     let statusline = format!("{} statusline", shell_quote(&exe));
     let hooks_only = serde_json::json!({ "hooks": hooks });
     std::fs::write(hooks_only_settings_path(paths), serde_json::to_vec_pretty(&hooks_only)?)?;
-    let doc = serde_json::json!({ "hooks": hooks, "statusLine": { "type": "command", "command": statusline, "padding": 0 } });
+    let statusline = serde_json::json!({ "type": "command", "command": statusline, "padding": 0 });
+    let doc = serde_json::json!({ "hooks": hooks, "statusLine": statusline });
     std::fs::write(hooks_settings_path(paths), serde_json::to_vec_pretty(&doc)?)?;
+    std::fs::write(statusline_only_settings_path(paths), serde_json::to_vec_pretty(&serde_json::json!({ "statusLine": statusline }))?)?;
+    super::integration::write_script(paths, &exe)?;
     Ok(())
 }
 
@@ -318,8 +342,19 @@ pub fn build_launch_with_prompt(paths: &Paths, session: &Session, profile: Optio
                     } else {
                         args.extend(["--session-id".into(), id.clone()]);
                     }
-                    let settings = if profile.statusline { hooks_settings_path(paths) } else { hooks_only_settings_path(paths) };
-                    args.extend(["--settings".into(), settings.to_string_lossy().into_owned()]);
+                    // With the integration installed in this config dir the hooks already come from there;
+                    // passing them again would report every event twice.
+                    let integrated = super::integration::status(&claude_config_dir_resolved(profile, aliases), &super::integration::script_path(paths))
+                        == super::integration::Status::Installed;
+                    let settings = match (integrated, profile.statusline) {
+                        (true, true) => Some(statusline_only_settings_path(paths)),
+                        (true, false) => None,
+                        (false, true) => Some(hooks_settings_path(paths)),
+                        (false, false) => Some(hooks_only_settings_path(paths)),
+                    };
+                    if let Some(settings) = settings {
+                        args.extend(["--settings".into(), settings.to_string_lossy().into_owned()]);
+                    }
                     agent_id = Some(id);
                 }
                 AgentKind::Codex => {
@@ -538,6 +573,20 @@ mod tests {
         assert_eq!(alias_agent("CLAUDE_CONFIG_DIR=~/.claude-work claude").map(|a| a.0), Some(AgentKind::Claude));
         assert_eq!(alias_agent("/opt/homebrew/bin/codex --full-auto").map(|a| a.0), Some(AgentKind::Codex));
         assert_eq!(alias_agent("ls -la"), None);
+    }
+
+    #[test]
+    fn config_dir_of_a_profile() {
+        let mut p = default_profiles().into_iter().find(|p| p.kind == AgentKind::Claude).unwrap();
+        let home = util::home_dir();
+        let aliases = vec![("claude-work".to_string(), "CLAUDE_CONFIG_DIR=~/.claude-work claude".to_string())];
+        assert_eq!(claude_config_dir_resolved(&p, &aliases), home.join(".claude"));
+        p.command = "claude-work".into();
+        assert_eq!(claude_config_dir_resolved(&p, &aliases), home.join(".claude-work"));
+        p.command = "CLAUDE_CONFIG_DIR=/tmp/c claude".into();
+        assert_eq!(claude_config_dir_resolved(&p, &aliases), PathBuf::from("/tmp/c"));
+        p.env.insert("CLAUDE_CONFIG_DIR".into(), "/tmp/env".into());
+        assert_eq!(claude_config_dir_resolved(&p, &aliases), PathBuf::from("/tmp/env"));
     }
 
     #[test]

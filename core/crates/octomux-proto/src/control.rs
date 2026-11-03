@@ -167,6 +167,21 @@ pub struct Session {
     /// kept so a restore or resume starts the agent the same way.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub extra_args: Vec<String>,
+    /// An agent running in this session that we did not launch as one (a `claude` typed in a terminal tab),
+    /// as it names itself: OSC 7501 `app` ("claude-code") or the hook that reported it. None when none runs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_app: Option<String>,
+    /// The program reports its own state (OSC 7501). Its reports then decide `activity`; hooks, the
+    /// transcript scan and Enter only fill in when a program does not report.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub reports_status: bool,
+}
+
+impl Session {
+    /// Launched as an agent, or a terminal where one runs now (a `claude` typed at the prompt).
+    pub fn is_agent(&self) -> bool {
+        self.kind == SessionKind::Agent || self.agent_app.is_some()
+    }
 }
 
 /// Pane layout of a tab.

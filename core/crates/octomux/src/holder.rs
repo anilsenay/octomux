@@ -55,6 +55,12 @@ impl vt100::Callbacks for Callbacks {
     }
 
     fn unhandled_osc(&mut self, _: &mut vt100::Screen, params: &[&[u8]]) {
+        // OSC 7501 ; ? — a program (Claude Code 2.1.296+) asks whether we take status reports; it only
+        // sends them after a reply. Answered even with a client attached: client terminals don't know it.
+        if params == [b"7501".as_slice(), b"?".as_slice()] {
+            self.replies.push(PROGRAM_STATUS_REPLY.to_vec());
+            return;
+        }
         if let Some(ev) = parse_osc(params) {
             self.events.push(ev);
         }
@@ -86,7 +92,14 @@ pub fn is_inherited_agent_var(key: &str, value: &str) -> bool {
         || key.starts_with("CLAUDE_CODE_")
         || matches!(key, "CLAUDE_PID" | "CLAUDE_EFFORT" | "CLAUDE_CONFIG_DIR" | "CODEX_SANDBOX" | "CODEX_SANDBOX_NETWORK_DISABLED")
         || (key == "GIT_EDITOR" && value.contains("claude"))
+        // Another multiplexer's session ids (Octomux started from its terminal): their global agent hooks
+        // would report our sessions to it.
+        || key.starts_with("UNPEEL_")
+        || key.starts_with("HERDR_")
 }
+
+/// Our answer to `OSC 7501 ; ?`: the states and blocked kinds we understand (same as Herdr and Unpeel send).
+pub const PROGRAM_STATUS_REPLY: &[u8] = b"\x1b]7501;?:states=idle,working,done,blocked,error:kinds=permission,question,auth\x1b\\";
 
 /// Parses the OSC sequences Octomux cares about.
 pub fn parse_osc(params: &[&[u8]]) -> Option<HolderEvent> {
@@ -97,21 +110,23 @@ pub fn parse_osc(params: &[&[u8]]) -> Option<HolderEvent> {
             let body = params[1..].iter().map(|p| String::from_utf8_lossy(p).into_owned()).collect::<Vec<_>>().join(";");
             let mut state = String::new();
             let mut app = String::new();
+            let mut kind = String::new();
             let mut has_id = false;
             for kv in body.split(':') {
                 let (k, v) = kv.split_once('=').unwrap_or((kv, ""));
                 match k {
                     "state" => state = v.to_string(),
                     "app" => app = v.to_string(),
+                    "kind" => kind = v.to_string(),
                     "id" => has_id = !v.is_empty(),
                     _ => {}
                 }
             }
-            // Only the root record (no id) describes the program itself.
-            if has_id || !matches!(state.as_str(), "working" | "blocked" | "done" | "error" | "clear") {
+            // Only the root record (no id) describes the program itself; id records are its subagents/tasks.
+            if has_id || !matches!(state.as_str(), "idle" | "working" | "blocked" | "done" | "error" | "clear") {
                 return None;
             }
-            Some(HolderEvent::ProgramStatus { state, app })
+            Some(HolderEvent::ProgramStatus { state, app, kind })
         }
         b"9" => {
             let first = s(1);
@@ -807,8 +822,30 @@ mod tests {
     }
 
     #[test]
+    fn program_status_probe_is_answered() {
+        // As Claude Code sends it at startup (BEL or ST terminated), and with a client attached (no DA answers).
+        for probe in [&b"\x1b]7501;?\x07"[..], b"\x1b]7501;?\x1b\\"] {
+            let mut parser = vt100::Parser::new_with_callbacks(24, 80, 0, Callbacks::default());
+            parser.process(probe);
+            assert_eq!(parser.callbacks().replies, vec![PROGRAM_STATUS_REPLY.to_vec()]);
+            assert!(parser.callbacks().events.is_empty());
+        }
+    }
+
+    #[test]
+    fn claude_program_status_records() {
+        // Claude's encoder: state, app, then kind / progress / base64 msg; id= records are subagents.
+        let st = |s: &str, k: &str| Some(HolderEvent::ProgramStatus { state: s.into(), app: "claude-code".into(), kind: k.into() });
+        assert_eq!(p("7501;state=idle:app=claude-code"), st("idle", ""));
+        assert_eq!(p("7501;state=blocked:app=claude-code:kind=permission:msg=QWxsb3c="), st("blocked", "permission"));
+        assert_eq!(p("7501;state=working:app=claude-code:progress=40"), st("working", ""));
+        assert_eq!(p("7501;state=clear:app=claude-code"), st("clear", ""));
+        assert_eq!(p("7501;state=working:app=claude-code:id=agent-1"), None);
+    }
+
+    #[test]
     fn osc_parsing() {
-        assert_eq!(p("7501;state=working:app=claude"), Some(HolderEvent::ProgramStatus { state: "working".into(), app: "claude".into() }));
+        assert_eq!(p("7501;state=working:app=claude"), Some(HolderEvent::ProgramStatus { state: "working".into(), app: "claude".into(), kind: String::new() }));
         assert_eq!(p("7501;state=done:id=build"), None);
         assert_eq!(p("7501;state=sleeping"), None);
         assert_eq!(p("9;hello world"), Some(HolderEvent::Notify { title: "".into(), body: "hello world".into() }));

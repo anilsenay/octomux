@@ -209,6 +209,9 @@ struct AgentsSettings: View {
     @EnvironmentObject var model: AppModel
     @State private var editing: Profile?
     @State private var detected: [[String: Any]] = []
+    /// Claude integration per profile id: config_dir, status (installed / outdated / missing).
+    @State private var integration: [String: (dir: String, status: String)] = [:]
+    @State private var confirming: (profile: Profile, install: Bool)?
 
     var body: some View {
         Text("Agents appear in the + menu. Pinned agents also get a one-click button in the tab bar. Claude and Codex sessions resume their conversation after a crash or reboot.")
@@ -221,8 +224,10 @@ struct AgentsSettings: View {
                         Text(p.name).font(.system(size: 13, weight: .medium))
                         Text(([p.command] + p.args).joined(separator: " ") + (p.env.isEmpty ? "" : "  ·  " + p.env.map { "\($0)=\($1)" }.joined(separator: " ")))
                             .font(.system(size: 11, design: .monospaced)).foregroundStyle(T.text2).lineLimit(1)
+                        if p.kind == .claude, let i = integration[p.id] { integrationLine(i) }
                     }
                     Spacer()
+                    if p.kind == .claude, let i = integration[p.id] { integrationButton(p, i) }
                     Text(p.kind.rawValue).font(.caption).padding(.horizontal, 6).padding(.vertical, 2)
                         .background(Capsule().fill(T.hover))
                     Button { update(p, ["pinned": !p.pinned]) } label: { Image(systemName: p.pinned ? "pin.fill" : "pin") }
@@ -260,11 +265,71 @@ struct AgentsSettings: View {
         Text("Tip: for a second Claude account, duplicate the claude agent and set CLAUDE_CONFIG_DIR, or point Command at a wrapper like `claude-work`.")
             .font(.caption).foregroundStyle(T.text2)
             .sheet(item: $editing) { p in ProfileEditor(profile: p) { editing = nil } }
+            .confirmationDialog(confirmTitle, isPresented: Binding(get: { confirming != nil }, set: { if !$0 { confirming = nil } })) {
+                if let c = confirming {
+                    Button(c.install ? "Install" : "Remove", role: c.install ? nil : .destructive) { setIntegration(c.profile, install: c.install) }
+                }
+            } message: { Text(confirmMessage) }
             .onAppear {
+                loadIntegration()
                 model.client.call("profile.detect") { r in
                     if case .success(let v) = r { detected = v as? [[String: Any]] ?? [] }
                 }
             }
+    }
+
+    /// Hooks in the profile's Claude config, so a `claude` typed in a terminal tab shows up as an agent with its
+    /// state (sessions started from the + menu always get them). Claude 2.1.296+ also reports by itself.
+    @ViewBuilder private func integrationLine(_ i: (dir: String, status: String)) -> some View {
+        let dir = (i.dir as NSString).abbreviatingWithTildeInPath
+        HStack(spacing: 4) {
+            Circle().fill(i.status == "installed" ? T.green : i.status == "outdated" ? T.amber : T.text3.opacity(0.5)).frame(width: 6, height: 6)
+            Text(i.status == "installed" ? "Terminal tabs: hooks installed in \(dir)"
+                 : i.status == "outdated" ? "Terminal tabs: hooks in \(dir) are out of date"
+                 : "Terminal tabs: hooks not installed (\(dir))")
+        }
+        .font(.system(size: 11)).foregroundStyle(T.text2).lineLimit(1)
+        .help("With hooks, a claude you type in a terminal tab shows in Agents with its state and notifications, and \"done\" shows the moment a turn ends.")
+    }
+
+    private func integrationButton(_ p: Profile, _ i: (dir: String, status: String)) -> some View {
+        Group {
+            switch i.status {
+            case "installed": Button("Remove hooks") { confirming = (p, false) }
+            case "outdated": Button("Update hooks") { setIntegration(p, install: true) }
+            default: Button("Install hooks") { confirming = (p, true) }
+            }
+        }
+        .controlSize(.small)
+    }
+
+    private var confirmTitle: String {
+        guard let c = confirming else { return "" }
+        return c.install ? "Install Octomux hooks for \(c.profile.name)?" : "Remove Octomux hooks from \(c.profile.name)?"
+    }
+
+    private var confirmMessage: String {
+        guard let c = confirming else { return "" }
+        let file = ((integration[c.profile.id]?.dir ?? "~/.claude") as NSString).abbreviatingWithTildeInPath + "/settings.json"
+        return c.install
+            ? "Adds Octomux's hooks to \(file). They do nothing outside Octomux terminal tabs; your other settings and hooks stay as they are. A backup is saved next to the file."
+            : "Removes only Octomux's hooks from \(file). A backup is saved next to the file."
+    }
+
+    private func loadIntegration() {
+        model.client.call("integration.status") { r in
+            guard case .success(let v) = r, let list = (v as? [String: Any])?["profiles"] as? [[String: Any]] else { return }
+            var m: [String: (dir: String, status: String)] = [:]
+            for e in list { if let id = e["profile_id"] as? String { m[id] = (e["config_dir"] as? String ?? "", e["status"] as? String ?? "missing") } }
+            DispatchQueue.main.async { integration = m }
+        }
+    }
+
+    private func setIntegration(_ p: Profile, install: Bool) {
+        model.client.call(install ? "integration.install" : "integration.uninstall", ["profile_id": p.id]) { r in
+            if case .failure = r { model.report(r) }
+            loadIntegration()
+        }
     }
 
     func update(_ p: Profile, _ fields: [String: Any]) {

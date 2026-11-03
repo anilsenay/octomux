@@ -4,6 +4,7 @@
 //! and serves the control API.
 
 pub mod agents;
+pub mod integration;
 pub mod store;
 
 use crate::holder::HolderClient;
@@ -42,6 +43,9 @@ pub struct Daemon {
     title_scan: Mutex<HashMap<String, TitleScan>>,
     /// Per session: when its activity last changed (ms), so an interrupt marker older than that is ignored.
     activity_at: Mutex<HashMap<String, u64>>,
+    /// Per session: the process of the program reporting its state (OSC 7501), to notice it dying without
+    /// its `clear` (killed, crashed). -1 = an app we can't find by name: only its own `clear` counts.
+    program_pid: Mutex<HashMap<String, i32>>,
 }
 
 #[derive(Default)]
@@ -103,6 +107,28 @@ pub(crate) fn last_turn_record(chunk: &str) -> Option<(bool, Option<u64>)> {
     last
 }
 
+/// OSC 7501 `app` names of coding agents (others, like build tools, also report but aren't agents).
+fn is_agent_app(app: &str) -> bool {
+    matches!(app, "claude-code" | "claude" | "codex" | "gemini" | "opencode" | "pi" | "amp" | "cursor-agent" | "copilot" | "kimi" | "kiro" | "grok")
+}
+
+/// Display name for an OSC 7501 `app` ("claude-code" → "Claude Code").
+fn app_label(app: &str) -> String {
+    match app {
+        "claude-code" | "claude" => "Claude Code".into(),
+        "codex" => "Codex".into(),
+        other => other
+            .split(['-', '_'])
+            .filter(|w| !w.is_empty())
+            .map(|w| {
+                let mut c = w.chars();
+                c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default()
+            })
+            .collect::<Vec<_>>()
+            .join(" "),
+    }
+}
+
 pub fn run(paths: Paths) -> Result<()> {
     util::ensure_dir_0700(&paths.home)?;
     util::ensure_dir_0700(&paths.run_dir())?;
@@ -144,6 +170,7 @@ pub fn run(paths: Paths) -> Result<()> {
         aliases: Mutex::new(Vec::new()),
         title_scan: Mutex::new(HashMap::new()),
         activity_at: Mutex::new(HashMap::new()),
+        program_pid: Mutex::new(HashMap::new()),
     });
 
     // Bind under a private name, then atomically publish (never unlink a live socket).
@@ -201,6 +228,7 @@ pub fn run(paths: Paths) -> Result<()> {
             // Also notices Esc interrupts (see last_turn_record): kept short so the state follows quickly.
             std::thread::sleep(Duration::from_secs(1));
             d.poll_agent_titles();
+            d.check_reporting_programs();
         });
     }
 
@@ -640,6 +668,83 @@ impl Daemon {
         }
     }
 
+    /// A program that reported its state (OSC 7501), or a claude a terminal tab learned about from hooks, sends
+    /// no `clear` / SessionEnd when killed: find its process once, then treat its exit as that `clear`.
+    pub(crate) fn check_reporting_programs(&self) {
+        let reporting: Vec<(String, Option<String>)> = {
+            let st = self.state.lock().unwrap();
+            st.sessions
+                .iter()
+                // Terminal tabs only: a launched agent that dies ends its session anyway. `agent_app` is set
+                // there both by reports (OSC 7501 `app`) and by hooks; a non-agent program that reports
+                // (`cargo`) has an app we don't know by name and is left to its own `clear`.
+                .filter(|s| s.state == SessionState::Running && s.kind != SessionKind::Agent && (s.reports_status || s.agent_app.is_some()))
+                .map(|s| (s.id.clone(), s.agent_app.clone()))
+                .collect()
+        };
+        let mut pids = self.program_pid.lock().unwrap();
+        pids.retain(|id, _| reporting.iter().any(|(r, _)| r == id));
+        let mut gone = Vec::new();
+        for (id, app) in reporting {
+            let pid = match pids.get(&id) {
+                Some(p) => *p,
+                None => match self.find_program_pid(&id, app.as_deref()) {
+                    Some(Some(p)) => *pids.entry(id.clone()).or_insert(p),
+                    Some(None) => {
+                        gone.push(id); // a known app no longer running (e.g. reported before a daemon restart)
+                        continue;
+                    }
+                    None => *pids.entry(id.clone()).or_insert(-1),
+                },
+            };
+            if pid > 0 && unsafe { libc::kill(pid, 0) } != 0 && std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH) {
+                pids.remove(&id);
+                gone.push(id);
+            }
+        }
+        drop(pids);
+        for id in gone {
+            self.on_holder_event(&id, HolderEvent::ProgramStatus { state: "clear".into(), app: String::new(), kind: String::new() });
+        }
+    }
+
+    /// The reporting program among the session's processes: the shallowest descendant of its shell named
+    /// like the app (`claude` for claude-code; Claude's binary lives in `…/claude/versions/<v>`).
+    /// None: can't tell (unknown app, no holder info, ps failed); Some(None): a known app that is not running.
+    fn find_program_pid(&self, id: &str, app: Option<&str>) -> Option<Option<i32>> {
+        let names: &[&str] = match app? {
+            "claude-code" | "claude" => &["claude"],
+            "codex" => &["codex"],
+            _ => return None,
+        };
+        let info: Value = serde_json::from_str(&std::fs::read_to_string(self.paths.holder_info(id)).ok()?).ok()?;
+        let root = info.get("child_pid")?.as_i64()? as i32;
+        let out = std::process::Command::new("ps").args(["-A", "-o", "pid=,ppid=,comm="]).output().ok()?;
+        let rows: Vec<(i32, i32, String)> = String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .filter_map(|l| {
+                let mut it = l.split_whitespace();
+                Some((it.next()?.parse().ok()?, it.next()?.parse().ok()?, it.collect::<Vec<_>>().join(" ")))
+            })
+            .collect();
+        let matches = |comm: &str| {
+            let base = comm.rsplit('/').next().unwrap_or(comm);
+            names.contains(&base) || (names.contains(&"claude") && comm.contains("/claude/versions/"))
+        };
+        // Breadth-first from the shell, so an agent's own nested `claude -p` (deeper) is never picked.
+        let mut level = vec![root];
+        for _ in 0..8 {
+            if let Some(p) = rows.iter().find(|(pid, _, c)| level.contains(pid) && matches(c)) {
+                return Some(Some(p.0));
+            }
+            level = rows.iter().filter(|(_, pp, _)| level.contains(pp)).map(|(pid, _, _)| *pid).collect();
+            if level.is_empty() {
+                break;
+            }
+        }
+        Some(None)
+    }
+
     /// You pressed Esc in a Claude session (its transcript says so): it is no longer working or waiting for you.
     /// A marker from before the last state change (an old turn, or one read late) changes nothing.
     fn on_interrupt(&self, id: &str, ts: Option<u64>) {
@@ -647,7 +752,7 @@ impl Daemon {
         if ts.is_some_and(|t| t + 500 < since) {
             return;
         }
-        let busy = self.with_session(id, |s| matches!(s.activity, Activity::Working | Activity::NeedsInput)) == Some(true);
+        let busy = self.with_session(id, |s| !s.reports_status && matches!(s.activity, Activity::Working | Activity::NeedsInput)) == Some(true);
         if busy {
             self.set_activity(id, Activity::Idle);
             // You were there to press Esc: nothing to come back to.
@@ -687,7 +792,7 @@ impl Daemon {
         };
         let (s, project, profile) = info;
         let name = if !s.custom_title.is_empty() { s.custom_title.clone() } else if !s.agent_title.is_empty() { s.agent_title.clone() } else if !s.title.is_empty() { s.title.clone() } else { profile.clone().unwrap_or("Session".into()) };
-        let agent = profile.unwrap_or_else(|| "Terminal".into());
+        let agent = profile.or_else(|| s.agent_app.as_deref().map(app_label)).unwrap_or_else(|| "Terminal".into());
         let note = match new {
             Activity::Done => Some(("done", format!("{agent} finished"), format!("{project} · {name}"))),
             Activity::NeedsInput => Some(("needs_input", format!("{agent} needs your input"), format!("{project} · {name}"))),
@@ -726,7 +831,12 @@ impl Daemon {
                     self.changed();
                 }
             }
-            HolderEvent::ProgramStatus { state, .. } => {
+            // OSC 7501 from the program itself (Claude Code 2.1.296+ once we answer its probe): the most exact
+            // source, so it takes over from hooks/transcript/Enter. `clear` = the program exited.
+            HolderEvent::ProgramStatus { state, app, kind } => {
+                if std::env::var_os("OCTOMUX_TRACE_STATUS").is_some() {
+                    eprintln!("[status] {} {id} {state} {app} {kind}", util::now_millis());
+                }
                 let a = match state.as_str() {
                     "working" => Activity::Working,
                     "blocked" => Activity::NeedsInput,
@@ -734,6 +844,25 @@ impl Daemon {
                     "error" => Activity::Error,
                     _ => Activity::Idle,
                 };
+                let gone = state == "clear";
+                if gone {
+                    self.program_pid.lock().unwrap().remove(id);
+                }
+                let changed = self.with_session(id, |s| {
+                    let before = (s.reports_status, s.agent_app.clone());
+                    s.reports_status = !gone;
+                    // Only agents make a terminal tab an agent; a build tool reporting progress just sets its state.
+                    if s.kind != SessionKind::Agent {
+                        s.agent_app = if gone || !is_agent_app(&app) { None } else { Some(app.clone()) };
+                    }
+                    before != (s.reports_status, s.agent_app.clone())
+                });
+                if changed == Some(true) {
+                    if let Some(copy) = self.with_session(id, |s| s.clone()) {
+                        self.persist_session(&copy);
+                    }
+                    self.changed();
+                }
                 self.set_activity(id, a);
             }
             HolderEvent::Notify { title, body } => {
@@ -798,7 +927,7 @@ impl Daemon {
             // Enter while an agent waits on a permission or question dialog: you answered it, so it works on.
             // (Answering "No" makes Claude write an interrupt marker; the transcript scan then sets it idle.)
             HolderEvent::Submit => {
-                if self.with_session(id, |s| s.kind == SessionKind::Agent && s.activity == Activity::NeedsInput) == Some(true) {
+                if self.with_session(id, |s| s.is_agent() && !s.reports_status && s.activity == Activity::NeedsInput) == Some(true) {
                     self.set_activity(id, Activity::Working);
                 }
             }
@@ -806,6 +935,9 @@ impl Daemon {
     }
 
     fn on_hook(self: &Arc<Self>, id: &str, event: &str, payload: &Value) {
+        // (Nested claudes an agent runs are filtered out by the hook command itself, see procs::claude_ancestors.)
+        let cid = payload.get("session_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let launched = self.with_session(id, |s| s.kind == SessionKind::Agent).unwrap_or(false);
         if let Some(tp) = payload.get("transcript_path").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
             let tp = tp.to_string();
             if self.with_session(id, |s| {
@@ -817,24 +949,55 @@ impl Daemon {
                 self.changed();
             }
         }
-        match event {
-            "SessionStart" => {
-                if let Some(sid) = payload.get("session_id").and_then(|v| v.as_str()) {
-                    let sid = sid.to_string();
-                    let changed = self.with_session(id, |s| {
-                        if s.agent_session_id.as_deref() != Some(&sid) {
-                            s.agent_session_id = Some(sid.clone());
-                            true
-                        } else {
-                            false
-                        }
-                    });
-                    if changed == Some(true) {
-                        self.changed();
-                    }
+        // A claude typed in a terminal tab (hooks installed globally): the tab shows as an agent until it exits.
+        if !launched && matches!(event, "SessionStart" | "SessionEnd") {
+            let start = event == "SessionStart";
+            let changed = self.with_session(id, |s| {
+                let before = s.agent_app.clone();
+                if start {
+                    s.agent_app.get_or_insert_with(|| "claude-code".into());
+                } else {
+                    s.agent_app = None;
+                    s.transcript_path = None;
+                    s.agent_title.clear();
                 }
-                self.set_activity(id, Activity::Idle);
+                before != s.agent_app
+            });
+            if changed == Some(true) {
+                if let Some(copy) = self.with_session(id, |s| s.clone()) {
+                    self.persist_session(&copy);
+                }
+                self.changed();
             }
+        }
+        if event == "SessionStart" && launched && !cid.is_empty() {
+            let changed = self.with_session(id, |s| {
+                if s.agent_session_id.as_deref() != Some(&cid) {
+                    s.agent_session_id = Some(cid.clone());
+                    true
+                } else {
+                    false
+                }
+            });
+            if changed == Some(true) {
+                self.changed();
+            }
+        }
+        // The program reports its own state (OSC 7501): hooks then only carry identity, with one exception.
+        // Claude reports `done` only after every Stop hook has finished (a slow one, like a `say`, delays it
+        // by seconds), while our Stop hook runs alongside them: let it mark the turn done early. A Stop hook
+        // that makes Claude go on (decision: block) leaves Claude's own state at working, so no new report
+        // comes; a tool hook after such an early done puts it back to working.
+        if let Some(cur) = self.with_session(id, |s| s.reports_status.then_some(s.activity)).flatten() {
+            match (event, cur) {
+                ("Stop", Activity::Working) => self.set_activity(id, Activity::Done),
+                ("PreToolUse" | "PostToolUse", Activity::Done) => self.set_activity(id, Activity::Working),
+                _ => {}
+            }
+            return;
+        }
+        match event {
+            "SessionStart" => self.set_activity(id, Activity::Idle),
             // PostToolUse: a tool you approved has run, so the agent is working again (no hook marks the approval).
             "UserPromptSubmit" | "PreToolUse" | "PostToolUse" => self.set_activity(id, Activity::Working),
             "PermissionRequest" => self.set_activity(id, Activity::NeedsInput),
@@ -1057,6 +1220,34 @@ impl Daemon {
                 drop(st);
                 self.changed();
                 Ok(serde_json::to_value(prof)?)
+            }
+            // The optional Claude integration per Claude profile (Settings → Agents): status, install, uninstall.
+            "integration.status" => {
+                let aliases = self.aliases.lock().unwrap().clone();
+                let script = integration::script_path(&self.paths);
+                let st = self.state.lock().unwrap();
+                let list: Vec<Value> = st
+                    .profiles
+                    .iter()
+                    .filter(|p| p.kind == AgentKind::Claude)
+                    .map(|p| {
+                        let dir = agents::claude_config_dir_resolved(p, &aliases);
+                        json!({ "profile_id": p.id, "config_dir": dir, "status": integration::status(&dir, &script) })
+                    })
+                    .collect();
+                Ok(json!({ "profiles": list, "version": integration::VERSION }))
+            }
+            "integration.install" | "integration.uninstall" => {
+                let pid = req("profile_id")?;
+                let aliases = self.aliases.lock().unwrap().clone();
+                let profile = self.state.lock().unwrap().profiles.iter().find(|p| p.id == pid).cloned().ok_or_else(|| anyhow!("no profile {pid}"))?;
+                if profile.kind != AgentKind::Claude {
+                    bail!("only Claude profiles have an integration");
+                }
+                let dir = agents::claude_config_dir_resolved(&profile, &aliases);
+                let script = integration::script_path(&self.paths);
+                let backup = if method == "integration.install" { integration::install(&dir, &script)? } else { integration::uninstall(&dir, &script)? };
+                Ok(json!({ "config_dir": dir, "status": integration::status(&dir, &script), "backup": backup }))
             }
             "profile.delete" => {
                 let id = req("id")?;
@@ -1476,6 +1667,8 @@ impl Daemon {
             transcript_path: None,
             agent_title: String::new(),
             extra_args: p.get("extra_args").and_then(|v| serde_json::from_value::<Vec<String>>(v.clone()).ok()).unwrap_or_default(),
+            agent_app: None,
+            reports_status: false,
         };
         {
             let mut st = self.state.lock().unwrap();

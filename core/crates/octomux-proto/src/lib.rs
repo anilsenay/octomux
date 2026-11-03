@@ -172,7 +172,14 @@ pub enum HolderRequest {
 pub enum HolderEvent {
     Title { title: String },
     /// OSC 7501 program status: working | blocked | done | error | clear.
-    ProgramStatus { state: String, #[serde(default)] app: String },
+    ProgramStatus {
+        state: String,
+        #[serde(default)]
+        app: String,
+        /// For `blocked`: permission | question | auth.
+        #[serde(default)]
+        kind: String,
+    },
     /// OSC 9 / OSC 777 notifications emitted by programs.
     Notify { title: String, body: String },
     /// OSC 133 command lifecycle: `prompt`, `start`, or `end` with exit code.

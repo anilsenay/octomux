@@ -78,7 +78,7 @@ extension AppModel {
     func closeTabs(_ tabs: [Tab]) {
         guard !tabs.isEmpty else { return }
         let busy = tabs.flatMap { $0.layout.sessions }.compactMap { session($0) }
-            .filter { $0.kind == .agent && !$0.isDormant && ($0.activity == .working || $0.activity == .needsInput) }
+            .filter { $0.isAgent && !$0.isDormant && ($0.activity == .working || $0.activity == .needsInput) }
         if !busy.isEmpty {
             let a = NSAlert()
             a.messageText = "Close \(tabs.count) tabs?"

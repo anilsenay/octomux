@@ -3,6 +3,7 @@ mod client;
 mod daemon;
 mod holder;
 mod hook_spool;
+mod procs;
 mod statusline;
 mod util;
 
@@ -92,6 +93,12 @@ fn run(cli: Cli, paths: Paths) -> anyhow::Result<i32> {
             let _ = std::io::stdin().take(1 << 20).read_to_string(&mut input);
             let Some(session_id) = octomux_proto::env_var_os("SESSION_ID").and_then(|v| v.into_string().ok()) else { return Ok(0) };
             let payload: serde_json::Value = serde_json::from_str(&input).unwrap_or(serde_json::Value::Null);
+            // A `claude -p` an agent runs from a tool inherits the tab's session id: with our hooks installed
+            // globally it would report into the tab. Its hooks have a second claude above it; drop them.
+            let parent = unsafe { libc::getppid() };
+            if procs::claude_ancestors(parent) >= 2 {
+                return Ok(0);
+            }
             let params = serde_json::json!({ "session_id": session_id, "event": event, "payload": payload });
             let sent = client::Control::connect(&paths).ok().is_some_and(|mut c| {
                 c.set_timeout(Some(std::time::Duration::from_secs(2)));
