@@ -47,7 +47,7 @@ for mode in dark light; do
     # Settings (appearance) — settings window has its own size
     dbg ui_action '{"name":"open_settings","value":"Appearance"}'; sleep 1; tools/dbg screenshot_settings "{\"path\":\"$OUT/ui-matrix-settings-$mode.png\"}" >/dev/null; dbg ui_action '{"name":"close_settings"}'
     # R: simulated remote host
-    dbg ui_action "{\"name\":\"add_host\",\"value\":{\"id\":\"sim\",\"name\":\"devbox (simulated)\",\"kind\":\"command\",\"target\":\"\",\"ade\":\"$CLI\",\"prefix\":\"env OCTOMUX_HOME=/tmp/adeR\"}}"
+    dbg ui_action "{\"name\":\"add_host\",\"value\":{\"id\":\"sim\",\"name\":\"devbox (simulated)\",\"kind\":\"command\",\"target\":\"\",\"cli\":\"$CLI\",\"prefix\":\"env OCTOMUX_HOME=/tmp/adeR\"}}"
     dbg ui_action '{"name":"switch_host","value":"sim"}'; sleep 3
     [ "$(OCTOMUX_HOME=/tmp/adeR $CLI ctl state.get | python3 -c 'import sys,json; print(len(json.load(sys.stdin)["sessions"]))')" = 0 ] && dbg ui_action '{"name":"new_terminal"}' && sleep 2
     shot r-matrix-$tag.png

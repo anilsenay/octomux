@@ -110,6 +110,15 @@ final class UsageTests: XCTestCase {
 }
 
 final class HostTests: XCTestCase {
+    func testDecodesPreRenameCLIKey() throws {
+        let old = try JSONDecoder().decode(Host.self, from: Data(#"{"id":"b","name":"box","kind":"ssh","target":"me@box","ade":"/usr/local/bin/ade","prefix":""}"#.utf8))
+        XCTAssertEqual(old.cli, "/usr/local/bin/ade")
+        let encoded = String(decoding: try JSONEncoder().encode(old), as: UTF8.self)
+        XCTAssertTrue(encoded.contains(#""cli":"#) && !encoded.contains(#""ade":"#), encoded)
+        let fresh = try JSONDecoder().decode(Host.self, from: Data(#"{"id":"c","name":"c","kind":"ssh"}"#.utf8))
+        XCTAssertEqual(fresh.cli, "octomux")
+    }
+
     func testSSHSharesOneConnection() {
         let h = Host(id: "b", name: "box", kind: "ssh", target: "me@box")
         let argv = h.controlArgv!

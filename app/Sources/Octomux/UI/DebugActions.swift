@@ -87,7 +87,7 @@ enum DebugActions {
             case "panel_select":
                 NotificationCenter.default.post(name: .adeDebugPanel, object: nil, userInfo: p["info"] as? [String: Any] ?? [:])
             case "add_host":
-                // {"value": {"id","name","kind","target","ade","prefix"}}
+                // {"value": {"id","name","kind","target","cli","prefix"}}
                 if let d = p["value"] as? [String: Any], let data = try? JSONSerialization.data(withJSONObject: d),
                    let h = try? JSONDecoder().decode(Host.self, from: data) {
                     var all = HostStore.all

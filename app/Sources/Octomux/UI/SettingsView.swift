@@ -808,7 +808,7 @@ struct HostEditor: View {
                 TextField("Prefix for panes, if it needs a TTY (e.g. ssh -t -p 2222 box) — optional", text: Binding(get: { host.attachPrefix ?? "" }, set: { host.attachPrefix = $0.isEmpty ? nil : $0 }))
                     .textFieldStyle(.roundedBorder).font(T.mono(12))
             }
-            TextField("Path of octomux on the host", text: $host.ade).textFieldStyle(.roundedBorder).font(T.mono(12))
+            TextField("Path of octomux on the host", text: $host.cli).textFieldStyle(.roundedBorder).font(T.mono(12))
             HStack {
                 Spacer()
                 Button("Cancel") { done(nil) }.buttonStyle(SecondaryButtonStyle()).keyboardShortcut(.cancelAction)
