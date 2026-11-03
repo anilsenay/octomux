@@ -935,6 +935,9 @@ impl Daemon {
     }
 
     fn on_hook(self: &Arc<Self>, id: &str, event: &str, payload: &Value) {
+        if std::env::var_os("OCTOMUX_TRACE_STATUS").is_some() {
+            eprintln!("[hook] {} {id} {event} {}", util::now_millis(), payload.get("session_id").and_then(|v| v.as_str()).unwrap_or(""));
+        }
         // (Nested claudes an agent runs are filtered out by the hook command itself, see procs::claude_ancestors.)
         let cid = payload.get("session_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
         let launched = self.with_session(id, |s| s.kind == SessionKind::Agent).unwrap_or(false);

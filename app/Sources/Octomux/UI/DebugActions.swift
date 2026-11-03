@@ -168,8 +168,15 @@ enum DebugActions {
                     if let e = ev(.leftMouseDown, x, y) { w.sendEvent(e) }
                 }
             case "click":
-                // Left click at window point (top-left origin), through AppKit hit testing.
-                if let w = (NSApp.delegate as? AppDelegate)?.mainWindow, let x = p["x"] as? Double, let y = p["y"] as? Double {
+                // Left click at window point (top-left origin), through AppKit hit testing. "window": "settings"
+                // targets the Settings window, "key" the key window (a sheet such as a confirmation dialog).
+                let target: NSWindow? = switch p["window"] as? String {
+                case "settings": SettingsWindow.window
+                case "sheet": SettingsWindow.window?.attachedSheet
+                case "key": NSApp.keyWindow
+                default: (NSApp.delegate as? AppDelegate)?.mainWindow
+                }
+                if let w = target, let x = p["x"] as? Double, let y = p["y"] as? Double {
                     let pt = NSPoint(x: x, y: w.contentView!.bounds.height - y)
                     // "count": 2 sends a double click (a second down/up with click count 2). The up is queued
                     // before the down is sent: a view that tracks the mouse inside mouseDown (a split divider)
@@ -445,8 +452,31 @@ enum DebugActions {
                  "menu_key": c.item?.keyEquivalent ?? "", "menu_mods": Int(c.item?.keyEquivalentModifierMask.rawValue ?? 0)] as [String: Any]
             }
         }
+        // Buttons of the dialog attached to Settings (title, frame in sheet points, top-left origin), and
+        // pressing one by title (performClick: no hit testing).
+        d.register("sheet_buttons") { p in
+            guard let sheet = SettingsWindow.window?.attachedSheet, let root = sheet.contentView else { return ["buttons": []] }
+            var out: [[String: Any]] = []
+            func walk(_ v: NSView) {
+                if let b = v as? NSButton {
+                    let r = b.convert(b.bounds, to: nil)
+                    out.append(["title": b.title, "x": r.midX, "y": root.bounds.height - r.midY, "w": r.width, "h": r.height, "enabled": b.isEnabled])
+                    if let t = p["press"] as? String, b.title == t { b.performClick(nil) }
+                }
+                v.subviews.forEach(walk)
+            }
+            walk(root)
+            return ["buttons": out, "sheet_class": String(describing: type(of: sheet))]
+        }
+        d.register("key_window") { _ in
+            guard let w = NSApp.keyWindow else { return ["key": NSNull()] }
+            return ["title": w.title, "is_sheet": w.isSheet, "width": w.frame.width, "height": w.frame.height,
+                    "settings_sheet": SettingsWindow.window?.attachedSheet != nil]
+        }
         d.register("screenshot_settings") { p in
-            guard let path = p["path"] as? String, let w = SettingsWindow.window, w.isVisible,
+            // "sheet": true captures the dialog attached to Settings (a confirmation) instead of the window.
+            let win = (p["sheet"] as? Bool) == true ? SettingsWindow.window?.attachedSheet : SettingsWindow.window
+            guard let path = p["path"] as? String, let w = win, w.isVisible,
                   let cg = CGWindowListCreateImage(.null, .optionIncludingWindow, CGWindowID(w.windowNumber), [.boundsIgnoreFraming, .bestResolution])
             else { throw DebugServer.DebugError.bad("settings not visible") }
             let data = NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:])

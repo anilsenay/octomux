@@ -576,6 +576,36 @@ mod tests {
     }
 
     #[test]
+    fn launch_skips_our_hooks_when_the_integration_is_installed() {
+        let tmp = std::env::temp_dir().join(format!("octomux-launch-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        let paths = Paths { home: tmp.join("home") };
+        util::ensure_dir_0700(&paths.home).unwrap();
+        write_hook_settings(&paths).unwrap();
+        let cfg = tmp.join("cfg");
+        let mut p = default_profiles().into_iter().find(|p| p.kind == AgentKind::Claude).unwrap();
+        p.env.insert("CLAUDE_CONFIG_DIR".into(), cfg.to_string_lossy().into_owned());
+        let session: Session = serde_json::from_value(serde_json::json!({
+            "id": "s1", "project_id": "p1", "kind": "agent", "profile_id": p.id, "title": "", "custom_title": "",
+            "cwd": "/tmp", "state": "running", "activity": "idle", "unread": false, "agent_session_id": null,
+            "created_at": 0, "last_activity_at": 0, "exit_code": null, "placement": "tab"
+        }))
+        .unwrap();
+        let line = |p: &Profile| build_launch(&paths, &session, Some(p), false, &[]).argv.join(" ");
+        let hooks = hooks_settings_path(&paths).to_string_lossy().into_owned();
+        let only_status = statusline_only_settings_path(&paths).to_string_lossy().into_owned();
+        let l = line(&p);
+        assert!(l.contains(&hooks) && !l.contains(&only_status), "{l}");
+        super::super::integration::install(&cfg, &super::super::integration::script_path(&paths)).unwrap();
+        let l = line(&p);
+        assert!(l.contains(&only_status) && !l.contains(&hooks), "{l}");
+        p.statusline = false;
+        let l = line(&p);
+        assert!(!l.contains("--settings"), "{l}");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
     fn config_dir_of_a_profile() {
         let mut p = default_profiles().into_iter().find(|p| p.kind == AgentKind::Claude).unwrap();
         let home = util::home_dir();
