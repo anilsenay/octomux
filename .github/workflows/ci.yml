@@ -1,0 +1,19 @@
+name: CI
+on:
+  push: { branches: [main] }
+  pull_request:
+permissions: { contents: read }
+jobs:
+  core:
+    name: Rust core (daemon, holder, CLI)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: core }
+      - run: cargo build --locked
+        working-directory: core
+      - run: cargo test --locked
+        working-directory: core
+        env: { OCTOMUX_NO_USAGE_PROBE: "1" }

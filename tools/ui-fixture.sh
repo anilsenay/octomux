@@ -10,20 +10,20 @@ P=/tmp/octomuxU-proj
 "$CLI" ctl daemon.shutdown >/dev/null 2>&1 || true
 pkill -f "holder.*$OCTOMUX_HOME" 2>/dev/null || true
 rm -rf "$OCTOMUX_HOME" "$P" /tmp/octomuxU-claude /tmp/octomuxU-codex; mkdir -p "$P"
-for name in new-ade cimri-web dotfiles; do
+for name in octomux storefront dotfiles; do
   d=$P/$name; mkdir -p "$d/src"; cd "$d"; git init -q -b main
   printf 'fn main() {}\n' > src/main.rs; printf '# %s\n' "$name" > README.md
   git add -A; git -c user.email=t@t -c user.name=t commit -qm init
 done
-cd $P/new-ade && for m in "holder: replay main screen before alt screen" "daemon: login shell PATH probe" "ui: theme presets"; do
+cd $P/octomux && for m in "holder: replay main screen before alt screen" "daemon: login shell PATH probe" "ui: theme presets"; do
   printf '%s\n' "$m" >> CHANGELOG.md; git add -A; git -c user.email=dev@ade -c user.name="Ada Dev" commit -qm "$m"; done
 mkdir -p src/ui && printf 'struct Theme {}\n' > src/ui/theme.swift && git add -A && git -c user.email=dev@ade -c user.name="Ada Dev" commit -qm "ui: tokens"
 printf 'fn main() { println!("hi"); }\n// more\n' > src/main.rs && printf 'new\n' > src/usage.rs
-cd $P/cimri-web && git checkout -qb dev
+cd $P/storefront && git checkout -qb dev
 j() { "$CLI" ctl "$@"; }
 ws=$(j state.get | python3 -c 'import sys,json; print(json.load(sys.stdin)["workspaces"][0]["id"])')
 mkproj() { j project.create "{\"workspace_id\":\"$ws\",\"path\":\"$P/$1\",\"color\":\"$2\"}" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("id") or d["project"]["id"])'; }
-p1=$(mkproj new-ade "#EF8C39"); p2=$(mkproj cimri-web "#459CF7"); p3=$(mkproj dotfiles "#39C363")
+p1=$(mkproj octomux "#EF8C39"); p2=$(mkproj storefront "#459CF7"); p3=$(mkproj dotfiles "#39C363")
 FA=$ROOT/tools/fake-agent.sh
 pid_of() { j state.get | python3 -c "import sys,json; print([p['id'] for p in json.load(sys.stdin)['profiles'] if p['name'].lower()=='$1'.lower()][0])"; }
 # Point the default profiles at the fake agent (fixture only).

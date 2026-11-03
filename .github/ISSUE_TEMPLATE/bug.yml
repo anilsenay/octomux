@@ -1,0 +1,41 @@
+name: Bug report
+description: Something in Octomux doesn't work as it should.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected instead.
+    validations: { required: true }
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open a project and start Claude Code
+        2. Split the pane with ⌘D
+        3. …
+    validations: { required: true }
+  - type: input
+    id: version
+    attributes:
+      label: Octomux version
+      description: Octomux → About Octomux.
+    validations: { required: true }
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+    validations: { required: true }
+  - type: input
+    id: agent
+    attributes:
+      label: Agent involved (if any)
+      placeholder: Claude Code 2.x, Codex, plain shell…
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log excerpt
+      description: The relevant end of ~/Library/Application Support/Octomux/logs/daemon.log, if it helps. Check it for anything private first.
+      render: text

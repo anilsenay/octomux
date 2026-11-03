@@ -1,0 +1,9 @@
+# Categories for GitHub's generated release notes.
+changelog:
+  categories:
+    - title: New
+      labels: [enhancement, agent]
+    - title: Fixed
+      labels: [bug]
+    - title: Other changes
+      labels: ["*"]

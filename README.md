@@ -1,216 +1,123 @@
-# Octomux
+<p align="center">
+  <img src="docs/assets/icon.png" alt="Octomux" width="112" />
+</p>
 
-A native macOS terminal multiplexer and coding-agent manager.
-Sessions live in a background daemon, so closing the app, a crash, or a
-reboot never loses them: Claude Code and Codex sessions come back with
-`--resume` and pick up the same conversation.
+<h1 align="center">Octomux</h1>
 
-See [SPEC.md](SPEC.md) for the product spec, [DECISIONS.md](DECISIONS.md)
-for choices made along the way, and [PROGRESS.md](PROGRESS.md) for status.
+<p align="center">
+  <b>A native macOS home for your terminals and coding agents.</b><br/>
+  Sessions live in a background daemon — quit the app, crash, or reboot, and your work is still there.
+</p>
 
-## Architecture in one picture
+<p align="center">
+  <a href="https://github.com/anilsenay/octomux/releases/latest"><b>Download</b></a> · <a href="docs/GUIDE.md">Guide</a> · <a href="#supported-agents">Agents</a> · <a href="docs/DEVELOPMENT.md">Build from source</a> · <a href="CONTRIBUTING.md">Contributing</a>
+</p>
+
+<p align="center">
+  <img src="docs/assets/screenshot.png" alt="Octomux with the Octo Deep scene: projects and agents on the left, a Claude Code session in the middle, Changes and History on the right" width="900" />
+</p>
+
+---
+
+- **Sessions that outlive the app.** Every terminal runs in its own holder process under a launchd daemon. Close the
+  window, quit, update, or crash — reopen and you are exactly where you were. After a reboot, Claude Code and
+  Codex sessions come back with `--resume` and continue the same conversation.
+- **Know which agent needs you.** Each agent is marked *working*, *needs input* or *done* in the sidebar, the tab
+  and the menu bar. Notifications take you straight to the right pane; ⌘⇧U jumps to the next one waiting.
+- **Built for parallel agents.** Workspaces and projects, tabs, splits, a dock, and one-click git worktrees so
+  several agents can work on the same repo without stepping on each other.
+- **Git without leaving the window.** The right panel follows the focused session: changed files, commit &
+  push, history with diffs, and a file tree with a code viewer.
+- **Your agents, unwrapped.** Claude Code, Codex and any other CLI agent run as themselves, with your own config
+  and login. Octomux owns the terminal, not the agent. Optional chat view for Claude sessions.
+- **Usage at a glance.** 5-hour and weekly limits for Claude and Codex in the status bar.
+- **Remote hosts.** Run the daemon on a Linux box over SSH and keep its sessions next to your local ones.
+- **Fast and native.** Swift + AppKit, GPU-rendered terminals by [libghostty](https://github.com/ghostty-org/ghostty),
+  a small Rust daemon. No Electron.
+- **Make it yours.** Theme presets, light and dark, animated pixel-art scenes behind your terminals (the octopus
+  ones are the house favorites), rebindable shortcuts and a ⌘K command palette.
+
+## Install
+
+1. Download **Octomux.dmg** from the [latest release](https://github.com/anilsenay/octomux/releases/latest).
+2. Open it and drag **Octomux** into **Applications**.
+3. Open Octomux. It installs its background service (a launchd agent) on first launch and asks for
+   notification permission.
+
+macOS 14 or later, Apple Silicon. Signed and notarized, so it opens without a Gatekeeper prompt. If you open it
+straight from the disk image or Downloads, Octomux offers to move itself to Applications first (its background
+service needs a fixed place).
+
+Octomux updates itself: when a new version is out, a small card in the corner offers to install it, and your
+sessions keep running through the update.
+
+## Supported agents
+
+Any CLI agent runs in Octomux, since it is just a terminal. Some get more:
+
+| Agent | Keeps running when the app quits | Working / needs-input status | Resume after reboot | Usage limits | Chat view |
+|---|:-:|:-:|:-:|:-:|:-:|
+| Claude Code | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Codex | ✓ | — | ✓ | ✓ | — |
+| Gemini, Amp, OpenCode, Cursor, Kiro, Antigravity, Copilot, your own | ✓ | — | — | — | — |
+
+Installed agents are detected in Settings → Agents, including shell aliases (a second Claude account, say).
+Codex status tracking is next on the list. Want deeper support for another agent?
+[Open an agent request](https://github.com/anilsenay/octomux/issues/new?template=agent_request.yml).
+
+## Getting started
+
+- **Add a project:** ⌘⇧O and pick a folder.
+- **Start an agent:** the agent buttons next to **+** at the bottom of the sidebar, or ⌘⇧T for the first pinned one.
+  Installed CLIs are listed in Settings → Agents.
+- **New terminal / split:** ⌘T, ⌘D (right), ⌘⇧D (down).
+- **Find anything:** ⌘K opens the command palette (sessions, projects, commands, themes, settings).
+
+The [guide](docs/GUIDE.md) covers worktrees, the right panel, the chat view, usage limits, remote hosts,
+keyboard shortcuts and uninstalling.
+
+## How it works
 
 ```
 Octomux.app (Swift, AppKit + SwiftUI)
-  ├─ each pane = libghostty surface running `octomux attach <session>`
-  └─ control connection (NDJSON) ──▶ octomux daemon (Rust, launchd agent)
-                                        ├─ SQLite catalog: workspaces, projects, tabs, sessions, agents, settings
-                                        ├─ hooks + OSC 7501 → activity, notifications
-                                        └─ spawns one `octomux holder` per session (PTY + headless VT)
-                                             └─ survives daemon restarts; restored after reboot
+  ├─ each pane = a libghostty surface attached to a session
+  └─ control connection ──▶ octomux daemon (Rust, launchd agent)
+                               ├─ SQLite catalog: workspaces, projects, tabs, sessions, agents, settings
+                               ├─ agent hooks → activity, notifications, usage
+                               └─ one `octomux holder` per session (PTY + headless terminal state)
+                                    └─ survives app quits, daemon restarts and updates
 ```
 
-## Build
+## Privacy
 
-Requirements: macOS 14+, Xcode (with the Metal toolchain:
-`xcodebuild -downloadComponent MetalToolchain`), Rust stable, Zig 0.17 (only to
-build libghostty).
+Octomux is local-first: no account, no analytics, no telemetry. Your sessions, projects and settings live in a
+SQLite database in `~/Library/Application Support/Octomux/`. Octomux itself only goes online to check for
+updates (a plain download of the update feed, no system profile) and when you import a scene from a URL. Your agents talk to
+their own providers exactly as they would in any other terminal.
 
-```sh
-# 1. libghostty (once; ~2 min). Produces vendor/GhosttyKit.xcframework
-git clone --depth 1 https://github.com/ghostty-org/ghostty.git vendor/ghostty
-(cd vendor/ghostty && zig build -Demit-xcframework=true -Dxcframework-target=native \
-    -Demit-macos-app=false -Demit-docs=false -Doptimize=ReleaseFast)
-mv vendor/ghostty/macos/GhosttyKit.xcframework vendor/
+## Build from source
 
-# 2. App bundle (Rust core + Swift app) → build/Octomux.app
-tools/build-app.sh            # release
-tools/build-app.sh debug      # faster, debug
-
-# Tests
-(cd core && cargo test)        # Rust core: unit + 24 end-to-end tests over real PTYs
-(cd app && swift test)         # app logic: palette, shortcuts, worktrees, chat parsing, usage
-```
-
-## Run
+You need Xcode (with the Metal toolchain), Rust stable and Zig 0.17.
 
 ```sh
+git clone https://github.com/anilsenay/octomux && cd octomux
+tools/build-ghostty.sh        # libghostty at the pinned commit, once
+tools/build-app.sh            # → build/Octomux.app
 open build/Octomux.app
 ```
 
-State after the overnight build: the launchd agent `dev.octomux.daemon` is installed
-and running from `build/Octomux.app`; the data folder holds one workspace (Personal), the
-`new-ade` project and your agent profiles — no sessions.
+Tests, the debug harness, the UI fixture and the release process are in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
-On first launch the app installs a launchd agent `dev.octomux.daemon` pointing
-at the `octomux` binary inside the bundle and starts it. Data lives in
-`~/Library/Application Support/Octomux/` (SQLite, sockets, logs, terminal
-config; on Linux `$XDG_DATA_HOME/octomux` or `~/.local/share/octomux`). If only the
-pre-rename `ade-dev` folder has data, it is used in place (not moved, since it holds live
-session sockets). `octomux install-agent` replaces the old `dev.ade-dev.daemon` agent;
-sessions survive that daemon restart. UI state is copied from the old bundle id
-`dev.ade-dev.app` on first launch. macOS will ask for notification permission.
+## Contributing
 
-Useful commands (the CLI is at `build/Octomux.app/Contents/Resources/bin/octomux`):
+Bug reports and ideas are very welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 
-```sh
-octomux status                       # is the daemon running?
-octomux ctl state.get                # whole catalog as JSON
-octomux ctl session.screen_text '{"id":"<session>"}'
-octomux attach <session>             # attach any terminal to a session
-```
+## Thanks
 
-### Development mode
+Octomux stands on [Ghostty](https://github.com/ghostty-org/ghostty) (terminal engine),
+[Sparkle](https://sparkle-project.org) (updates), [CodeMirror](https://codemirror.net) (code viewer) and
+[Simple Icons](https://simpleicons.org) (agent marks). See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-```sh
-export OCTOMUX_HOME=/tmp/octomux-dev # isolated data dir (no launchd agent is installed)
-OCTOMUX_DEBUG=1 build/Octomux.app/Contents/MacOS/Octomux
-tools/dbg ui_state               # app state as JSON
-tools/dbg ui_action '{"name":"new_terminal"}'
-tools/dbg screenshot '{"path":"/tmp/shot.png"}'   # self-capture, no Screen Recording permission needed
-```
+## License
 
-Other variables: `OCTOMUX_BIN` (CLI path the app runs), `OCTOMUX_SESSION_ID` (set inside sessions),
-`OCTOMUX_NO_USAGE_PROBE` (skip the Claude usage probe, used by tests). The pre-rename `ADE_*` names are still accepted as fallbacks.
-
-UI fixture (fake agents in working / input / done states, git projects, usage readings, a dock action),
-never touching your real data:
-
-```sh
-tools/ui-fixture.sh              # builds OCTOMUX_HOME=/tmp/octomuxU
-tools/ui-restart.sh              # (re)starts the debug app against it; W=900 H=640 for a small window
-OCTOMUX_HOME=/tmp/octomuxU tools/dbg ui_action '{"name":"palette","value":"split"}'
-OCTOMUX_HOME=/tmp/octomuxU tools/dbg render_view '{"view":"usage","dark":true,"path":"/tmp/u.png"}'
-```
-
-Note: `tools/build-app.sh` rebuilds `build/Octomux.app`, which the installed launchd daemon runs from.
-Use `release` for that bundle; for UI work run `app/.build/debug/Octomux` (as `ui-restart.sh` does).
-
-## Appearance
-
-Three theme presets (Settings → Appearance or ⌘K "Theme"): **Ink** (default), **Grid**, **Glass**, each with
-dark/light, plus System/Dark/Light mode. Terminal colors follow the theme (written to `$OCTOMUX_HOME/theme.conf`,
-loaded after your `terminal.conf`); turn off "Use theme colors in the terminal" to use your own. Design
-system: `DESIGN.md`. App icon: `swift tools/make-icon.swift` regenerates `app/Resources/AppIcon.icns`.
-
-## Usage limits
-
-Claude sessions started by Octomux get a status line command (`octomux statusline`, injected with `--settings`
-like the hooks). It reports `rate_limits` (5-hour / weekly) to the daemon at most every 15 s and then runs
-**your own** `statusLine` command from your settings with the same input, so your status line is unchanged.
-(With no status line of your own it prints a short `model · context%` line.) Codex limits are read from its
-rollout files once a minute while a Codex session runs. The status bar shows the focused agent's profile plus
-profiles marked "Always show" (in the usage popover or the agent's settings).
-
-## Worktrees and the right panel
-
-Project right-click → **New Worktree…**: a new branch in `<parent>/<repo>.worktrees/<branch>`, opened with an agent
-or a terminal; worktrees show under their project in the sidebar (right-click to open, reveal or remove).
-⌘⌥B opens the right panel: **Changes** (stage-all commit / commit & push), **History** (commits + diffs) and
-**Files** (tree, filter, preview, Open in). All three follow the focused session's worktree.
-
-## Chat view (Claude)
-
-⌘⇧C (or the speech-bubble button in the top bar) shows a Claude session as a chat: its own transcript, live,
-with tool calls as cards. What you type there goes into the same session, as if typed in the terminal.
-Permission prompts and menus are answered in the terminal (the chat offers a one-click switch). Nothing else
-runs: same process, same login. Turn it off in Settings → Features.
-
-## Remote hosts
-
-1. Build `octomux` for the server: `rustup target add x86_64-unknown-linux-gnu && tools/build-linux.sh x86_64`
-   (or `aarch64`; needs `zig`). Copy `core/target/<arch>-unknown-linux-gnu/release/octomux` to the server, e.g.
-   `~/.local/bin/octomux`.
-2. Settings → Hosts → Add host: SSH destination (`user@box` or a `Host` from `~/.ssh/config`; key/agent auth,
-   no prompts) and the path of `octomux` there. **Test**, then **Connect**. Or pick it in the workspace menu.
-3. The daemon on the server starts on first use and keeps sessions running after you disconnect (no
-   launchd there; run `octomux daemon` under systemd if you want it to survive server reboots).
-
-With Settings → Features → "Hosts side by side", remote hosts marked "Show here" (Settings → Hosts) appear next to
-this Mac's projects, in the workspace with the same name. Move one with right-click → Move to Workspace (remembered
-in this app; the host keeps its own layout). The Projects **+** then asks which host the new project lives on.
-
-SSH hosts share one connection per host (control link, panes, git and file reads): OpenSSH `ControlMaster` with
-the socket in `/tmp/octomux-ssh-<uid>/`, kept 10 minutes after the last use. If your ssh options set `ControlMaster`
-or `ControlPath` yourself, Octomux leaves multiplexing to them.
-
-Custom command hosts take any prefix that reaches the other side, e.g. `docker exec -i <container>` (with
-pane prefix `docker exec -it <container>`).
-
-## Clean up / uninstall
-
-```sh
-build/Octomux.app/Contents/Resources/bin/octomux uninstall-agent  # removes ~/Library/LaunchAgents/dev.octomux.daemon.plist
-pkill -f 'Octomux.app/Contents/Resources/bin/octomux'              # stops the daemon and all session holders
-rm -rf ~/Library/Application\ Support/Octomux                      # all Octomux data
-defaults delete dev.octomux.app 2>/dev/null                        # UI selection state
-
-# Older installs from before the rename (uninstall-agent also removes the old plist)
-rm -rf ~/Library/Application\ Support/ade-dev
-defaults delete dev.ade-dev.app 2>/dev/null
-```
-
-## Keyboard
-
-| | |
-|---|---|
-| ⌘T / ⌘⇧T | New terminal tab / new tab with the first pinned agent |
-| ⌘D / ⌘⇧D | Split right / down |
-| ⌘W | Close pane |
-| ⌘⌥ arrows | Move focus between panes |
-| ⌘1…⌘9, ⌘⇧[ ⌘⇧] | Tabs |
-| ⌃1…⌃9, ⌃⌘← ⌃⌘→, two-finger swipe on the sidebar | Workspaces |
-| ⌘⇧U | Jump to the next session waiting for input |
-| ⌘. | Stop session |
-| ⌘B, ⌘O, ⌘⇧O, ⌘, | Sidebar, open project in default app, add project, settings |
-| ⌘K | Command palette (sessions, projects, commands, agents, settings, themes) |
-| ⌘J, ⌘⌥B | Dock, Changes panel |
-
-All menu shortcuts can be changed in Settings → Keyboard (click a shortcut, press the new keys; Delete
-unbinds). Overrides are the global setting `keybindings`.
-
-## Known gaps (MVP)
-
-- Scrollback replayed on attach is capped at 3000 lines per session (the daemon keeps 5000).
-- Plain terminal sessions are restored after a reboot as a fresh shell in the
-  same directory (by design, SPEC §4); only agents resume.
-- Notifications are posted by the app; while the app is fully quit, sessions
-  keep running but no notifications are shown.
-- See PROGRESS.md for what is built and what is still open.
-- Codex resume relies on finding the rollout file for the session's folder;
-  verified only with fake data, not a live Codex run.
-
-## Morning manual test list
-
-Things automation could not verify (no physical keyboard/trackpad, no
-permission dialogs):
-
-1. **Open** `build/Octomux.app`, accept the notification prompt.
-2. **Real typing**: type in a terminal, including Turkish characters with your
-   keyboard layout, ⌥ combinations, and an IME if you use one.
-3. **Trackpad**: two-finger swipe left/right over the sidebar switches workspaces.
-4. **Mouse**: select text and ⌘C, scroll back, click links (⌘-click).
-5. **Your agents**: `claude` and **Claude (work)** (your `claude-work` alias) are already
-   set up and pinned next to the + button. Start one of each and check the account in
-   Claude's status line. Other installed CLIs (gemini, amp, kiro-cli, agy) can be added
-   from Settings → Agents → "Installed on this Mac".
-6. **Notification click**: start a Claude task, switch to another app; when the
-   notification arrives, click it → Octomux should focus that pane.
-7. **Quit Octomux (⌘Q) while Claude works**, reopen: the session is still running.
-8. **Reboot** (or log out/in) with a Claude session open: after login, opening
-   Octomux shows the session resumed with the conversation intact.
-9. Settings → Appearance → *Import from Ghostty*, Apply; check fonts/theme.
-
-## Credits
-
-Agent brand marks (Claude, OpenAI/Codex, Gemini) come from [Simple Icons](https://simpleicons.org) (CC0-1.0), embedded in `app/Sources/Octomux/UI/BrandIcons.swift`. The marks are trademarks of their owners.
+Octomux is released under the [LICENSE_NAME](LICENSE).

@@ -1,0 +1,23 @@
+name: Agent request
+description: Ask for deeper support (status, resume, usage limits) for a CLI coding agent.
+labels: [agent]
+body:
+  - type: input
+    id: agent
+    attributes:
+      label: Agent
+      placeholder: Name and link, e.g. OpenCode — https://opencode.ai
+    validations: { required: true }
+  - type: checkboxes
+    id: wanted
+    attributes:
+      label: What should Octomux know about it?
+      options:
+        - label: When it is working, needs input, or is done (status and notifications)
+        - label: Resuming its conversation after a reboot
+        - label: Its usage or rate limits
+  - type: textarea
+    id: hooks
+    attributes:
+      label: How the agent exposes this
+      description: Hooks, notify commands, session files, resume flags… anything you know helps.

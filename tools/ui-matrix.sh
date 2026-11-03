@@ -13,7 +13,7 @@ RWS=$(OCTOMUX_HOME=/tmp/octomuxR $CLI ctl state.get | python3 -c 'import sys,jso
 OCTOMUX_HOME=/tmp/octomuxR $CLI ctl state.get | python3 -c 'import sys,json; sys.exit(0 if json.load(sys.stdin)["projects"] else 1)' || \
   OCTOMUX_HOME=/tmp/octomuxR $CLI ctl project.create "{\"workspace_id\":\"$RWS\",\"path\":\"/tmp/octomuxR-proj/api-server\",\"color\":\"#B168D4\"}" >/dev/null
 q() { $CLI ctl state.get | python3 -c "import sys,json; d=json.load(sys.stdin); print($1)"; }
-P1=$(q '[p["id"] for p in d["projects"] if p["name"]=="new-ade"][0]')
+P1=$(q '[p["id"] for p in d["projects"] if p["name"]=="octomux"][0]')
 CLAUDE_SID=$(q '[s["id"] for s in d["sessions"] if s.get("custom_title")=="Refactor holder snapshot"][0]')
 CODEX=$(q '[p["id"] for p in d["profiles"] if p["name"]=="Codex"][0]')
 dbg() { tools/dbg "$@" >/dev/null 2>&1; }

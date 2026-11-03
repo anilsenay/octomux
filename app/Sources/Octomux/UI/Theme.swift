@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-// Design tokens. See DESIGN.md. Every color is dynamic (dark/light) and
+// Design tokens. See docs/DESIGN.md. Every color is dynamic (dark/light) and
 // resolved against the current preset at draw time; the root view is
 // re-identified when the preset changes so everything re-renders.
 

@@ -9,7 +9,7 @@ OUT=${OUT:-$ROOT/screenshots}
 q() { $CLI ctl state.get | python3 -c "import sys,json; d=json.load(sys.stdin); print($1)"; }
 dbg() { tools/dbg "$@" >/dev/null 2>&1; }
 shot() { tools/dbg screenshot "{\"path\":\"$OUT/$1\"}" >/dev/null; }
-P1=$(q '[p["id"] for p in d["projects"] if p["name"]=="new-ade"][0]')
+P1=$(q '[p["id"] for p in d["projects"] if p["name"]=="octomux"][0]')
 SID=$(q '[s["id"] for s in d["sessions"] if s.get("custom_title")=="Refactor holder snapshot"][0]')
 for mode in ${MODES:-dark light}; do
   $CLI ctl settings.set "{\"scope\":\"global\",\"key\":\"appearance.mode\",\"value\":\"$mode\"}" >/dev/null
