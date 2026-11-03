@@ -17,6 +17,8 @@ final class AppModel: ObservableObject {
     /// daemon; the window is locked until they start it again (nothing restarts it meanwhile).
     enum Power { case running, stopping, stopped, starting }
     @Published var power: Power = .running
+    /// The stop animation is running: the stopped screen waits for it.
+    @Published var stopFalling = false
     private var stoppedAt = Date.distantPast
     @Published var selectedWorkspaceId: String? {
         didSet {
@@ -301,6 +303,7 @@ final class AppModel: ObservableObject {
 
     /// Moves `tabId` to `targetTabId`'s place among its project's tabs.
     func moveTab(_ tabId: String, to targetTabId: String) {
+        guard ensureManageable() else { return }
         guard tabId != targetTabId, let t = state.tabs.first(where: { $0.id == tabId }),
               state.tabs.first(where: { $0.id == targetTabId })?.projectId == t.projectId else { return }
         var order = tabs(ofProject: t.projectId).map(\.id)
@@ -541,6 +544,7 @@ final class AppModel: ObservableObject {
 
     /// Creates a terminal (profileId nil) or agent session. With `split`, it joins the focused pane's tab.
     func newSession(profileId: String?, projectId: String? = nil, split: SplitDir? = nil, command: String? = nil, title: String? = nil, placement: Placement = .tab, worktree: String? = nil, resume: String? = nil, prompt: String? = nil, chat: Bool = false, extraArgs: [String] = [], done: ((String) -> Void)? = nil) {
+        guard ensureManageable() else { return }
         guard let pid = projectId ?? currentProject?.id else {
             lastError = "Add a project first (⌘⇧O)."
             return
@@ -597,10 +601,11 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func stop(_ id: String) { client(for: id).call("session.stop", ["id": id], completion: report) }
-    func restart(_ id: String) { client(for: id).call("session.restart", ["id": id], completion: report) }
+    func stop(_ id: String) { if ensureManageable() { client(for: id).call("session.stop", ["id": id], completion: report) } }
+    func restart(_ id: String) { if ensureManageable() { client(for: id).call("session.restart", ["id": id], completion: report) } }
 
     func remove(_ id: String, confirm: Bool = true) {
+        guard ensureManageable() else { return }
         if confirm, let s = session(id), s.state == .running, s.kind == .agent {
             let a = NSAlert()
             a.messageText = "Close “\(s.displayTitle)”?"
@@ -621,6 +626,7 @@ final class AppModel: ObservableObject {
 
     /// Equal shares for every row and column of a split tab (⌘K "Equalize Panes", double-click a divider).
     func equalizePanes(tabId: String? = nil) {
+        guard ensureManageable() else { return }
         guard let id = tabId ?? activeTabId, let t = state.tabs.first(where: { $0.id == id }), t.layout.sessions.count > 1 else { return }
         let size = TerminalHost.shared.container.bounds.size
         guard size.width > 50, size.height > 50 else { return }
@@ -653,6 +659,7 @@ final class AppModel: ObservableObject {
     }
 
     func addProject(onHost hostId: String? = nil) {
+        guard ensureManageable() else { return }
         guard let ws = selectedWorkspaceId else { return }
         if let hid = hostId, hid != client.host.id, let c = extraClients[hid] {
             guard let path = askRemotePath(c.host) else { return }
@@ -734,6 +741,7 @@ final class AppModel: ObservableObject {
     }
 
     func removeProject(_ id: String) {
+        guard ensureManageable() else { return }
         guard let p = project(id) else { return }
         let a = NSAlert()
         a.messageText = "Remove “\(p.name)” from Octomux?"
@@ -864,11 +872,30 @@ extension AppModel {
 }
 
 extension AppModel {
+    /// Opening, closing, stopping or moving tabs needs the daemon (open terminals don't: they talk to their
+    /// sessions directly). Disconnected or stopped: those controls are disabled and shortcuts say why.
+    var canManage: Bool { connected && power == .running }
+
+    @discardableResult
+    func ensureManageable() -> Bool {
+        if canManage { return true }
+        NSSound.beep()
+        lastError = power == .running
+            ? "Can't reach the Octomux daemon right now. Open terminals still work; try again once it's back."
+            : "Octomux is stopped. Start it to open or change tabs."
+        return false
+    }
+
     /// Stops every session's program and the daemon (Settings → Stop Octomux). Tabs come back on Start.
     func stopOctomux() {
         guard power == .running, !host.isRemote else { return }
         power = .stopping
         DaemonClient.held = true
+        // The terminals' text falls out first (snapshot taken now), then the stopped screen.
+        stopFalling = true
+        StopAnimation.run(window: (NSApp.delegate as? AppDelegate)?.mainWindow, area: TerminalHost.shared.container) { [weak self] in
+            withAnimation(.easeOut(duration: 0.25)) { self?.stopFalling = false }
+        }
         TerminalHost.shared.dropSurfaces()
         client.call("daemon.stop_all") { [weak self] r in
             DispatchQueue.main.async {

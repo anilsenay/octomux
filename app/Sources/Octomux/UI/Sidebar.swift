@@ -157,6 +157,7 @@ struct AddMenu: View {
         .frame(width: 26, height: 26)
         .hoverHighlight(radius: 5)
         .help("New project or workspace")
+        .disabled(!model.canManage)
     }
 }
 
@@ -611,6 +612,7 @@ struct SessionRow: View {
                             .help("Stop")
                     }
                 }
+                .disabled(!model.canManage)
                 .buttonStyle(IconButtonStyle(size: 18))
                 .font(.system(size: 10, weight: .semibold))
             } else {

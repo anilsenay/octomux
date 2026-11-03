@@ -706,9 +706,9 @@ struct PaneHeader: View {
                 Group {
                     if s.placement == .tab && !zoomed && roomy {
                         Button { model.selectSession(s.id); model.newSession(profileId: nil, split: .right) } label: { Image(systemName: "rectangle.split.2x1") }
-                            .help("Split Right (⌘D)")
+                            .help("Split Right (⌘D)").disabled(!model.canManage)
                         Button { model.selectSession(s.id); model.newSession(profileId: nil, split: .down) } label: { Image(systemName: "rectangle.split.1x2") }
-                            .help("Split Down (⇧⌘D)")
+                            .help("Split Down (⇧⌘D)").disabled(!model.canManage)
                     }
                     Button { model.toggleZoom(s.id) } label: {
                         Image(systemName: zoomed ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
@@ -724,7 +724,7 @@ struct PaneHeader: View {
                         .plainMenu().frame(width: 20, height: 20)
                         .hoverHighlight(radius: 5).help("Session")
                     Button { model.remove(s.id) } label: { Image(systemName: "xmark").font(.system(size: 9, weight: .bold)) }
-                        .help("Close pane (⌘W)")
+                        .help("Close pane (⌘W)").disabled(!model.canManage)
                 }
                 .buttonStyle(IconButtonStyle(size: 20))
                 .font(.system(size: 10.5, weight: .medium))

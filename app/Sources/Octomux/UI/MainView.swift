@@ -43,9 +43,9 @@ struct MainView: View {
             .frame(minWidth: 0, maxWidth: .infinity)
         }
         // Stopped (Settings → Stop Octomux): the window stays, blurred and out of reach, behind a Start card.
-        .blur(radius: model.power == .running ? 0 : 18)
+        .blur(radius: model.power == .running || model.stopFalling ? 0 : 18)
         .allowsHitTesting(model.power == .running)
-        .overlay { if model.power != .running { StoppedOverlay() } }
+        .overlay { if model.power != .running && !model.stopFalling { StoppedOverlay() } }
         .overlay(alignment: .top) { if model.power == .running { DisconnectBanner().padding(.top, T.m.topH + 6) } }
         .onChange(of: model.power) { _, p in if p == .running { TerminalHost.shared.render(force: true); TerminalHost.shared.renderDock(force: true) } }
         .background(rootBackground)
@@ -410,9 +410,9 @@ struct TopBar: View {
                         OpenInButton(path: p.path)
                     }
                     Button { model.newSession(profileId: nil, split: .right) } label: { Image(systemName: "rectangle.split.2x1") }
-                        .buttonStyle(ChromeButtonStyle()).help("Split Right (⌘D)")
+                        .buttonStyle(ChromeButtonStyle()).help("Split Right (⌘D)").disabled(!model.canManage)
                     Button { model.newSession(profileId: nil, split: .down) } label: { Image(systemName: "rectangle.split.1x2") }
-                        .buttonStyle(ChromeButtonStyle()).help("Split Down (⌘⇧D)")
+                        .buttonStyle(ChromeButtonStyle()).help("Split Down (⌘⇧D)").disabled(!model.canManage)
                 }
                 if let fs = model.session(model.focusedSessionId), model.canChat(fs) {
                     Button { model.toggleChat(fs.id) } label: { Image(systemName: model.isChat(fs.id) ? "terminal" : "text.bubble") }
@@ -720,6 +720,7 @@ struct NewSessionButton: View {
             .pointerCursor()
             .help("New tab with… (Terminal, agents)")
         }
+        .disabled(!model.canManage).opacity(model.canManage ? 1 : 0.4)
     }
 }
 
@@ -752,6 +753,7 @@ struct ProjectQuickActions: View {
                 .frame(width: 20, height: 20).hoverHighlight(radius: 5)
                 .help("New session")
         }
+        .disabled(!model.canManage)
     }
 }
 
