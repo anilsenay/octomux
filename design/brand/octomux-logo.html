@@ -101,7 +101,7 @@ header p { margin: 0; color: var(--muted); }
 
   <section class="panel" aria-label="Vektör menü bar ikonları">
     <div class="row" style="justify-content: space-between"><h2>Piksel dışı tarzlar · çizgi, glif, dönüşen ikon</h2><label class="switch"><input type="checkbox" id="busy3" checked> Agent çalışıyor</label></div>
-    <p class="note">SF Symbols ağırlığında vektör ikonlar (17pt, 1.5pt çizgi). “Dönüşür” etiketli olanlar Unpeel gibi: boştayken bir şekil, agent çalışırken yükleme ikonuna dönüşüyor. Anahtarı kapatıp açarak geçişe bak.</p>
+    <p class="note">SF Symbols ağırlığında vektör ikonlar (17pt, 1.5pt çizgi). “Dönüşür” etiketli olanlar boştayken bir şekil, agent çalışırken yükleme ikonuna dönüşüyor. Anahtarı kapatıp açarak geçişe bak.</p>
     <div class="mbgrid" id="vecgrid"></div>
   </section>
 
@@ -254,7 +254,7 @@ var MIN = [
     s: 2, dr: 3, body: ['..####..','.######.','##e##e##','########','########'], legs: ['.#.##.#.'], spread: ['#.#..#.#'], tuck: ['..#..#..'] },
   { id: 'mn-tiny', name: 'Minik', tag: '5×5 · 2.5pt', story: '25 piksellik bir işaret. Ahtapot olduğu ancak zıplarken belli oluyor; durgunken soyut bir logo gibi.',
     s: 2.5, dr: 3, body: ['.###.','#####','#e#e#','#####'], legs: ['.#.#.'], spread: ['#.#.#'], tuck: ['.#.#.'] },
-  { id: 'mn-block', name: 'Blok', tag: '5×4 · 3pt', story: 'Monocode gibi iri kutular: üç satır kafa, bir satır bacak. En minimal; animasyon üç kareye iniyor gibi okunur.',
+  { id: 'mn-block', name: 'Blok', tag: '5×4 · 3pt', story: 'İri kutular: üç satır kafa, bir satır bacak. En minimal; animasyon üç kareye iniyor gibi okunur.',
     s: 3, dr: 2, body: ['.###.','#e#e#','#####'], legs: ['.#.#.'], spread: ['#.#.#'], tuck: ['.#.#.'] },
   { id: 'mn-sil', name: 'Silüet', tag: '7×6 · 2pt, gözsüz', story: 'Hiç göz yok, sadece kubbe ve dalgalanan bacaklar. Yüz olmadığı için hiçbir şekilde uzaylı/virüs okunmaz.',
     s: 2, dr: 2, body: ['..###..','.#####.','#######','#######'], legs: ['.#.#.#.','#..#..#'], spread: ['#.#.#.#'], tuck: ['.#.#.#.','.#.#.#.'] },
@@ -324,7 +324,7 @@ var VEC = [
     fps: 10, draw: (t, b) => { if (!b) return lineHead(t, false) + tentacles(0, .45, 0);
       const step = Math.floor(t * 10) % 8, op = [1, .72, .52, .38, .28, .22, .22, .22];
       return [...Array(8)].map((_, i) => { const a = i / 8 * Math.PI * 2 - Math.PI / 2; return `<circle cx="${(9 + 6.2 * Math.cos(a)).toFixed(2)}" cy="${(9 + 6.2 * Math.sin(a)).toFixed(2)}" r="1.45" fill="currentColor" opacity="${op[(step - i + 8) % 8]}"/>`; }).join(''); } },
-  { id: 'v-pane', name: 'Pane', tag: 'dönüşür · Unpeel gibi', story: 'İçi boş, dörde bölünmüş kare: multiplexer’ın kendisi. Çalışırken pane’ler saat yönünde sırayla doluyor.',
+  { id: 'v-pane', name: 'Pane', tag: 'dönüşür · pane’ler dolar', story: 'İçi boş, dörde bölünmüş kare: multiplexer’ın kendisi. Çalışırken pane’ler saat yönünde sırayla doluyor.',
     fps: 4, draw: (t, b) => { const q = [[4.3, 4.3], [9.7, 4.3], [9.7, 9.7], [4.3, 9.7]]; const k = Math.floor(t * 4) % 4;
       return `<rect x="2.5" y="2.5" width="13" height="13" rx="3.2" ${SW}/><path d="M9 2.5v13M2.5 9h13" ${sw(1.2)} opacity="${b ? .35 : 1}"/>` +
         (b ? `<rect x="${q[k][0]}" y="${q[k][1]}" width="4" height="4" rx="1" fill="currentColor"/>` : ''); } },

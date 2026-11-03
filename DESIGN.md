@@ -1,7 +1,7 @@
-# ADE design system
+# Octomux design system
 
-Source of truth in code: `app/Sources/ADE/UI/Theme.swift` (tokens + presets) and
-`app/Sources/ADE/UI/Components.swift` (shared components). Directions explored: `design/directions/`
+Source of truth in code: `app/Sources/Octomux/UI/Theme.swift` (tokens + presets) and
+`app/Sources/Octomux/UI/Components.swift` (shared components). Directions explored: `design/directions/`
 and the artifact linked in DECISIONS D9. Default preset: **Ink**. Others: **Grid**, **Glass**
 (Settings → Appearance). Mode: System / Dark / Light.
 
@@ -73,6 +73,6 @@ System font (SF Pro) in the app; Inter only in mockups. Mono: JetBrains Mono if 
 
 ## Terminal theme
 Each preset carries a terminal palette matched to its `surface` color (background = `surface`, so the card
-and the terminal are one plane). Applied by writing `$ADE_HOME/theme.conf` (Ghostty syntax) and loading it
+and the terminal are one plane). Applied by writing `$OCTOMUX_HOME/theme.conf` (Ghostty syntax) and loading it
 after the user's `terminal.conf`, unless “Use theme colors in terminal” is off.
 Ink dark: bg `#1B1B1F`, fg `#DCDCE0`, cursor `#EB8A5E`, selection `#3A3A42`; ANSI palette in `Theme.swift`.

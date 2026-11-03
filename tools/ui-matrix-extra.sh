@@ -2,15 +2,15 @@
 # Secondary screens in dark/light: empty project, stopped (dormant) pane, every settings page.
 set -uo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd); cd "$ROOT"
-export ADE_HOME=/tmp/adeU
-ADE=$ROOT/core/target/debug/ade; OUT=$ROOT/screenshots
-q() { $ADE ctl state.get | python3 -c "import sys,json; d=json.load(sys.stdin); print($1)"; }
+export OCTOMUX_HOME=/tmp/adeU
+CLI=$ROOT/core/target/debug/octomux; OUT=$ROOT/screenshots
+q() { $CLI ctl state.get | python3 -c "import sys,json; d=json.load(sys.stdin); print($1)"; }
 dbg() { tools/dbg "$@" >/dev/null 2>&1; }
 tools/dbg ui_action '{"name":"switch_host","value":"local"}' >/dev/null 2>&1
 P3=$(q '[p["id"] for p in d["projects"] if p["name"]=="dotfiles"][0]')
 TERM_SID=$(q '[s["id"] for s in d["sessions"] if s["kind"]=="terminal" and s["placement"]=="tab"][0]')
 for mode in dark light; do
-  $ADE ctl settings.set "{\"scope\":\"global\",\"key\":\"appearance.mode\",\"value\":\"$mode\"}" >/dev/null
+  $CLI ctl settings.set "{\"scope\":\"global\",\"key\":\"appearance.mode\",\"value\":\"$mode\"}" >/dev/null
   tools/ui-restart.sh
   dbg ui_action "{\"name\":\"select_project\",\"id\":\"$P3\"}"; sleep 1.2
   tools/dbg screenshot "{\"path\":\"$OUT/ui-extra-empty-$mode.png\"}" >/dev/null

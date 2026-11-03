@@ -1,5 +1,5 @@
 // Minimal local renderer for our own design/directions/*.dc.html (holes, sc-for, sc-if, dc-import).
-// Written for ADE so the directions can be reviewed offline without the canvas editor's runtime.
+// Written for Octomux so the directions can be reviewed offline without the canvas editor's runtime.
 (function () {
   class DCLogic { constructor(props) { this.props = props || {}; this.state = {}; } setState(s) { Object.assign(this.state, s); } }
   window.DCLogic = DCLogic;

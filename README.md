@@ -1,6 +1,6 @@
-# ADE
+# Octomux
 
-A native macOS terminal multiplexer and coding-agent manager (name TBD).
+A native macOS terminal multiplexer and coding-agent manager.
 Sessions live in a background daemon, so closing the app, a crash, or a
 reboot never loses them: Claude Code and Codex sessions come back with
 `--resume` and pick up the same conversation.
@@ -11,12 +11,12 @@ for choices made along the way, and [PROGRESS.md](PROGRESS.md) for status.
 ## Architecture in one picture
 
 ```
-ADE.app (Swift, AppKit + SwiftUI)
-  ├─ each pane = libghostty surface running `ade attach <session>`
-  └─ control connection (NDJSON) ──▶ ade daemon (Rust, launchd agent)
+Octomux.app (Swift, AppKit + SwiftUI)
+  ├─ each pane = libghostty surface running `octomux attach <session>`
+  └─ control connection (NDJSON) ──▶ octomux daemon (Rust, launchd agent)
                                         ├─ SQLite catalog: workspaces, projects, tabs, sessions, agents, settings
                                         ├─ hooks + OSC 7501 → activity, notifications
-                                        └─ spawns one `ade holder` per session (PTY + headless VT)
+                                        └─ spawns one `octomux holder` per session (PTY + headless VT)
                                              └─ survives daemon restarts; restored after reboot
 ```
 
@@ -33,7 +33,7 @@ git clone --depth 1 https://github.com/ghostty-org/ghostty.git vendor/ghostty
     -Demit-macos-app=false -Demit-docs=false -Doptimize=ReleaseFast)
 mv vendor/ghostty/macos/GhosttyKit.xcframework vendor/
 
-# 2. App bundle (Rust core + Swift app) → build/ADE.app
+# 2. App bundle (Rust core + Swift app) → build/Octomux.app
 tools/build-app.sh            # release
 tools/build-app.sh debug      # faster, debug
 
@@ -45,60 +45,67 @@ tools/build-app.sh debug      # faster, debug
 ## Run
 
 ```sh
-open build/ADE.app
+open build/Octomux.app
 ```
 
-State after the overnight build: the launchd agent `dev.ade-dev.daemon` is installed
-and running from `build/ADE.app`; the data folder holds one workspace (Personal), the
+State after the overnight build: the launchd agent `dev.octomux.daemon` is installed
+and running from `build/Octomux.app`; the data folder holds one workspace (Personal), the
 `new-ade` project and your agent profiles — no sessions.
 
-On first launch the app installs a launchd agent `dev.ade-dev.daemon` pointing
-at the `ade` binary inside the bundle and starts it. Data lives in
-`~/Library/Application Support/ade-dev/` (SQLite, sockets, logs, terminal
-config). macOS will ask for notification permission.
+On first launch the app installs a launchd agent `dev.octomux.daemon` pointing
+at the `octomux` binary inside the bundle and starts it. Data lives in
+`~/Library/Application Support/Octomux/` (SQLite, sockets, logs, terminal
+config; on Linux `$XDG_DATA_HOME/octomux` or `~/.local/share/octomux`). If only the
+pre-rename `ade-dev` folder has data, it is used in place (not moved, since it holds live
+session sockets). `octomux install-agent` replaces the old `dev.ade-dev.daemon` agent;
+sessions survive that daemon restart. UI state is copied from the old bundle id
+`dev.ade-dev.app` on first launch. macOS will ask for notification permission.
 
-Useful commands (the CLI is at `build/ADE.app/Contents/Resources/bin/ade`):
+Useful commands (the CLI is at `build/Octomux.app/Contents/Resources/bin/octomux`):
 
 ```sh
-ade status                       # is the daemon running?
-ade ctl state.get                # whole catalog as JSON
-ade ctl session.screen_text '{"id":"<session>"}'
-ade attach <session>             # attach any terminal to a session
+octomux status                       # is the daemon running?
+octomux ctl state.get                # whole catalog as JSON
+octomux ctl session.screen_text '{"id":"<session>"}'
+octomux attach <session>             # attach any terminal to a session
 ```
 
 ### Development mode
 
 ```sh
-export ADE_HOME=/tmp/ade-dev     # isolated data dir (no launchd agent is installed)
-ADE_DEBUG=1 build/ADE.app/Contents/MacOS/ADE
+export OCTOMUX_HOME=/tmp/octomux-dev # isolated data dir (no launchd agent is installed)
+OCTOMUX_DEBUG=1 build/Octomux.app/Contents/MacOS/Octomux
 tools/dbg ui_state               # app state as JSON
 tools/dbg ui_action '{"name":"new_terminal"}'
 tools/dbg screenshot '{"path":"/tmp/shot.png"}'   # self-capture, no Screen Recording permission needed
 ```
 
+Other variables: `OCTOMUX_BIN` (CLI path the app runs), `OCTOMUX_SESSION_ID` (set inside sessions),
+`OCTOMUX_NO_USAGE_PROBE` (skip the Claude usage probe, used by tests). The pre-rename `ADE_*` names are still accepted as fallbacks.
+
 UI fixture (fake agents in working / input / done states, git projects, usage readings, a dock action),
 never touching your real data:
 
 ```sh
-tools/ui-fixture.sh              # builds ADE_HOME=/tmp/adeU
+tools/ui-fixture.sh              # builds OCTOMUX_HOME=/tmp/adeU
 tools/ui-restart.sh              # (re)starts the debug app against it; W=900 H=640 for a small window
-ADE_HOME=/tmp/adeU tools/dbg ui_action '{"name":"palette","value":"split"}'
-ADE_HOME=/tmp/adeU tools/dbg render_view '{"view":"usage","dark":true,"path":"/tmp/u.png"}'
+OCTOMUX_HOME=/tmp/adeU tools/dbg ui_action '{"name":"palette","value":"split"}'
+OCTOMUX_HOME=/tmp/adeU tools/dbg render_view '{"view":"usage","dark":true,"path":"/tmp/u.png"}'
 ```
 
-Note: `tools/build-app.sh` rebuilds `build/ADE.app`, which the installed launchd daemon runs from.
-Use `release` for that bundle; for UI work run `app/.build/debug/ADE` (as `ui-restart.sh` does).
+Note: `tools/build-app.sh` rebuilds `build/Octomux.app`, which the installed launchd daemon runs from.
+Use `release` for that bundle; for UI work run `app/.build/debug/Octomux` (as `ui-restart.sh` does).
 
 ## Appearance
 
 Three theme presets (Settings → Appearance or ⌘K "Theme"): **Ink** (default), **Grid**, **Glass**, each with
-dark/light, plus System/Dark/Light mode. Terminal colors follow the theme (written to `$ADE_HOME/theme.conf`,
+dark/light, plus System/Dark/Light mode. Terminal colors follow the theme (written to `$OCTOMUX_HOME/theme.conf`,
 loaded after your `terminal.conf`); turn off "Use theme colors in the terminal" to use your own. Design
 system: `DESIGN.md`. App icon: `swift tools/make-icon.swift` regenerates `app/Resources/AppIcon.icns`.
 
 ## Usage limits
 
-Claude sessions started by ADE get a status line command (`ade statusline`, injected with `--settings`
+Claude sessions started by Octomux get a status line command (`octomux statusline`, injected with `--settings`
 like the hooks). It reports `rate_limits` (5-hour / weekly) to the daemon at most every 15 s and then runs
 **your own** `statusLine` command from your settings with the same input, so your status line is unchanged.
 (With no status line of your own it prints a short `model · context%` line.) Codex limits are read from its
@@ -121,21 +128,21 @@ runs: same process, same login. Turn it off in Settings → Features.
 
 ## Remote hosts
 
-1. Build `ade` for the server: `rustup target add x86_64-unknown-linux-gnu && tools/build-linux.sh x86_64`
-   (or `aarch64`; needs `zig`). Copy `core/target/<arch>-unknown-linux-gnu/release/ade` to the server, e.g.
-   `~/.local/bin/ade`.
+1. Build `octomux` for the server: `rustup target add x86_64-unknown-linux-gnu && tools/build-linux.sh x86_64`
+   (or `aarch64`; needs `zig`). Copy `core/target/<arch>-unknown-linux-gnu/release/octomux` to the server, e.g.
+   `~/.local/bin/octomux`.
 2. Settings → Hosts → Add host: SSH destination (`user@box` or a `Host` from `~/.ssh/config`; key/agent auth,
-   no prompts) and the path of `ade` there. **Test**, then **Connect**. Or pick it in the workspace menu.
+   no prompts) and the path of `octomux` there. **Test**, then **Connect**. Or pick it in the workspace menu.
 3. The daemon on the server starts on first use and keeps sessions running after you disconnect (no
-   launchd there; run `ade daemon` under systemd if you want it to survive server reboots).
+   launchd there; run `octomux daemon` under systemd if you want it to survive server reboots).
 
 With Settings → Features → "Hosts side by side", remote hosts marked "Show here" (Settings → Hosts) appear next to
 this Mac's projects, in the workspace with the same name. Move one with right-click → Move to Workspace (remembered
 in this app; the host keeps its own layout). The Projects **+** then asks which host the new project lives on.
 
 SSH hosts share one connection per host (control link, panes, git and file reads): OpenSSH `ControlMaster` with
-the socket in `/tmp/ade-ssh-<uid>/`, kept 10 minutes after the last use. If your ssh options set `ControlMaster`
-or `ControlPath` yourself, ADE leaves multiplexing to them.
+the socket in `/tmp/octomux-ssh-<uid>/`, kept 10 minutes after the last use. If your ssh options set `ControlMaster`
+or `ControlPath` yourself, Octomux leaves multiplexing to them.
 
 Custom command hosts take any prefix that reaches the other side, e.g. `docker exec -i <container>` (with
 pane prefix `docker exec -it <container>`).
@@ -143,10 +150,14 @@ pane prefix `docker exec -it <container>`).
 ## Clean up / uninstall
 
 ```sh
-build/ADE.app/Contents/Resources/bin/ade uninstall-agent   # removes ~/Library/LaunchAgents/dev.ade-dev.daemon.plist
-pkill -f 'ADE.app/Contents/Resources/bin/ade'               # stops the daemon and all session holders
-rm -rf ~/Library/Application\ Support/ade-dev               # all ADE data
-defaults delete dev.ade-dev.app 2>/dev/null                 # UI selection state
+build/Octomux.app/Contents/Resources/bin/octomux uninstall-agent  # removes ~/Library/LaunchAgents/dev.octomux.daemon.plist
+pkill -f 'Octomux.app/Contents/Resources/bin/octomux'              # stops the daemon and all session holders
+rm -rf ~/Library/Application\ Support/Octomux                      # all Octomux data
+defaults delete dev.octomux.app 2>/dev/null                        # UI selection state
+
+# Older installs from before the rename (uninstall-agent also removes the old plist)
+rm -rf ~/Library/Application\ Support/ade-dev
+defaults delete dev.ade-dev.app 2>/dev/null
 ```
 
 ## Keyboard
@@ -184,7 +195,7 @@ unbinds). Overrides are the global setting `keybindings`.
 Things automation could not verify (no physical keyboard/trackpad, no
 permission dialogs):
 
-1. **Open** `build/ADE.app`, accept the notification prompt.
+1. **Open** `build/Octomux.app`, accept the notification prompt.
 2. **Real typing**: type in a terminal, including Turkish characters with your
    keyboard layout, ⌥ combinations, and an IME if you use one.
 3. **Trackpad**: two-finger swipe left/right over the sidebar switches workspaces.
@@ -194,12 +205,12 @@ permission dialogs):
    Claude's status line. Other installed CLIs (gemini, amp, kiro-cli, agy) can be added
    from Settings → Agents → "Installed on this Mac".
 6. **Notification click**: start a Claude task, switch to another app; when the
-   notification arrives, click it → ADE should focus that pane.
-7. **Quit ADE (⌘Q) while Claude works**, reopen: the session is still running.
+   notification arrives, click it → Octomux should focus that pane.
+7. **Quit Octomux (⌘Q) while Claude works**, reopen: the session is still running.
 8. **Reboot** (or log out/in) with a Claude session open: after login, opening
-   ADE shows the session resumed with the conversation intact.
+   Octomux shows the session resumed with the conversation intact.
 9. Settings → Appearance → *Import from Ghostty*, Apply; check fonts/theme.
 
 ## Credits
 
-Agent brand marks (Claude, OpenAI/Codex, Gemini) come from [Simple Icons](https://simpleicons.org) (CC0-1.0), embedded in `app/Sources/ADE/UI/BrandIcons.swift`. The marks are trademarks of their owners.
+Agent brand marks (Claude, OpenAI/Codex, Gemini) come from [Simple Icons](https://simpleicons.org) (CC0-1.0), embedded in `app/Sources/Octomux/UI/BrandIcons.swift`. The marks are trademarks of their owners.

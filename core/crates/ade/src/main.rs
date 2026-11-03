@@ -10,7 +10,7 @@ use clap::{Parser, Subcommand};
 use std::io::Read;
 
 #[derive(Parser)]
-#[command(name = "ade", version, about = "ADE: terminal multiplexer + coding agent manager")]
+#[command(name = "octomux", version, about = "Octomux: terminal multiplexer + coding agent manager")]
 struct Cli {
     #[command(subcommand)]
     cmd: Cmd,
@@ -54,7 +54,7 @@ enum Cmd {
     },
     /// Print daemon status.
     Status,
-    /// Install the daemon as a launchd agent (label dev.ade-dev.daemon).
+    /// Install the daemon as a launchd agent (label dev.octomux.daemon; replaces the pre-rename dev.ade-dev.daemon).
     InstallAgent,
     /// Remove the launchd agent.
     UninstallAgent,
@@ -89,7 +89,7 @@ fn run(cli: Cli, paths: Paths) -> anyhow::Result<i32> {
             // Never block or fail the agent: best effort, silent, bounded.
             let mut input = String::new();
             let _ = std::io::stdin().take(1 << 20).read_to_string(&mut input);
-            let Ok(session_id) = std::env::var("ADE_SESSION_ID") else { return Ok(0) };
+            let Some(session_id) = ade_proto::env_var_os("SESSION_ID").and_then(|v| v.into_string().ok()) else { return Ok(0) };
             let payload: serde_json::Value = serde_json::from_str(&input).unwrap_or(serde_json::Value::Null);
             if let Ok(mut c) = client::Control::connect(&paths) {
                 c.set_timeout(Some(std::time::Duration::from_secs(2)));
@@ -124,10 +124,14 @@ fn run(cli: Cli, paths: Paths) -> anyhow::Result<i32> {
         }
         Cmd::UninstallAgent => {
             let uid = unsafe { libc::getuid() };
-            let plist = client::launch_agent_plist_path();
-            let _ = std::process::Command::new("launchctl").args(["bootout", &format!("gui/{uid}"), &plist.to_string_lossy()]).status();
-            let _ = std::fs::remove_file(&plist);
-            println!("removed {}", plist.display());
+            for plist in [client::launch_agent_plist_path(), client::legacy_launch_agent_plist_path()] {
+                if !plist.exists() {
+                    continue;
+                }
+                let _ = std::process::Command::new("launchctl").args(["bootout", &format!("gui/{uid}"), &plist.to_string_lossy()]).status();
+                let _ = std::fs::remove_file(&plist);
+                println!("removed {}", plist.display());
+            }
             Ok(0)
         }
     }
@@ -147,7 +151,7 @@ fn install_launch_agent(paths: &Paths) -> anyhow::Result<()> {
   <key>ProgramArguments</key>
   <array><string>{exe}</string><string>daemon</string></array>
   <key>EnvironmentVariables</key>
-  <dict><key>ADE_HOME</key><string>{home}</string></dict>
+  <dict><key>{home_var}</key><string>{home}</string></dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
   <key>AbandonProcessGroup</key><true/>
@@ -158,11 +162,18 @@ fn install_launch_agent(paths: &Paths) -> anyhow::Result<()> {
 </plist>
 "#,
         label = client::LAUNCH_LABEL,
+        home_var = ade_proto::HOME_VAR,
         exe = exe.display(),
         home = paths.home.display(),
         log = paths.logs_dir().join("daemon.log").display(),
     );
     let uid = unsafe { libc::getuid() };
+    // Pre-rename agent: stop it first so the new daemon can take the socket (sessions survive a daemon restart).
+    let legacy = client::legacy_launch_agent_plist_path();
+    if legacy.exists() {
+        let _ = std::process::Command::new("launchctl").args(["bootout", &format!("gui/{uid}"), &legacy.to_string_lossy()]).output();
+        let _ = std::fs::remove_file(&legacy);
+    }
     let _ = std::process::Command::new("launchctl").args(["bootout", &format!("gui/{uid}"), &plist.to_string_lossy()]).output();
     std::fs::write(&plist, xml)?;
     let st = std::process::Command::new("launchctl").args(["bootstrap", &format!("gui/{uid}"), &plist.to_string_lossy()]).status()?;

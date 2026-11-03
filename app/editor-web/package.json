@@ -1,5 +1,5 @@
 {
-  "name": "ade-editor",
+  "name": "octomux-editor",
   "private": true,
   "type": "module",
   "scripts": {

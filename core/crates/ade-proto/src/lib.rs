@@ -1,4 +1,4 @@
-//! Wire protocol shared by the ADE daemon, session holders and clients.
+//! Wire protocol shared by the Octomux daemon, session holders and clients.
 //!
 //! Two planes:
 //! - **Data plane** (holder sockets): length-prefixed binary frames, see [`Frame`].
@@ -203,8 +203,18 @@ pub struct ExitInfo {
     pub signal: Option<i32>,
 }
 
-/// Filesystem layout. Everything lives under `ADE_HOME`
-/// (default `~/Library/Application Support/ade-dev`).
+/// Reads an Octomux environment variable, falling back to its pre-rename `ADE_*` name
+/// (sessions and launchd agents started by older builds still carry those).
+pub fn env_var_os(name: &str) -> Option<std::ffi::OsString> {
+    std::env::var_os(format!("OCTOMUX_{name}")).or_else(|| std::env::var_os(format!("ADE_{name}"))).filter(|v| !v.is_empty())
+}
+
+/// Name of the data-directory variable set on child processes.
+pub const HOME_VAR: &str = "OCTOMUX_HOME";
+
+/// Filesystem layout. Everything lives under `OCTOMUX_HOME` (or the legacy `ADE_HOME`);
+/// default `~/Library/Application Support/Octomux`, or the pre-rename `ade-dev` folder when only that exists
+/// (it holds live session sockets, so it is used in place rather than moved).
 #[derive(Debug, Clone)]
 pub struct Paths {
     pub home: PathBuf,
@@ -212,20 +222,29 @@ pub struct Paths {
 
 impl Paths {
     pub fn from_env() -> Paths {
-        if let Some(h) = std::env::var_os("ADE_HOME") {
+        if let Some(h) = env_var_os("HOME") {
             return Paths { home: PathBuf::from(h) };
         }
         let base = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/tmp"));
+        let has_data = |p: &PathBuf| p.join("ade.sqlite3").exists();
+        let mac = base.join("Library/Application Support/Octomux");
+        let mac_legacy = base.join("Library/Application Support/ade-dev");
         if cfg!(target_os = "macos") {
-            return Paths { home: base.join("Library/Application Support/ade-dev") };
+            if !mac.exists() && has_data(&mac_legacy) {
+                return Paths { home: mac_legacy };
+            }
+            return Paths { home: mac };
         }
-        // Linux and others: $XDG_DATA_HOME/ade-dev, else ~/.local/share/ade-dev.
+        // Linux and others: $XDG_DATA_HOME/octomux, else ~/.local/share/octomux.
         let data = std::env::var_os("XDG_DATA_HOME").filter(|v| !v.is_empty()).map(PathBuf::from).unwrap_or_else(|| base.join(".local/share"));
-        let xdg = data.join("ade-dev");
-        // Early Linux builds used the macOS path; keep using it if that is where the data is.
-        let legacy = base.join("Library/Application Support/ade-dev");
-        if !xdg.exists() && legacy.join("ade.sqlite3").exists() {
-            return Paths { home: legacy };
+        let xdg = data.join("octomux");
+        if !xdg.exists() {
+            // Pre-rename locations: $XDG_DATA_HOME/ade-dev, and early Linux builds used the macOS path.
+            for legacy in [data.join("ade-dev"), mac_legacy] {
+                if has_data(&legacy) {
+                    return Paths { home: legacy };
+                }
+            }
         }
         Paths { home: xdg }
     }

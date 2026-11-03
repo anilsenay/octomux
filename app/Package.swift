@@ -2,14 +2,14 @@
 import PackageDescription
 
 let package = Package(
-    name: "ADE",
+    name: "Octomux",
     platforms: [.macOS(.v14)],
     targets: [
         .binaryTarget(name: "GhosttyKit", path: "Frameworks/GhosttyKit.xcframework"),
         .executableTarget(
-            name: "ADE",
+            name: "Octomux",
             dependencies: ["GhosttyKit"],
-            path: "Sources/ADE",
+            path: "Sources/Octomux",
             swiftSettings: [.unsafeFlags(["-Onone"], .when(configuration: .debug))],
             linkerSettings: [
                 .linkedFramework("AppKit"),
@@ -26,6 +26,6 @@ let package = Package(
                 .linkedLibrary("c++"),
             ]
         ),
-        .testTarget(name: "ADETests", dependencies: ["ADE"], path: "Tests/ADETests"),
+        .testTarget(name: "OctomuxTests", dependencies: ["Octomux"], path: "Tests/OctomuxTests"),
     ]
 )

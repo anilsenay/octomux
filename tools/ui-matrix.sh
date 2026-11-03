@@ -3,16 +3,16 @@
 # Uses the throwaway fixture worlds (/tmp/adeU local, /tmp/adeR simulated remote). Never touches prod.
 set -uo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd); cd "$ROOT"
-export ADE_HOME=/tmp/adeU
-ADE=$ROOT/core/target/debug/ade
+export OCTOMUX_HOME=/tmp/adeU
+CLI=$ROOT/core/target/debug/octomux
 OUT=$ROOT/screenshots
 tools/ui-fixture.sh >/dev/null
 # simulated remote world
 mkdir -p /tmp/adeR-proj/api-server; git -C /tmp/adeR-proj/api-server init -q -b main 2>/dev/null
-RWS=$(ADE_HOME=/tmp/adeR $ADE ctl state.get | python3 -c 'import sys,json; print(json.load(sys.stdin)["workspaces"][0]["id"])')
-ADE_HOME=/tmp/adeR $ADE ctl state.get | python3 -c 'import sys,json; sys.exit(0 if json.load(sys.stdin)["projects"] else 1)' || \
-  ADE_HOME=/tmp/adeR $ADE ctl project.create "{\"workspace_id\":\"$RWS\",\"path\":\"/tmp/adeR-proj/api-server\",\"color\":\"#B168D4\"}" >/dev/null
-q() { $ADE ctl state.get | python3 -c "import sys,json; d=json.load(sys.stdin); print($1)"; }
+RWS=$(OCTOMUX_HOME=/tmp/adeR $CLI ctl state.get | python3 -c 'import sys,json; print(json.load(sys.stdin)["workspaces"][0]["id"])')
+OCTOMUX_HOME=/tmp/adeR $CLI ctl state.get | python3 -c 'import sys,json; sys.exit(0 if json.load(sys.stdin)["projects"] else 1)' || \
+  OCTOMUX_HOME=/tmp/adeR $CLI ctl project.create "{\"workspace_id\":\"$RWS\",\"path\":\"/tmp/adeR-proj/api-server\",\"color\":\"#B168D4\"}" >/dev/null
+q() { $CLI ctl state.get | python3 -c "import sys,json; d=json.load(sys.stdin); print($1)"; }
 P1=$(q '[p["id"] for p in d["projects"] if p["name"]=="new-ade"][0]')
 CLAUDE_SID=$(q '[s["id"] for s in d["sessions"] if s.get("custom_title")=="Refactor holder snapshot"][0]')
 CODEX=$(q '[p["id"] for p in d["profiles"] if p["name"]=="Codex"][0]')
@@ -20,7 +20,7 @@ dbg() { tools/dbg "$@" >/dev/null 2>&1; }
 shot() { tools/dbg screenshot "{\"path\":\"$OUT/$1\"}" >/dev/null; }
 first=1
 for mode in dark light; do
-  $ADE ctl settings.set "{\"scope\":\"global\",\"key\":\"appearance.mode\",\"value\":\"$mode\"}" >/dev/null
+  $CLI ctl settings.set "{\"scope\":\"global\",\"key\":\"appearance.mode\",\"value\":\"$mode\"}" >/dev/null
   for size in wide narrow; do
     if [ $size = wide ]; then W=1320 H=820; else W=900 H=640; fi
     W=$W H=$H tools/ui-restart.sh
@@ -47,9 +47,9 @@ for mode in dark light; do
     # Settings (appearance) — settings window has its own size
     dbg ui_action '{"name":"open_settings","value":"Appearance"}'; sleep 1; tools/dbg screenshot_settings "{\"path\":\"$OUT/ui-matrix-settings-$mode.png\"}" >/dev/null; dbg ui_action '{"name":"close_settings"}'
     # R: simulated remote host
-    dbg ui_action "{\"name\":\"add_host\",\"value\":{\"id\":\"sim\",\"name\":\"devbox (simulated)\",\"kind\":\"command\",\"target\":\"\",\"ade\":\"$ADE\",\"prefix\":\"env ADE_HOME=/tmp/adeR\"}}"
+    dbg ui_action "{\"name\":\"add_host\",\"value\":{\"id\":\"sim\",\"name\":\"devbox (simulated)\",\"kind\":\"command\",\"target\":\"\",\"ade\":\"$CLI\",\"prefix\":\"env OCTOMUX_HOME=/tmp/adeR\"}}"
     dbg ui_action '{"name":"switch_host","value":"sim"}'; sleep 3
-    [ "$(ADE_HOME=/tmp/adeR $ADE ctl state.get | python3 -c 'import sys,json; print(len(json.load(sys.stdin)["sessions"]))')" = 0 ] && dbg ui_action '{"name":"new_terminal"}' && sleep 2
+    [ "$(OCTOMUX_HOME=/tmp/adeR $CLI ctl state.get | python3 -c 'import sys,json; print(len(json.load(sys.stdin)["sessions"]))')" = 0 ] && dbg ui_action '{"name":"new_terminal"}' && sleep 2
     shot r-matrix-$tag.png
     dbg ui_action '{"name":"switch_host","value":"local"}'; sleep 2
   done

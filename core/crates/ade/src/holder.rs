@@ -88,7 +88,7 @@ pub fn is_inherited_agent_var(key: &str, value: &str) -> bool {
         || (key == "GIT_EDITOR" && value.contains("claude"))
 }
 
-/// Parses the OSC sequences ADE cares about.
+/// Parses the OSC sequences Octomux cares about.
 pub fn parse_osc(params: &[&[u8]]) -> Option<HolderEvent> {
     let s = |i: usize| params.get(i).map(|p| String::from_utf8_lossy(p).into_owned()).unwrap_or_default();
     match params.first().copied()? {
@@ -396,8 +396,8 @@ pub fn run(paths: Paths, args: HolderArgs) -> Result<()> {
     cmd.cwd(&cwd);
     cmd.env("TERM", "xterm-256color");
     cmd.env("COLORTERM", "truecolor");
-    cmd.env("TERM_PROGRAM", "ade");
-    cmd.env("ADE_SESSION_ID", &args.id);
+    cmd.env("TERM_PROGRAM", "octomux");
+    cmd.env("OCTOMUX_SESSION_ID", &args.id);
     // Never leak the environment of whatever started the daemon (e.g. a Claude Code
     // session) into user sessions: nested-agent markers disable transcripts and
     // CLAUDE_CONFIG_DIR would silently switch accounts. Profiles re-add what they need.

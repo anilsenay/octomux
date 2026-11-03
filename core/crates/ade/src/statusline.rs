@@ -16,7 +16,7 @@ pub fn run(paths: &Paths) -> i32 {
     let mut input = String::new();
     let _ = std::io::stdin().take(4 << 20).read_to_string(&mut input);
     let v: Value = serde_json::from_str(&input).unwrap_or(Value::Null);
-    if let (Ok(sid), Some(rl)) = (std::env::var("ADE_SESSION_ID"), v.get("rate_limits")) {
+    if let (Some(sid), Some(rl)) = (ade_proto::env_var_os("SESSION_ID").and_then(|v| v.into_string().ok()), v.get("rate_limits")) {
         report(paths, &sid, rl);
     }
     let cwd = v.pointer("/workspace/current_dir").or_else(|| v.get("cwd")).and_then(|x| x.as_str()).map(PathBuf::from);
@@ -61,7 +61,7 @@ pub fn user_command(cwd: Option<&std::path::Path>) -> Option<String> {
         let Ok(text) = std::fs::read_to_string(&f) else { continue };
         let Ok(v) = serde_json::from_str::<Value>(&text) else { continue };
         if let Some(cmd) = v.pointer("/statusLine/command").and_then(|c| c.as_str()) {
-            if !cmd.contains(" statusline") || !cmd.contains("ade") {
+            if !cmd.contains(" statusline") || !(cmd.contains("octomux") || cmd.contains("ade")) {
                 return Some(cmd.to_string());
             }
         }

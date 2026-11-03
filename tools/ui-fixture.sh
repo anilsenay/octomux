@@ -1,15 +1,15 @@
 #!/bin/bash
-# Builds a throwaway ADE world for UI screenshots: ADE_HOME=/tmp/adeU, three git projects,
+# Builds a throwaway Octomux world for UI screenshots: OCTOMUX_HOME=/tmp/adeU, three git projects,
 # fake agents in working / input / done states, a dock action. Never touches prod data.
-# usage: tools/ui-fixture.sh            (prints the env to export; then start the app with ADE_DEBUG=1)
+# usage: tools/ui-fixture.sh            (prints the env to export; then start the app with OCTOMUX_DEBUG=1)
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-export ADE_HOME=${ADE_HOME:-/tmp/adeU}
-ADE=${ADE_BIN:-$ROOT/core/target/debug/ade}
+export OCTOMUX_HOME=${OCTOMUX_HOME:-/tmp/adeU}
+CLI=${OCTOMUX_BIN:-$ROOT/core/target/debug/octomux}
 P=/tmp/adeU-proj
-"$ADE" ctl daemon.shutdown >/dev/null 2>&1 || true
-pkill -f "holder.*$ADE_HOME" 2>/dev/null || true
-rm -rf "$ADE_HOME" "$P" /tmp/adeU-claude /tmp/adeU-codex; mkdir -p "$P"
+"$CLI" ctl daemon.shutdown >/dev/null 2>&1 || true
+pkill -f "holder.*$OCTOMUX_HOME" 2>/dev/null || true
+rm -rf "$OCTOMUX_HOME" "$P" /tmp/adeU-claude /tmp/adeU-codex; mkdir -p "$P"
 for name in new-ade cimri-web dotfiles; do
   d=$P/$name; mkdir -p "$d/src"; cd "$d"; git init -q -b main
   printf 'fn main() {}\n' > src/main.rs; printf '# %s\n' "$name" > README.md
@@ -20,7 +20,7 @@ cd $P/new-ade && for m in "holder: replay main screen before alt screen" "daemon
 mkdir -p src/ui && printf 'struct Theme {}\n' > src/ui/theme.swift && git add -A && git -c user.email=dev@ade -c user.name="Ada Dev" commit -qm "ui: tokens"
 printf 'fn main() { println!("hi"); }\n// more\n' > src/main.rs && printf 'new\n' > src/usage.rs
 cd $P/cimri-web && git checkout -qb dev
-j() { "$ADE" ctl "$@"; }
+j() { "$CLI" ctl "$@"; }
 ws=$(j state.get | python3 -c 'import sys,json; print(json.load(sys.stdin)["workspaces"][0]["id"])')
 mkproj() { j project.create "{\"workspace_id\":\"$ws\",\"path\":\"$P/$1\",\"color\":\"$2\"}" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("id") or d["project"]["id"])'; }
 p1=$(mkproj new-ade "#EF8C39"); p2=$(mkproj cimri-web "#459CF7"); p3=$(mkproj dotfiles "#39C363")
@@ -46,8 +46,8 @@ j settings.set "{\"scope\":\"project:$p1\",\"key\":\"actions\",\"value\":[{\"nam
 sid_of() { j state.get | python3 -c "import sys,json; print([s['id'] for s in json.load(sys.stdin)['sessions'] if s.get('custom_title')=='$1'][0])"; }
 now=$(date +%s)
 feed() { printf '{"model":{"display_name":"Opus"},"rate_limits":{"five_hour":{"used_percentage":%s,"resets_at":%s},"seven_day":{"used_percentage":%s,"resets_at":%s}}}' "$2" $((now+8040)) "$3" $((now+302400)) \
-  | ADE_SESSION_ID=$(sid_of "$1") CLAUDE_CONFIG_DIR=/nonexistent "$ADE" statusline >/dev/null; }
+  | OCTOMUX_SESSION_ID=$(sid_of "$1") CLAUDE_CONFIG_DIR=/nonexistent "$CLI" statusline >/dev/null; }
 feed "Refactor holder snapshot" 42 18
 feed "Review PR #42" 76 31
 j settings.set "{\"scope\":\"global\",\"key\":\"usage.always_show\",\"value\":[\"$work\"]}" >/dev/null
-echo "export ADE_HOME=$ADE_HOME"
+echo "export OCTOMUX_HOME=$OCTOMUX_HOME"

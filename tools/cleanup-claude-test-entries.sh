@@ -1,5 +1,5 @@
 #!/bin/bash
-# Removes ONLY what ADE's overnight resume tests left in your Claude configs:
+# Removes ONLY what the overnight (pre-rename ADE) resume tests left in your Claude configs:
 # the project entry "/private/tmp/aded-claude" and its transcript folders.
 # Backups are written next to each file (*.ade-backup).
 set -euo pipefail

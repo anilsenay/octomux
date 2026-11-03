@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>ADE window</title>
+<title>Octomux window</title>
 <script src="./support.js"></script>
 </head>
 <body>
@@ -211,8 +211,8 @@ class Component extends DCLogic {
   renderVals() {
     const dir = this.props.dir ?? 'ink';
     const mode = this.props.mode ?? 'dark';
-    const T = ADE_TOKENS[dir][mode];
-    const S = ADE_STRUCT[dir];
+    const T = OCTOMUX_TOKENS[dir][mode];
+    const S = OCTOMUX_STRUCT[dir];
     const t = Object.assign({ ui: S.ui, mono: "'JetBrains Mono', ui-monospace, monospace" }, T);
     const tile = mode === 'dark' ? ['#E07A50', '#4C8DF0', '#3FB37A'] : ['#D2643A', '#2F6FE0', '#2A9A62'];
     const raw = [
@@ -277,7 +277,7 @@ class Component extends DCLogic {
     return { t, s: S, rows, tabs, lines };
   }
 }
-const ADE_TOKENS = {
+const OCTOMUX_TOKENS = {
   ink: {
     dark: { frame: '#141416', sb: '#141416', windowRing: 'rgba(255,255,255,0.08)', term: '#1B1B1F', termFg: '#DCDCE0', termDim: '#8B8B94', termBorder: 'rgba(255,255,255,0.12)', tabsBg: 'transparent', tabActive: '#27272C', raisedSoft: 'rgba(255,255,255,0.05)', sel: 'rgba(235,138,94,0.14)', text: '#EDEDEF', text2: '#A6A6AF', text3: '#8B8B94', border: 'rgba(255,255,255,0.07)', track: 'rgba(255,255,255,0.10)', accent: '#EB8A5E', claude: '#E8875B', amber: '#E9B949', amberSoft: 'rgba(233,185,73,0.15)', green: '#5DCB8E', red: '#F27474', blue: '#74A9F8' },
     light: { frame: '#ECEBE8', sb: '#ECEBE8', windowRing: 'rgba(0,0,0,0.10)', term: '#FBFBFA', termFg: '#2B2B30', termDim: '#6E6E76', termBorder: 'rgba(0,0,0,0.14)', tabsBg: 'transparent', tabActive: '#FBFBFA', raisedSoft: 'rgba(0,0,0,0.045)', sel: 'rgba(201,89,43,0.11)', text: '#1D1D1F', text2: '#55555C', text3: '#6B6B73', border: 'rgba(0,0,0,0.08)', track: 'rgba(0,0,0,0.10)', accent: '#C9592B', claude: '#C9592B', amber: '#9A6200', amberSoft: 'rgba(196,132,0,0.14)', green: '#1E8A4C', red: '#C93838', blue: '#2A6BD1' },
@@ -291,7 +291,7 @@ const ADE_TOKENS = {
     light: { frame: '#E6E8ED', sb: 'rgba(255,255,255,0.62)', windowRing: 'rgba(0,0,0,0.12)', term: '#FFFFFF', termFg: '#1F2024', termDim: '#66687A', termBorder: 'rgba(0,0,0,0.14)', tabsBg: 'rgba(0,0,0,0.06)', tabActive: '#FFFFFF', raisedSoft: 'rgba(0,0,0,0.05)', sel: 'rgba(10,108,240,0.13)', text: '#15161A', text2: '#50525D', text3: '#666874', border: 'rgba(0,0,0,0.09)', track: 'rgba(0,0,0,0.10)', accent: '#0A6CF0', claude: '#C9592B', amber: '#966100', amberSoft: 'rgba(196,132,0,0.14)', green: '#178A47', red: '#CC3333', blue: '#0A6CF0' },
   },
 };
-const ADE_STRUCT = {
+const OCTOMUX_STRUCT = {
   ink: { ui: "'Inter', -apple-system, system-ui, sans-serif", fs: 13, sbW: 252, sbMargin: '0', sbR: 0, sbBorder: '0px solid', sbShadow: 'none', rowH: 30, rowR: 7, tileR: 5, labelFont: "'Inter', system-ui, sans-serif", labelSize: 11, labelTrack: '0', labelCase: 'none', topH: 46, topPadL: 2, topBorder: '0px solid', tabsPad: 0, tabsR: 0, tabsH: 'auto', tabGap: 2, tabH: 28, tabR: 7, tabFont: "'Inter', system-ui, sans-serif", tabSize: 12.5, tabShadow: '0 1px 2px rgba(0,0,0,0.18)', tabUnderline: '0px solid ACC', paneGap: 8, contentPad: '0 8px 0 0', cardR: 10, cardBorder: '1px solid', cardShadow: 'none', dockTop: '1px solid', statusH: 32, statusPadL: 6, statusBorder: '0px solid', statusFont: "'Inter', system-ui, sans-serif" },
   grid: { ui: "'Inter', -apple-system, system-ui, sans-serif", fs: 12, sbW: 236, sbMargin: '0', sbR: 0, sbBorder: '1px solid', sbShadow: 'none', rowH: 24, rowR: 2, tileR: 2, labelFont: "'JetBrains Mono', ui-monospace, monospace", labelSize: 10.5, labelTrack: '0.08em', labelCase: 'uppercase', topH: 36, topPadL: 0, topBorder: '1px solid', tabsPad: 0, tabsR: 0, tabsH: '36px', tabGap: 0, tabH: 36, tabR: 0, tabFont: "'JetBrains Mono', ui-monospace, monospace", tabSize: 11.5, tabShadow: 'none', tabUnderline: '2px solid ACC', paneGap: 0, contentPad: '0', cardR: 0, cardBorder: '0px solid', cardShadow: 'none', dockTop: '1px solid', statusH: 24, statusPadL: 12, statusBorder: '1px solid', statusFont: "'JetBrains Mono', ui-monospace, monospace" },
   glass: { ui: "-apple-system, 'SF Pro Text', 'Inter', system-ui, sans-serif", fs: 13, sbW: 248, sbMargin: '8px', sbR: 12, sbBorder: '0px solid', sbShadow: '0 0 0 1px rgba(127,127,127,0.12), 0 6px 18px rgba(0,0,0,0.10)', rowH: 30, rowR: 8, tileR: 9, labelFont: "-apple-system, 'Inter', system-ui, sans-serif", labelSize: 11, labelTrack: '0', labelCase: 'none', topH: 48, topPadL: 2, topBorder: '0px solid', tabsPad: 3, tabsR: 9, tabsH: 'auto', tabGap: 2, tabH: 26, tabR: 7, tabFont: "-apple-system, 'Inter', system-ui, sans-serif", tabSize: 12.5, tabShadow: '0 1px 3px rgba(0,0,0,0.16)', tabUnderline: '0px solid ACC', paneGap: 8, contentPad: '0 8px 0 0', cardR: 12, cardBorder: '1px solid', cardShadow: '0 4px 14px rgba(0,0,0,0.10)', dockTop: '1px solid', statusH: 34, statusPadL: 6, statusBorder: '0px solid', statusFont: "-apple-system, 'Inter', system-ui, sans-serif" },

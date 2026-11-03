@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
-const BIN: &str = env!("CARGO_BIN_EXE_ade");
+const BIN: &str = env!("CARGO_BIN_EXE_octomux");
 
 struct Env {
     home: PathBuf,
@@ -36,11 +36,11 @@ impl Env {
     fn start_daemon(&mut self) {
         let child = Command::new(BIN)
             .arg("daemon")
-            .env("ADE_HOME", &self.home)
+            .env("OCTOMUX_HOME", &self.home)
             .env("CLAUDE_CODE_CHILD_SESSION", "1")
             .env("CLAUDECODE", "1")
             .env("CLAUDE_CONFIG_DIR", "/should/not/leak")
-            .env("ADE_NO_USAGE_PROBE", "1")
+            .env("OCTOMUX_NO_USAGE_PROBE", "1")
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -183,7 +183,7 @@ fn wait_until(timeout: Duration, mut f: impl FnMut() -> bool) {
     }
 }
 
-/// Attaches like `ade attach` does, returning the stream and the snapshot bytes.
+/// Attaches like `octomux attach` does, returning the stream and the snapshot bytes.
 fn attach(home: &Path, id: &str, cols: u16, rows: u16) -> (UnixStream, Vec<u8>) {
     let mut s = UnixStream::connect(home.join(format!("run/{id}.sock"))).unwrap();
     Frame::json(Kind::Hello, &Hello { version: 1, role: Role::Attach, cols, rows }).write_to(&mut s).unwrap();
@@ -416,8 +416,8 @@ fn session_start_hook_updates_agent_id_and_activity_flows() {
     let hook = |event: &str, payload: Value| {
         let mut c = Command::new(BIN)
             .args(["hook", event])
-            .env("ADE_HOME", &e.home)
-            .env("ADE_SESSION_ID", &id)
+            .env("OCTOMUX_HOME", &e.home)
+            .env("OCTOMUX_SESSION_ID", &id)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn()
@@ -546,16 +546,16 @@ fn settings_resolve_by_scope() {
 
 #[test]
 fn ade_attach_binary_proxies_a_pty() {
-    // Run the real `ade attach` inside a PTY (as a libghostty surface would).
+    // Run the real `octomux attach` inside a PTY (as a libghostty surface would).
     let e = Env::new();
     let p = e.project();
     let id = plain_shell(&e, &p);
     e.input(&id, "echo attached-$((1))ok\r");
     e.wait_screen(&id, "attached-1ok");
 
-    // Use a second ADE session as the "outer terminal" that runs `ade attach`.
+    // Use a second Octomux session as the "outer terminal" that runs `octomux attach`.
     let outer = create_terminal(&e, &p);
-    e.input(&outer, &format!("exec env ADE_HOME={} {} attach {}\r", e.home.display(), BIN, id));
+    e.input(&outer, &format!("exec env OCTOMUX_HOME={} {} attach {}\r", e.home.display(), BIN, id));
     e.wait_screen(&outer, "attached-1ok");
     e.input(&outer, "echo via-$((1))proxy\r");
     e.wait_screen(&id, "via-1proxy");
@@ -619,8 +619,8 @@ fn statusline_reports_usage_and_passes_through_user_statusline() {
     let run = |cfg: &Path| {
         let mut c = std::process::Command::new(BIN)
             .arg("statusline")
-            .env("ADE_HOME", &e.home)
-            .env("ADE_SESSION_ID", &id)
+            .env("OCTOMUX_HOME", &e.home)
+            .env("OCTOMUX_SESSION_ID", &id)
             .env("CLAUDE_CONFIG_DIR", cfg)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
@@ -671,7 +671,7 @@ fn stdio_bridge_speaks_the_control_protocol() {
     let p = e.project();
     let mut c = std::process::Command::new(BIN)
         .arg("stdio")
-        .env("ADE_HOME", &e.home)
+        .env("OCTOMUX_HOME", &e.home)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .spawn()
@@ -784,7 +784,7 @@ fn agent_title_comes_from_the_transcript() {
     let mut c = Command::new(BIN)
         .args(["hook", "SessionStart"])
         .env("ADE_HOME", &e.home)
-        .env("ADE_SESSION_ID", &id)
+        .env("ADE_SESSION_ID", &id) // pre-rename env names still work
         .stdin(Stdio::piped())
         .spawn()
         .unwrap();

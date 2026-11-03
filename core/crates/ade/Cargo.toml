@@ -5,7 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [[bin]]
-name = "ade"
+name = "octomux"
 path = "src/main.rs"
 
 [dependencies]

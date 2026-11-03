@@ -1,4 +1,4 @@
-//! The ADE daemon: owns the catalog (workspaces, projects, sessions, tabs,
+//! The Octomux daemon: owns the catalog (workspaces, projects, sessions, tabs,
 //! profiles, settings), spawns and watches session holders, restores sessions
 //! after crashes/reboots, turns hook/OSC signals into activity + notifications,
 //! and serves the control API.
@@ -329,7 +329,7 @@ impl Daemon {
         }
         cmd.arg("--").args(&spec.argv);
         let log = std::fs::OpenOptions::new().create(true).append(true).open(self.paths.logs_dir().join("holders.log"))?;
-        cmd.env("ADE_HOME", &self.paths.home).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(log);
+        cmd.env(ade_proto::HOME_VAR, &self.paths.home).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(log);
         {
             use std::os::unix::process::CommandExt;
             unsafe {
@@ -451,10 +451,10 @@ impl Daemon {
     }
 
     /// Claude limits from `claude -p /usage` (a local command: no model call), per Claude profile, so the
-    /// numbers are current even when no Claude session in ADE ran a turn lately (usage from other
+    /// numbers are current even when no Claude session in Octomux ran a turn lately (usage from other
     /// terminals or apps counts too). One run at a time; each is cut off after 30 s.
     fn poll_claude_usage(self: &Arc<Self>, only: Option<&[String]>) {
-        if std::env::var_os("ADE_NO_USAGE_PROBE").is_some() || self.claude_usage_running.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        if ade_proto::env_var_os("NO_USAGE_PROBE").is_some() || self.claude_usage_running.swap(true, std::sync::atomic::Ordering::SeqCst) {
             return;
         }
         let profiles: Vec<Profile> = {

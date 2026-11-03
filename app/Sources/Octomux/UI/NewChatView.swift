@@ -1,0 +1,350 @@
+import SwiftUI
+
+/// Start screen of a chat session (⌘N, "New Chat…"): ask first, the agent starts with that message as
+/// its CLI prompt and the session opens in the chat view. It is the same agent session as any other, so
+/// the terminal is one switch away (header "Terminal" button, ⌘⇧C).
+struct NewChatView: View {
+    @EnvironmentObject var model: AppModel
+    @ObservedObject var wt = Worktrees.shared
+    @ObservedObject var git = GitInfo.shared
+    let docId: String
+    @State private var draft = ""
+    /// Picked on this screen; else the workspace's default agent, else the last one used.
+    @State private var profileId: String?
+    @State private var worktree: String?    // nil = the project's own checkout
+    @State private var sending = false
+    @State private var pickingWorkspace = false
+    @State private var pickingBranch = false
+    @State private var pickingModel = false
+    @State private var pickingPermission = false
+    @State private var options = ChatLaunchOptions()
+    @State private var files: [URL] = []
+    @State private var dropTarget = false
+    @FocusState private var focused: Bool
+
+    private var doc: DocTab? { model.docTabs.first { $0.id == docId } }
+    private var project: Project? { model.project(doc?.projectId ?? "") }
+
+    /// Agents the chat view can render (Claude and Codex transcripts).
+    private var profiles: [Profile] {
+        model.enabledProfiles(forProject: project?.id).filter { $0.kind == .claude || $0.kind == .codex || $0.icon == "claude" || $0.icon == "codex" }
+    }
+    private var profile: Profile? {
+        let ws = model.defaultChatProfile(workspace: project?.workspaceId)
+        let last = UserDefaults.standard.string(forKey: "octomux.chatProfile")
+        return profiles.first { $0.id == profileId } ?? profiles.first { $0.id == ws?.id } ?? profiles.first { $0.id == last } ?? profiles.first
+    }
+
+    var body: some View {
+        let path = worktree ?? project?.path ?? ""
+        VStack(spacing: 0) {
+            Spacer(minLength: 24)
+            // Hero: the agent's mark and a greeting, the composer at the bottom
+            // where the chat's composer will be once it starts (no jump when the first message is sent).
+            VStack(spacing: 14) {
+                AgentIcon(icon: profile?.icon ?? "claude", size: 46)
+                Text(Self.greeting).font(.system(size: 28, weight: .regular, design: .serif)).foregroundStyle(T.text)
+                HStack(spacing: 6) {
+                    Text(project?.name ?? "")
+                    if let b = git.branch(for: path) { Text("·"); Text(b).font(T.mono(12)) }
+                }
+                .font(.system(size: 12.5)).foregroundStyle(T.text3)
+            }
+            Spacer(minLength: 24)
+            composer
+                .frame(maxWidth: 780)
+                .padding(.horizontal, 28).padding(.bottom, 18)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(CanvasBackground(scene: true))
+        .onAppear {
+            // The pane may be rebuilt right after opening: keep the text until it is sent, and follow edits.
+            var prefilled = false
+            if draft.isEmpty, let d = NewChatDraft.pending[docId] { draft = d; prefilled = true }
+            DispatchQueue.main.async { focused = true }
+            // Focus selects the whole text; with a prefilled instruction put the caret at its end instead,
+            // so typing continues it rather than replacing it.
+            if prefilled {
+                for delay in [0.05, 0.2, 0.45] {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                        guard let tv = (NSApp.keyWindow ?? (NSApp.delegate as? AppDelegate)?.mainWindow)?.firstResponder as? NSTextView else { return }
+                        let end = NSRange(location: (tv.string as NSString).length, length: 0)
+                        tv.setSelectedRange(end)
+                        tv.scrollRangeToVisible(end)
+                    }
+                }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .adeDebugPanel)) { n in
+            if let v = n.userInfo?["chatPicker"] as? String {
+                pickingWorkspace = v == "workspace"; pickingBranch = v == "branch"; pickingModel = v == "model"; pickingPermission = v == "permission"
+            }
+        }
+    }
+
+    /// "Anıl returns!" with the account's first name, else a plain question.
+    static var greeting: String {
+        let first = NSFullUserName().split(separator: " ").first.map(String.init) ?? ""
+        return first.isEmpty ? "What should we work on?" : "\(first) returns!"
+    }
+
+    private var composer: some View {
+        let path = worktree ?? project?.path ?? ""
+        let kind = profile?.kind ?? .generic
+        let flags = kind == .claude || kind == .codex
+        return VStack(alignment: .leading, spacing: 10) {
+            AttachmentChips(files: $files)
+            TextField("Type a message… (↩ to send, ⌥↩ for a new line)", text: Binding(
+                get: { draft },
+                set: { draft = $0; if NewChatDraft.pending[docId] != nil { NewChatDraft.pending[docId] = $0 } }), axis: .vertical)
+                .textFieldStyle(.plain).font(.system(size: 14)).lineLimit(3...12)
+                .frame(minHeight: 58, alignment: .topLeading)
+                .focused($focused)
+                .onSubmit(send)
+                .disabled(sending)
+                .onPasteCommand(of: [.png, .tiff, .fileURL]) { _ in files += AttachmentChips.pasted() }
+            HStack(spacing: 2) {
+                modelChip(flags: flags)
+                if flags {
+                    let perm = ChatLaunchOptions.permissions(kind).first { $0.id == options.permission }
+                    ContextChip(icon: perm?.warn == true ? "exclamationmark.shield" : "lock", text: perm?.title ?? "CLI settings",
+                                open: $pickingPermission, help: perm?.detail ?? "Permission mode", tint: perm?.warn == true ? T.amber : nil)
+                        .background(DropdownAnchor(isPresented: $pickingPermission) {
+                            PermissionPicker(kind: kind, options: $options) { pickingPermission = false }
+                        })
+                }
+                Rectangle().fill(T.border).frame(width: 1, height: 14).padding(.horizontal, 4)
+                ContextChip(icon: worktree == nil ? "folder" : "arrow.triangle.branch",
+                            text: worktree.map { ($0 as NSString).lastPathComponent } ?? "Current checkout",
+                            open: $pickingWorkspace, help: path)
+                    .background(DropdownAnchor(isPresented: $pickingWorkspace) {
+                        WorkspaceChoice(project: project, selected: worktree) { worktree = $0; pickingWorkspace = false }
+                    })
+                if let b = git.branch(for: path) {
+                    ContextChip(icon: "arrow.triangle.branch", text: b, mono: true, open: $pickingBranch, help: "Switch or create a branch in \(path)")
+                        .background(DropdownAnchor(isPresented: $pickingBranch) {
+                            BranchPicker(path: path, mode: .checkout, current: b) { pickingBranch = false }
+                        })
+                }
+                Spacer()
+                if sending { WorkingRing().padding(.trailing, 6) }
+                Button { files += AttachmentChips.pick() } label: {
+                    Image(systemName: "paperclip").font(.system(size: 12.5)).foregroundStyle(T.text2).frame(width: 26, height: 26)
+                }
+                .buttonStyle(IconButtonStyle(size: 26)).help("Attach files (or drop them here, or paste a screenshot)")
+                SendButton(enabled: canSend, help: "Start \(profile?.name ?? "the agent") with this message (↩)", action: send)
+            }
+        }
+        .composerCard(focused: focused || dropTarget)
+        .onDrop(of: [.fileURL], isTargeted: $dropTarget) { providers in
+            for p in providers {
+                _ = p.loadObject(ofClass: URL.self) { u, _ in
+                    if let u { DispatchQueue.main.async { if !files.contains(u) { files.append(u) } } }
+                }
+            }
+            return true
+        }
+        .onAppear { if let k = profile?.kind { options = ChatLaunchOptions.load(k) } }
+        .onChange(of: profile?.id) { _, _ in if let k = profile?.kind { options = ChatLaunchOptions.load(k) } }
+        .onChange(of: options) { _, v in if let k = profile?.kind { v.save(k) } }
+    }
+
+    /// "✳ Opus · High ⌄": provider (agent profile), model and effort in one dropdown.
+    private func modelChip(flags: Bool) -> some View {
+        let kind = profile?.kind ?? .generic
+        let effort = options.effort.map(ChatLaunchOptions.label)
+        return Button { pickingModel.toggle() } label: {
+            HStack(spacing: 5) {
+                if let profile { AgentIcon(icon: profile.icon, size: 11) }
+                Text(flags && options.model != nil ? options.modelTitle(kind) : (profile?.name ?? "No agent"))
+                    .font(.system(size: 12, weight: .medium)).foregroundStyle(T.text)
+                if flags, let effort { Text(effort).font(.system(size: 12)).foregroundStyle(T.text3) }
+                Image(systemName: "chevron.down").font(.system(size: 7.5, weight: .bold)).foregroundStyle(T.text3)
+            }
+            .padding(.horizontal, 8).frame(height: 24)
+            .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(pickingModel ? T.border : .clear))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain).hoverHighlight(radius: 6).pointerCursor()
+        .help("\(profile?.name ?? "Agent") · model and effort")
+        .background(DropdownAnchor(isPresented: $pickingModel) {
+            ModelEffortPicker(profiles: profiles, selected: profile, options: $options,
+                              workspace: model.state.workspaces.first { $0.id == project?.workspaceId },
+                              isDefault: profile.map { $0.id == model.defaultChatProfile(workspace: project?.workspaceId)?.id } ?? false,
+                              makeDefault: { if let p = profile, let ws = project?.workspaceId { model.setDefaultChatProfile(p.id, workspace: ws) } }) { p in
+                profileId = p.id; UserDefaults.standard.set(p.id, forKey: "octomux.chatProfile")
+            }
+        })
+    }
+
+    private var canSend: Bool { !sending && profile != nil && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
+    private func send() {
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard canSend, let project, let profile else { return }
+        sending = true
+        NewChatDraft.pending[docId] = nil
+        let docId = self.docId
+        let kind = profile.kind
+        let message = AttachmentChips.message(text, files: files, kind: kind)
+        let images = kind == .codex ? files.filter(AttachmentChips.isImage).map(\.path) : []
+        model.newSession(profileId: profile.id, projectId: project.id, worktree: worktree, prompt: message, chat: true,
+                         extraArgs: options.args(kind, images: images)) { id in
+            ChatFirstMessage.set(id, text)
+            // The new tab takes the start screen's place.
+            if let i = model.docTabs.firstIndex(where: { $0.id == docId }) { model.docTabs.remove(at: i) }
+            if model.activeDocId == docId { model.activeDocId = nil }
+        }
+    }
+}
+
+/// The accent ring color of the current workspace (focused composer border).
+enum WorkspaceTintColor {
+    static func ring(_ model: AppModel) -> Color { Color(nsColor: WorkspaceTint.accent(dark: ThemeStore.shared.isDark)) }
+}
+
+/// A small pill under the composer (workspace, branch): hover fill, pressed look while its list is open.
+struct ContextChip: View {
+    let icon: String
+    let text: String
+    var mono = false
+    @Binding var open: Bool
+    var help = ""
+    var tint: Color? = nil
+    @State private var hover = false
+
+    var body: some View {
+        Button { open.toggle() } label: {
+            HStack(spacing: 5) {
+                Image(systemName: icon).font(.system(size: 10.5))
+                Text(text).font(mono ? T.mono(11.5) : .system(size: 11.5, weight: .medium)).lineLimit(1)
+            }
+            .foregroundStyle(tint ?? (open || hover ? T.text : T.text2))
+            .padding(.horizontal, 8).frame(height: 24)
+            .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(open ? T.border : hover ? T.hover : .clear))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain).onHover { hover = $0 }.pointerCursor().help(help)
+    }
+}
+
+/// "Workspace" list: current checkout, a new worktree (branch name typed inline), or an existing one.
+struct WorkspaceChoice: View {
+    @EnvironmentObject var model: AppModel
+    @ObservedObject var wt = Worktrees.shared
+    let project: Project?
+    let selected: String?
+    let pick: (String?) -> Void
+    @State private var naming = false
+    @State private var branch = ""
+    @State private var showExisting = false
+    @State private var busy = false
+    @State private var error: String?
+    @FocusState private var nameFocused: Bool
+
+    var body: some View {
+        let linked = project.map { wt.linked($0.path) } ?? []
+        VStack(alignment: .leading, spacing: 1) {
+            Text("Workspace").font(.system(size: 11, weight: .semibold)).foregroundStyle(T.text3)
+                .padding(.horizontal, 10).padding(.top, 8).padding(.bottom, 4)
+            row("folder", "Current checkout", checked: selected == nil) { pick(nil) }
+            if naming {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrow.triangle.branch").font(.system(size: 11)).foregroundStyle(T.text2).frame(width: 16)
+                    TextField("New branch name", text: $branch).textFieldStyle(.plain).font(.system(size: 12.5))
+                        .focused($nameFocused).onSubmit(create).disabled(busy)
+                    if busy { WorkingRing() }
+                }
+                .padding(.horizontal, 10).frame(height: 30)
+                .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(T.hover))
+                .onAppear { nameFocused = true }
+            } else {
+                row("plus.square.on.square", "New worktree", checked: false) { naming = true }
+            }
+            if !linked.isEmpty {
+                row("square.stack", "Existing worktree", checked: false, trailing: showExisting ? "chevron.down" : "chevron.right") {
+                    withAnimation(.easeOut(duration: 0.12)) { showExisting.toggle() }
+                }
+                if showExisting || selected != nil {
+                    ForEach(linked) { w in
+                        row("arrow.triangle.branch", w.label, checked: selected == w.path, indent: 18) { pick(w.path) }
+                    }
+                }
+            }
+            if let error {
+                Text(error).font(T.caption).foregroundStyle(T.red).fixedSize(horizontal: false, vertical: true).padding(.horizontal, 10).padding(.vertical, 4)
+            }
+            Hairline().padding(.vertical, 4)
+            row("gearshape", "Worktree settings", checked: false) { SettingsWindow.show(section: .features); pick(selected) }
+        }
+        .padding(.horizontal, 5).padding(.bottom, 6)
+        .frame(width: 260)
+    }
+
+    private func row(_ icon: String, _ title: String, checked: Bool, trailing: String? = nil, indent: CGFloat = 0, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: icon).font(.system(size: 11)).foregroundStyle(T.text2).frame(width: 16)
+                Text(title).font(.system(size: 12.5)).foregroundStyle(T.text).lineLimit(1).truncationMode(.middle)
+                Spacer(minLength: 6)
+                if checked { Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundStyle(T.text) }
+                if let trailing { Image(systemName: trailing).font(.system(size: 9, weight: .semibold)).foregroundStyle(T.text3) }
+            }
+            .padding(.leading, 10 + indent).padding(.trailing, 10).frame(height: 30)
+            .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(checked ? T.hover : .clear))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain).background(HoverFill()).pointerCursor()
+    }
+
+    private func create() {
+        let b = branch.trimmingCharacters(in: .whitespaces)
+        guard let project, !b.isEmpty else { return }
+        busy = true
+        error = nil
+        DispatchQueue.global(qos: .userInitiated).async {
+            let r = Worktrees.create(project: project.path, branch: b)
+            DispatchQueue.main.async {
+                busy = false
+                switch r {
+                case .success(let path): pick(path)
+                case .failure(let e): error = "\(e)".split(separator: "\n").filter { !$0.hasPrefix("hint:") }.prefix(3).joined(separator: "\n")
+                }
+            }
+        }
+    }
+}
+
+/// The composer card shared by the chat start screen and the chat view (same look and place).
+extension View {
+    func composerCard(focused: Bool) -> some View {
+        self
+            .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 10)
+            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(T.raised.opacity(ThemeStore.shared.isDark ? 0.5 : 1)))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(focused ? WorkspaceTintColor.ring(AppModel.shared).opacity(0.6) : T.border, lineWidth: 1))
+            .shadow(color: .black.opacity(ThemeStore.shared.isDark ? 0.25 : 0.07), radius: 10, y: 3)
+    }
+}
+
+/// Round send button (arrow up), accent when there is something to send.
+struct SendButton: View {
+    let enabled: Bool
+    var help = "Send (↩)"
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "arrow.up").font(.system(size: 11.5, weight: .bold)).frame(width: 26, height: 26)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(enabled ? Color.white : T.text3)
+        .background(Circle().fill(enabled ? T.accent : T.hover))
+        .overlay(Circle().stroke(enabled ? Color.clear : T.border))
+        .disabled(!enabled).pointerCursor().help(help)
+    }
+}
+
+/// Text a new chat's composer starts with, by doc id (set when the doc is opened, taken on appear).
+enum NewChatDraft {
+    static var pending: [String: String] = [:]
+}

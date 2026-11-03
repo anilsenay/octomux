@@ -15,7 +15,9 @@ pub struct Control {
     pub pending_events: Vec<Event>,
 }
 
-pub const LAUNCH_LABEL: &str = "dev.ade-dev.daemon";
+pub const LAUNCH_LABEL: &str = "dev.octomux.daemon";
+/// The launchd label used before the rename; `install-agent` replaces it.
+pub const LEGACY_LAUNCH_LABEL: &str = "dev.ade-dev.daemon";
 
 impl Control {
     pub fn connect(paths: &Paths) -> Result<Control> {
@@ -96,9 +98,13 @@ pub fn launch_agent_plist_path() -> std::path::PathBuf {
     crate::util::home_dir().join(format!("Library/LaunchAgents/{LAUNCH_LABEL}.plist"))
 }
 
+pub fn legacy_launch_agent_plist_path() -> std::path::PathBuf {
+    crate::util::home_dir().join(format!("Library/LaunchAgents/{LEGACY_LAUNCH_LABEL}.plist"))
+}
+
 pub fn start_daemon(paths: &Paths) -> Result<()> {
     // Prefer the launchd job (keeps the daemon out of the caller's process coalition).
-    if std::env::var_os("ADE_HOME").is_none() && launch_agent_plist_path().exists() {
+    if ade_proto::env_var_os("HOME").is_none() && launch_agent_plist_path().exists() {
         let uid = unsafe { libc::getuid() };
         let status = std::process::Command::new("launchctl")
             .args(["kickstart", &format!("gui/{uid}/{LAUNCH_LABEL}")])
@@ -112,7 +118,7 @@ pub fn start_daemon(paths: &Paths) -> Result<()> {
     spawn_detached(paths, &["daemon"])
 }
 
-/// Spawns `ade <args>` fully detached (new session, no stdio).
+/// Spawns `octomux <args>` fully detached (new session, no stdio).
 pub fn spawn_detached(paths: &Paths, args: &[&str]) -> Result<()> {
     use std::os::unix::process::CommandExt;
     let exe = std::env::current_exe()?;
@@ -120,7 +126,7 @@ pub fn spawn_detached(paths: &Paths, args: &[&str]) -> Result<()> {
     let log = std::fs::OpenOptions::new().create(true).append(true).open(paths.logs_dir().join("daemon.log"))?;
     let mut cmd = std::process::Command::new(exe);
     cmd.args(args)
-        .env("ADE_HOME", &paths.home)
+        .env(ade_proto::HOME_VAR, &paths.home)
         .stdin(std::process::Stdio::null())
         .stdout(log.try_clone()?)
         .stderr(log);

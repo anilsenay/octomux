@@ -3,16 +3,16 @@
 # in dark/light × wide/narrow → screenshots/v-*.png. Fixture world only (/tmp/adeU).
 set -uo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd); cd "$ROOT"
-export ADE_HOME=/tmp/adeU
-ADE=$ROOT/core/target/debug/ade
+export OCTOMUX_HOME=/tmp/adeU
+CLI=$ROOT/core/target/debug/octomux
 OUT=${OUT:-$ROOT/screenshots}
-q() { $ADE ctl state.get | python3 -c "import sys,json; d=json.load(sys.stdin); print($1)"; }
+q() { $CLI ctl state.get | python3 -c "import sys,json; d=json.load(sys.stdin); print($1)"; }
 dbg() { tools/dbg "$@" >/dev/null 2>&1; }
 shot() { tools/dbg screenshot "{\"path\":\"$OUT/$1\"}" >/dev/null; }
 P1=$(q '[p["id"] for p in d["projects"] if p["name"]=="new-ade"][0]')
 SID=$(q '[s["id"] for s in d["sessions"] if s.get("custom_title")=="Refactor holder snapshot"][0]')
 for mode in ${MODES:-dark light}; do
-  $ADE ctl settings.set "{\"scope\":\"global\",\"key\":\"appearance.mode\",\"value\":\"$mode\"}" >/dev/null
+  $CLI ctl settings.set "{\"scope\":\"global\",\"key\":\"appearance.mode\",\"value\":\"$mode\"}" >/dev/null
   for size in ${SIZES:-wide narrow}; do
     if [ $size = wide ]; then W=1320 H=820; else W=900 H=640; fi
     W=$W H=$H tools/ui-restart.sh

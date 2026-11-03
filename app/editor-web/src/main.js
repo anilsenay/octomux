@@ -1,5 +1,5 @@
 // ADE code viewer: file editor + multi-file diff, hosted in a WKWebView.
-// Swift drives it through `window.ade.*`; it reports back via webkit.messageHandlers.ade.
+// Swift drives it through `window.octomux.*`; it reports back via webkit.messageHandlers.octomux.
 import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection, highlightSpecialChars } from "@codemirror/view";
 import { EditorState, Compartment } from "@codemirror/state";
 import { syntaxHighlighting, HighlightStyle, foldGutter, codeFolding, foldKeymap, bracketMatching, indentOnInput, StreamLanguage } from "@codemirror/language";
@@ -32,7 +32,7 @@ import { properties } from "@codemirror/legacy-modes/mode/properties";
 import { diff as diffMode } from "@codemirror/legacy-modes/mode/diff";
 import { marked } from "marked";
 
-const post = (msg) => { try { window.webkit.messageHandlers.ade.postMessage(msg); } catch (_) {} };
+const post = (msg) => { try { window.webkit.messageHandlers.octomux.postMessage(msg); } catch (_) {} };
 const $ = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 const legacy = (m) => StreamLanguage.define(m);
 
@@ -256,7 +256,7 @@ function showFile(f) {
 
 // ---------- diff view ----------
 const diffState = {
-  mode: localStorage.getItem("ade.diffMode") || "unified",
+  mode: localStorage.getItem("octomux.diffMode") || localStorage.getItem("ade.diffMode") || "unified",
   collapsed: new Set(),         // keys the user collapsed
   opened: new Set(),            // keys the user opened (large files start collapsed)
   cards: new Map(),             // key -> { el, sig, mount, unmount, file }
@@ -378,7 +378,7 @@ function showDiff(p) {
       b.title = tip;
       b.onclick = () => {
         if (diffState.mode === m) return;
-        diffState.mode = m; localStorage.setItem("ade.diffMode", m);
+        diffState.mode = m; localStorage.setItem("octomux.diffMode", m);
         seg.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
         for (const c of diffState.cards.values()) { if (c.mounted) { c.unmountNow(); c.mount(); } }
       };
@@ -446,7 +446,7 @@ function setTheme(th) {
   document.documentElement.classList.toggle("dark", !!th.dark);
 }
 
-window.ade = {
+window.octomux = {
   setTheme,
   showFile,
   showDiff,

@@ -283,7 +283,7 @@ pub fn build_launch(paths: &Paths, session: &Session, profile: Option<&Profile>,
 /// as the CLI's positional prompt, so it is never typed before the agent is ready.
 pub fn build_launch_with_prompt(paths: &Paths, session: &Session, profile: Option<&Profile>, restoring: bool, aliases: &[(String, String)], prompt: Option<&str>) -> LaunchSpec {
     let cwd = session.cwd.clone();
-    let mut env = vec![("ADE_HOME".to_string(), paths.home.to_string_lossy().into_owned())];
+    let mut env = vec![(ade_proto::HOME_VAR.to_string(), paths.home.to_string_lossy().into_owned())];
     match session.kind {
         SessionKind::Terminal => LaunchSpec { argv: vec![], env, cwd, agent_session_id: None },
         // After a crash/reboot an action comes back as a plain shell: never re-run
