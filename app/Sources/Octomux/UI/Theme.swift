@@ -102,7 +102,8 @@ enum Themes {
 final class ThemeStore: ObservableObject {
     static let shared = ThemeStore()
     @Published private(set) var preset: ThemePreset = Themes.ink
-    @Published private(set) var mode = "system"
+    /// Dark until the user picks Light or System in Settings.
+    @Published private(set) var mode = "dark"
     /// The current workspace's scene (see Scenes.swift), and a scene shown while hovering a picker.
     @Published private(set) var scene: AmbientScene?
     @Published private(set) var previewing = false
@@ -162,14 +163,18 @@ final class ThemeStore: ObservableObject {
         appearanceObs = NSApp?.observe(\.effectiveAppearance, options: [.new]) { [weak self] _, _ in
             DispatchQueue.main.async { self?.writeTerminalTheme() }
         }
-        DispatchQueue.main.async { UserScenes.startWatching() }
+        DispatchQueue.main.async { [weak self] in
+            UserScenes.startWatching()
+            // Dark from the first frame, before the daemon's settings arrive (no light flash on a fresh install).
+            self?.applyAppearance()
+        }
     }
 
     func sync(from model: AppModel) {
         // Appearance is this Mac's preference: a remote host's settings do not change it.
         if model.host.isRemote && !lastWritten.isEmpty { return }
         let id = model.settingValue("appearance.theme", scope: "global")?.string ?? "ink"
-        let m = model.settingValue("appearance.mode", scope: "global")?.string ?? "system"
+        let m = model.settingValue("appearance.mode", scope: "global")?.string ?? "dark"
         let tc = model.settingValue("appearance.terminal_colors", scope: "global")?.bool ?? true
         let sc = Scenes.scene(model.sceneId(workspace: model.selectedWorkspaceId))
         let sceneChanged = sc?.id != scene?.id
