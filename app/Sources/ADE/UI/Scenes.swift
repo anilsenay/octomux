@@ -21,6 +21,8 @@ struct AmbientScene: Identifiable, Equatable {
     var legacy = false
     /// Colors for the scene's drawing (keys per kind, see SceneBuilder), so one animation has several looks.
     var art: [String: String] = [:]
+    /// The file a user scene was loaded from.
+    var file: URL? = nil
     static func == (a: Self, b: Self) -> Bool { a.id == b.id }
 }
 
@@ -1205,6 +1207,7 @@ struct SceneStrip: View {
     private func tiles(_ list: [SceneChoice], _ cur: SceneChoice) -> some View {
         ForEach(list, id: \.self) { c in
             SceneTile(choice: c, title: title(for: c), scene: scene(for: c), selected: c == cur, highlighted: c == highlighted, width: tileWidth)
+                .contextMenu { if case .scene(let id) = c, let s = Scenes.scene(id) { SceneMenu(scene: s) } }
                 .onHover { inside in
                     guard inside else { return }
                     highlighted = c

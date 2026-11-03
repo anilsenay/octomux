@@ -180,7 +180,7 @@ enum UserScenes {
         let top = spec.gradient?.first.map { Color(hex: $0) } ?? base?.top ?? Color(nsColor: colors.frame)
         let bottom = spec.gradient?.last.map { Color(hex: $0) } ?? base?.bottom ?? Color(nsColor: colors.surface)
         return AmbientScene(id: id, name: spec.name, kind: .custom, dark: dark, top: top, bottom: bottom, colors: colors,
-                            spec: spec, base: base?.kind)
+                            spec: spec, base: base?.kind, art: base?.art ?? [:], file: file)
     }
 
     /// Re-reads the folder and restyles if the shown scene changed.
@@ -308,6 +308,7 @@ enum UserScenes {
 /// Settings: where user scenes live, a template to start from, and files that failed to load.
 struct UserScenesRow: View {
     @ObservedObject private var store = ThemeStore.shared
+    @State private var message: String?
 
     var body: some View {
         let _ = store.sceneGeneration
@@ -317,12 +318,18 @@ struct UserScenesRow: View {
                 Text(UserScenes.loaded.isEmpty ? "none yet" : "\(UserScenes.loaded.count) loaded").font(.caption).foregroundStyle(T.text3)
                 Spacer()
                 Button("New from Template") { NSWorkspace.shared.open(UserScenes.writeTemplate()) }
+                Menu("Import") {
+                    Button("From File…") { message = SceneSharing.importFiles() }
+                    Button("From Link…") { SceneSharing.importLink { message = $0 } }
+                }
+                .fixedSize()
                 Button("Open Folder") {
                     try? FileManager.default.createDirectory(at: UserScenes.dir, withIntermediateDirectories: true)
                     NSWorkspace.shared.open(UserScenes.dir)
                 }
             }
-            Text("JSON files in \(UserScenes.dir.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")). They reload when saved; README.md there lists the fields.")
+            if let message { Text(message).font(.caption).foregroundStyle(T.text2) }
+            Text("JSON files in \(UserScenes.dir.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")). They reload when saved; README.md there lists the fields. Right-click any scene to export it or to copy it as a starting point.")
                 .font(.caption).foregroundStyle(T.text3)
             ForEach(UserScenes.errors, id: \.self) { e in
                 Label(e, systemImage: "exclamationmark.triangle.fill").font(.caption).foregroundStyle(T.amber)
@@ -615,5 +622,165 @@ extension UserScenes {
         }
 
         """
+    }
+}
+
+// MARK: Sharing
+
+/// Export a scene as a file, copy one to edit, import files or links.
+enum SceneSharing {
+    static let maxBytes = 1_000_000
+
+    /// A scene as file contents: a user scene's own file; for a built-in, a small file that starts from it
+    /// (`base`), ready to be changed.
+    static func exportData(_ s: AmbientScene) -> Data? {
+        if let f = s.file { return try? Data(contentsOf: f) }
+        let json: [String: Any] = ["$schema": "./scene.schema.json", "format": UserScenes.format, "name": s.name + " (copy)", "base": s.id]
+        return try? JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
+    }
+
+    static func slug(_ s: String) -> String {
+        let out = s.lowercased().map { $0.isLetter || $0.isNumber ? $0 : "-" }
+        let joined = String(out).split(separator: "-").joined(separator: "-")
+        return joined.isEmpty ? "scene" : String(joined.prefix(60))
+    }
+
+    /// Validates scene JSON and saves it into the scenes folder (never over an existing file).
+    /// Returns the installed scene's name.
+    @discardableResult
+    static func install(_ data: Data, suggestedName: String) throws -> (name: String, url: URL) {
+        guard data.count <= maxBytes else { throw UserScenes.SceneError(message: "the file is larger than 1 MB") }
+        let probe = try UserScenes.parse(data, file: UserScenes.dir.appendingPathComponent("import.adescene.json"))
+        guard let spec = probe.spec else { throw UserScenes.SceneError(message: "not a scene") }
+        if let id = spec.id, UserScenes.loaded.contains(where: { $0.id == "user." + id }) {
+            throw UserScenes.SceneError(message: "you already have a scene with the id “\(id)”")
+        }
+        try FileManager.default.createDirectory(at: UserScenes.dir, withIntermediateDirectories: true)
+        let base = slug(spec.id ?? (suggestedName.isEmpty ? spec.name : suggestedName))
+        var url = UserScenes.dir.appendingPathComponent("\(base).adescene.json")
+        var n = 2
+        while FileManager.default.fileExists(atPath: url.path) { url = UserScenes.dir.appendingPathComponent("\(base)-\(n).adescene.json"); n += 1 }
+        try data.write(to: url, options: .atomic)
+        UserScenes.reload()
+        return (spec.name, url)
+    }
+
+    static func export(_ s: AmbientScene) {
+        guard let data = exportData(s) else { return }
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = (s.file.map(UserScenes.baseName) ?? slug(s.name)) + ".adescene.json"
+        panel.canCreateDirectories = true
+        panel.message = "Export “\(s.name)” as a scene file others can import."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        try? data.write(to: url, options: .atomic)
+    }
+
+    /// A user scene to edit: a copy of `s` in the scenes folder, opened in the default JSON editor.
+    static func duplicate(_ s: AmbientScene) {
+        guard var data = exportData(s) else { return }
+        if s.file != nil, var obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            obj["name"] = s.name + " (copy)"
+            obj.removeValue(forKey: "id")
+            data = (try? JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])) ?? data
+        }
+        if let r = try? install(data, suggestedName: slug(s.name) + "-copy") { NSWorkspace.shared.open(r.url) }
+    }
+
+    static func delete(_ s: AmbientScene) {
+        guard let f = s.file else { return }
+        let a = NSAlert()
+        a.messageText = "Move “\(s.name)” to the Trash?"
+        a.informativeText = f.lastPathComponent
+        a.addButton(withTitle: "Move to Trash"); a.addButton(withTitle: "Cancel")
+        guard a.runModal() == .alertFirstButtonReturn else { return }
+        try? FileManager.default.trashItem(at: f, resultingItemURL: nil)
+        UserScenes.reload()
+    }
+
+    /// Returns a status line for Settings.
+    static func importFiles() -> String? {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.allowsMultipleSelection = true
+        panel.message = "Choose scene files (.adescene.json) to add."
+        guard panel.runModal() == .OK else { return nil }
+        var done: [String] = [], failed: [String] = []
+        for url in panel.urls {
+            do {
+                let data = try Data(contentsOf: url)
+                done.append(try install(data, suggestedName: UserScenes.baseName(url)).name)
+            } catch {
+                failed.append("\(url.lastPathComponent): \(describe(error))")
+            }
+        }
+        return summary(done, failed)
+    }
+
+    static func importLink(_ report: @escaping (String) -> Void) {
+        let a = NSAlert()
+        a.messageText = "Import a scene from a link"
+        a.informativeText = "A link to a .adescene.json file (GitHub file pages work too)."
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 360, height: 24))
+        field.placeholderString = "https://…/my-scene.adescene.json"
+        a.accessoryView = field
+        a.addButton(withTitle: "Import"); a.addButton(withTitle: "Cancel")
+        a.window.initialFirstResponder = field
+        guard a.runModal() == .alertFirstButtonReturn,
+              let url = downloadURL(field.stringValue.trimmingCharacters(in: .whitespaces)) else { return }
+        report("Downloading…")
+        var req = URLRequest(url: url, timeoutInterval: 20)
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
+        URLSession.shared.dataTask(with: req) { data, resp, err in
+            DispatchQueue.main.async {
+                if let err { report("Could not download: \(err.localizedDescription)"); return }
+                if let h = resp as? HTTPURLResponse, !(200..<300).contains(h.statusCode) { report("Could not download: HTTP \(h.statusCode)"); return }
+                guard let data else { report("Could not download"); return }
+                do {
+                    let r = try install(data, suggestedName: UserScenes.baseName(url))
+                    report("Added “\(r.name)” to your scenes.")
+                } catch { report("Not imported: \(describe(error))") }
+            }
+        }.resume()
+    }
+
+    /// https only; GitHub `blob` pages and gist pages point at their raw file.
+    static func downloadURL(_ s: String) -> URL? {
+        guard var c = URLComponents(string: s), c.scheme == "https", c.host != nil else { return nil }
+        if c.host == "github.com" {
+            let parts = c.path.split(separator: "/", omittingEmptySubsequences: true)
+            if parts.count > 4, parts[2] == "blob" {
+                c.host = "raw.githubusercontent.com"
+                c.path = "/" + ([parts[0], parts[1]] + parts[3...]).joined(separator: "/")
+            }
+        } else if c.host == "gist.github.com", !c.path.hasSuffix("/raw") {
+            c.path += "/raw"
+        }
+        return c.url
+    }
+
+    private static func describe(_ e: Error) -> String {
+        if let d = e as? DecodingError { return UserScenes.describe(d) }
+        return e.localizedDescription
+    }
+
+    private static func summary(_ done: [String], _ failed: [String]) -> String {
+        var parts: [String] = []
+        if !done.isEmpty { parts.append("Added " + done.map { "“\($0)”" }.joined(separator: ", ") + ".") }
+        if !failed.isEmpty { parts.append("Not imported: " + failed.joined(separator: "; ")) }
+        return parts.joined(separator: " ")
+    }
+}
+
+/// Right-click menu on a scene tile.
+struct SceneMenu: View {
+    let scene: AmbientScene
+    var body: some View {
+        Button("Export…") { SceneSharing.export(scene) }
+        Button(scene.file == nil ? "Copy as My Scene to Edit" : "Duplicate to Edit") { SceneSharing.duplicate(scene) }
+        if let f = scene.file {
+            Divider()
+            Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([f]) }
+            Button("Move to Trash…") { SceneSharing.delete(scene) }
+        }
     }
 }

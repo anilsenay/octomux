@@ -206,3 +206,31 @@ final class SceneFormatTests: XCTestCase {
         XCTAssertNoThrow(try JSONSerialization.jsonObject(with: Data(UserScenes.template(name: "L", id: "l").utf8)))
     }
 }
+
+final class SceneSharingTests: XCTestCase {
+    func testLinksPointAtRawFiles() {
+        XCTAssertEqual(SceneSharing.downloadURL("https://github.com/me/scenes/blob/main/lake.adescene.json")?.absoluteString,
+                       "https://raw.githubusercontent.com/me/scenes/main/lake.adescene.json")
+        XCTAssertEqual(SceneSharing.downloadURL("https://gist.github.com/me/abc123")?.absoluteString, "https://gist.github.com/me/abc123/raw")
+        XCTAssertEqual(SceneSharing.downloadURL("https://example.com/a.json")?.absoluteString, "https://example.com/a.json")
+        XCTAssertNil(SceneSharing.downloadURL("http://example.com/a.json"))
+        XCTAssertNil(SceneSharing.downloadURL("file:///etc/passwd"))
+        XCTAssertNil(SceneSharing.downloadURL("not a url"))
+    }
+
+    func testSlug() {
+        XCTAssertEqual(SceneSharing.slug("Golden Meadow (copy)"), "golden-meadow-copy")
+        XCTAssertEqual(SceneSharing.slug("!!!"), "scene")
+    }
+
+    func testBuiltInExportStartsFromItAndKeepsItsLook() throws {
+        let blueprint = try XCTUnwrap(Scenes.scene("blueprint"))
+        let data = try XCTUnwrap(SceneSharing.exportData(blueprint))
+        let copy = try UserScenes.parse(data, file: URL(fileURLWithPath: "/tmp/scenes/bp.adescene.json"))
+        XCTAssertEqual(copy.name, "Blueprint (copy)")
+        XCTAssertEqual(copy.base, .circuit)
+        XCTAssertEqual(copy.dark, blueprint.dark)
+        XCTAssertEqual(copy.art, blueprint.art)
+        XCTAssertEqual(copy.colors.accent, blueprint.colors.accent)
+    }
+}
