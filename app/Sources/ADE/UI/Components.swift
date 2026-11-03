@@ -20,43 +20,90 @@ enum Palette {
 
 /// Icon for an agent profile / session kind.
 /// A tab's icon: the lead session's icon, drawn on stacked cards when the tab holds several panes.
+/// A tab's (or stacked sidebar row's) icon. One pane: its icon. Several: a stack of tiles in each pane's
+/// own color (Claude orange, Codex dark, terminal gray…), the focused pane in front and the others peeking
+/// out behind it, so "Claude + terminal" no longer looks like two terminals. When the front pane changes,
+/// its tile hops forward.
 struct PaneStackIcon: View {
-    let icon: String
-    let count: Int
+    struct Item: Equatable { let id: String; let icon: String }
+    /// Front first.
+    let items: [Item]
     var size: CGFloat = 12
+    @State private var hop: String?
 
     var body: some View {
-        if count <= 1 {
-            AgentIcon(icon: icon, size: size)
+        if items.count <= 1 {
+            AgentIcon(icon: items.first?.icon ?? "terminal", size: size)
         } else {
-            let w = size + 6, h = size + 4, r: CGFloat = 3.5, d: CGFloat = 3
-            let back = T.text3.opacity(0.75), front = T.text3.opacity(0.95)
-            ZStack(alignment: .bottomLeading) {
-                Canvas { ctx, sz in
-                    let f = CGRect(x: 0.5, y: d + 0.5, width: w - 1, height: h - 1)          // front card
-                    let bk = f.offsetBy(dx: d, dy: -d)                                         // back card, up-right
-                    var hole = Path(CGRect(origin: .zero, size: sz))
-                    hole.addPath(Path(roundedRect: f.insetBy(dx: -1.5, dy: -1.5), cornerRadius: r + 1.5))
-                    var c = ctx
-                    c.clip(to: hole, style: FillStyle(eoFill: true))
-                    c.stroke(Path(roundedRect: bk, cornerRadius: r), with: .color(back), lineWidth: 1)
-                    ctx.stroke(Path(roundedRect: f, cornerRadius: r), with: .color(front), lineWidth: 1)
+            let tile = size + 5, step: CGFloat = 5
+            let shown = Array(items.prefix(3))
+            ZStack(alignment: .leading) {
+                ForEach(Array(shown.enumerated()).reversed(), id: \.element.id) { k, item in
+                    PaneTile(icon: item.icon, size: tile)
+                        .scaleEffect(k == 0 ? 1 : 1 - 0.12 * CGFloat(k))
+                        .offset(x: CGFloat(k) * step, y: hop == item.id ? -4 : 0)
+                        .opacity(k == 0 ? 1 : 0.9)
+                        .zIndex(Double(10 - k))
                 }
-                Group {
-                    // The terminal glyph already has a frame; inside a card show just its prompt.
-                    if icon == "terminal" {
-                        Text(">_").font(.system(size: size * 0.62, weight: .bold, design: .monospaced)).foregroundStyle(T.text2)
-                    } else {
-                        AgentIcon(icon: icon, size: size * 0.8)
-                    }
-                }
-                .frame(width: w, height: h)
             }
-            .frame(width: w + d, height: h + d)
-            .offset(x: 1, y: -1)
-            .help("\(count) panes in this tab")
+            .frame(width: tile + step * CGFloat(shown.count - 1), height: tile, alignment: .leading)
+            .animation(.spring(response: 0.32, dampingFraction: 0.68), value: shown.map(\.id))
+            .animation(.spring(response: 0.22, dampingFraction: 0.6), value: hop)
+            .onChange(of: items.first?.id) { _, front in
+                hop = front
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) { if hop == front { hop = nil } }
+            }
+            .help("\(items.count) panes in this tab")
         }
     }
+}
+
+/// One pane's tile: a rounded square in the agent's color with its mark in white.
+struct PaneTile: View {
+    let icon: String
+    let size: CGFloat
+    @Environment(\.colorScheme) private var scheme
+
+    private var fill: AnyShapeStyle {
+        switch icon {
+        case "claude": return AnyShapeStyle(Color(hex: "#D97757"))
+        case "codex": return AnyShapeStyle(Color(hex: scheme == .dark ? "#3A3A40" : "#1F1F23"))
+        case "gemini": return AnyShapeStyle(LinearGradient(colors: [Color(hex: "#4796E3"), Color(hex: "#9177C7"), Color(hex: "#CA6673")],
+                                                           startPoint: .topLeading, endPoint: .bottomTrailing))
+        case "terminal": return AnyShapeStyle(Color(hex: scheme == .dark ? "#5A5A63" : "#8A8A93"))
+        case "action": return AnyShapeStyle(T.green)
+        default: return AnyShapeStyle(T.accent)
+        }
+    }
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
+            .fill(fill)
+            .overlay {
+                switch icon {
+                case "claude", "codex", "gemini":
+                    if let img = BrandIcons.image(icon, size: size * 0.62) {
+                        Image(nsImage: img).resizable().renderingMode(.template).interpolation(.high).aspectRatio(contentMode: .fit)
+                            .foregroundStyle(.white).frame(width: size * 0.62, height: size * 0.62)
+                    }
+                case "terminal":
+                    Text(">_").font(.system(size: size * 0.42, weight: .heavy, design: .monospaced)).foregroundStyle(.white)
+                case "action":
+                    Image(systemName: "play.fill").font(.system(size: size * 0.42)).foregroundStyle(.white)
+                default:
+                    Image(systemName: "chevron.left.forwardslash.chevron.right").font(.system(size: size * 0.4, weight: .semibold)).foregroundStyle(.white)
+                }
+            }
+            .overlay(RoundedRectangle(cornerRadius: size * 0.28, style: .continuous).stroke(Color.black.opacity(scheme == .dark ? 0.35 : 0.12), lineWidth: 0.75))
+            .frame(width: size, height: size)
+            .shadow(color: .black.opacity(0.18), radius: 0.8, x: 0.5, y: 0.5)
+    }
+}
+
+/// Stack items for a tab: the focused (or active) pane first, then the rest in layout order.
+func paneStackItems(_ ids: [String], front: String?, model: AppModel) -> [PaneStackIcon.Item] {
+    let ordered = (front.map { [$0] } ?? []) + ids.filter { $0 != front }
+    return ordered.compactMap { id in model.session(id).map { PaneStackIcon.Item(id: id, icon: iconName(for: $0, model: model)) } }
 }
 
 struct AgentIcon: View {

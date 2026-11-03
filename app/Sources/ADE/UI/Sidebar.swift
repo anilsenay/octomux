@@ -567,7 +567,8 @@ struct SessionRow: View {
     var body: some View {
         let m = T.m
         HStack(spacing: 8) {
-            PaneStackIcon(icon: iconName(for: session, model: model), count: stack.count, size: 12).frame(width: 14)
+            PaneStackIcon(items: paneStackItems(stack.map(\.id), front: session.id, model: model), size: 12)
+                .frame(minWidth: 14, alignment: .leading)
             if model.renamingSessionId == session.id {
                 TextField("Title", text: $editTitle)
                     .textFieldStyle(.plain)

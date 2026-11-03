@@ -466,12 +466,21 @@ struct TabChip: View {
         let ids = tab.layout.sessions
         let lead = model.session(tab.activeSessionId ?? ids.first)
         HStack(spacing: 7) {
-            if let lead { PaneStackIcon(icon: iconName(for: lead, model: model), count: ids.count, size: 11).opacity(selected ? 1 : 0.5).saturation(selected ? 1 : 0.6) }
-            if width != nil {
-                Text(lead?.displayTitle ?? "Tab").lineLimit(1).truncationMode(.tail)
-            } else {
-                Text(Self.clip(lead?.displayTitle ?? "Tab", maxChars)).lineLimit(1).fixedSize()
+            if lead != nil {
+                PaneStackIcon(items: paneStackItems(ids, front: lead?.id, model: model), size: 11)
+                    .opacity(selected ? 1 : 0.55).saturation(selected ? 1 : 0.5)
             }
+            // The title follows the front pane and slides in when it changes (split tabs).
+            Group {
+                if width != nil {
+                    Text(lead?.displayTitle ?? "Tab").lineLimit(1).truncationMode(.tail)
+                } else {
+                    Text(Self.clip(lead?.displayTitle ?? "Tab", maxChars)).lineLimit(1).fixedSize()
+                }
+            }
+            .id(lead?.id)
+            .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity), removal: .move(edge: .top).combined(with: .opacity)))
+            .animation(.easeOut(duration: 0.2), value: lead?.id)
             if width != nil { Spacer(minLength: 0) }
             if let s = ids.compactMap({ model.session($0) }).first(where: { $0.activity == .needsInput || $0.activity == .working || $0.unread }), !hover {
                 if s.activity == .needsInput { Circle().fill(T.amber).frame(width: 6, height: 6) }
