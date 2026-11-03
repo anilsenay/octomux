@@ -9,12 +9,9 @@ struct SidebarView: View {
     @State private var collapsed: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "octomux.collapsed") ?? [])
 
     var body: some View {
+        GeometryReader { geo in
         VStack(spacing: 0) {
             header
-            SidebarModeSwitch().padding(.horizontal, 10).padding(.top, 10).padding(.bottom, 4)
-            if model.sidebarAgents {
-                AgentsList()
-            } else {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 1) {
                     ForEach(Array(model.projects.enumerated()), id: \.element.id) { i, p in
@@ -47,10 +44,13 @@ struct SidebarView: View {
                     }
                 }
                 .padding(.horizontal, 10)
+                .padding(.top, 10)
                 .padding(.bottom, 8)
             }
-            }
+            .frame(maxHeight: .infinity)
+            AgentsPanel(maxHeight: max(AgentsPanel.minHeight, geo.size.height - 260))
             footer
+        }
         }
     }
 

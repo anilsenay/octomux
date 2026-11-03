@@ -1,47 +1,136 @@
+import AppKit
 import SwiftUI
 
-/// "Projects | Agents" at the top of the sidebar: always visible, so the agents view is easy to find
-/// and to leave (⌥⌘A toggles it too).
-struct SidebarModeSwitch: View {
+/// The Agents panel pinned to the bottom of the sidebar (like Herdr). Closed it is a header bar that still lists
+/// the agents that need input or are working; open it grows upward to a resizable height (drag its top edge).
+/// ⌥⌘A or clicking the header opens and closes it.
+struct AgentsPanel: View {
     @EnvironmentObject var model: AppModel
+    let maxHeight: CGFloat
+    static let minHeight: CGFloat = 140
+    /// Agents shown in the closed panel before "+N more".
+    static let closedRows = 3
+    @AppStorage("octomux.agentsPanelHeight") private var height: Double = 300
+    @AppStorage("octomux.agentsGrouping") private var byProject = false
+    @State private var dragStart: Double?
+    @State private var hover = false
 
     var body: some View {
-        let busy = model.state.sessions.filter { $0.kind == .agent && !$0.isDormant && ($0.activity == .working || $0.activity == .needsInput) }.count
-        let waiting = model.state.sessions.contains { $0.kind == .agent && $0.activity == .needsInput }
-        HStack(spacing: 2) {
-            segment("Projects", selected: !model.sidebarAgents, badge: nil) { model.sidebarAgents = false }
-            segment("Agents", selected: model.sidebarAgents, badge: busy > 0 ? (busy, waiting ? T.amber : T.accent) : nil) { model.sidebarAgents = true }
+        let open = model.sidebarAgents
+        let agents = model.state.sessions.filter { $0.kind == .agent && model.project($0.projectId) != nil }
+        let waiting = agents.filter { !$0.isDormant && $0.activity == .needsInput }.count
+        let working = agents.filter { !$0.isDormant && $0.activity == .working }.count
+        let active = agents.filter { !$0.isDormant && ($0.activity == .needsInput || $0.activity == .working) }
+            .sorted { ($0.activity == .needsInput ? 0 : 1, -$0.lastActivityAt) < ($1.activity == .needsInput ? 0 : 1, -$1.lastActivityAt) }
+        VStack(spacing: 0) {
+            Rectangle().fill(T.border).frame(height: 1)
+            headerBar(open: open, total: agents.count, waiting: waiting, working: working)
+                .overlay(alignment: .top) { if open { resizeHandle.offset(y: -3) } }
+            if open {
+                AgentsList(embedded: true)
+                    .frame(height: CGFloat(min(max(height, Self.minHeight), maxHeight)))
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            } else if !active.isEmpty {
+                VStack(alignment: .leading, spacing: 1) {
+                    ForEach(active.prefix(Self.closedRows)) { s in AgentRow(session: s, showProject: true) }
+                    if active.count > Self.closedRows {
+                        Button { toggle() } label: {
+                            Text("+\(active.count - Self.closedRows) more").font(T.caption).foregroundStyle(T.text3)
+                                .padding(.leading, 8).frame(height: 22)
+                        }
+                        .buttonStyle(.plain).pointerCursor()
+                    }
+                }
+                .padding(.horizontal, 10).padding(.bottom, 6)
+                .transition(.opacity)
+            }
         }
-        .padding(2)
-        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(T.hover))
-        .help("Projects, or every agent across workspaces (⌥⌘A)")
+        .clipped()
     }
 
-    private func segment(_ title: String, selected: Bool, badge: (Int, Color)?, _ action: @escaping () -> Void) -> some View {
-        Button { withAnimation(.easeOut(duration: 0.15)) { action() } } label: {
-            HStack(spacing: 5) {
-                Text(title).font(.system(size: 12, weight: selected ? .semibold : .medium))
-                if let (n, c) = badge {
-                    Text("\(n)").font(.system(size: 10, weight: .bold)).monospacedDigit()
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 4.5).frame(minWidth: 15, minHeight: 15)
-                        .background(Capsule().fill(c))
-                }
-            }
-            .foregroundStyle(selected ? T.text : T.text2)
-            .frame(maxWidth: .infinity).frame(height: 24)
-            .background(RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(selected ? (ThemeStore.shared.isDark ? Color.white.opacity(0.12) : T.raised) : .clear)
-                .shadow(color: .black.opacity(selected && !ThemeStore.shared.isDark ? 0.12 : 0), radius: 1, y: 0.5))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain).pointerCursor()
+    private func toggle() {
+        withAnimation(.easeOut(duration: 0.18)) { model.sidebarAgents.toggle() }
     }
+
+    private func headerBar(open: Bool, total: Int, waiting: Int, working: Int) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "chevron.up").font(.system(size: 9, weight: .semibold)).foregroundStyle(T.text3)
+                .rotationEffect(.degrees(open ? 180 : 0)).frame(width: 12)
+            SectionLabel("Agents")
+            if waiting > 0 { badge(waiting, T.amber, "need input") }
+            if working > 0 { badge(working, T.accent, "working") }
+            Spacer(minLength: 4)
+            if open {
+                Menu {
+                    Picker("Sort agents", selection: $byProject) {
+                        Label("Priority", systemImage: "clock").tag(false)
+                        Label("Grouped by project", systemImage: "square.stack.3d.up").tag(true)
+                    }
+                    .pickerStyle(.inline)
+                } label: {
+                    Image(systemName: byProject ? "square.stack.3d.up" : "line.3.horizontal.decrease")
+                        .font(.system(size: 11, weight: .medium)).foregroundStyle(T.text3).menuHitBox(22, 20)
+                }
+                .plainMenu().fixedSize().hoverHighlight(radius: 5).help("Sort agents")
+            } else if total > 0 {
+                Text("\(total)").font(.system(size: 11, weight: .medium)).monospacedDigit().foregroundStyle(T.text3)
+            }
+        }
+        .padding(.leading, 12).padding(.trailing, 10).frame(height: 30)
+        .background(hover ? T.hover.opacity(0.6) : .clear)
+        .contentShape(Rectangle())
+        .onHover { hover = $0 }
+        .onTapGesture(perform: toggle)
+        .help(open ? "Hide agents (⌥⌘A)" : "Show every agent across workspaces (⌥⌘A)")
+    }
+
+    private func badge(_ n: Int, _ c: Color, _ what: String) -> some View {
+        HStack(spacing: 3) {
+            Circle().fill(c).frame(width: 6, height: 6)
+            Text("\(n)").font(.system(size: 10.5, weight: .semibold)).monospacedDigit().foregroundStyle(c)
+        }
+        .help("\(n) \(what)")
+    }
+
+    /// Drag the panel's top edge: up grows it, down shrinks it.
+    private var resizeHandle: some View {
+        VerticalResizeGrip { dy in
+            if dragStart == nil { dragStart = min(max(height, Self.minHeight), maxHeight) }
+            height = Double(min(maxHeight, max(Self.minHeight, CGFloat(dragStart ?? height) + dy)))
+        } onEnd: { dragStart = nil }
+        .frame(height: 7)
+    }
+}
+
+/// An up/down resize handle tracked in AppKit (like the split divider): reports the upward distance dragged.
+struct VerticalResizeGrip: NSViewRepresentable {
+    let onDrag: (CGFloat) -> Void
+    let onEnd: () -> Void
+
+    final class V: NSView {
+        var onDrag: ((CGFloat) -> Void)?
+        var onEnd: (() -> Void)?
+        override func resetCursorRects() { addCursorRect(bounds, cursor: .resizeUpDown) }
+        override func mouseDown(with e: NSEvent) {
+            guard let w = window else { return }
+            let y0 = e.locationInWindow.y
+            while let ev = w.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
+                onDrag?(ev.locationInWindow.y - y0)
+                if ev.type == .leftMouseUp { break }
+            }
+            onEnd?()
+        }
+    }
+
+    func makeNSView(context: Context) -> V { let v = V(); v.onDrag = onDrag; v.onEnd = onEnd; return v }
+    func updateNSView(_ v: V, context: Context) { v.onDrag = onDrag; v.onEnd = onEnd }
 }
 
 /// Every agent session in every workspace, most urgent first.
 struct AgentsList: View {
     @EnvironmentObject var model: AppModel
+    /// Inside the bottom panel: the panel's header bar carries the title and sort menu.
+    var embedded = false
     @AppStorage("octomux.agentsGrouping") private var byProject = false
     /// Collapsed group headers (state raw values or project ids), comma-separated.
     @AppStorage("octomux.agentsCollapsed") private var collapsedRaw = ""
@@ -88,7 +177,7 @@ struct AgentsList: View {
     var body: some View {
         let agents = model.state.sessions.filter { $0.kind == .agent && model.project($0.projectId) != nil }
         VStack(spacing: 0) {
-            HStack {
+            if !embedded { HStack {
                 SectionLabel(agents.isEmpty ? "Agents" : "\(agents.count) agents")
                 Spacer()
                 Menu {
@@ -104,6 +193,7 @@ struct AgentsList: View {
                 .plainMenu().fixedSize().hoverHighlight(radius: 5).help("Sort agents")
             }
             .padding(.leading, 18).padding(.trailing, 12).padding(.top, 8).padding(.bottom, 2)
+            }
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 1) {
                     if byProject {
