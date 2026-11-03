@@ -216,6 +216,59 @@ fn write_screen(out: &mut Vec<u8>, screen: &vt100::Screen, title: &str, main: Op
     }
 }
 
+/// One line to the holders' shared log in a single write (several holders write to the same file).
+fn log_line(mut line: String) {
+    line.push('\n');
+    let _ = std::io::stderr().write_all(line.as_bytes());
+}
+
+/// Whether resizing our screen to `new_cols` keeps every line above the cursor's (prompt's) line as
+/// the client terminal shows it. Our screen model doesn't reflow: narrowing cuts what doesn't fit,
+/// and a soft-wrapped line stays broken at the old width, while the client reflows both. Repainting
+/// the client from ours would then cut or re-break those lines. The prompt's own line is redrawn by
+/// the shell at the new width.
+fn resize_keeps_screen(screen: &vt100::Screen, new_cols: u16) -> bool {
+    let (_, cols) = screen.size();
+    (0..prompt_start(screen)).all(|r| !screen.row_wrapped(r) && (new_cols..cols).all(|c| !screen.cell(r, c).is_some_and(|x| x.has_contents())))
+}
+
+/// First row of the cursor's (prompt's) logical line.
+fn prompt_start(screen: &vt100::Screen) -> u16 {
+    let (mut start, _) = screen.cursor_position();
+    while start > 0 && screen.row_wrapped(start - 1) {
+        start -= 1;
+    }
+    start
+}
+
+/// Nothing on screen above the prompt's line.
+fn above_prompt_blank(screen: &vt100::Screen) -> bool {
+    let (_, cols) = screen.size();
+    (0..prompt_start(screen)).all(|r| (0..cols).all(|c| !screen.cell(r, c).is_some_and(|x| x.has_contents())))
+}
+
+/// Executable name of a process (no path; a login shell's leading `-` dropped).
+fn process_name(pid: libc::pid_t) -> Option<String> {
+    #[cfg(target_os = "macos")]
+    let name = {
+        let mut buf = [0u8; 256];
+        let n = unsafe { libc::proc_name(pid, buf.as_mut_ptr().cast(), buf.len() as u32) };
+        if n <= 0 {
+            return None;
+        }
+        String::from_utf8_lossy(&buf[..n as usize]).into_owned()
+    };
+    #[cfg(not(target_os = "macos"))]
+    let name = std::fs::read_to_string(format!("/proc/{pid}/comm")).ok()?.trim().to_string();
+    let name = name.trim_start_matches('-').to_string();
+    (!name.is_empty()).then_some(name)
+}
+
+/// Interactive shells whose prompt we repaint after a resize.
+fn is_shell(name: &str) -> bool {
+    matches!(name, "zsh" | "bash" | "fish" | "sh" | "dash" | "ksh" | "mksh" | "tcsh" | "csh" | "nu" | "elvish" | "xonsh" | "pwsh")
+}
+
 /// Rewrites every visible row in place (cursor to the row, erase it, draw it), then the cursor state.
 pub fn repaint_bytes(screen: &vt100::Screen) -> Vec<u8> {
     let mut out = Vec::new();
@@ -245,8 +298,11 @@ struct Inner {
     last_activity_event: Instant,
     /// Main screen as it was when the alternate screen was entered.
     main_snapshot: Option<Vec<u8>>,
-    /// Bumped on every resize; a pending repaint only runs if no newer resize came.
-    resync_gen: u64,
+    /// Set when a resize cut or re-wrapped lines on our screen (see `resize_keeps_screen`): our
+    /// copy of those lines no longer matches the client's reflowed picture, and it stays wrong after
+    /// later resizes too (vt100 also drops wrap flags on resize). Cleared once everything above the
+    /// prompt is blank again (`clear`, a fresh shell).
+    tainted: bool,
 }
 
 const ALT_ENTER: &[&[u8]] = &[b"\x1b[?1049h", b"\x1b[?1047h", b"\x1b[?47h"];
@@ -285,6 +341,8 @@ struct Shared {
     child_pid: Option<u32>,
     started_at: u64,
     boot_time: u64,
+    /// Wakes the repaint thread (started on the first resize); see `schedule_resync`.
+    resync: Mutex<Option<std::sync::mpsc::Sender<()>>>,
 }
 
 impl Shared {
@@ -344,6 +402,9 @@ impl Shared {
         }
         inner.cols = cols;
         inner.rows = rows;
+        if !resize_keeps_screen(inner.parser.screen(), cols) {
+            inner.tainted = true;
+        }
         inner.parser.screen_mut().set_size(rows, cols);
         drop(inner);
         let _ = self.master.lock().unwrap().resize(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 });
@@ -351,27 +412,68 @@ impl Shared {
         true
     }
 
-    /// After a resize settles, repaint the attached terminals' visible main screen from ours. The
-    /// client terminal reflows its old lines to the new width while the shell redraws its prompt at
-    /// the start of what is now a wrapped line, so the prompt showed twice there (our screen, which
-    /// doesn't reflow, had it once). Rows are rewritten in place (no clear: nothing goes to the
-    /// client's scrollback). Programs on the alternate screen redraw themselves.
+    /// After a resize settles, repaint the attached terminals' visible screen from ours, when a shell
+    /// waits at its prompt. The client terminal reflows its old lines to the new width while the shell
+    /// redraws its prompt at the start of what is now a wrapped line, so the prompt showed twice there
+    /// (our screen, which doesn't reflow, had it once). Rows are rewritten in place (no clear, nothing
+    /// goes to the client's scrollback). Not while a program runs (vim, an agent, a build): those
+    /// redraw themselves, and a repaint would drop what our screen model doesn't keep (links, the
+    /// client's soft wraps) for nothing.
+    ///
+    /// One thread per session, started on the first resize: resizes reset a 150 ms quiet timer.
     fn schedule_resync(self: &Arc<Self>) {
-        let token = {
-            let mut inner = self.inner.lock().unwrap();
-            inner.resync_gen += 1;
-            inner.resync_gen
-        };
-        let shared = Arc::clone(self);
-        std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(150));
-            let mut inner = shared.inner.lock().unwrap();
-            if inner.resync_gen != token || inner.parser.screen().alternate_screen() {
+        let mut slot = self.resync.lock().unwrap();
+        if let Some(tx) = slot.as_ref() {
+            if tx.send(()).is_ok() {
                 return;
             }
-            let bytes = repaint_bytes(inner.parser.screen());
-            Self::broadcast_locked(&mut inner, |r| r == Role::Attach, &Frame::new(Kind::Output, bytes));
+        }
+        let (tx, rx) = std::sync::mpsc::channel::<()>();
+        let _ = tx.send(());
+        *slot = Some(tx);
+        let weak = Arc::downgrade(self);
+        std::thread::spawn(move || {
+            use std::sync::mpsc::RecvTimeoutError;
+            while rx.recv().is_ok() {
+                // Debounce: wait until no resize came for 150 ms.
+                loop {
+                    match rx.recv_timeout(Duration::from_millis(150)) {
+                        Ok(()) => continue,
+                        Err(RecvTimeoutError::Timeout) => break,
+                        Err(RecvTimeoutError::Disconnected) => return,
+                    }
+                }
+                let Some(shared) = weak.upgrade() else { return };
+                shared.repaint_if_at_prompt();
+            }
         });
+    }
+
+    fn repaint_if_at_prompt(&self) {
+        let mut inner = self.inner.lock().unwrap();
+        if inner.tainted && above_prompt_blank(inner.parser.screen()) {
+            inner.tainted = false;
+        }
+        let ok = !inner.tainted;
+        let why = if inner.exited.is_some() {
+            Some("exited".to_string())
+        } else if inner.parser.screen().alternate_screen() {
+            Some("alternate screen".to_string())
+        } else if !ok {
+            Some("lines above the prompt were cut or re-wrapped".to_string())
+        } else {
+            let name = self.master.lock().unwrap().process_group_leader().and_then(process_name);
+            (!name.as_deref().is_some_and(is_shell)).then(|| format!("{} in front", name.as_deref().unwrap_or("?")))
+        };
+        if let Some(why) = why {
+            log_line(format!("[holder {}] resize settled: no repaint ({why})", self.id));
+            return;
+        }
+        let bytes = repaint_bytes(inner.parser.screen());
+        let n = bytes.len();
+        Self::broadcast_locked(&mut inner, |r| r == Role::Attach, &Frame::new(Kind::Output, bytes));
+        drop(inner);
+        log_line(format!("[holder {}] resize settled: repainted {n} bytes", self.id));
     }
 
     fn write_input(&self, data: &[u8]) {
@@ -474,13 +576,14 @@ pub fn run(paths: Paths, args: HolderArgs) -> Result<()> {
             rows,
             last_activity_event: Instant::now() - Duration::from_secs(10),
             main_snapshot: None,
-            resync_gen: 0,
+            tainted: false,
         }),
         pty_writer: Mutex::new(writer),
         master: Mutex::new(pair.master),
         child_pid,
         started_at: util::now_secs(),
         boot_time: util::boot_time(),
+        resync: Mutex::new(None),
     });
 
     let listener = UnixListener::bind(&sock_path).with_context(|| format!("bind {}", sock_path.display()))?;
@@ -723,6 +826,46 @@ mod tests {
         assert!(b.screen().scrollback() >= 41, "history replayed: {}", b.screen().scrollback());
         let top = b.screen().contents();
         assert!(top.starts_with("line 0\n"), "{top}");
+    }
+
+    #[test]
+    fn resize_safety() {
+        let mut p = vt100::Parser::new(5, 20, 0);
+        p.process(b"short\r\n$ ");
+        assert!(resize_keeps_screen(p.screen(), 10), "short history, prompt below");
+        let mut p = vt100::Parser::new(5, 20, 0);
+        p.process(b"a line of 18 chars\r\n$ ");
+        assert!(!resize_keeps_screen(p.screen(), 10), "narrowing would cut it");
+        assert!(resize_keeps_screen(p.screen(), 30), "widening keeps it");
+        let mut p = vt100::Parser::new(5, 10, 0);
+        p.process(b"0123456789abc\r\n$ ");
+        assert!(!resize_keeps_screen(p.screen(), 30), "soft-wrapped line above the prompt");
+        let mut p = vt100::Parser::new(5, 10, 0);
+        p.process(b"$ typing a long command");
+        assert!(resize_keeps_screen(p.screen(), 6), "the prompt's own wrapped line doesn't count");
+    }
+
+    #[test]
+    fn wrap_flags_are_gone_after_a_resize() {
+        // Why one bad resize taints the screen until it is cleared: vt100 forgets the wrap, so a
+        // later check would see two "hard" rows and call the screen safe.
+        let mut p = vt100::Parser::new(10, 10, 0);
+        p.process(b"0123456789abc\r\n$ ");
+        assert!(!resize_keeps_screen(p.screen(), 30));
+        p.screen_mut().set_size(10, 30);
+        assert!(resize_keeps_screen(p.screen(), 40), "vt100 dropped the wrap flag");
+        assert!(!above_prompt_blank(p.screen()));
+        p.process(b"\x1b[H\x1b[2J$ ");
+        assert!(above_prompt_blank(p.screen()), "after clear");
+    }
+
+    #[test]
+    fn shell_names() {
+        assert!(is_shell("zsh") && is_shell("bash") && is_shell("fish"));
+        assert!(!is_shell("vim") && !is_shell("claude") && !is_shell("node") && !is_shell("cargo"));
+        // This test process is not a shell; its own name comes back.
+        let me = process_name(std::process::id() as libc::pid_t).unwrap();
+        assert!(!is_shell(&me), "{me}");
     }
 
     #[test]
