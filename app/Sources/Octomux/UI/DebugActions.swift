@@ -153,6 +153,15 @@ enum DebugActions {
             case "dock_position": UserDefaults.standard.set(p["value"] as? String ?? "bottom", forKey: "octomux.dockPosition")
             case "hover_project": m.debugHoverProject = id
             case "fan_stack": m.debugFanStack = id
+            case "click":
+                // Left click at window point (top-left origin), through AppKit hit testing.
+                if let w = (NSApp.delegate as? AppDelegate)?.mainWindow, let x = p["x"] as? Double, let y = p["y"] as? Double {
+                    let pt = NSPoint(x: x, y: w.contentView!.bounds.height - y)
+                    for t in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+                        if let e = NSEvent.mouseEvent(with: t, location: pt, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                                      windowNumber: w.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1) { w.sendEvent(e) }
+                    }
+                }
             case "sidebar_width": m.sidebarWidth = CGFloat((p["value"] as? Double) ?? 252)
             case "toggle_chat": m.toggleChat(id)
             case "chat_send": if let id { m.sendToSession(id, text: p["value"] as? String ?? "") }

@@ -125,7 +125,8 @@ struct PaneStackFan: View {
         let isFront = s.id == front
         let dark = scheme == .dark
         let fill: Color = isFront ? (dark ? Color.white.opacity(0.13) : T.raised) : (dark ? Color.white.opacity(0.06) : Color.black.opacity(0.06))
-        let x: CGFloat = open ? CGFloat(j) * (chip + gap) : CGFloat(d) * 5.5 - 3.5
+        // Laid out with padding, not offset: an offset moves the picture but leaves the click target behind.
+        let x: CGFloat = open ? CGFloat(j) * (chip + gap) : CGFloat(d) * 5.5
         let y: CGFloat = hop == s.id ? -4 : 0
         let z: Double = open ? (isFront ? 20 : 10) : Double(10 - k)
         let face = PaneTile(icon: iconName(for: s, model: model), size: tile)
@@ -141,12 +142,13 @@ struct PaneStackFan: View {
             .overlay(alignment: .bottom) { underline(open && isFront) }
             .overlay(alignment: .topTrailing) { activityDot(open ? Self.dot(s) : nil) }
             .opacity(open || k < 3 ? 1 : 0)
-            // Collapsed: the tile (centered in its chip box) sits at its place in the stack.
-            .offset(x: x, y: y)
-            .zIndex(z)
             .contentShape(Rectangle())
             .onTapGesture { model.selectSession(s.id) }
             .help(open ? s.displayTitle : "")
+            .padding(.leading, x)
+            // Collapsed: the tile (centered in its chip box) starts at the stack's left edge.
+            .offset(x: open ? 0 : -3.5, y: y)
+            .zIndex(z)
     }
 
     private func underline(_ on: Bool) -> some View {
