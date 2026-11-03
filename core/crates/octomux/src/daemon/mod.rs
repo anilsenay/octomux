@@ -1417,8 +1417,13 @@ impl Daemon {
             if let Some(target) = split_target {
                 let mut st = self.state.lock().unwrap();
                 if let Some(t) = st.tabs.iter_mut().find(|t| t.layout.sessions().iter().any(|s| s == target)) {
-                    let (layout, ok) = t.layout.clone().split(target, &session.id, dir);
+                    let (mut layout, ok) = t.layout.clone().split(target, &session.id, dir);
                     if ok {
+                        // The app sizes the panes (it knows their pixels): ratios for the new tree, pre-order.
+                        if let Some(rs) = p.get("split_ratios").and_then(|v| v.as_array()) {
+                            let rs: Vec<f64> = rs.iter().filter_map(|v| v.as_f64()).collect();
+                            layout.set_ratios(&rs);
+                        }
                         t.layout = layout;
                         t.active_session_id = Some(session.id.clone());
                         tab_id = Some(t.id.clone());

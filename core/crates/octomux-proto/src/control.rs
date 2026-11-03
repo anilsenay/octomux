@@ -232,6 +232,31 @@ impl PaneNode {
         }
     }
 
+    /// Number of split nodes (the length `set_ratios` expects).
+    pub fn split_count(&self) -> usize {
+        match self {
+            PaneNode::Leaf { .. } => 0,
+            PaneNode::Split { a, b, .. } => 1 + a.split_count() + b.split_count(),
+        }
+    }
+
+    /// Sets every split's ratio from `ratios` in pre-order (node, then a, then b). Ignored unless the
+    /// count matches; values are clamped to 0.05…0.95. Returns whether they were applied.
+    pub fn set_ratios(&mut self, ratios: &[f64]) -> bool {
+        if ratios.len() != self.split_count() || ratios.iter().any(|r| !r.is_finite()) {
+            return false;
+        }
+        fn walk(n: &mut PaneNode, it: &mut std::slice::Iter<f64>) {
+            if let PaneNode::Split { ratio, a, b, .. } = n {
+                *ratio = it.next().copied().unwrap_or(0.5).clamp(0.05, 0.95);
+                walk(a, it);
+                walk(b, it);
+            }
+        }
+        walk(self, &mut ratios.iter());
+        true
+    }
+
     /// Splits the leaf `target` so that `new_id` appears after it.
     pub fn split(self, target: &str, new_id: &str, dir: SplitDir) -> (PaneNode, bool) {
         match self {
@@ -327,6 +352,22 @@ mod tests {
 
     fn leaf(s: &str) -> PaneNode {
         PaneNode::Leaf { session_id: s.into() }
+    }
+
+    #[test]
+    fn set_ratios_preorder() {
+        let (t, _) = leaf("a").split("a", "b", SplitDir::Right);
+        let (mut t, _) = t.split("b", "c", SplitDir::Right);
+        assert_eq!(t.split_count(), 2);
+        assert!(!t.set_ratios(&[0.3]));
+        assert!(t.set_ratios(&[1.0 / 3.0, 0.5]));
+        match &t {
+            PaneNode::Split { ratio, b, .. } => {
+                assert!((ratio - 1.0 / 3.0).abs() < 1e-9);
+                assert!(matches!(**b, PaneNode::Split { ratio, .. } if (ratio - 0.5).abs() < 1e-9));
+            }
+            _ => panic!(),
+        }
     }
 
     #[test]

@@ -537,9 +537,20 @@ final class AppModel: ObservableObject {
         if let resume { params["resume_agent_session_id"] = resume }
         if let prompt { params["prompt"] = prompt }
         if !extraArgs.isEmpty { params["extra_args"] = extraArgs }
-        if let split, let target = focusedSessionId, tab(containing: target)?.projectId == pid {
+        if let split, let target = focusedSessionId, let t = tab(containing: target), t.projectId == pid {
             params["split_target"] = target
             params["split_dir"] = split.rawValue
+            // Size the panes here (the daemon doesn't know pixels): equal shares in a row, minimum sizes.
+            let size = TerminalHost.shared.container.bounds.size
+            if size.width > 50, size.height > 50 {
+                let div: CGFloat = T.m.inset > 0 ? T.m.inset : 1
+                guard let sized = SplitSizing.layout(splitting: target, dir: split, in: t.layout, size: size, divider: div) else {
+                    NSSound.beep()
+                    lastError = "No room for another pane \(split == .right ? "side by side" : "stacked") here."
+                    return
+                }
+                params["split_ratios"] = SplitSizing.ratios(sized)
+            }
         }
         if let size = TerminalHost.shared.estimatedGrid() {
             params["cols"] = size.cols
