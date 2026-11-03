@@ -45,6 +45,17 @@ final class TerminalHost {
         return v
     }
 
+    /// Closes every terminal surface without rendering new ones (Octomux being stopped: a new surface's
+    /// `octomux attach` would ask the daemon to restore its session).
+    func dropSurfaces() {
+        for (id, v) in surfaces {
+            TerminalRegistry.shared.remove(id)
+            v.removeFromSuperview()
+            v.close()
+        }
+        surfaces.removeAll()
+    }
+
     /// Drops every surface (host switch).
     func closeAll() {
         for (id, v) in surfaces {
@@ -75,6 +86,7 @@ final class TerminalHost {
 
     /// Shows the selected dock session of the current project.
     func renderDock(force: Bool = false, focus: Bool = false) {
+        if model.power != .running { dropSurfaces(); renderedDock = nil; return }
         let pid = model.currentProject?.id
         let selId = model.isDockOpen(pid) ? model.dockSelection(pid) : nil
         let sel = model.session(selId)
@@ -97,6 +109,7 @@ final class TerminalHost {
     private var renderedZoom: String?
 
     func render(force: Bool = false) {
+        if model.power != .running { dropSurfaces(); renderedTabId = nil; return }
         if let doc = model.activeDoc {
             DocHost.shared.activeChanged(doc.id)
             if !force, renderedDocId == doc.id { return }

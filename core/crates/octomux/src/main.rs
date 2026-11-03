@@ -116,7 +116,7 @@ fn run(cli: Cli, paths: Paths) -> anyhow::Result<i32> {
         Cmd::Ctl { method, params } => {
             let params: serde_json::Value = serde_json::from_str(&params)?;
             // Shutting down must never start a daemon (which would restore sessions).
-            let mut c = if method == "daemon.shutdown" { client::Control::connect(&paths)? } else { client::Control::connect_or_spawn(&paths)? };
+            let mut c = if method == "daemon.shutdown" || method == "daemon.stop_all" { client::Control::connect(&paths)? } else { client::Control::connect_or_spawn(&paths)? };
             let v = c.call(&method, params)?;
             println!("{}", serde_json::to_string_pretty(&v)?);
             Ok(0)

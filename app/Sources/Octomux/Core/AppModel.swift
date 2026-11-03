@@ -10,6 +10,14 @@ final class AppModel: ObservableObject {
     let client = DaemonClient()
     @Published private(set) var state = DaemonState()
     @Published var connected = false
+    /// Since when the daemon is unreachable (nil while connected): a banner after a few seconds.
+    @Published var disconnectedSince: Date?
+
+    /// Octomux as a whole, for Stop / Start in Settings. `stopped`: the user stopped every session and the
+    /// daemon; the window is locked until they start it again (nothing restarts it meanwhile).
+    enum Power { case running, stopping, stopped, starting }
+    @Published var power: Power = .running
+    private var stoppedAt = Date.distantPast
     @Published var selectedWorkspaceId: String? {
         didSet {
             saveSelection()
@@ -69,7 +77,11 @@ final class AppModel: ObservableObject {
         client.onState = { [weak self] s in self?.apply(s) }
         client.onNotify = { [client] n in NotificationCenterModel.shared.received(n, from: client); Notifier.shared.deliver(n) }
         client.onNotificationsChanged = { [client] in NotificationCenterModel.shared.refresh(client) }
-        client.onDisconnect = { [weak self] in self?.connected = false }
+        client.onDisconnect = { [weak self] in
+            guard let self else { return }
+            self.connected = false
+            if self.disconnectedSince == nil { self.disconnectedSince = Date() }
+        }
         startUsageRefresh()
         DispatchQueue.global().async {
             let ok = DaemonClient.ensureDaemon()
@@ -210,6 +222,13 @@ final class AppModel: ObservableObject {
 
     private func applyMerged(_ s: DaemonState) {
         connected = true
+        disconnectedSince = nil
+        // A daemon answers again: started from Settings, or by someone else (`octomux` CLI) while stopped.
+        // A last state from the daemon that is stopping right now doesn't count.
+        if power == .starting || (power == .stopped && Date().timeIntervalSince(stoppedAt) > 2) {
+            DaemonClient.held = false
+            power = .running
+        }
         state = s
         // Keep selection valid.
         if selectedWorkspaceId == nil || !s.workspaces.contains(where: { $0.id == selectedWorkspaceId }) {
@@ -843,3 +862,46 @@ extension AppModel {
         }
     }
 }
+
+extension AppModel {
+    /// Stops every session's program and the daemon (Settings → Stop Octomux). Tabs come back on Start.
+    func stopOctomux() {
+        guard power == .running, !host.isRemote else { return }
+        power = .stopping
+        DaemonClient.held = true
+        TerminalHost.shared.dropSurfaces()
+        client.call("daemon.stop_all") { [weak self] r in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                if case .failure = r, LineSocket(path: Paths.daemonSocket.path) != nil {
+                    // The daemon is still there (an old one without stop_all): give the window back.
+                    DaemonClient.held = false
+                    self.power = .running
+                    self.report(r)
+                    TerminalHost.shared.render(force: true)
+                    return
+                }
+                self.stoppedAt = Date()
+                self.connected = false
+                self.power = .stopped
+            }
+        }
+    }
+
+    /// Starts the daemon again; it restores the tabs that were open (agents resume their conversations).
+    func startOctomux() {
+        guard power == .stopped else { return }
+        power = .starting
+        DaemonClient.held = false
+        DispatchQueue.global().async {
+            let ok = DaemonClient.ensureDaemon()
+            DispatchQueue.main.async {
+                if !ok, self.power == .starting {
+                    self.power = .stopped
+                    self.lastError = "Octomux didn't start. The daemon log may say why (Open Logs)."
+                }
+            }
+        }
+    }
+}
+

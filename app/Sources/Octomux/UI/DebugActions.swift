@@ -10,6 +10,7 @@ enum DebugActions {
         d.register("ui_state") { _ in
             [
                 "connected": m.connected,
+                "power": "\(m.power)",
                 "workspace": m.workspace?.name ?? NSNull(),
                 "workspaces": m.state.workspaces.map { $0.name },
                 "sidebar_visible": m.sidebarVisible,
@@ -190,6 +191,11 @@ enum DebugActions {
                         if let down = ev(.leftMouseDown, n) { w.sendEvent(down) }
                     }
                 }
+            // What Settings → Stop Octomux (after its confirmation) and the Start buttons call.
+            case "stop_octomux": m.stopOctomux()
+            // Shows the unreachable-daemon banner as if the daemon had been gone for 10 s (until the next state).
+            case "fake_disconnect": m.disconnectedSince = Date().addingTimeInterval(-10)
+            case "start_octomux": m.startOctomux()
             case "sidebar_width": m.sidebarWidth = CGFloat((p["value"] as? Double) ?? 252)
             case "toggle_chat": m.toggleChat(id)
             case "chat_send": if let id { m.sendToSession(id, text: p["value"] as? String ?? "") }
@@ -455,7 +461,9 @@ enum DebugActions {
         // Buttons of the dialog attached to Settings (title, frame in sheet points, top-left origin), and
         // pressing one by title (performClick: no hit testing).
         d.register("sheet_buttons") { p in
-            guard let sheet = SettingsWindow.window?.attachedSheet, let root = sheet.contentView else { return ["buttons": []] }
+            // "window": "settings" lists the Settings window's own buttons instead of its sheet's.
+            let win = (p["window"] as? String) == "settings" ? SettingsWindow.window : SettingsWindow.window?.attachedSheet
+            guard let sheet = win, let root = sheet.contentView else { return ["buttons": []] }
             var out: [[String: Any]] = []
             func walk(_ v: NSView) {
                 if let b = v as? NSButton {

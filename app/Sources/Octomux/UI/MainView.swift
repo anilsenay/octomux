@@ -42,11 +42,19 @@ struct MainView: View {
             }
             .frame(minWidth: 0, maxWidth: .infinity)
         }
+        // Stopped (Settings → Stop Octomux): the window stays, blurred and out of reach, behind a Start card.
+        .blur(radius: model.power == .running ? 0 : 18)
+        .allowsHitTesting(model.power == .running)
+        .overlay { if model.power != .running { StoppedOverlay() } }
+        .overlay(alignment: .top) { if model.power == .running { DisconnectBanner().padding(.top, T.m.topH + 6) } }
+        .onChange(of: model.power) { _, p in if p == .running { TerminalHost.shared.render(force: true); TerminalHost.shared.renderDock(force: true) } }
         .background(rootBackground)
         .overlay(alignment: .topLeading) { peekStrip }
         .onChange(of: model.sidebarPeek) { SidebarPeek.shared.update() }
         .onChange(of: model.sidebarVisible) { SidebarPeek.shared.update() }
-        .overlay(alignment: .topLeading) { TopLeftControls() }
+        .overlay(alignment: .topLeading) {
+            TopLeftControls().opacity(model.power == .running ? 1 : 0.35).allowsHitTesting(model.power == .running)
+        }
         .foregroundStyle(T.text)
         .tint(T.accent)
         .overlay {
@@ -219,6 +227,65 @@ struct VisualEffect: NSViewRepresentable {
         return v
     }
     func updateNSView(_ v: NSVisualEffectView, context: Context) { v.material = material }
+}
+
+/// Octomux stopped from Settings: Start brings the daemon and the tabs back.
+struct StoppedOverlay: View {
+    @EnvironmentObject var model: AppModel
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(ThemeStore.shared.isDark ? 0.25 : 0.08).ignoresSafeArea()
+            VStack(spacing: 12) {
+                switch model.power {
+                case .stopping, .starting:
+                    ProgressView().controlSize(.small)
+                    Text(model.power == .stopping ? "Stopping Octomux…" : "Starting Octomux…").font(.system(size: 14, weight: .semibold))
+                    Text(model.power == .stopping ? "Ending the programs in your tabs." : "Bringing your tabs back.")
+                        .font(.system(size: 12)).foregroundStyle(T.text2)
+                default:
+                    Image(systemName: "stop.circle").font(.system(size: 30, weight: .light)).foregroundStyle(T.text2)
+                    Text("Octomux is stopped").font(.system(size: 15, weight: .semibold))
+                    Text("Start it to bring your tabs back. Agents pick up their conversations.")
+                        .font(.system(size: 12)).foregroundStyle(T.text2).multilineTextAlignment(.center)
+                    HStack(spacing: 8) {
+                        Button("Start Octomux") { model.startOctomux() }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+                        Button("Open Logs") { NSWorkspace.shared.open(Paths.home.appendingPathComponent("logs")) }
+                    }
+                    .padding(.top, 4)
+                }
+            }
+            .padding(28)
+            .frame(maxWidth: 380)
+        }
+        .transition(.opacity)
+    }
+}
+
+/// The daemon has been unreachable for a few seconds (it can't start, or a remote host is cut off). Open
+/// terminals keep working (they talk to their sessions directly); lists, new tabs and states don't.
+struct DisconnectBanner: View {
+    @EnvironmentObject var model: AppModel
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { ctx in
+            if let since = model.disconnectedSince, ctx.date.timeIntervalSince(since) >= 5 {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.mini)
+                    Text(model.host.isRemote ? "Connection to \(model.host.name) lost. Reconnecting…"
+                         : "Can't reach the Octomux daemon. Open terminals still work; new tabs and agent states don't.")
+                        .font(.system(size: 12)).lineLimit(2)
+                    if !model.host.isRemote {
+                        Button("Retry") { DispatchQueue.global().async { _ = DaemonClient.ensureDaemon() } }.controlSize(.small)
+                        Button("Open Logs") { NSWorkspace.shared.open(Paths.home.appendingPathComponent("logs")) }.controlSize(.small)
+                    }
+                }
+                .padding(.horizontal, 12).padding(.vertical, 8)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                .shadow(radius: 6)
+            }
+        }
+    }
 }
 
 struct ErrorBanner: View {

@@ -892,8 +892,10 @@ struct HostEditor: View {
 struct AdvancedSettings: View {
     @EnvironmentObject var model: AppModel
     @State private var info = ""
+    @State private var confirmStop = false
 
     var body: some View {
+        Group {
         SettingsCard {
             Text("Daemon").font(.headline)
             Text(info.isEmpty ? "…" : info).font(.system(size: 11, design: .monospaced)).textSelection(.enabled)
@@ -907,6 +909,28 @@ struct AdvancedSettings: View {
                 Button("Open Logs") { NSWorkspace.shared.open(Paths.home.appendingPathComponent("logs")) }
             }
             Text("Sessions keep running while the daemon restarts; they live in their own processes.").font(.caption).foregroundStyle(T.text2)
+        }
+        if !model.host.isRemote {
+            SettingsCard {
+                Text("Stop Octomux").font(.headline)
+                Text("Ends the programs in every tab (shells, agents) and the daemon, like quitting a terminal app. The window waits with a Start button; starting brings the tabs back and agents pick up their conversations.")
+                    .font(.caption).foregroundStyle(T.text2)
+                HStack {
+                    switch model.power {
+                    case .running: Button("Stop Octomux…", role: .destructive) { confirmStop = true }
+                    case .stopped: Button("Start Octomux") { model.startOctomux() }.buttonStyle(.borderedProminent)
+                    case .stopping: Text("Stopping…").foregroundStyle(T.text2)
+                    case .starting: Text("Starting…").foregroundStyle(T.text2)
+                    }
+                }
+            }
+            .alert("Stop Octomux?", isPresented: $confirmStop) {
+                Button("Stop", role: .destructive) { model.stopOctomux() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Every shell and agent running in your tabs will be ended. Unsaved work in them is lost. Start brings the tabs back; agents resume their conversations.")
+            }
+        }
         }
         .onAppear(perform: refresh)
     }

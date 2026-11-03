@@ -48,6 +48,8 @@ pub struct Daemon {
     program_pid: Mutex<HashMap<String, i32>>,
     /// Per session: when find_claude_conversation last ran.
     resume_scan: Mutex<HashMap<String, Instant>>,
+    /// `daemon.stop_all` is taking everything down: sessions that die now are restored on the next start.
+    stopping_all: std::sync::atomic::AtomicBool,
 }
 
 #[derive(Default)]
@@ -188,6 +190,7 @@ pub fn run(paths: Paths) -> Result<()> {
         activity_at: Mutex::new(HashMap::new()),
         program_pid: Mutex::new(HashMap::new()),
         resume_scan: Mutex::new(HashMap::new()),
+        stopping_all: std::sync::atomic::AtomicBool::new(false),
     });
 
     // Bind under a private name, then atomically publish (never unlink a live socket).
@@ -501,9 +504,11 @@ impl Daemon {
 
     fn on_holder_gone(self: &Arc<Self>, id: &str, exited: Option<octomux_proto::ExitInfo>) {
         let exited = exited.or_else(|| std::fs::read(self.paths.holder_exit(id)).ok().and_then(|b| serde_json::from_slice(&b).ok()));
+        let stopping_all = self.stopping_all.load(std::sync::atomic::Ordering::SeqCst);
         let profile_id = self.with_session(id, |s| {
             match (s.state, &exited) {
                 (SessionState::Stopped, _) => {}
+                (_, _) if stopping_all => s.state = SessionState::Interrupted,
                 (_, Some(info)) => {
                     s.state = SessionState::Exited;
                     s.exit_code = info.code;
@@ -1149,7 +1154,7 @@ impl Daemon {
                 Err(e) => json!({ "id": req.id, "error": format!("{e:#}") }),
             };
             let _ = tx.send(serde_json::to_string(&resp)?);
-            if req.method == "daemon.shutdown" {
+            if req.method == "daemon.shutdown" || req.method == "daemon.stop_all" {
                 std::thread::sleep(Duration::from_millis(100));
                 let _ = std::fs::remove_file(self.paths.daemon_socket());
                 std::process::exit(0);
@@ -1165,6 +1170,39 @@ impl Daemon {
             "hello" => Ok(json!({ "version": octomux_proto::PROTOCOL_VERSION, "pid": std::process::id(), "home": self.paths.home })),
             "state.get" => Ok(serde_json::to_value(&*self.state.lock().unwrap())?),
             "daemon.shutdown" => Ok(json!({ "ok": true })),
+            // Stop Octomux entirely (Settings): every session's program, then the daemon (it exits after the
+            // reply; launchd leaves a clean exit alone). The sessions stay listed as interrupted and their exit
+            // files go, so the next start restores them all (agents and a terminal's claude resume).
+            "daemon.stop_all" => {
+                use std::sync::atomic::Ordering;
+                self.stopping_all.store(true, Ordering::SeqCst);
+                let ids: Vec<String> = {
+                    let st = self.state.lock().unwrap();
+                    st.sessions.iter().filter(|s| matches!(s.state, SessionState::Running | SessionState::Interrupted)).map(|s| s.id.clone()).collect()
+                };
+                let live: Vec<String> = ids.iter().filter(|id| holder_alive(&self.paths, id)).cloned().collect();
+                for id in &ids {
+                    self.with_session(id, |s| {
+                        s.state = SessionState::Interrupted;
+                        s.activity = Activity::Idle;
+                    });
+                }
+                for id in &live {
+                    let _ = HolderClient::request(&self.paths, id, &HolderRequest::Kill);
+                }
+                let deadline = Instant::now() + Duration::from_secs(8);
+                while live.iter().any(|id| holder_alive(&self.paths, id)) && Instant::now() < deadline {
+                    std::thread::sleep(Duration::from_millis(50));
+                }
+                // Let the monitors see the holders go (they would mark sessions exited otherwise).
+                std::thread::sleep(Duration::from_millis(300));
+                for id in &ids {
+                    let _ = std::fs::remove_file(self.paths.holder_exit(id));
+                    self.with_session(id, |s| s.state = SessionState::Interrupted);
+                }
+                let left = live.iter().filter(|id| holder_alive(&self.paths, id)).count();
+                Ok(json!({ "stopped": live.len() - left, "still_running": left }))
+            }
 
             "workspace.create" => {
                 let mut st = self.state.lock().unwrap();

@@ -115,8 +115,12 @@ final class DaemonClient {
     var onNotificationsChanged: (() -> Void)?
     var onDisconnect: (() -> Void)?
 
+    /// The user stopped Octomux (Settings): nothing may start the daemon again until they start it.
+    static var held = false
+
     /// Makes sure a daemon is running (installs/kickstarts the launchd agent if needed).
     static func ensureDaemon() -> Bool {
+        if held { return LineSocket(path: Paths.daemonSocket.path) != nil }
         let agents = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/LaunchAgents")
         let plist = agents.appendingPathComponent("dev.octomux.daemon.plist")
         if !Paths.homeFromEnv && !FileManager.default.fileExists(atPath: plist.path) {
