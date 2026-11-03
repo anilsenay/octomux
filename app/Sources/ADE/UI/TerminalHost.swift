@@ -541,7 +541,11 @@ final class PlaceholderPane: NSView {
 final class RatioSplitView: NSSplitView, NSSplitViewDelegate {
     var ratio: Double = 0.5
     var onRatioChange: ((Double) -> Void)?
-    private var applied = false
+    /// The size the ratio was last applied at. The ratio is re-applied whenever the split's size changes:
+    /// a nested split is first laid out before its parent settles (applied once, it kept that tiny
+    /// position and a third pane opened as a sliver); window resizes keep the proportions too.
+    private var appliedTotal: CGFloat = 0
+    private var applying = false
     private var debounce: DispatchWorkItem?
 
     override init(frame: NSRect) {
@@ -562,18 +566,25 @@ final class RatioSplitView: NSSplitView, NSSplitViewDelegate {
     override func layout() {
         super.layout()
         let total = isVertical ? bounds.width : bounds.height
-        if !applied, total > 10, arrangedSubviews.count == 2 {
-            applied = true
-            setPosition(total * ratio, ofDividerAt: 0)
-        }
+        guard !applying, total > 10, arrangedSubviews.count == 2 else { return }
+        appliedTotal = total
+        // Whatever moved the divider (a nested split laid out before its parent settled, a window resize),
+        // put it back where the ratio says. A drag updates `ratio` first, so it is not fought.
+        let expected = (total - dividerThickness) * ratio
+        let first = isVertical ? arrangedSubviews[0].frame.width : arrangedSubviews[0].frame.height
+        guard abs(first - expected) > 1.5 else { return }
+        applying = true
+        setPosition(expected, ofDividerAt: 0)
+        applying = false
     }
 
     func splitViewDidResizeSubviews(_ notification: Notification) {
-        guard applied, arrangedSubviews.count == 2, notification.userInfo?["NSSplitViewDividerIndex"] != nil else { return }
+        // Only the user's drags change the ratio, not our own re-application.
+        guard !applying, appliedTotal > 0, arrangedSubviews.count == 2, notification.userInfo?["NSSplitViewDividerIndex"] != nil else { return }
         let total = isVertical ? bounds.width : bounds.height
         guard total > 10 else { return }
         let first = isVertical ? arrangedSubviews[0].frame.width : arrangedSubviews[0].frame.height
-        let r = max(0.1, min(0.9, Double(first / total)))
+        let r = max(0.1, min(0.9, Double(first / max(1, total - dividerThickness))))
         guard abs(r - ratio) > 0.01 else { return }
         ratio = r
         debounce?.cancel()

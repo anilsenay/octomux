@@ -47,7 +47,7 @@ struct PaneStackIcon: View {
                     let d = CGFloat(k)
                     PaneTile(icon: item.icon, size: tile)
                         .scaleEffect(style == .stack ? 1 - 0.13 * d : 1 - 0.08 * d, anchor: style == .stack ? .bottom : .bottomLeading)
-                        .rotationEffect(.degrees(style == .fan ? 9 * Double(k) : 0), anchor: .bottomLeading)
+                        .rotationEffect(.degrees(style == .fan ? 6 * Double(k) : 0), anchor: .bottomLeading)
                         .offset(x: style == .fan ? d * 5.5 : 0,
                                 y: (style == .stack ? -d * 4.5 : 0) + (hop == item.id ? -4 : 0))
                         .opacity(k == 0 ? 1 : 1 - 0.12 * Double(k))

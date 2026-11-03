@@ -392,6 +392,19 @@ enum DebugActions {
             main.sendEvent(down)
             return ["captured": done]
         }
+        d.register("split_frames") { _ in
+            var out: [[String: Any]] = []
+            func walk(_ v: NSView, _ depth: Int) {
+                if let sv = v as? RatioSplitView {
+                    out.append(["depth": depth, "vertical": sv.isVertical, "ratio": sv.ratio, "bounds": NSStringFromRect(sv.bounds),
+                                "children": sv.arrangedSubviews.map { NSStringFromRect($0.frame) },
+                                "constraints": sv.arrangedSubviews.map { $0.constraints.count }])
+                }
+                for c in v.subviews where !(c is TerminalSurfaceView) { walk(c, depth + 1) }
+            }
+            walk(TerminalHost.shared.container, 0)
+            return ["splits": out]
+        }
         d.register("keybindings") { _ in
             KeyBindings.shared.commands.map { c in
                 ["id": c.id, "title": c.title, "shortcut": KeyBindings.shared.current(c.id)?.display ?? "",
