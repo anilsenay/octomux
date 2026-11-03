@@ -603,7 +603,7 @@ struct SessionRow: View {
                 Group {
                     if session.isDormant {
                         Button { model.restart(session.id) } label: { Image(systemName: "arrow.clockwise") }
-                            .help(session.kind == .agent ? "Resume" : "Restart")
+                            .help(session.isAgent ? "Resume" : "Restart")
                         Button { model.remove(session.id) } label: { Image(systemName: "xmark") }
                             .help("Remove")
                     } else {
@@ -657,7 +657,7 @@ struct SessionMenu: View {
         }.disabled(session.isDormant)
         Divider()
         if session.isDormant {
-            Button(session.kind == .agent ? "Resume" : "Restart") { model.restart(session.id) }
+            Button(session.isAgent ? "Resume" : "Restart") { model.restart(session.id) }
         } else {
             Button("Stop") { model.stop(session.id) }
             Button("Restart") { model.restart(session.id) }

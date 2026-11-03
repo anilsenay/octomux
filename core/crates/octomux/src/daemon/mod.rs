@@ -46,6 +46,8 @@ pub struct Daemon {
     /// Per session: the process of the program reporting its state (OSC 7501), to notice it dying without
     /// its `clear` (killed, crashed). -1 = an app we can't find by name: only its own `clear` counts.
     program_pid: Mutex<HashMap<String, i32>>,
+    /// Per session: when find_claude_conversation last ran.
+    resume_scan: Mutex<HashMap<String, Instant>>,
 }
 
 #[derive(Default)]
@@ -171,6 +173,7 @@ pub fn run(paths: Paths) -> Result<()> {
         title_scan: Mutex::new(HashMap::new()),
         activity_at: Mutex::new(HashMap::new()),
         program_pid: Mutex::new(HashMap::new()),
+        resume_scan: Mutex::new(HashMap::new()),
     });
 
     // Bind under a private name, then atomically publish (never unlink a live socket).
@@ -435,6 +438,20 @@ impl Daemon {
             }
         });
         self.start_monitor(id);
+        // A terminal tab that had an agent conversation open when it was stopped (or crashed): reopen it in
+        // the new shell, typed as the user would, so leaving the agent lands in the shell again.
+        if session.kind == SessionKind::Terminal {
+            if let Some(r) = session.resume_agent.as_ref().filter(|r| r.app == "claude-code") {
+                let line = match &r.config_dir {
+                    Some(d) => format!("CLAUDE_CONFIG_DIR={} claude --resume {}\r", util::shell_quote(d), util::shell_quote(&r.session_id)),
+                    None => format!("claude --resume {}\r", util::shell_quote(&r.session_id)),
+                };
+                if let Ok(mut c) = HolderClient::connect(&self.paths, id, Role::Control, 0, 0) {
+                    let _ = c.send(&Frame::new(Kind::Input, line.into_bytes()));
+                }
+                self.with_session(id, |s| s.agent_app = Some(r.app.clone()));
+            }
+        }
         self.changed();
         Ok(())
     }
@@ -682,6 +699,9 @@ impl Daemon {
                 .map(|s| (s.id.clone(), s.agent_app.clone()))
                 .collect()
         };
+        // Only while the tab itself lives: a dead holder (crash, reboot; the daemon starting up still lists it
+        // as running) is the restore's business, and must keep what it resumes.
+        let reporting: Vec<(String, Option<String>)> = reporting.into_iter().filter(|(id, _)| holder_alive(&self.paths, id)).collect();
         let mut pids = self.program_pid.lock().unwrap();
         pids.retain(|id, _| reporting.iter().any(|(r, _)| r == id));
         let mut gone = Vec::new();
@@ -702,10 +722,77 @@ impl Daemon {
                 gone.push(id);
             }
         }
+        let alive: Vec<(String, i32)> = pids.iter().filter(|(_, p)| **p > 0).map(|(i, p)| (i.clone(), *p)).collect();
         drop(pids);
         for id in gone {
             self.on_holder_event(&id, HolderEvent::ProgramStatus { state: "clear".into(), app: String::new(), kind: String::new() });
         }
+        // Without hooks a terminal tab's claude doesn't say which conversation it is: look it up now and then.
+        for (id, pid) in alive {
+            let due = {
+                let mut last = self.resume_scan.lock().unwrap();
+                let t = last.entry(id.clone()).or_insert(Instant::now() - Duration::from_secs(60));
+                (t.elapsed() >= Duration::from_secs(5)).then(|| *t = Instant::now()).is_some()
+            };
+            let needed = self.with_session(&id, |s| s.agent_app.as_deref() == Some("claude-code") && !s.resume_agent.as_ref().is_some_and(|r| r.from_hook)) == Some(true);
+            if !due || !needed {
+                continue;
+            }
+            if let Some(r) = self.find_claude_conversation(&id, pid) {
+                let changed = self.with_session(&id, |s| {
+                    let c = s.resume_agent.as_ref() != Some(&r);
+                    s.resume_agent = Some(r.clone());
+                    c
+                });
+                if changed == Some(true) {
+                    if let Some(copy) = self.with_session(&id, |s| s.clone()) {
+                        self.persist_session(&copy);
+                    }
+                }
+            }
+        }
+    }
+
+    /// The conversation a claude process works on, from its transcripts: the newest `<config>/projects/<cwd>/*.jsonl`
+    /// written since it started (Claude names the folder after its working directory, every other character
+    /// a `-`) that no other tab or agent session already has. Two claudes in one folder may still swap; the
+    /// integration hooks say it exactly.
+    fn find_claude_conversation(&self, id: &str, pid: i32) -> Option<ResumeAgent> {
+        let cwd = crate::procs::cwd(pid)?;
+        let started = crate::procs::start_time(pid)?;
+        let folder: String = cwd.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
+        let claimed: HashSet<String> = {
+            let st = self.state.lock().unwrap();
+            st.sessions
+                .iter()
+                .filter(|s| s.id != id)
+                .flat_map(|s| [s.agent_session_id.clone(), s.resume_agent.as_ref().map(|r| r.session_id.clone())])
+                .flatten()
+                .collect()
+        };
+        let home = util::home_dir();
+        let mut configs = vec![home.join(".claude")];
+        if let Ok(rd) = std::fs::read_dir(&home) {
+            configs.extend(rd.flatten().filter(|e| e.file_name().to_string_lossy().starts_with(".claude-") && e.path().is_dir()).map(|e| e.path()));
+        }
+        let since = std::time::UNIX_EPOCH + Duration::from_secs(started.saturating_sub(2));
+        let mut best: Option<(std::time::SystemTime, String, std::path::PathBuf)> = None;
+        for cfg in configs {
+            let Ok(rd) = std::fs::read_dir(cfg.join("projects").join(&folder)) else { continue };
+            for e in rd.flatten() {
+                let p = e.path();
+                if p.extension().and_then(|x| x.to_str()) != Some("jsonl") {
+                    continue;
+                }
+                let Some(stem) = p.file_stem().and_then(|x| x.to_str()).map(str::to_string) else { continue };
+                let Ok(m) = e.metadata().and_then(|m| m.modified()) else { continue };
+                if m >= since && !claimed.contains(&stem) && best.as_ref().is_none_or(|b| m > b.0) {
+                    best = Some((m, stem, cfg.clone()));
+                }
+            }
+        }
+        let (_, session_id, cfg) = best?;
+        Some(ResumeAgent { app: "claude-code".into(), session_id, config_dir: (cfg != home.join(".claude")).then(|| cfg.to_string_lossy().into_owned()), from_hook: false })
     }
 
     /// The reporting program among the session's processes: the shallowest descendant of its shell named
@@ -852,8 +939,15 @@ impl Daemon {
                     let before = (s.reports_status, s.agent_app.clone());
                     s.reports_status = !gone;
                     // Only agents make a terminal tab an agent; a build tool reporting progress just sets its state.
+                    // A `clear` while the tab is being stopped or restarted (the agent dies with the shell) keeps
+                    // it an agent, to resume on restore; one while it runs means the agent exited (`/exit`).
                     if s.kind != SessionKind::Agent {
-                        s.agent_app = if gone || !is_agent_app(&app) { None } else { Some(app.clone()) };
+                        if !gone {
+                            s.agent_app = is_agent_app(&app).then(|| app.clone());
+                        } else if s.state == SessionState::Running {
+                            s.agent_app = None;
+                            s.resume_agent = None;
+                        }
                     }
                     before != (s.reports_status, s.agent_app.clone())
                 });
@@ -955,12 +1049,24 @@ impl Daemon {
         // A claude typed in a terminal tab (hooks installed globally): the tab shows as an agent until it exits.
         if !launched && matches!(event, "SessionStart" | "SessionEnd") {
             let start = event == "SessionStart";
+            // A SessionEnd from a claude that died with its tab (killed holder, crash; often replayed from the
+            // spool once we're back) is not the user leaving claude: keep it to resume on restore.
+            if !start && !holder_alive(&self.paths, id) {
+                return;
+            }
             let changed = self.with_session(id, |s| {
                 let before = s.agent_app.clone();
                 if start {
                     s.agent_app.get_or_insert_with(|| "claude-code".into());
-                } else {
+                    if !cid.is_empty() {
+                        // <config>/projects/<cwd>/<id>.jsonl → <config>, kept only when not ~/.claude.
+                        let cfg = s.transcript_path.as_deref().and_then(|t| std::path::Path::new(t).ancestors().nth(3)).map(|p| p.to_path_buf());
+                        let cfg = cfg.filter(|c| *c != util::home_dir().join(".claude")).map(|c| c.to_string_lossy().into_owned());
+                        s.resume_agent = Some(ResumeAgent { app: "claude-code".into(), session_id: cid.clone(), config_dir: cfg, from_hook: true });
+                    }
+                } else if s.state == SessionState::Running {
                     s.agent_app = None;
+                    s.resume_agent = None;
                     s.transcript_path = None;
                     s.agent_title.clear();
                 }
@@ -1332,6 +1438,8 @@ impl Daemon {
             }
             "session.restart" => {
                 let id = req("id")?;
+                // Marked before the kill: what the dying program reports (an agent's `clear`) is not an exit.
+                self.with_session(&id, |s| s.state = SessionState::Interrupted).ok_or_else(|| anyhow!("no such session"))?;
                 if holder_alive(&self.paths, &id) {
                     let _ = HolderClient::request(&self.paths, &id, &HolderRequest::Kill);
                     let deadline = Instant::now() + Duration::from_secs(5);
@@ -1672,6 +1780,7 @@ impl Daemon {
             extra_args: p.get("extra_args").and_then(|v| serde_json::from_value::<Vec<String>>(v.clone()).ok()).unwrap_or_default(),
             agent_app: None,
             reports_status: false,
+            resume_agent: None,
         };
         {
             let mut st = self.state.lock().unwrap();

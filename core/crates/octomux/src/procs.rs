@@ -29,6 +29,42 @@ pub fn exe(pid: i32) -> Option<String> {
     }
 }
 
+/// The process's working directory.
+pub fn cwd(pid: i32) -> Option<String> {
+    #[cfg(target_os = "macos")]
+    {
+        let mut info: libc::proc_vnodepathinfo = unsafe { std::mem::zeroed() };
+        let size = std::mem::size_of::<libc::proc_vnodepathinfo>() as i32;
+        let n = unsafe { libc::proc_pidinfo(pid, libc::PROC_PIDVNODEPATHINFO, 0, (&mut info as *mut libc::proc_vnodepathinfo).cast(), size) };
+        if n != size {
+            return None;
+        }
+        let raw = &info.pvi_cdir.vip_path;
+        let bytes: Vec<u8> = raw.iter().flatten().map(|c| *c as u8).take_while(|c| *c != 0).collect();
+        (!bytes.is_empty()).then(|| String::from_utf8_lossy(&bytes).into_owned())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        std::fs::read_link(format!("/proc/{pid}/cwd")).ok().map(|p| p.to_string_lossy().into_owned())
+    }
+}
+
+/// When the process started (seconds since the epoch).
+pub fn start_time(pid: i32) -> Option<u64> {
+    #[cfg(target_os = "macos")]
+    {
+        let mut info: libc::proc_bsdinfo = unsafe { std::mem::zeroed() };
+        let size = std::mem::size_of::<libc::proc_bsdinfo>() as i32;
+        let n = unsafe { libc::proc_pidinfo(pid, libc::PROC_PIDTBSDINFO, 0, (&mut info as *mut libc::proc_bsdinfo).cast(), size) };
+        (n == size).then_some(info.pbi_start_tvsec)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let m = std::fs::metadata(format!("/proc/{pid}")).ok()?.modified().ok()?;
+        m.duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_secs())
+    }
+}
+
 /// Claude Code's native binary (`…/claude/versions/<v>`, or a `claude` executable).
 pub fn is_claude(pid: i32) -> bool {
     exe(pid).is_some_and(|p| p.contains("/claude/versions/") || p.rsplit('/').next() == Some("claude"))
@@ -60,5 +96,9 @@ mod tests {
         assert!(super::parent(me).is_some_and(|p| p > 0));
         assert!(super::exe(me).is_some());
         assert!(!super::is_claude(me));
+        let cwd = std::env::current_dir().unwrap().canonicalize().unwrap();
+        assert_eq!(super::cwd(me).map(std::path::PathBuf::from), Some(cwd));
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+        assert!(super::start_time(me).is_some_and(|t| t <= now && now - t < 3600));
     }
 }

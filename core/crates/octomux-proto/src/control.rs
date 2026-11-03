@@ -175,6 +175,23 @@ pub struct Session {
     /// transcript scan and Enter only fill in when a program does not report.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub reports_status: bool,
+    /// The agent conversation running in this terminal tab, to resume it when the tab is restored after a
+    /// stop, restart or crash. Cleared when the agent exits by itself (`/exit`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resume_agent: Option<ResumeAgent>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ResumeAgent {
+    /// OSC 7501 app name ("claude-code").
+    pub app: String,
+    pub session_id: String,
+    /// The agent's config dir (Claude: the folder above `projects/`), when not the default one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub config_dir: Option<String>,
+    /// Reported by a hook (exact), else found from the transcripts.
+    #[serde(default)]
+    pub from_hook: bool,
 }
 
 impl Session {

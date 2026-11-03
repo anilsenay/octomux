@@ -732,7 +732,7 @@ struct DormantPaneView: View {
                 Text(s.state == .stopped ? "Stopped" : "Exited\(s.exitCode.map { " with code \($0)" } ?? "")")
                     .font(T.body).foregroundStyle(T.text2)
                 HStack(spacing: 8) {
-                    Button(s.kind == .agent ? "Resume" : "Restart") { model.restart(s.id) }
+                    Button(s.isAgent ? "Resume" : "Restart") { model.restart(s.id) }
                         .buttonStyle(PrimaryButtonStyle()).keyboardShortcut(.defaultAction)
                     Button("Remove") { model.remove(s.id, confirm: false) }.buttonStyle(SecondaryButtonStyle())
                 }
