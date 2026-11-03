@@ -70,6 +70,88 @@ struct PaneStackIcon: View {
     }
 }
 
+/// A split tab's stacked icon that fans out on hover: one tile per pane (layout order), its title in the
+/// tooltip and its activity on a dot; clicking a tile focuses that pane. Collapses when the pointer leaves.
+struct PaneStackFan: View {
+    @EnvironmentObject var model: AppModel
+    /// Layout order.
+    let sessions: [Session]
+    let front: String
+    var size: CGFloat = 12
+    var style: PaneStackIcon.Style = .fan
+    @State private var overIcon = false
+    @State private var overFan = false
+    @State private var open = false
+
+    private var tile: CGFloat { size + 5 }
+
+    var body: some View {
+        PaneStackIcon(items: paneStackItems(sessions.map(\.id), front: front, model: model), size: size, style: style)
+            .opacity(open ? 0 : 1)
+            .onHover { overIcon = $0; schedule() }
+            .overlay(alignment: .leading) {
+                if open {
+                    HStack(spacing: 3) {
+                        ForEach(sessions) { s in fanTile(s) }
+                    }
+                    .padding(3)
+                    .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(T.raised)
+                        .shadow(color: .black.opacity(0.25), radius: 4, y: 1))
+                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(T.border))
+                    .fixedSize()
+                    .offset(x: -3)
+                    .onHover { overFan = $0; schedule() }
+                    .transition(.scale(scale: 0.6, anchor: .leading).combined(with: .opacity))
+                }
+            }
+            .zIndex(open ? 10 : 0)
+            .onChange(of: model.debugFanStack) { _, v in open = v.map { id in sessions.contains { $0.id == id } } ?? false }
+            .animation(Self.reduceMotion ? nil : .spring(response: 0.26, dampingFraction: 0.78), value: open)
+    }
+
+    private func fanTile(_ s: Session) -> some View {
+        let isFront = s.id == front
+        return Button { model.selectSession(s.id) } label: {
+            PaneTile(icon: iconName(for: s, model: model), size: tile)
+                .padding(.bottom, 3)
+                .overlay(alignment: .bottom) {
+                    Capsule().fill(isFront ? T.accent : .clear).frame(width: tile - 6, height: 2)
+                }
+                .overlay(alignment: .topTrailing) {
+                    if let c = Self.dot(s) {
+                        Circle().fill(c).frame(width: 6, height: 6)
+                            .overlay(Circle().stroke(T.raised, lineWidth: 1.5)).offset(x: 2, y: -2)
+                    }
+                }
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .pointerCursor()
+        .help(s.displayTitle)
+    }
+
+    static func dot(_ s: Session) -> Color? {
+        if s.isDormant { return nil }
+        switch s.activity {
+        case .needsInput: return T.amber
+        case .working: return T.accent
+        case .error: return T.red
+        default: return s.unread ? T.green : nil
+        }
+    }
+
+    static var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
+
+    /// Opens after a short rest on the icon (no flicker when the pointer passes over); closes a moment
+    /// after it leaves both the icon and the fan, so moving from one to the other keeps it open.
+    private func schedule() {
+        let want = overIcon || overFan
+        DispatchQueue.main.asyncAfter(deadline: .now() + (want ? 0.12 : 0.18)) {
+            if (overIcon || overFan) == want { open = want }
+        }
+    }
+}
+
 /// One pane's tile: a rounded square in the agent's color with its mark in white.
 struct PaneTile: View {
     let icon: String

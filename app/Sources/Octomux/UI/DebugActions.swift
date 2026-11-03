@@ -152,6 +152,7 @@ enum DebugActions {
             case "sidebar_peek": m.sidebarPeek = (p["value"] as? Bool) ?? true
             case "dock_position": UserDefaults.standard.set(p["value"] as? String ?? "bottom", forKey: "octomux.dockPosition")
             case "hover_project": m.debugHoverProject = id
+            case "fan_stack": m.debugFanStack = id
             case "sidebar_width": m.sidebarWidth = CGFloat((p["value"] as? Double) ?? 252)
             case "toggle_chat": m.toggleChat(id)
             case "chat_send": if let id { m.sendToSession(id, text: p["value"] as? String ?? "") }

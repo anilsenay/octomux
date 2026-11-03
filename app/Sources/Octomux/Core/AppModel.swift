@@ -38,6 +38,8 @@ final class AppModel: ObservableObject {
     var autoDockSession: [String: String] = [:]
     /// Debug channel only: shows a project row's hover controls in screenshots.
     @Published var debugHoverProject: String?
+    /// Debug: a pane stack (any of its session ids) shown fanned out, as if hovered.
+    @Published var debugFanStack: String?
     @Published var sidebarWidth: CGFloat = CGFloat(UserDefaults.standard.object(forKey: "octomux.sidebarWidth") as? Double ?? 252) {
         didSet { UserDefaults.standard.set(Double(sidebarWidth), forKey: "octomux.sidebarWidth") }
     }

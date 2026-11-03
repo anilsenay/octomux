@@ -568,8 +568,15 @@ struct SessionRow: View {
     var body: some View {
         let m = T.m
         HStack(spacing: 8) {
-            PaneStackIcon(items: paneStackItems(stack.map(\.id), front: session.id, model: model), size: 12, style: .fan)
-                .frame(minWidth: 14, alignment: .leading)
+            Group {
+                if stack.count > 1 {
+                    PaneStackFan(sessions: stack, front: session.id, size: 12, style: .fan)
+                } else {
+                    PaneStackIcon(items: paneStackItems(stack.map(\.id), front: session.id, model: model), size: 12, style: .fan)
+                }
+            }
+            .frame(minWidth: 14, alignment: .leading)
+            .zIndex(1)
             if model.renamingSessionId == session.id {
                 TextField("Title", text: $editTitle)
                     .textFieldStyle(.plain)
