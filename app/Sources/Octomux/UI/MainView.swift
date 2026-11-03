@@ -420,7 +420,7 @@ struct TopBar: View {
                         .buttonStyle(ChromeButtonStyle(active: model.isChat(fs.id))).help(model.isChat(fs.id) ? "Show terminal (⌘⇧C)" : "Show as chat (⌘⇧C)")
                 }
                 Button { model.toggleRightPanel() } label: { Image(systemName: "sidebar.right") }
-                    .buttonStyle(ChromeButtonStyle(active: model.rightPanelVisible)).help("Changes / History / Files (⌘⌥B)")
+                    .buttonStyle(ChromeButtonStyle(active: model.rightPanelVisible)).help("Files / Changes / Sessions (⌘⌥B)")
             }
             .fixedSize()
         }

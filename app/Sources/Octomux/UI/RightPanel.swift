@@ -1,12 +1,19 @@
 import AppKit
 import SwiftUI
 
-enum RightTab: String, CaseIterable { case changes = "Changes", history = "History", files = "Files", sessions = "Sessions" }
+/// History lives in the Changes tab now (a collapsible section at its bottom); a saved "History" opens Changes.
+enum RightTab: String, CaseIterable { case files = "Files", changes = "Changes", sessions = "Sessions" }
 
-/// Right-hand panel: Changes / History / Files of the current work path (project or worktree).
+extension Notification.Name {
+    /// A commit or push from the Changes panel: History reloads.
+    static let octomuxGitCommitted = Notification.Name("octomux.gitCommitted")
+}
+
+/// Right-hand panel: Files / Changes (with History) / Sessions of the current work path (project or worktree).
 struct RightPanel: View {
     @EnvironmentObject var model: AppModel
     @AppStorage("octomux.rightTab") private var tab = RightTab.changes.rawValue
+    @AppStorage("octomux.historyOpen") private var historyOpen = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -19,10 +26,48 @@ struct RightPanel: View {
             .padding(.horizontal, 8).frame(height: 38)
             Hairline()
             switch RightTab(rawValue: tab) ?? .changes {
-            case .changes: ChangesPanel()
-            case .history: HistoryPanel()
+            case .changes: SourceControlPanel()
             case .files: FilesPanel()
             case .sessions: SessionsPanel()
+            }
+        }
+        .onAppear {
+            if tab == "History" { tab = RightTab.changes.rawValue; historyOpen = true }
+        }
+        .onChange(of: tab) { _, t in
+            if t == "History" { tab = RightTab.changes.rawValue; historyOpen = true }
+        }
+    }
+}
+
+/// The Changes tab: changes on top, History as a section below (like VS Code's Source Control). Closed, History is
+/// only its header, pinned at the bottom; open, it takes a height you drag from its top edge.
+struct SourceControlPanel: View {
+    @AppStorage("octomux.historyOpen") private var open = false
+    @AppStorage("octomux.historyHeight") private var height = 300.0
+    @State private var dragStart: Double?
+    static let minHeight: CGFloat = 120
+    /// Changes keeps at least this much (message, commit button, a few rows).
+    static let changesMin: CGFloat = 200
+
+    var body: some View {
+        GeometryReader { geo in
+            let maxH = max(Self.minHeight, geo.size.height - Self.changesMin)
+            VStack(spacing: 0) {
+                ChangesPanel().frame(maxHeight: .infinity)
+                Hairline()
+                    .overlay {
+                        if open {
+                            VerticalResizeGrip { dy in
+                                if dragStart == nil { dragStart = min(max(height, Self.minHeight), maxH) }
+                                // Dragging up (window y grows) makes History taller.
+                                height = Double(min(maxH, max(Self.minHeight, CGFloat(dragStart ?? height) + dy)))
+                            } onEnd: { dragStart = nil }
+                            .frame(height: 7)
+                        }
+                    }
+                HistoryPanel(open: $open)
+                    .frame(height: open ? min(max(CGFloat(height), Self.minHeight), maxH) : nil)
             }
         }
     }
@@ -188,27 +233,19 @@ final class HistoryModel: ObservableObject {
     }
 }
 
+/// The commit log of the current work path: a section of the Changes tab with a header that opens and closes it.
 struct HistoryPanel: View {
     @EnvironmentObject var model: AppModel
     @StateObject private var h = HistoryModel()
     @State private var query = ""
+    @Binding var open: Bool
 
     var body: some View {
         VStack(spacing: 0) {
-            if !h.isRepo {
+            header
+            if open && !h.isRepo {
                 PanelEmpty(icon: "clock.arrow.circlepath", text: "Not a git repository")
-            } else {
-                HStack(spacing: 6) {
-                    Image(systemName: "arrow.triangle.branch").font(.system(size: 10.5)).foregroundStyle(T.text3)
-                    Text(h.branch).font(.system(size: 12, weight: .semibold)).foregroundStyle(T.text2).lineLimit(1)
-                    Spacer()
-                    Image(systemName: "magnifyingglass").font(.system(size: 10.5)).foregroundStyle(T.text3)
-                    TextField("Filter", text: $query).textFieldStyle(.plain).font(.system(size: 12)).frame(width: 80)
-                    Button { h.all.toggle() } label: { Text(h.all ? "All" : "Current").font(.system(size: 11, weight: .medium)) }
-                        .buttonStyle(ChromeButtonStyle(active: h.all)).help(h.all ? "Showing all branches" : "Showing the current branch")
-                    Button { h.refresh() } label: { Image(systemName: "arrow.clockwise").font(.system(size: 11)) }.buttonStyle(ChromeButtonStyle())
-                }
-                .padding(.leading, 12).padding(.trailing, 8).frame(height: 32)
+            } else if open {
                 Hairline()
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
@@ -229,11 +266,41 @@ struct HistoryPanel: View {
                 }
             }
         }
-        .onAppear { h.attach(model.currentWorkPath) }
-        .onChange(of: model.currentWorkPath) { _, p in h.attach(p) }
+        // Loaded only while open (a closed section costs no `git log`).
+        .onAppear { if open { h.attach(model.currentWorkPath) } }
+        .onChange(of: open) { _, o in if o { h.attach(model.currentWorkPath); h.refresh() } }
+        .onChange(of: model.currentWorkPath) { _, p in if open { h.attach(p) } }
+        .onReceive(NotificationCenter.default.publisher(for: .octomuxGitCommitted)) { _ in if open { h.refresh() } }
         .onReceive(NotificationCenter.default.publisher(for: .adeDebugPanel)) { n in
             if let i = n.userInfo?["commit"] as? Int, i < h.commits.count { h.select(h.commits[i]) }
         }
+    }
+
+    /// "HISTORY" with a chevron (click to open or close); open, also the branch, filter, All/Current and reload.
+    private var header: some View {
+        HStack(spacing: 6) {
+            HStack(spacing: 5) {
+                Image(systemName: "chevron.right").font(.system(size: 8.5, weight: .bold)).foregroundStyle(T.text3)
+                    .rotationEffect(.degrees(open ? 90 : 0)).frame(width: 10)
+                Text("HISTORY").font(.system(size: 11, weight: .semibold)).foregroundStyle(T.text2)
+                if open && h.isRepo && !h.branch.isEmpty {
+                    Text(h.branch).font(.system(size: 11)).foregroundStyle(T.text3).lineLimit(1)
+                }
+                Spacer(minLength: 4)
+            }
+            .contentShape(Rectangle())
+            .onTapGesture { withAnimation(.easeOut(duration: 0.18)) { open.toggle() } }
+            .pointerCursor()
+            if open && h.isRepo {
+                Image(systemName: "magnifyingglass").font(.system(size: 10.5)).foregroundStyle(T.text3)
+                TextField("Filter", text: $query).textFieldStyle(.plain).font(.system(size: 12)).frame(width: 70)
+                Button { h.all.toggle() } label: { Text(h.all ? "All" : "Current").font(.system(size: 11, weight: .medium)) }
+                    .buttonStyle(ChromeButtonStyle(active: h.all)).help(h.all ? "Showing all branches" : "Showing the current branch")
+                Button { h.refresh() } label: { Image(systemName: "arrow.clockwise").font(.system(size: 11)) }.buttonStyle(ChromeButtonStyle())
+            }
+        }
+        .padding(.leading, 12).padding(.trailing, 8).frame(height: 30)
+        .help(open ? "" : "Show the commit history")
     }
 }
 

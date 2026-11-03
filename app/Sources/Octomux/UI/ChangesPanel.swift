@@ -149,6 +149,7 @@ final class ChangesModel: ObservableObject {
                 else if !pushed { self.status = "Committed; push failed" }
                 else { self.status = (amend ? "Amended" : "Committed") + (push ? " and pushed" : ""); self.message = "" }
                 self.refresh()
+                NotificationCenter.default.post(name: .octomuxGitCommitted, object: nil)
             }
         }
     }
