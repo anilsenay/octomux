@@ -478,6 +478,7 @@ struct AppearanceSettings: View {
 struct ThemePicker: View {
     @EnvironmentObject var model: AppModel
     @ObservedObject var store = ThemeStore.shared
+    @AppStorage("ade.sidebarStackedTabs") private var stackedTabs = true
 
     var body: some View {
         SettingsCard {
@@ -514,6 +515,9 @@ struct ThemePicker: View {
             Toggle("Use theme colors in the terminal", isOn: Binding(
                 get: { model.settingValue("appearance.terminal_colors", scope: "global")?.bool ?? true },
                 set: { model.setSetting("appearance.terminal_colors", $0 ? nil : false) }))
+            Toggle("Show split tabs as one row in the sidebar", isOn: $stackedTabs)
+            Text(stackedTabs ? "A tab with several panes is one row with a stack of its panes' icons." : "Each pane of a split tab is its own row, grouped in a frame.")
+                .font(.caption).foregroundStyle(T.text3)
         }
     }
 }

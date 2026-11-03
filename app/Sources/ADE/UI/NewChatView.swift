@@ -57,7 +57,24 @@ struct NewChatView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(CanvasBackground(scene: true))
-        .onAppear { DispatchQueue.main.async { focused = true } }
+        .onAppear {
+            // The pane may be rebuilt right after opening: keep the text until it is sent, and follow edits.
+            var prefilled = false
+            if draft.isEmpty, let d = NewChatDraft.pending[docId] { draft = d; prefilled = true }
+            DispatchQueue.main.async { focused = true }
+            // Focus selects the whole text; with a prefilled instruction put the caret at its end instead,
+            // so typing continues it rather than replacing it.
+            if prefilled {
+                for delay in [0.05, 0.2, 0.45] {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                        guard let tv = (NSApp.keyWindow ?? (NSApp.delegate as? AppDelegate)?.mainWindow)?.firstResponder as? NSTextView else { return }
+                        let end = NSRange(location: (tv.string as NSString).length, length: 0)
+                        tv.setSelectedRange(end)
+                        tv.scrollRangeToVisible(end)
+                    }
+                }
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .adeDebugPanel)) { n in
             if let v = n.userInfo?["chatPicker"] as? String {
                 pickingWorkspace = v == "workspace"; pickingBranch = v == "branch"; pickingModel = v == "model"; pickingPermission = v == "permission"
@@ -77,7 +94,9 @@ struct NewChatView: View {
         let flags = kind == .claude || kind == .codex
         return VStack(alignment: .leading, spacing: 10) {
             AttachmentChips(files: $files)
-            TextField("Type a message… (↩ to send, ⌥↩ for a new line)", text: $draft, axis: .vertical)
+            TextField("Type a message… (↩ to send, ⌥↩ for a new line)", text: Binding(
+                get: { draft },
+                set: { draft = $0; if NewChatDraft.pending[docId] != nil { NewChatDraft.pending[docId] = $0 } }), axis: .vertical)
                 .textFieldStyle(.plain).font(.system(size: 14)).lineLimit(3...12)
                 .frame(minHeight: 58, alignment: .topLeading)
                 .focused($focused)
@@ -164,6 +183,7 @@ struct NewChatView: View {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard canSend, let project, let profile else { return }
         sending = true
+        NewChatDraft.pending[docId] = nil
         let docId = self.docId
         let kind = profile.kind
         let message = AttachmentChips.message(text, files: files, kind: kind)
@@ -322,4 +342,9 @@ struct SendButton: View {
         .overlay(Circle().stroke(enabled ? Color.clear : T.border))
         .disabled(!enabled).pointerCursor().help(help)
     }
+}
+
+/// Text a new chat's composer starts with, by doc id (set when the doc is opened, taken on appear).
+enum NewChatDraft {
+    static var pending: [String: String] = [:]
 }

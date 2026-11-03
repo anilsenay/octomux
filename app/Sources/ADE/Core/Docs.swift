@@ -66,13 +66,15 @@ extension AppModel {
     }
 
     /// A fresh chat start screen (each call opens another one, like a new tab).
-    func openNewChat(projectId: String? = nil) {
+    /// `draft`: text the composer starts with (e.g. an instruction the user completes).
+    func openNewChat(projectId: String? = nil, draft: String? = nil) {
         guard let p = project(projectId ?? currentProject?.id ?? "") ?? currentProject else {
             lastError = "Add a project first (⌘⇧O)."
             return
         }
         if p.id != currentProject?.id { selectedProjectId = p.id; activeTabId = tabs(ofProject: p.id).first?.id }
         let doc = DocTab(id: UUID().uuidString, projectId: p.id, workPath: p.path, kind: .newChat)
+        if let draft { NewChatDraft.pending[doc.id] = draft }
         docTabs.append(doc)
         activeDocId = doc.id
     }

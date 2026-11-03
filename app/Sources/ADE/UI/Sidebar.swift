@@ -517,6 +517,7 @@ func tabGroups(_ sessions: [Session]) -> [[Session]] {
 struct SessionGroup: View {
     /// Split tabs as one stacked row (default) or as a framed group of rows.
     static var stacked: Bool { UserDefaults.standard.object(forKey: "ade.sidebarStackedTabs") as? Bool ?? true }
+    @AppStorage("ade.sidebarStackedTabs") private var stackedPref = true
     @EnvironmentObject var model: AppModel
     let sessions: [Session]
     let indent: CGFloat
@@ -524,7 +525,7 @@ struct SessionGroup: View {
     var body: some View {
         if sessions.count == 1 {
             SessionRow(session: sessions[0], indent: indent)
-        } else if Self.stacked {
+        } else if stackedPref {
             // One row per tab: its focused pane, on a stacked icon.
             let tab = model.tab(containing: sessions[0].id)
             let lead = sessions.first { $0.id == tab?.activeSessionId } ?? sessions[0]

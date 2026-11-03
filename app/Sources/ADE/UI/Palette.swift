@@ -52,6 +52,9 @@ enum PaletteSource {
         for t in Themes.all {
             out.append(PaletteItem(id: "th:" + t.id, title: "Theme: \(t.name)", subtitle: t.summary, kind: "Theme", icon: sym("paintpalette")) { ThemeStore.shared.set(theme: t.id) })
         }
+        out.append(PaletteItem(id: "scene:agent", title: "Create Scene with Agent", subtitle: "", kind: "Theme", icon: sym("wand.and.stars")) {
+            DispatchQueue.main.async { UserScenes.createWithAgent() }
+        })
         out.append(PaletteItem(id: "scene:pick", title: "Change Scene", subtitle: model.workspace?.name ?? "", kind: "Theme", icon: sym("sparkles")) {
             DispatchQueue.main.async { ScenePickerPanel.shared.show() }
         })

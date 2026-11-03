@@ -317,6 +317,10 @@ struct UserScenesRow: View {
                 Text("Your scenes").font(.system(size: 12.5, weight: .semibold))
                 Text(UserScenes.loaded.isEmpty ? "none yet" : "\(UserScenes.loaded.count) loaded").font(.caption).foregroundStyle(T.text3)
                 Spacer()
+            }
+            HStack(spacing: 8) {
+                Button("Create with Agent…") { UserScenes.createWithAgent() }
+                    .help("Opens a new chat with your default agent and a ready instruction; describe the scene and send.")
                 Button("New from Template") { NSWorkspace.shared.open(UserScenes.writeTemplate()) }
                 Menu("Import") {
                     Button("From File…") { message = SceneSharing.importFiles() }
@@ -327,6 +331,7 @@ struct UserScenesRow: View {
                     try? FileManager.default.createDirectory(at: UserScenes.dir, withIntermediateDirectories: true)
                     NSWorkspace.shared.open(UserScenes.dir)
                 }
+                Spacer()
             }
             if let message { Text(message).font(.caption).foregroundStyle(T.text2) }
             Text("JSON files in \(UserScenes.dir.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")). They reload when saved; README.md there lists the fields. Right-click any scene to export it or to copy it as a starting point.")
@@ -782,5 +787,37 @@ struct SceneMenu: View {
             Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([f]) }
             Button("Move to Trash…") { SceneSharing.delete(scene) }
         }
+    }
+}
+
+// MARK: Create with an agent
+
+extension UserScenes {
+    /// The start of a prompt for the workspace's default agent; the user finishes the last line.
+    static var agentInstruction: String {
+        let d = dir.path
+        let bases = Scenes.builtIn.map(\.id).joined(separator: ", ")
+        return """
+        Create a scene for ADE (my terminal app): a live backdrop drawn in character cells plus a color palette, as one JSON file.
+
+        - First read \(d)/README.md and the JSON Schema \(d)/scene.schema.json; follow them exactly.
+        - Save it as \(d)/<short-kebab-name>.adescene.json. Start the file with "$schema": "./scene.schema.json" and "format": "ade-scene/1". Do not overwrite or edit other files there.
+        - To reuse an animation, set "base" to one of: \(bases). For the terminal's 16 colors you can set "terminal" to a Ghostty theme name (for example "Catppuccin Mocha", "Nord", "Tokyo Night").
+        - Keep text readable: a dark scene needs dark surface/frame colors, a light one light colors. Keep particle and twinkle counts moderate (under 150).
+        - Make sure the file is valid JSON. ADE reloads the folder on its own; when done, tell me the scene's name (I pick it in View › Change Scene…).
+
+        The scene I want:\u{20}
+        """
+    }
+
+    static func createWithAgent() {
+        writeDocs()
+        let m = AppModel.shared
+        guard m.currentProject != nil || m.projects.first != nil else {
+            m.lastError = "Add a project first: the agent runs in one."
+            return
+        }
+        (NSApp.delegate as? AppDelegate)?.mainWindow?.makeKeyAndOrderFront(nil)
+        m.openNewChat(projectId: m.currentProject?.id ?? m.projects.first?.id, draft: agentInstruction)
     }
 }

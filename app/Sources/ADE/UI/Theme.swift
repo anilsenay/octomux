@@ -126,7 +126,7 @@ final class ThemeStore: ObservableObject {
 
     /// Bumped when user scene files are reloaded (same ids, new content).
     @Published private(set) var sceneGeneration = 0
-    var revision: String { "\(preset.id)-\(mode)-\(activeScene?.id ?? "")-\(sceneGeneration)" }
+    var revision: String { "\(preset.id)-\(mode)-\(activeScene?.id ?? "")-\(sceneGeneration)-\(workspaceColor ?? "")" }
 
     func scenesReloaded() {
         if let s = scene { scene = Scenes.scene(s.id) }
@@ -138,8 +138,18 @@ final class ThemeStore: ObservableObject {
     /// Colors for an appearance: the active scene's (a scene has one appearance) or the preset's.
     func colors(dark: Bool) -> ThemeColors {
         if let s = activeScene { return s.colors }
-        return dark ? preset.dark : preset.light
+        var c = dark ? preset.dark : preset.light
+        // The workspace color is the app's primary color (buttons, toggles, focus, cursor, selection).
+        if let a = WorkspaceTint.tuned(workspaceColor, dark: dark) {
+            c.accent = a
+            c.selection = a.withAlphaComponent(dark ? 0.16 : 0.12)
+            c.termCursor = a
+        }
+        return c
     }
+
+    /// The current workspace's color (nil: none or gray → the preset's accent).
+    @Published private(set) var workspaceColor: String?
 
     /// The preset's metrics; a scene draws its own backdrop, so no window glass or sidebar material.
     var metrics: ThemeMetrics {
@@ -166,11 +176,13 @@ final class ThemeStore: ObservableObject {
         let ws = model.selectedWorkspaceId
         let st = TerminalSceneMode.resolve(workspace: ws, settings: model.state.settings)
         let so = TerminalSceneMode.resolveOpacity(workspace: ws, settings: model.state.settings)
-        let changed = id != preset.id || m != mode || tc != terminalColors || sceneChanged || st != sceneTerminals || so != sceneTerminalOpacity
+        let wc = model.workspace?.color
+        let changed = id != preset.id || m != mode || tc != terminalColors || sceneChanged || st != sceneTerminals || so != sceneTerminalOpacity || wc != workspaceColor
         guard changed || lastWritten.isEmpty else { return }
         let before = activeScene?.id
         if sceneChanged { scene = sc }
-        let restyle = id != preset.id || before != activeScene?.id || st != sceneTerminals || so != sceneTerminalOpacity
+        let restyle = id != preset.id || before != activeScene?.id || st != sceneTerminals || so != sceneTerminalOpacity || wc != workspaceColor
+        if wc != workspaceColor { workspaceColor = wc }
         sceneTerminals = st
         sceneTerminalOpacity = so
         if id != preset.id { preset = Themes.preset(id) }

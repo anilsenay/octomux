@@ -631,14 +631,26 @@ enum WorkspaceTint {
     /// every hue keeps similar contrast. Gray or no workspace color → the theme accent.
     static func accent(dark: Bool, hex: String? = AppModel.shared.workspace?.color) -> NSColor {
         if let s = ThemeStore.shared.activeScene { return s.colors.accent }
-        guard let hex, let c = NSColor(Color(hex: hex)).usingColorSpace(.sRGB) else { return T.ns(\.accent) }
+        return tuned(hex, dark: dark) ?? T.ns(\.accent)
+    }
+
+    /// `hex` as an accent for this appearance, nil for gray or no color. Also the app-wide accent
+    /// (ThemeStore.colors): the workspace color is the app's primary color.
+    static func tuned(_ hex: String?, dark: Bool) -> NSColor? {
+        guard let hex else { return nil }
+        let key = "\(hex)-\(dark)"
+        if let c = tunedCache[key] { return c }
+        guard let c = NSColor(Color(hex: hex)).usingColorSpace(.sRGB) else { return nil }
         var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
         c.getHue(&h, saturation: &s, brightness: &b, alpha: &a)
-        guard s > 0.12 else { return T.ns(\.accent) }
+        guard s > 0.12 else { return nil }
         let sat = min(max(s, 0.45), dark ? 0.7 : 0.8)
         let bri = dark ? max(b, 0.88) : min(max(b, 0.55), 0.72)
-        return NSColor(srgbHue: h, saturation: sat, brightness: bri, alpha: 1)
+        let out = NSColor(srgbHue: h, saturation: sat, brightness: bri, alpha: 1)
+        tunedCache[key] = out
+        return out
     }
+    private static var tunedCache: [String: NSColor] = [:]
 
     /// `base` with its hue pushed toward `hex`'s hue; brightness and alpha unchanged.
     static func washed(_ base: NSColor, toward hex: String?, strength: Double = strength) -> NSColor {
