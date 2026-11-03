@@ -89,10 +89,10 @@ struct SidebarView: View {
             } label: {
                 HStack(spacing: 8) {
                     if let w = model.workspace { WorkspaceIcon(workspace: w, size: 12).frame(width: 14) }
-                    Text(model.workspace?.name ?? "ADE").font(T.headline).foregroundStyle(T.text)
+                    Text(model.workspace?.name ?? "Octomux").font(T.headline).foregroundStyle(T.text)
                     Spacer()
                     if !model.connected {
-                        Image(systemName: "bolt.horizontal.circle").foregroundStyle(T.amber).help("Reconnecting to the ADE daemon…")
+                        Image(systemName: "bolt.horizontal.circle").foregroundStyle(T.amber).help("Reconnecting to the Octomux daemon…")
                     }
                     Image(systemName: "chevron.up.chevron.down").font(.system(size: 9, weight: .semibold)).foregroundStyle(T.text3)
                 }
@@ -419,7 +419,7 @@ struct WorktreeRow: View {
         var lines = [path]
         if let w, w.detached { lines.append("Detached HEAD at \(w.head) (no branch)") }
         if let lock = w?.locked { lines.append("Locked" + (lock.isEmpty ? "" : ": \(lock)")) }
-        if !path.hasPrefix(project.path + ".worktrees/") { lines.append("Not created by ADE") }
+        if !path.hasPrefix(project.path + ".worktrees/") { lines.append("Not created by Octomux") }
         return lines.joined(separator: "\n")
     }
 }

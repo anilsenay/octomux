@@ -139,7 +139,7 @@ enum Scenes {
 
 /// One clock for every live backdrop. Backdrops are Core Animation layer trees frozen at `speed = 0`;
 /// each tick moves their `timeOffset` forward, so the frame rate is exactly the tick rate and the app
-/// itself does almost nothing per frame (the render server draws). Full rate while ADE is in front,
+/// itself does almost nothing per frame (the render server draws). Full rate while Octomux is in front,
 /// slow while it is visible behind another app, stopped (last frame stays) when the window cannot be
 /// seen, in Low Power Mode or with Reduce Motion.
 final class AmbientClock: ObservableObject {
@@ -1408,7 +1408,7 @@ struct SceneSettingsCard: View {
                     set: { model.setSetting("appearance.scene_reactive", $0 ? nil : false) }))
                 UserScenesRow()
             }
-            Text("Animates at \(Int(AmbientClock.activeFPS)) fps while ADE is in front, \(Int(AmbientClock.backgroundFPS)) fps when it is visible behind another app, and stops when the window is hidden, in Low Power Mode, or with Reduce Motion.")
+            Text("Animates at \(Int(AmbientClock.activeFPS)) fps while Octomux is in front, \(Int(AmbientClock.backgroundFPS)) fps when it is visible behind another app, and stops when the window is hidden, in Low Power Mode, or with Reduce Motion.")
                 .font(.caption).foregroundStyle(T.text3)
         }
     }

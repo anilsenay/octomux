@@ -72,7 +72,7 @@ enum DaemonError: Error, CustomStringConvertible {
     case remote(String)
     var description: String {
         switch self {
-        case .unavailable: return "ADE daemon is not reachable"
+        case .unavailable: return "Octomux daemon is not reachable"
         case .remote(let s): return s
         }
     }

@@ -1,78 +1,90 @@
-// Draws ADE's app icon (original design): an ink squircle with an inset terminal card,
-// a prompt chevron and a coral three-stroke mark. Output: app/Resources/AppIcon.icns
-// usage: swift tools/make-icon.swift
+// Draws Octomux's app icon: the purple pixel octopus (design/brand/octomux-logo.html, "Detaylı piksel")
+// on a lavender squircle. Sprite cells snap to whole device pixels so edges stay crisp at every size.
+// Output: app/Resources/AppIcon.icns (+ AppIcon-1024.png). usage: swift tools/make-icon.swift [repo-root]
 import AppKit
 
-func draw(size: CGFloat) -> NSImage {
-    let img = NSImage(size: NSSize(width: size, height: size))
-    img.lockFocus()
-    let s = size / 1024
-    let ctx = NSGraphicsContext.current!.cgContext
-    // macOS icon grid: 824pt body centered in 1024 with shadow room.
+let sprite = [
+    ".....######.....",
+    "...#hhh######...",
+    "..#hhh########..",
+    ".##hh#########s.",
+    ".#############s.",
+    ".###we####we##s.",
+    ".###ee####ee##s.",
+    ".###ee####ee##s.",
+    ".#c##########cs.",
+    "..###########s..",
+    ".##.##.##.##.##.",
+    "##..#..##..#..##",
+    "#...#..##..#...#",
+].map { Array($0) }
+
+func rgb(_ hex: UInt32) -> CGColor {
+    CGColor(srgbRed: CGFloat((hex >> 16) & 0xff) / 255, green: CGFloat((hex >> 8) & 0xff) / 255,
+            blue: CGFloat(hex & 0xff) / 255, alpha: 1)
+}
+let palette: [Character: CGColor] = [
+    "#": rgb(0x8b5cf6), "h": rgb(0xc4b5fd), "s": rgb(0x6d28d9),
+    "e": rgb(0x1e1b4b), "w": rgb(0xffffff), "c": rgb(0xf9a8d4),
+]
+
+/// Renders the icon into a `px`×`px` bitmap. Coordinates are top-left based (the context is flipped).
+func render(px: Int) -> NSBitmapImageRep {
+    let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: px, pixelsHigh: px, bitsPerSample: 8, samplesPerPixel: 4,
+                               hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
+    let ctx = NSGraphicsContext(bitmapImageRep: rep)!.cgContext
+    let size = CGFloat(px), s = size / 1024
+    ctx.translateBy(x: 0, y: size); ctx.scaleBy(x: 1, y: -1)
+    // macOS icon grid: 824pt body centered in 1024, with room for the drop shadow.
     let body = CGRect(x: 100 * s, y: 100 * s, width: 824 * s, height: 824 * s)
-    let squircle = NSBezierPath(roundedRect: body, xRadius: 185 * s, yRadius: 185 * s)
+    let squircle = CGPath(roundedRect: body, cornerWidth: 185 * s, cornerHeight: 185 * s, transform: nil)
     ctx.saveGState()
-    ctx.setShadow(offset: CGSize(width: 0, height: -10 * s), blur: 28 * s, color: NSColor(white: 0, alpha: 0.35).cgColor)
-    NSColor(srgbRed: 0.078, green: 0.078, blue: 0.086, alpha: 1).setFill()
-    squircle.fill()
+    ctx.setShadow(offset: CGSize(width: 0, height: 10 * s), blur: 28 * s, color: CGColor(gray: 0, alpha: 0.28))
+    ctx.addPath(squircle); ctx.setFillColor(rgb(0xd9cffd)); ctx.fillPath()
     ctx.restoreGState()
-    // Subtle top light.
     ctx.saveGState()
-    squircle.addClip()
-    let grad = NSGradient(colors: [NSColor(white: 1, alpha: 0.10), NSColor(white: 1, alpha: 0)])!
-    grad.draw(in: CGRect(x: body.minX, y: body.midY, width: body.width, height: body.height / 2), angle: -90)
+    ctx.addPath(squircle); ctx.clip()
+    let grad = CGGradient(colorsSpace: CGColorSpace(name: CGColorSpace.sRGB), colors: [rgb(0xefeaff), rgb(0xd9cffd)] as CFArray,
+                          locations: [0, 1])!
+    ctx.drawLinearGradient(grad, start: CGPoint(x: 0, y: body.minY), end: CGPoint(x: 0, y: body.maxY), options: [])
     ctx.restoreGState()
-    // Inset terminal card.
-    let card = CGRect(x: 190 * s, y: 210 * s, width: 644 * s, height: 520 * s)
-    let cardPath = NSBezierPath(roundedRect: card, xRadius: 62 * s, yRadius: 62 * s)
-    NSColor(srgbRed: 0.106, green: 0.106, blue: 0.122, alpha: 1).setFill()
-    cardPath.fill()
-    NSColor(white: 1, alpha: 0.09).setStroke()
-    cardPath.lineWidth = 6 * s
-    cardPath.stroke()
-    // Prompt chevron.
-    let chev = NSBezierPath()
-    chev.move(to: CGPoint(x: 280 * s, y: 560 * s))
-    chev.line(to: CGPoint(x: 390 * s, y: 470 * s))
-    chev.line(to: CGPoint(x: 280 * s, y: 380 * s))
-    chev.lineWidth = 46 * s
-    chev.lineCapStyle = .round
-    chev.lineJoinStyle = .round
-    NSColor(srgbRed: 0.86, green: 0.86, blue: 0.88, alpha: 1).setStroke()
-    chev.stroke()
-    // Cursor line.
-    let cursor = NSBezierPath(roundedRect: CGRect(x: 440 * s, y: 360 * s, width: 140 * s, height: 44 * s), xRadius: 22 * s, yRadius: 22 * s)
-    NSColor(white: 0.86, alpha: 0.35).setFill()
-    cursor.fill()
-    // Coral mark (three strokes) at top-right of the card.
-    let c = CGPoint(x: 690 * s, y: 600 * s), r: CGFloat = 78 * s
-    let mark = NSBezierPath()
-    for a in [90.0, 30.0, -30.0] {
-        let t = a * .pi / 180
-        mark.move(to: CGPoint(x: c.x - cos(t) * r, y: c.y - sin(t) * r))
-        mark.line(to: CGPoint(x: c.x + cos(t) * r, y: c.y + sin(t) * r))
+    ctx.addPath(squircle); ctx.setStrokeColor(CGColor(gray: 0, alpha: 0.06)); ctx.setLineWidth(max(1, 4 * s)); ctx.strokePath()
+
+    // Sprite: 62% of the body wide, centered slightly below the middle (as in the brand page).
+    let cols = sprite[0].count, rows = sprite.count
+    let cell = max(1, (body.width * 0.62 / CGFloat(cols)).rounded())
+    let ox = (body.midX - CGFloat(cols) * cell / 2).rounded()
+    let oy = (body.minY + body.height * 0.51 - CGFloat(rows) * cell / 2).rounded()
+    ctx.setShouldAntialias(false)
+    for (y, row) in sprite.enumerated() {
+        for (x, ch) in row.enumerated() {
+            guard let c = palette[ch] else { continue }
+            ctx.setFillColor(c)
+            ctx.fill(CGRect(x: ox + CGFloat(x) * cell, y: oy + CGFloat(y) * cell, width: cell, height: cell))
+        }
     }
-    mark.lineWidth = 34 * s
-    mark.lineCapStyle = .round
-    NSColor(srgbRed: 0.922, green: 0.541, blue: 0.369, alpha: 1).setStroke()
-    mark.stroke()
-    img.unlockFocus()
-    return img
+    return rep
+}
+
+/// Below ~32px a 16-column sprite can't get a whole pixel per cell; downsample the 1024 render instead.
+func image(px: Int, master: NSBitmapImageRep) -> NSBitmapImageRep {
+    if CGFloat(px) * 824 / 1024 * 0.62 / 16 >= 1 { return render(px: px) }
+    let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: px, pixelsHigh: px, bitsPerSample: 8, samplesPerPixel: 4,
+                               hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
+    let ctx = NSGraphicsContext(bitmapImageRep: rep)!.cgContext
+    ctx.interpolationQuality = .high
+    ctx.draw(master.cgImage!, in: CGRect(x: 0, y: 0, width: px, height: px))
+    return rep
 }
 
 let root = URL(fileURLWithPath: CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : FileManager.default.currentDirectoryPath)
-let iconset = FileManager.default.temporaryDirectory.appendingPathComponent("ADE.iconset")
+let iconset = FileManager.default.temporaryDirectory.appendingPathComponent("Octomux.iconset")
 try? FileManager.default.removeItem(at: iconset)
 try FileManager.default.createDirectory(at: iconset, withIntermediateDirectories: true)
+let master = render(px: 1024)
 for (name, px) in [("16x16", 16), ("16x16@2x", 32), ("32x32", 32), ("32x32@2x", 64), ("128x128", 128), ("128x128@2x", 256),
                    ("256x256", 256), ("256x256@2x", 512), ("512x512", 512), ("512x512@2x", 1024)] {
-    let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: px, pixelsHigh: px, bitsPerSample: 8, samplesPerPixel: 4,
-                               hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
-    rep.size = NSSize(width: px, height: px)
-    NSGraphicsContext.saveGraphicsState()
-    NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
-    draw(size: CGFloat(px)).draw(in: NSRect(x: 0, y: 0, width: px, height: px))
-    NSGraphicsContext.restoreGraphicsState()
+    let rep = px == 1024 ? master : image(px: px, master: master)
     try rep.representation(using: .png, properties: [:])!.write(to: iconset.appendingPathComponent("icon_\(name).png"))
 }
 let out = root.appendingPathComponent("app/Resources/AppIcon.icns")
@@ -80,5 +92,7 @@ let p = Process()
 p.executableURL = URL(fileURLWithPath: "/usr/bin/iconutil")
 p.arguments = ["-c", "icns", iconset.path, "-o", out.path]
 try p.run(); p.waitUntilExit()
-try? FileManager.default.copyItem(at: iconset.appendingPathComponent("icon_512x512@2x.png"), to: root.appendingPathComponent("app/Resources/AppIcon-1024.png"))
+let png = root.appendingPathComponent("app/Resources/AppIcon-1024.png")
+try? FileManager.default.removeItem(at: png)
+try FileManager.default.copyItem(at: iconset.appendingPathComponent("icon_512x512@2x.png"), to: png)
 print(out.path)

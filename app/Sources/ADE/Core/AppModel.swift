@@ -72,7 +72,7 @@ final class AppModel: ObservableObject {
         DispatchQueue.global().async {
             let ok = DaemonClient.ensureDaemon()
             DispatchQueue.main.async {
-                if !ok { self.lastError = "Could not start the ADE daemon (\(Paths.adeBinary))." }
+                if !ok { self.lastError = "Could not start the Octomux daemon (\(Paths.adeBinary))." }
                 self.client.startSubscription()
             }
         }
@@ -240,6 +240,7 @@ final class AppModel: ObservableObject {
             DispatchQueue.main.async { self.selectProject(p) }
         }
         Notifier.shared.updateBadge(state: s)
+        StatusItemController.shared.sync(state: s)
         ThemeStore.shared.sync(from: self)
         updateAmbientMood()
         if s.workspaces.first(where: { $0.id == selectedWorkspaceId })?.color != lastTintColor { workspaceTintChanged() }
@@ -694,7 +695,7 @@ final class AppModel: ObservableObject {
     func removeProject(_ id: String) {
         guard let p = project(id) else { return }
         let a = NSAlert()
-        a.messageText = "Remove “\(p.name)” from ADE?"
+        a.messageText = "Remove “\(p.name)” from Octomux?"
         a.informativeText = "Its sessions are stopped and removed. Files on disk are not touched."
         a.addButton(withTitle: "Remove")
         a.addButton(withTitle: "Cancel")

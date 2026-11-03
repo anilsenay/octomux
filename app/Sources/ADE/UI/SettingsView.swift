@@ -508,6 +508,16 @@ struct ThemePicker: View {
                 }
                 .pickerStyle(.segmented).labelsHidden().frame(width: 220)
             }
+            HStack {
+                Text("Menu bar icon")
+                Spacer()
+                Picker("", selection: Binding(get: { model.settingValue("menubar.style", scope: "global")?.string ?? "color" },
+                                              set: { model.setSetting("menubar.style", $0, scope: "global") })) {
+                    Text("Color").tag("color"); Text("Monochrome").tag("mono"); Text("Hidden").tag("hidden")
+                }
+                .pickerStyle(.segmented).labelsHidden().frame(width: 260)
+            }
+            Text("The octopus bounces while an agent is working.").font(.caption).foregroundStyle(T.text3)
             if let sc = store.scene {
                 Text("The current workspace's scene (\(sc.name)) is \(sc.dark ? "dark" : "light"), so it decides while it is shown.")
                     .font(.caption).foregroundStyle(T.text3)
@@ -589,7 +599,7 @@ struct NotificationSettings: View {
         Text("You are never notified about the pane you are looking at. Mute a single project from its right-click menu.")
             .font(.caption).foregroundStyle(T.text2)
         if !Notifier.shared.authorized {
-            Text("System notifications are not authorized for ADE (or ADE runs outside its app bundle). Enable them in System Settings → Notifications.")
+            Text("System notifications are not authorized for Octomux (or Octomux runs outside its app bundle). Enable them in System Settings → Notifications.")
                 .font(.caption).foregroundStyle(T.amber)
         }
     }
@@ -616,7 +626,7 @@ struct FeatureSettings: View {
         SettingsCard {
             feature("Git worktrees", key: "features.worktrees", desc: "New Worktree… in the project menu and worktree groups in the sidebar.", available: true, defaultOn: true)
             Hairline()
-            feature("Remote hosts", key: "features.remote", desc: "Connect the window to an ADE daemon on another machine over SSH (Settings → Hosts).", available: true, defaultOn: true)
+            feature("Remote hosts", key: "features.remote", desc: "Connect the window to an Octomux daemon on another machine over SSH (Settings → Hosts).", available: true, defaultOn: true)
             Hairline()
             feature("Hosts side by side", key: "features.multi_host", desc: "Show projects of selected remote hosts next to this Mac's, in the workspace with the same name (Settings → Hosts → Show here).", available: true, defaultOn: false)
             Hairline()
@@ -648,7 +658,7 @@ struct KeyboardSettings: View {
             .font(T.body).foregroundStyle(T.text2)
         TextField("Filter", text: $filter).textFieldStyle(.roundedBorder).frame(maxWidth: 260)
         let groups = Dictionary(grouping: kb.commands.filter { filter.isEmpty || $0.title.localizedCaseInsensitiveContains(filter) }, by: \.group)
-        ForEach(["ADE", "File", "Session", "View", "Window"].filter { groups[$0] != nil }, id: \.self) { g in
+        ForEach(["Octomux", "File", "Session", "View", "Window"].filter { groups[$0] != nil }, id: \.self) { g in
             SettingsCard {
                 SectionLabel(g)
                 ForEach(groups[g] ?? []) { c in
@@ -710,7 +720,7 @@ struct HostsSettings: View {
     @State private var status: [String: String] = [:]
 
     var body: some View {
-        Text("A host is a machine running its own ADE daemon. ADE reaches it with `ssh <host> ade stdio` (no open ports); panes attach with `ssh -t`. Sessions keep running there when you disconnect. Install `ade` on the host first (Linux build: see README).")
+        Text("A host is a machine running its own Octomux daemon. Octomux reaches it with `ssh <host> ade stdio` (no open ports); panes attach with `ssh -t`. Sessions keep running there when you disconnect. Install `ade` on the host first (Linux build: see README).")
             .font(T.body).foregroundStyle(T.text2).fixedSize(horizontal: false, vertical: true)
         SettingsCard {
             ForEach(HostStore.withLocal) { h in

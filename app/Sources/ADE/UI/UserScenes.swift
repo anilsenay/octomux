@@ -125,7 +125,7 @@ enum UserScenes {
     static func parse(_ data: Data, file: URL) throws -> AmbientScene {
         let spec = try JSONDecoder().decode(SceneSpec.self, from: data)
         if let f = spec.format, f != format {
-            throw SceneError(message: "format “\(f)” is not supported (this ADE reads \(format))")
+            throw SceneError(message: "format “\(f)” is not supported (this Octomux reads \(format))")
         }
         var theme: TerminalThemes.Theme?
         if let name = spec.terminal {
@@ -545,8 +545,8 @@ extension UserScenes {
         {
           "$schema": "http://json-schema.org/draft-07/schema#",
           "$id": "https://ade.dev/schemas/ade-scene-1.json",
-          "title": "ADE scene",
-          "description": "A live backdrop and palette for ADE (format ade-scene/1).",
+          "title": "Octomux scene",
+          "description": "A live backdrop and palette for Octomux (format ade-scene/1).",
           "type": "object",
           "required": ["name"],
           "additionalProperties": false,

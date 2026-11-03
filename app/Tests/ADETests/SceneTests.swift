@@ -199,7 +199,7 @@ final class SceneFormatTests: XCTestCase {
 
     func testSchemaIsValidJSONAndTemplateParses() throws {
         let obj = try JSONSerialization.jsonObject(with: Data(UserScenes.schema.utf8)) as? [String: Any]
-        XCTAssertEqual(obj?["title"] as? String, "ADE scene")
+        XCTAssertEqual(obj?["title"] as? String, "Octomux scene")
         let props = obj?["properties"] as? [String: Any]
         // Every field the decoder knows is described in the schema.
         for k in ["format", "id", "name", "dark", "base", "gradient", "colors", "terminal", "twinkle", "sprites", "particles"] { XCTAssertNotNil(props?[k], k) }

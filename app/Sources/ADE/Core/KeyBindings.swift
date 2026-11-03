@@ -95,7 +95,7 @@ final class KeyBindings: ObservableObject {
                 out.append(Command(id: id, title: it.title, group: group, defaultShortcut: def, item: it))
             }
         }
-        walk(menu, group: "ADE")
+        walk(menu, group: "Octomux")
         commands = out
     }
 

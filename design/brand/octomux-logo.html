@@ -1,0 +1,441 @@
+<title>Octomux Logo Denemeleri</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@500;600;700&display=swap">
+<style>
+/* Layout: başlık + gerçek boyutta menü bar ve dock önizlemesi, ardından logo yönleri ızgarası (büyük ikon, küçük boyutlar, yazı ile birlikte) */
+:root {
+  --bg: #f1f2f4; --surface: #ffffff; --sunk: #f6f7f8; --fg: #111318; --muted: #5f6672; --line: #dcdfe4; --accent: #2b59d9;
+  --sans: "Geist", system-ui, -apple-system, sans-serif; --mono: "Geist Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #0e0f12; --surface: #16181c; --sunk: #1c1f24; --fg: #eceef1; --muted: #9aa1ac; --line: #2a2e35; --accent: #84a2f2; color-scheme: dark; } }
+:root[data-theme="dark"] { --bg: #0e0f12; --surface: #16181c; --sunk: #1c1f24; --fg: #eceef1; --muted: #9aa1ac; --line: #2a2e35; --accent: #84a2f2; color-scheme: dark; }
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font: 15px/1.55 var(--sans); margin: 0;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 40px 100px; }
+.wrap { max-width: 1120px; margin: 0 auto; display: grid; gap: 28px; }
+header { display: grid; gap: 10px; max-width: 72ch; }
+.eyebrow { font: 500 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+h1 { margin: 0; font-size: clamp(28px, 4vw, 38px); line-height: 1.1; font-weight: 600; letter-spacing: -.02em; text-wrap: balance; }
+header p { margin: 0; color: var(--muted); }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: grid; gap: 12px; }
+.panel h2 { margin: 0; font-size: 15px; font-weight: 600; }
+.row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.bar { display: flex; align-items: center; gap: 14px; height: 30px; padding: 0 14px; border-radius: 8px; font: 500 13px -apple-system, var(--sans); }
+.bar.light { background: #f3f3f5; color: #000; border: 1px solid rgba(0,0,0,.08); }
+.bar.dark { background: #1f2025; color: #fff; border: 1px solid rgba(255,255,255,.08); }
+.dock { display: flex; flex-wrap: wrap; gap: 10px; padding: 10px 14px; border-radius: 22px; background: rgba(127,127,127,.12); border: 1px solid var(--line); width: fit-content; max-width: 100%; }
+.dock svg { width: 56px; height: 56px; display: block; filter: drop-shadow(0 2px 4px rgba(0,0,0,.25)); }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+@media (max-width: 420px) { .grid { grid-template-columns: 1fr; } }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; display: grid; min-width: 0; position: relative; }
+.stage { display: grid; place-items: center; padding: 26px; background: var(--sunk); border-bottom: 1px solid var(--line); }
+.stage svg { width: 168px; height: 168px; filter: drop-shadow(0 8px 18px rgba(0,0,0,.22)); }
+.body { padding: 16px 18px 18px; display: grid; gap: 12px; }
+.title { display: flex; align-items: baseline; gap: 10px; }
+.title b { font-size: 17px; }
+.title span { font: 12px var(--mono); color: var(--muted); }
+.body p { margin: 0; }
+.sizes { display: flex; align-items: flex-end; gap: 14px; }
+.sizes figure { margin: 0; display: grid; gap: 4px; justify-items: center; }
+.sizes figcaption { font: 10px var(--mono); color: var(--muted); }
+.lockups { display: grid; gap: 8px; }
+.lockup { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; }
+.lockup.l { background: #ffffff; color: #111318; border: 1px solid #e3e5e8; }
+.lockup.d { background: #111318; color: #f2f3f5; border: 1px solid #23262c; }
+.lockup svg { width: 30px; height: 30px; flex: none; }
+.lockup .wm { font: 600 21px var(--mono); letter-spacing: -.02em; }
+.favbtn { position: absolute; top: 12px; right: 12px; width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--muted); cursor: pointer; font-size: 15px; }
+.favbtn[aria-pressed="true"] { color: #d99a00; border-color: #d99a00; }
+.favbtn:focus-visible, .switch input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.switch { display: inline-flex; align-items: center; gap: 10px; font-size: 14px; cursor: pointer; }
+.switch input { appearance: none; width: 38px; height: 22px; border-radius: 999px; background: var(--line); position: relative; cursor: pointer; margin: 0; }
+.switch input::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .15s; }
+.switch input:checked { background: #34c759; } .switch input:checked::after { transform: translateX(16px); }
+.note { font-size: 13px; color: var(--muted); margin: 0; max-width: 78ch; }
+.tray { position: fixed; left: 0; right: 0; bottom: 0; background: var(--surface); border-top: 1px solid var(--line);
+  padding: 12px max(16px, env(safe-area-inset-right, 0px)) calc(12px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+.tray .in { max-width: 1120px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
+.tray .list { flex: 1; min-width: 0; font-size: 14px; color: var(--muted); } .tray strong { color: var(--fg); }
+.btn { font: 600 13px var(--sans); padding: 8px 14px; border-radius: 8px; border: 1px solid var(--fg); background: var(--fg); color: var(--bg); cursor: pointer; }
+.btn:disabled { opacity: .4; cursor: default; }
+
+.mbgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
+.mbcard { border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: grid; gap: 10px; position: relative; background: var(--sunk); min-width: 0; }
+.mbcard .title b { font-size: 15px; }
+.mbcard p { margin: 0; font-size: 13px; color: var(--muted); }
+.mbcard .bar { gap: 11px; padding: 0 10px; height: 24px; font-size: 12px; }
+.mbcard .bar svg { display: block; flex: none; }
+.zoom { display: block; image-rendering: pixelated; max-width: 100%; }
+.mbcard .favbtn { top: 10px; right: 10px; }
+.mbcard.ref { opacity: .85; }
+.mbcard.ref .title span::after { content: " · referans"; }
+
+.vzoom { width: 72px; height: 72px; display: block; color: var(--fg); }
+.vbar { display: inline-flex; width: 17px; height: 17px; flex: none; }
+.vbar svg, .vzoom svg { width: 100%; height: 100%; display: block; overflow: visible; }
+</style>
+
+<div class="wrap">
+  <header>
+    <span class="eyebrow">Octomux · logo denemeleri</span>
+    <h1>Octomux logo ve menü bar ikonu</h1>
+    <p>Menü bar ikonu ve isim belli. Logolar aynı karakterden yola çıkıyor ama her biri ayrı bir yön: tek renk, renkli, daha detaylı piksel, terminal penceresinde, bölünmüş pane, mürekkep ve parlak gradyan. Her kartta büyük ikon, küçük boyutlar ve yazıyla birlikte hâli var.</p>
+  </header>
+
+
+
+
+
+  <section class="panel" aria-label="Son karar">
+    <div class="row" style="justify-content: space-between"><h2>Son karar · uygulamadaki menü bar ikonu</h2><label class="switch"><input type="checkbox" id="busy5" checked> Agent çalışıyor</label></div>
+    <p class="note">Logo sprite’ı, menü bar için iki ayarla: kafaya bir sıra eklendi (14pt, sistem ikonlarıyla aynı boy) ve bacaklar 2 piksel kalınlığında dört kol oldu. Ayarlar → Appearance → Menu bar icon: Color (varsayılan), Monochrome, Hidden. Tek renk hâli tonlu: gövde yarı saydam, gözler tam koyu, ışıltı boşluk; göz delikleri virüs/uzaylı gibi okunduğu için.</p>
+    <div class="mbgrid" id="finalgrid"></div>
+  </section>
+
+  <section class="panel" aria-label="Renkli menü bar ikonu">
+    <div class="row" style="justify-content: space-between"><h2>Logodaki mor ahtapot, menü bar’da</h2><label class="switch"><input type="checkbox" id="busy4" checked> Agent çalışıyor</label></div>
+    <p class="note">Logo sprite’ı birebir: 16×13 piksel, piksel başına 1pt (Retina’da 2 ekran pikseli). Renkli olduğu için menü bar’ın açık/koyu hâline göre değişmiyor; iki zeminde de yan yana. Çalışırken aynı zıplama: basılma, uzama, göz kırpma.</p>
+    <div class="mbgrid" id="colgrid"></div>
+  </section>
+
+  <section class="panel" aria-label="Vektör menü bar ikonları">
+    <div class="row" style="justify-content: space-between"><h2>Piksel dışı tarzlar · çizgi, glif, dönüşen ikon</h2><label class="switch"><input type="checkbox" id="busy3" checked> Agent çalışıyor</label></div>
+    <p class="note">SF Symbols ağırlığında vektör ikonlar (17pt, 1.5pt çizgi). “Dönüşür” etiketli olanlar Unpeel gibi: boştayken bir şekil, agent çalışırken yükleme ikonuna dönüşüyor. Anahtarı kapatıp açarak geçişe bak.</p>
+    <div class="mbgrid" id="vecgrid"></div>
+  </section>
+
+  <section class="panel" aria-label="Menü bar ikonu varyasyonları">
+    <div class="row" style="justify-content: space-between"><h2>Menü bar ikonu · virüs hissini kıran varyasyonlar</h2><label class="switch"><input type="checkbox" id="busy2" checked> Agent çalışıyor</label></div>
+    <p class="note">Hepsi gerçek boyutta (sprite pikseli 1.5pt), Wi‑Fi, pil ve Kontrol Merkezi gibi sistem ikonlarının yanında. Altta büyütülmüş hâli. Yeni minimal set en üstte; önceki turdaki kartlar (uygulamadaki şimdiki ikon dahil) aşağıda duruyor.</p>
+    <h2 style="margin-top:6px">Daha minimalist · az ve iri piksel</h2>
+    <div class="mbgrid" id="mingrid"></div>
+    <h2 style="margin-top:6px">Önceki tur · 11 piksel genişlik, 1.5pt</h2>
+    <div class="mbgrid" id="mbgrid"></div>
+  </section>
+
+  <section class="panel" aria-label="Menü bar ve dock">
+    <div class="row" style="justify-content: space-between"><h2>Gerçek boyutta</h2><label class="switch"><input type="checkbox" id="busy" checked> Agent çalışıyor</label></div>
+    <div class="row">
+      <div class="bar light"><canvas id="mbL"></canvas><span>Sal 3 Kas 14:32</span></div>
+      <div class="bar dark"><canvas id="mbD"></canvas><span>Sal 3 Kas 14:32</span></div>
+    </div>
+    <div class="dock" id="dock"></div>
+  </section>
+
+  <main class="grid" id="grid"></main>
+  <p class="note">Logolar taslak; seçtiğin yönü 1024 piksellik gerçek uygulama ikonu olarak inceltirim (köşe yarıçapı, gölge, küçük boyut ayarları).</p>
+</div>
+
+<div class="tray"><div class="in"><div class="list" id="favlist">Henüz seçim yok. Kartlardaki ★ ile işaretle.</div><button class="btn" id="copy" disabled>Listeyi kopyala</button></div></div>
+
+<script>
+// ---------- karakter ----------
+const OA = ['...#####...','..#######..','.#########.','.##.###.##.','.##.###.##.','.#########.','..#######..','.##.#.#.##.','#...#.#...#'];
+const FR = [OA,
+  ['...........','...#####...','..#######..','.#########.','###.###.###','###.###.###','.#########.','#.#.#.#.#.#','...........'], OA,
+  ['...#####...','..#######..','..#######..','..#######..','..#.###.#..','..#.###.#..','...#####...','...#.#.#...','..#..#..#..'], OA,
+  ['...#####...','..#######..','.#########.','.#########.','.##.###.##.','.#########.','..#######..','.##.#.#.##.','#...#.#...#']];
+const BIG = ['.....######.....','...#hhh######...','..#hhh########..','.##hh#########s.','.#############s.','.###we####we##s.','.###ee####ee##s.','.###ee####ee##s.','.#c##########cs.','..###########s..','.##.##.##.##.##.','##..#..##..#..##','#...#..##..#...#'];
+
+const f = n => (+n).toFixed(2);
+function pix(rows, colors, ox, oy, cs, skip) { let s = '';
+  rows.forEach((r, y) => [...r].forEach((ch, x) => { const c = colors[ch]; if (!c || (skip && skip(x, y))) return;
+    s += `<rect x="${f(ox + x * cs)}" y="${f(oy + y * cs)}" width="${f(cs + .08)}" height="${f(cs + .08)}" fill="${c}"/>`; })); return s; }
+const fit = (rows, size, cx = 50, cy = 50) => { const w = rows[0].length, h = rows.length, cs = size / Math.max(w, h); return { cs, ox: cx - w * cs / 2, oy: cy - h * cs / 2 }; };
+let uid = 0;
+const sq = (fillA, fillB, inner, stroke = 'rgba(255,255,255,.10)') => { const g = 'g' + (uid++);
+  return `<svg viewBox="0 0 100 100" shape-rendering="crispEdges" role="img" aria-label="Octomux logosu"><defs><linearGradient id="${g}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${fillA}"/><stop offset="1" stop-color="${fillB}"/></linearGradient></defs>
+    <rect width="100" height="100" rx="22.5" fill="url(#${g})" shape-rendering="geometricPrecision"/><rect x=".5" y=".5" width="99" height="99" rx="22" fill="none" stroke="${stroke}" shape-rendering="geometricPrecision"/>${inner}</svg>`; };
+
+const LOGOS = [
+  { id: 'mono', name: 'Tek renk', tag: 'menü bar ile birebir',
+    story: "Menü bar ikonunun aynısı, koyu zeminde beyaz. En sade ve en tutarlı yön: dock'ta ve menü barda aynı karakter.",
+    svg: () => { const p = fit(OA, 56); return sq('#2a2c31', '#0c0d0f', pix(OA, { '#': '#ffffff' }, p.ox, p.oy, p.cs)); } },
+  { id: 'coral', name: 'Mercan', tag: 'sıcak, sevimli',
+    story: "Mercan rengi bir ahtapot, gece mavisi zeminde. Yanaklarda açık pembe pikseller; karakter tatlılaşıyor ama sade kalıyor.",
+    svg: () => { const rows = OA.map((r, y) => y === 5 ? r.slice(0, 2) + 'c' + r.slice(3, 8) + 'c' + r.slice(9) : r); const p = fit(rows, 56);
+      return sq('#1c2440', '#0d1222', pix(rows, { '#': '#ff7a66', 'c': '#ffc4b8' }, p.ox, p.oy, p.cs)); } },
+  { id: 'detail', name: 'Detaylı piksel', tag: '16×13, gölgeli',
+    story: "Daha büyük bir piksel çizim: ışık alan bir tepe, gölgeli bir sağ taraf, parıltılı gözler ve yanaklar. Menü bardaki küçük ahtapotun büyük kardeşi.",
+    svg: () => { const p = fit(BIG, 62, 50, 51); return sq('#efeaff', '#d9cffd', pix(BIG, { '#': '#8b5cf6', 'h': '#c4b5fd', 's': '#6d28d9', 'e': '#1e1b4b', 'w': '#ffffff', 'c': '#f9a8d4' }, p.ox, p.oy, p.cs), 'rgba(0,0,0,.06)'); } },
+  { id: 'detail-blue', name: 'Detaylı piksel · mavi', tag: 'beğendiğin yön, mavi',
+    story: "Aynı detaylı ahtapot, mavi tonlarda: açık mavi tepe, koyu mavi gölge ve gök mavisi bir zemin. Mor olandan daha serin ve daha \"geliştirici aracı\" hissi veriyor.",
+    svg: () => { const p = fit(BIG, 62, 50, 51); return sq('#e6f3ff', '#c7e2fd', pix(BIG, { '#': '#3b82f6', 'h': '#9cc7ff', 's': '#1d4ed8', 'e': '#0f1e46', 'w': '#ffffff', 'c': '#f9a8d4' }, p.ox, p.oy, p.cs), 'rgba(0,0,0,.06)'); } },
+  { id: 'glasses', name: 'Gözlüklü', tag: 'maskot esintili',
+    story: "Mavi bir ahtapot, yuvarlak gözlükler, kocaman bir gülümseme ve turuncu kol uçları; koyu mavi deniz zemini. Gönderdiğin maskottan esinlendi ama aynısı değil.",
+    svg: () => { const rows = ['.....######.....','...#hhh######...','..#hhh########..','.##hh#########s.','.###gg####gg##s.','.##gllggggllg#s.','.##gleg##gleg#s.','.###gg####gg##s.','.#c###m##m###cs.','..####mttm###s..','.##.##.##.##.##.','##..#..##..#..##','o...o..oo..o...o'];
+      const p = fit(rows, 64, 50, 51);
+      return sq('#2b5fd9', '#0b2160', pix(rows, { '#': '#3d8bff', 'h': '#9fcbff', 's': '#1f56d6', 'g': '#0c1838', 'l': '#f4f8ff', 'e': '#0c1838', 'm': '#0c1838', 't': '#ff8fa3', 'c': '#ffb4c8', 'o': '#ff9f1c' }, p.ox, p.oy, p.cs)); } },
+  { id: 'window', name: 'Terminalde', tag: 'ne olduğu belli',
+    story: "Koyu bir terminal penceresi, içinde bir prompt; ahtapot pencerenin altından kollarını sarkıtıyor. Uygulamanın ne olduğunu en açık anlatan yön.",
+    svg: () => { const p = fit(OA, 32, 50, 66);
+      const win = `<rect x="16" y="20" width="68" height="52" rx="7" fill="#161b22" stroke="#2d333b" stroke-width="1.5" shape-rendering="geometricPrecision"/>
+        <circle cx="25" cy="28" r="2.4" fill="#ff5f57" shape-rendering="geometricPrecision"/><circle cx="32" cy="28" r="2.4" fill="#febc2e" shape-rendering="geometricPrecision"/><circle cx="39" cy="28" r="2.4" fill="#28c840" shape-rendering="geometricPrecision"/>
+        ${pix(['#..','.#.','#..'], { '#': '#7ee787' }, 23, 36, 2.2)}<rect x="31" y="40.4" width="8" height="2.2" fill="#7ee787"/>`;
+      return sq('#0e1117', '#05070a', win + pix(OA, { '#': '#ff7a66' }, p.ox, p.oy, p.cs)); } },
+  { id: 'split', name: 'Bölünmüş pane', tag: 'multiplexer fikri',
+    story: "Ahtapotun kafası ortadan ikiye bölünmüş, iki pane gibi; iki yarı hafifçe farklı tonda. Mux'un pane'leri karakterin içinde.",
+    svg: () => { const p = fit(OA, 58); return sq('#11806f', '#0a4740', pix(OA, { '#': '#ffffff' }, p.ox, p.oy, p.cs, (x, y) => x === 5 && y <= 6) +
+      pix(OA.map(r => r.replace(/./g, (ch, x) => x > 5 && ch === '#' ? 'r' : '.')), { 'r': 'rgba(10,71,64,.16)' }, p.ox, p.oy, p.cs, (x, y) => y > 6)); } },
+  { id: 'ink', name: 'Mürekkep', tag: 'açık zemin',
+    story: "Açık kâğıt zemin, koyu bir ahtapot ve kollarından dağılan birkaç mürekkep damlası. Açık temalı bir masaüstünde en çok öne çıkan yön.",
+    svg: () => { const p = fit(OA, 50, 48, 46); const drops = [[78, 70, 3.2], [70, 80, 2.2], [84, 60, 1.8], [22, 80, 2.4], [30, 86, 1.6]].map(([x, y, s]) => `<rect x="${x}" y="${y}" width="${s}" height="${s}" fill="#1b1d22" opacity=".55"/>`).join('');
+      return sq('#fbfbf9', '#ecece8', pix(OA, { '#': '#16181d' }, p.ox, p.oy, p.cs) + drops, 'rgba(0,0,0,.08)'); } },
+  { id: 'glow', name: 'Parlak gradyan', tag: 'modern, canlı',
+    story: "Mordan maviye bir gradyan ve üstünde hafifçe parlayan beyaz ahtapot. Raycast ya da Linear gibi modern bir uygulama hissi.",
+    svg: () => { const p = fit(OA, 54, 50, 52); const g = 'gl' + (uid++);
+      return sq('#6d5dfc', '#2f6bff', `<defs><filter id="${g}" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="2.6"/></filter></defs>
+        <g filter="url(#${g})" opacity=".7">${pix(OA, { '#': '#ffffff' }, p.ox, p.oy, p.cs)}</g>${pix(OA, { '#': '#ffffff' }, p.ox, p.oy, p.cs)}`); } },
+];
+
+// ---------- dock ve kartlar ----------
+document.getElementById('dock').innerHTML = LOGOS.map(l => `<span title="${l.name}">${l.svg()}</span>`).join('');
+const store = { get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
+const favs = new Set(store.get('octomux-logo-favs') || []);
+const grid = document.getElementById('grid');
+grid.innerHTML = LOGOS.map(l => `<article class="card">
+  <div class="stage">${l.svg()}</div>
+  <button class="favbtn" aria-pressed="${favs.has(l.id)}" data-fav="${l.id}" aria-label="${l.name} logosunu işaretle">★</button>
+  <div class="body">
+    <div class="title"><b>${l.name}</b><span>${l.tag}</span></div>
+    <p>${l.story}</p>
+    <div class="sizes">${[64, 32, 16].map(s => `<figure><span style="display:block;width:${s}px;height:${s}px">${l.svg().replace('<svg ', `<svg width="${s}" height="${s}" `)}</span><figcaption>${s}</figcaption></figure>`).join('')}</div>
+    <div class="lockups"><div class="lockup l">${l.svg()}<span class="wm">octomux</span></div><div class="lockup d">${l.svg()}<span class="wm">octomux</span></div></div>
+  </div></article>`).join('');
+grid.addEventListener('click', e => { const b = e.target.closest('.favbtn'); if (!b) return; const id = b.dataset.fav;
+  favs.has(id) ? favs.delete(id) : favs.add(id); store.set('octomux-logo-favs', [...favs]); b.setAttribute('aria-pressed', favs.has(id)); tray(); });
+const favText = () => [...LOGOS.filter(l => favs.has(l.id)).map(l => l.name), ...(typeof MB !== 'undefined' && MB ? [...(COLV || []), ...(VEC || []), ...(MIN || []), ...MB].filter(m => favs.has(m.id)).map(m => 'Menü bar: ' + m.name) : [])].join(', ');
+function tray() { const t = favText(); document.getElementById('favlist').innerHTML = t ? `Seçtiklerin: <strong>${t}</strong>` : 'Henüz seçim yok. Kartlardaki ★ ile işaretle.';
+  const b = document.getElementById('copy'); b.disabled = !t; b.textContent = 'Listeyi kopyala'; }
+document.getElementById('copy').addEventListener('click', async () => { const b = document.getElementById('copy');
+  try { await navigator.clipboard.writeText('Beğendiğim logolar: ' + favText()); b.textContent = 'Kopyalandı'; }
+  catch { const el = document.querySelector('#favlist strong'); if (el) { const r = document.createRange(); r.selectNodeContents(el); const s = getSelection(); s.removeAllRanges(); s.addRange(r); } b.textContent = 'Seçildi, ⌘C ile kopyala'; } });
+tray();
+
+// ---------- menü bar sprite (kare kare, 5 fps) ----------
+const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+const bars = [[document.getElementById('mbL'), '#000'], [document.getElementById('mbD'), '#fff']];
+bars.forEach(([c]) => { c.style.width = '22px'; c.style.height = '18px'; c.width = 22 * dpr; c.height = 18 * dpr; });
+const reduce = matchMedia('(prefers-reduced-motion: reduce)');
+let last = -1;
+function tick(now) { const busy = document.getElementById('busy').checked && !reduce.matches; const fi = busy ? Math.floor(now / 200) % FR.length : 0;
+  if (fi !== last) { last = fi; bars.forEach(([c, col]) => { const ctx = c.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, 22, 18); ctx.fillStyle = col;
+    FR[fi].forEach((r, y) => [...r].forEach((ch, x) => { if (ch === '#') ctx.fillRect(x * 2, y * 2, 2, 2); })); }); }
+  requestAnimationFrame(tick); }
+document.getElementById('busy').addEventListener('change', () => { last = -1; });
+requestAnimationFrame(tick);
+
+// ---------- menü bar varyasyonları ----------
+// '#' dolu, 'e' göz deliği (kırpınca dolar), 'E' dolu göz (kırpınca kaybolur), 'm' ağız deliği.
+// Kareler: duruş, basılma (gövdeden 3. satır çıkar, bacaklar açılır), duruş, uzama (3. satır tekrarlanır, bacaklar toplanır), duruş, göz kırpma.
+var MB = [
+  { id: 'mb-now', name: 'Şimdiki', tag: 'uygulamada', ref: true, story: 'İki piksel boyunda dikey göz yarıkları, aşağı sivri bacaklar. Virüs/uzaylı hissi buradan geliyor.',
+    body: ['...#####...','..#######..','.#########.','.##e###e##.','.##e###e##.','.#########.','..#######..'], legs: ['.##.#.#.##.','#...#.#...#'], spread: ['#.#.#.#.#.#'], tuck: ['...#.#.#...','..#..#..#..'] },
+  { id: 'mb-dot', name: 'Nokta göz', tag: '1 px göz, düz bacak', story: 'Gözler tek piksel ve biraz aşağıda, bacaklar dışa değil aşağı iniyor. Silüet aynı, bakış yumuşak.',
+    body: ['...#####...','..#######..','.#########.','.#########.','.##e###e##.','.#########.','..#######..'], legs: ['.#.##.##.#.','.#..#.#..#.'], spread: ['#.#.#.#.#.#'], tuck: ['...#.#.#...','...#.#.#...'] },
+  { id: 'mb-mouth', name: 'Ağızlı', tag: 'nokta göz + "o" ağız', story: 'Gözlerin altında tek piksel ağız. Şaşkın, sevimli bir yüz; kafatasına benzemiyor çünkü gözler küçük.',
+    body: ['...#####...','..#######..','.#########.','.##e###e##.','.#########.','.####m####.','..#######..'], legs: ['.##.#.#.##.','.#..#.#..#.'], spread: ['#.#.#.#.#.#'], tuck: ['...#.#.#...','...#.#.#...'] },
+  { id: 'mb-baby', name: 'Bebek kafa', tag: 'büyük kafa, kısa bacak', story: 'Kafa daha geniş ve yuvarlak, bacaklar tek sıra kısa çıkıntı. Bebek oranı en sevimli okunan oran.',
+    body: ['..#######..','.#########.','###########','###########','###e###e###','###########','.#########.','..#######..'], legs: ['.#.#.#.#.#.'], spread: ['#.#.#.#.#.#'], tuck: ['..#.#.#.#..'] },
+  { id: 'mb-eyes', name: 'Parlak göz', tag: '2×2 göz, ışıltılı', story: 'İri gözlerin köşesinde bir piksel ışıltı kalıyor. Anime/sticker sevimliliği; boşluk göz değil bakış gibi okunuyor.',
+    body: ['...#####...','..#######..','.#########.','.#e####e##.','.#ee###ee#.','.#########.','..#######..'], legs: ['.##.#.#.##.','.#..#.#..#.'], spread: ['#.#.#.#.#.#'], tuck: ['...#.#.#...','...#.#.#...'] },
+  { id: 'mb-jelly', name: 'Jöle', tag: 'dalgalı etek', story: 'Bacak yerine kısa, dalgalı bir etek. Daha yumuşak ve tombul; ahtapottan çok sevimli bir deniz canlısı.',
+    body: ['...#####...','..#######..','.#########.','.#########.','.##e###e##.','.#########.','.#########.'], legs: ['.#.##.##.#.'], spread: ['##.##.##.##'], tuck: ['..#.#.#.#..'] },
+  { id: 'mb-line', name: 'Çizgi', tag: 'içi boş, dolu göz', story: 'Sadece dış hat ve dolu nokta gözler. Wi‑Fi ve Bluetooth gibi ince sistem ikonlarına en yakın ağırlık.',
+    body: ['...#####...','..#.....#..','.#.......#.','.#.E...E.#.','.#.E...E.#.','.#.......#.','..#######..'], legs: ['.#..#.#..#.','#...#.#...#'], spread: ['#.#.#.#.#.#'], tuck: ['...#.#.#...','..#..#..#..'] },
+];
+var MIN = [
+  { id: 'mn-drop', name: 'Damla', tag: '7×6 · 2pt', story: 'Yuvarlak kubbe, iki nokta göz, tek sıra bacak. 42 yerine 30 piksel; aynı karakter, yarı gürültü.',
+    s: 2, dr: 3, body: ['..###..','.#####.','##e#e##','#######','.#####.'], legs: ['#.#.#.#'], spread: ['#.#.#.#'], tuck: ['.#.#.#.'] },
+  { id: 'mn-dome', name: 'Kubbe', tag: '7×5 · 2pt', story: 'Daha basık, geniş aralıklı gözler. En sakin duran; Kontrol Merkezi ikonuyla aynı ağırlıkta.',
+    s: 2, dr: 3, body: ['.#####.','#######','#e###e#','#######'], legs: ['#.#.#.#'], spread: ['#.#.#.#'], tuck: ['.#.#.#.'] },
+  { id: 'mn-wide', name: 'Geniş göz', tag: '8×6 · 2pt', story: 'Gözler iki piksel aralıklı ve büyük kafanın ortasında. Bebek yüzü oranı, ama yine az piksel.',
+    s: 2, dr: 3, body: ['..####..','.######.','##e##e##','########','########'], legs: ['.#.##.#.'], spread: ['#.#..#.#'], tuck: ['..#..#..'] },
+  { id: 'mn-tiny', name: 'Minik', tag: '5×5 · 2.5pt', story: '25 piksellik bir işaret. Ahtapot olduğu ancak zıplarken belli oluyor; durgunken soyut bir logo gibi.',
+    s: 2.5, dr: 3, body: ['.###.','#####','#e#e#','#####'], legs: ['.#.#.'], spread: ['#.#.#'], tuck: ['.#.#.'] },
+  { id: 'mn-block', name: 'Blok', tag: '5×4 · 3pt', story: 'Monocode gibi iri kutular: üç satır kafa, bir satır bacak. En minimal; animasyon üç kareye iniyor gibi okunur.',
+    s: 3, dr: 2, body: ['.###.','#e#e#','#####'], legs: ['.#.#.'], spread: ['#.#.#'], tuck: ['.#.#.'] },
+  { id: 'mn-sil', name: 'Silüet', tag: '7×6 · 2pt, gözsüz', story: 'Hiç göz yok, sadece kubbe ve dalgalanan bacaklar. Yüz olmadığı için hiçbir şekilde uzaylı/virüs okunmaz.',
+    s: 2, dr: 2, body: ['..###..','.#####.','#######','#######'], legs: ['.#.#.#.','#..#..#'], spread: ['#.#.#.#'], tuck: ['.#.#.#.','.#.#.#.'] },
+];
+function mbFrames(v) {
+  const w = v.body[0].length, dr = v.dr ?? 2;
+  const blink = rows => rows.map(r => r.replace(/e/g, '#').replace(/E/g, '.'));
+  const raw = [[...v.body, ...v.legs], [...v.body.slice(0, dr), ...v.body.slice(dr + 1), ...v.spread],
+               [...v.body.slice(0, dr + 1), v.body[dr], ...v.body.slice(dr + 1), ...v.tuck]];
+  const h = Math.max(...raw.map(r => r.length));
+  const pad = rows => [...Array(h - rows.length).fill('.'.repeat(w)), ...rows];
+  const [idle, squish, stretch] = raw.map(pad);
+  v.w = w; v.h = h; v.s = v.s ?? 1.5;
+  return [idle, squish, idle, stretch, idle, blink(idle)];
+}
+const ZOOMW = 66;
+function mbGridRender(el, list) {
+  list.forEach(v => { v.frames = mbFrames(v); v.frames.flat().forEach(r => { if (r.length !== v.w) console.warn('genişlik', v.id, r); }); });
+  el.innerHTML = list.map(v => `<article class="mbcard${v.ref ? ' ref' : ''}">
+    ${v.ref ? '' : `<button class="favbtn" aria-pressed="${favs.has(v.id)}" data-fav="${v.id}" aria-label="${v.name} ikonunu işaretle">★</button>`}
+    <div class="title"><b>${v.name}</b><span>${v.tag}</span></div>
+    <div class="bar light"><canvas data-mb="${v.id}" data-col="#000"></canvas>${sysIcons}<span>15:57</span></div>
+    <div class="bar dark"><canvas data-mb="${v.id}" data-col="#fff"></canvas>${sysIcons}<span>15:57</span></div>
+    <canvas class="zoom" data-mbz="${v.id}" aria-label="${v.name} büyütülmüş"></canvas>
+    <p>${v.story}</p></article>`).join('');
+  el.addEventListener('click', e => { const b = e.target.closest('.favbtn'); if (!b) return; const id = b.dataset.fav;
+    favs.has(id) ? favs.delete(id) : favs.add(id); store.set('octomux-logo-favs', [...favs]); b.setAttribute('aria-pressed', favs.has(id)); tray(); });
+  const find = id => list.find(m => m.id === id);
+  el.querySelectorAll('canvas[data-mb]').forEach(c => { const v = find(c.dataset.mb); const w = v.w * v.s, h = v.h * v.s;
+    c.style.width = w + 'px'; c.style.height = h + 'px'; c.width = Math.round(w * dpr); c.height = Math.round(h * dpr);
+    mbAll.push({ c, v, col: c.dataset.col, s: v.s * dpr }); });
+  el.querySelectorAll('canvas[data-mbz]').forEach(c => { const v = find(c.dataset.mbz); const zs = Math.floor(ZOOMW / v.w);
+    c.style.width = v.w * zs + 'px'; c.style.height = v.h * zs + 'px'; c.width = v.w * zs * dpr; c.height = v.h * zs * dpr;
+    mbAll.push({ c, v, zoom: true, s: zs * dpr }); });
+}
+const fgCol = () => getComputedStyle(document.documentElement).getPropertyValue('--fg').trim() || '#111';
+const sysIcons = `<svg width="16" height="12" viewBox="0 0 16 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M1.5 4.2a9.5 9.5 0 0 1 13 0"/><path d="M4 6.9a6 6 0 0 1 8 0"/><circle cx="8" cy="9.8" r="1.1" fill="currentColor" stroke="none"/></svg>
+  <svg width="24" height="12" viewBox="0 0 24 12" fill="none" stroke="currentColor"><rect x=".75" y=".75" width="19.5" height="10.5" rx="3" stroke-width="1.2" opacity=".55"/><rect x="2.5" y="2.5" width="16" height="7" rx="1.6" fill="currentColor" stroke="none"/><path d="M22 4.2v3.6" stroke-width="1.4" stroke-linecap="round" opacity=".55"/></svg>
+  <svg width="16" height="14" viewBox="0 0 16 14" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1" y="1.5" width="14" height="4.5" rx="2.25"/><circle cx="12.7" cy="3.75" r="1.2" fill="currentColor"/><rect x="1" y="8" width="14" height="4.5" rx="2.25"/><circle cx="3.3" cy="10.25" r="1.2" fill="currentColor"/></svg>`;
+const mbAll = [];
+mbGridRender(document.getElementById('mingrid'), MIN);
+mbGridRender(document.getElementById('mbgrid'), MB);
+function mbDraw({ c, v, col, zoom, s }, fi) { const ctx = c.getContext('2d'); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, c.width, c.height); ctx.fillStyle = zoom ? fgCol() : col;
+  v.frames[fi].forEach((r, y) => [...r].forEach((ch, x) => { if (ch === '#' || ch === 'E') ctx.fillRect(Math.round(x * s), Math.round(y * s), Math.round((x + 1) * s) - Math.round(x * s), Math.round((y + 1) * s) - Math.round(y * s)); })); }
+let mbLast = -1;
+function mbTick(now) { const busy = document.getElementById('busy2').checked && !reduce.matches; const fi = busy ? Math.floor(now / 200) % 6 : 0;
+  if (fi !== mbLast) { mbLast = fi; mbAll.forEach(o => mbDraw(o, fi)); } requestAnimationFrame(mbTick); }
+document.getElementById('busy2').addEventListener('change', () => { mbLast = -1; });
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { mbLast = -1; });
+requestAnimationFrame(mbTick);
+
+// ---------- vektör menü bar ikonları (viewBox 18×18, currentColor) ----------
+const sw = (w = 1.5) => `stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" fill="none"`;
+const SW = sw();
+const ring = (cx, cy, r) => `M${cx - r} ${cy}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 ${-2 * r} 0`;
+const eyes = (y, open = 1, dx = 0, gap = 2, r = .95) => [9 - gap + dx, 9 + gap + dx].map(x => `<ellipse cx="${x}" cy="${y}" rx="${r}" ry="${Math.max(.18, r * open)}" fill="currentColor"/>`).join('');
+const blinkAt = t => (t % 3.2) < .14 ? .2 : 1;
+function tentacles(t, amp, speed) { return [[5, -1], [7.7, -.3], [10.3, .3], [13, 1]].map(([x0, d], i) => { const pts = [];
+  for (let y = 10.6; y <= 16.01; y += .45) pts.push(`${(x0 + d * (y - 10.6) * .35 + amp * Math.sin((y - 10.6) * 1.3 + t * speed)).toFixed(2)},${y.toFixed(2)}`);
+  return `<polyline points="${pts.join(' ')}" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>`; }).join(''); }
+const lineHead = (t, busy) => `<path d="M3.5 10.6V8.6a5.5 5.5 0 0 1 11 0v2" ${SW}/>${eyes(8.3, busy ? blinkAt(t) : 1)}`;
+let vid = 0;
+var VEC = [
+  { id: 'v-line', name: 'Çizgi ahtapot', tag: 'SF Symbols tarzı', story: 'Kubbe hat, nokta gözler, dört dalgalı kol. Çalışırken kollar akıyor ve ara ara göz kırpıyor. Bluetooth/Wi‑Fi ile aynı dil.',
+    fps: 15, draw: (t, b) => lineHead(t, b) + tentacles(t, b ? .55 : .4, b ? 5 : 0) },
+  { id: 'v-eight', name: 'Sekiz kol', tag: 'dönüşür · 8 nokta', story: 'Boştayken çizgi ahtapot; çalışırken sekiz kolu macOS’un klasik sekiz noktalı yükleme çarkına dönüşüyor. “Octo” = 8.',
+    fps: 10, draw: (t, b) => { if (!b) return lineHead(t, false) + tentacles(0, .45, 0);
+      const step = Math.floor(t * 10) % 8, op = [1, .72, .52, .38, .28, .22, .22, .22];
+      return [...Array(8)].map((_, i) => { const a = i / 8 * Math.PI * 2 - Math.PI / 2; return `<circle cx="${(9 + 6.2 * Math.cos(a)).toFixed(2)}" cy="${(9 + 6.2 * Math.sin(a)).toFixed(2)}" r="1.45" fill="currentColor" opacity="${op[(step - i + 8) % 8]}"/>`; }).join(''); } },
+  { id: 'v-pane', name: 'Pane', tag: 'dönüşür · Unpeel gibi', story: 'İçi boş, dörde bölünmüş kare: multiplexer’ın kendisi. Çalışırken pane’ler saat yönünde sırayla doluyor.',
+    fps: 4, draw: (t, b) => { const q = [[4.3, 4.3], [9.7, 4.3], [9.7, 9.7], [4.3, 9.7]]; const k = Math.floor(t * 4) % 4;
+      return `<rect x="2.5" y="2.5" width="13" height="13" rx="3.2" ${SW}/><path d="M9 2.5v13M2.5 9h13" ${sw(1.2)} opacity="${b ? .35 : 1}"/>` +
+        (b ? `<rect x="${q[k][0]}" y="${q[k][1]}" width="4" height="4" rx="1" fill="currentColor"/>` : ''); } },
+  { id: 'v-drop', name: 'Mürekkep', tag: 'dönüşür · dolup boşalır', story: 'Ahtapotun mürekkebi: içi boş bir damla. Çalışırken içinde dalgalı mürekkep yükselip alçalıyor, ilerleme hissi veriyor.',
+    fps: 20, draw: (t, b) => { const id = 'dc' + (vid++); const d = 'M9 2.3C9 2.3 4 7.9 4 11.1a5 5 0 0 0 10 0C14 7.9 9 2.3 9 2.3Z';
+      if (!b) return `<path d="${d}" ${SW}/>`;
+      const lvl = 14 - 5 * (0.5 + 0.5 * Math.sin(t * 1.6)); let w = `M2 ${lvl}`; for (let x = 2; x <= 16; x += .5) w += `L${x} ${(lvl + .55 * Math.sin(x * 1.2 + t * 5)).toFixed(2)}`;
+      return `<defs><clipPath id="${id}"><path d="${d}"/></clipPath></defs><path d="${w}L16 18L2 18Z" fill="currentColor" clip-path="url(#${id})"/><path d="${d}" ${SW}/>`; } },
+  { id: 'v-look', name: 'Bakış', tag: 'dalgalı etek, iri göz', story: 'Kapalı bir gövde, dalgalı etek ve iki iri hap göz. Çalışırken gözler sağa sola bakınıyor, ara ara kırpıyor. Yüz sevimli, hiç sivri yok; ama Pac-Man hayaletine fazla benziyor.',
+    fps: 3, draw: (t, b) => { const pos = [0, -1, -1, 0, 1, 1][Math.floor(t * 3) % 6] * (b ? 1.1 : 0);
+      const open = b && Math.floor(t * 3) % 12 === 9 ? .15 : 1;
+      return `<path d="M3.2 14.6V9.1a5.8 5.8 0 0 1 11.6 0v5.5q-1.45 1.5-2.9 0t-2.9 0t-2.9 0t-2.9 0" ${SW}/>` +
+        [7 + pos, 11 + pos].map(x => `<rect x="${x - .95}" y="${8.4 - 1.6 * open}" width="1.9" height="${3.2 * open}" rx=".95" fill="currentColor"/>`).join(''); } },
+  { id: 'v-type', name: 'Yazıyor', tag: 'dolu glif + üç nokta', story: 'Dolu kubbe, oyuk gözler, altında üç nokta. Çalışırken noktalar sohbet uygulamalarındaki “yazıyor…” gibi sırayla zıplıyor.',
+    fps: 20, draw: (t, b) => `<path fill="currentColor" fill-rule="evenodd" d="M3 11.2V8.8a6 6 0 0 1 12 0v2.4Z${ring(7, 8.4, 1)}${ring(11, 8.4, 1)}"/>` +
+      [5, 9, 13].map((x, i) => `<circle cx="${x}" cy="${(14.6 - (b ? 1.6 * Math.max(0, Math.sin(t * 7 - i * .9)) : 0)).toFixed(2)}" r="1.35" fill="currentColor"/>`).join('') },
+  { id: 'v-ring', name: 'Halka', tag: 'dönüşür · çark', story: 'Bir “O” halkasının içinde sevimli bir yüz. Çalışırken halka açılıp yüzün etrafında dönen bir yükleme çarkına dönüşüyor.',
+    fps: 24, draw: (t, b) => { const face = `${eyes(8.2, b ? blinkAt(t) : 1, 0, 2, .9)}<path d="M7.4 11.3q1.6 1.3 3.2 0" ${sw(1.3)}/>`;
+      if (!b) return `<circle cx="9" cy="9" r="7" ${SW}/>` + face;
+      return `<circle cx="9" cy="9" r="7" ${SW} opacity=".25"/><circle cx="9" cy="9" r="7" ${SW} stroke-dasharray="11 33" transform="rotate(${(t * 300) % 360} 9 9)"/>` + face; } },
+  { id: 'v-glyph', name: 'Glif', tag: 'dolu silüet, oyuk göz', story: 'W logosu gibi tek parça, dolu bir işaret: kubbe ve üç kısa kol, gözler oyuk. Çalışırken kollar sırayla kısalıp uzuyor.',
+    fps: 8, draw: (t, b) => { const k = Math.floor(t * 8) % 6;
+      const legs = [5.2, 9, 12.8].map((x, i) => { const h = b ? [3.6, 2.4, 3.6, 4.4][(k + i) % 4] : 3.6; return `<rect x="${x - 1.15}" y="10.4" width="2.3" height="${h}" rx="1.15" fill="currentColor"/>`; }).join('');
+      return `<path fill="currentColor" fill-rule="evenodd" d="M3 11.6V8.6a6 6 0 0 1 12 0v3Z${ring(7, 8.2, 1)}${ring(11, 8.2, 1)}"/>` + legs; } },
+];
+const vgrid = document.getElementById('vecgrid');
+vgrid.innerHTML = VEC.map(v => `<article class="mbcard">
+  <button class="favbtn" aria-pressed="${favs.has(v.id)}" data-fav="${v.id}" aria-label="${v.name} ikonunu işaretle">★</button>
+  <div class="title"><b>${v.name}</b><span>${v.tag}</span></div>
+  <div class="bar light"><span class="vbar" data-v="${v.id}"></span>${sysIcons}<span>16:06</span></div>
+  <div class="bar dark"><span class="vbar" data-v="${v.id}"></span>${sysIcons}<span>16:06</span></div>
+  <div class="vzoom" data-v="${v.id}" role="img" aria-label="${v.name} büyütülmüş"></div>
+  <p>${v.story}</p></article>`).join('');
+vgrid.addEventListener('click', e => { const b = e.target.closest('.favbtn'); if (!b) return; const id = b.dataset.fav;
+  favs.has(id) ? favs.delete(id) : favs.add(id); store.set('octomux-logo-favs', [...favs]); b.setAttribute('aria-pressed', favs.has(id)); tray(); });
+const vEls = VEC.map(v => ({ v, els: [...vgrid.querySelectorAll(`[data-v="${v.id}"]`)], last: '' }));
+function vTick(now) { const t = now / 1000, busy = document.getElementById('busy3').checked;
+  vEls.forEach(o => { const ft = reduce.matches ? 0 : Math.floor(t * o.v.fps) / o.v.fps; const key = busy + ':' + ft;
+    if (key !== o.last) { o.last = key; const svg = `<svg viewBox="0 0 18 18" aria-hidden="true">${o.v.draw(ft, busy)}</svg>`; o.els.forEach(e => e.innerHTML = svg); } });
+  requestAnimationFrame(vTick); }
+requestAnimationFrame(vTick);
+
+// ---------- renkli logo sprite'ı menü bar'da ----------
+const PURPLE = { '#': '#8b5cf6', 'h': '#c4b5fd', 's': '#6d28d9', 'e': '#1e1b4b', 'w': '#ffffff', 'c': '#f9a8d4' };
+const FLAT = { ...PURPLE, 'h': '#8b5cf6', 's': '#8b5cf6' };
+function colFrames() {
+  const body = BIG.slice(0, 10), legs = BIG.slice(10), W = 16, H = 14;
+  const pad = r => [...Array(H - r.length).fill('.'.repeat(W)), ...r];
+  const idle = pad([...body, ...legs]);
+  const squish = pad([...body.slice(0, 4), ...body.slice(5), '.##.##.##.##.##.', '##..#..##..#..##']);
+  const stretch = pad([...body.slice(0, 5), body[4], ...body.slice(5), '...#.#.##.#.#...', '..#..#.##.#..#..', '..#..#....#..#..']);
+  const blink = idle.map(r => r.replace(/[ew]/g, '#'));
+  return [idle, squish, idle, stretch, idle, blink];
+}
+var COLV = [
+  { id: 'c-detail', name: 'Logo, detaylı', tag: '16×13 · 1pt · gölgeli', pal: PURPLE, story: 'Logodaki sprite’ın aynısı: parlama, gölge, göz ışıltısı, pembe yanaklar. Dock’taki ikonla menü bar birebir aynı karakter.' },
+  { id: 'c-flat', name: 'Logo, düz mor', tag: '16×13 · 1pt · gölgesiz', pal: FLAT, story: 'Aynı sprite, parlama ve gölge pikselleri gövde rengine boyandı. Küçük boyutta daha temiz; gözler ve yanaklar duruyor.' },
+];
+const colFr = colFrames();
+const cgrid = document.getElementById('colgrid');
+cgrid.innerHTML = COLV.map(v => `<article class="mbcard">
+  <button class="favbtn" aria-pressed="${favs.has(v.id)}" data-fav="${v.id}" aria-label="${v.name} ikonunu işaretle">★</button>
+  <div class="title"><b>${v.name}</b><span>${v.tag}</span></div>
+  <div class="bar light"><canvas data-c="${v.id}" data-s="1"></canvas>${sysIcons}<span>16:06</span></div>
+  <div class="bar dark"><canvas data-c="${v.id}" data-s="1"></canvas>${sysIcons}<span>16:06</span></div>
+  <canvas class="zoom" data-c="${v.id}" data-s="5"></canvas>
+  <p>${v.story}</p></article>`).join('');
+cgrid.addEventListener('click', e => { const b = e.target.closest('.favbtn'); if (!b) return; const id = b.dataset.fav;
+  favs.has(id) ? favs.delete(id) : favs.add(id); store.set('octomux-logo-favs', [...favs]); b.setAttribute('aria-pressed', favs.has(id)); tray(); });
+const cEls = [...cgrid.querySelectorAll('canvas[data-c]')].map(c => { const v = COLV.find(x => x.id === c.dataset.c), sc = +c.dataset.s;
+  c.style.width = 16 * sc + 'px'; c.style.height = 14 * sc + 'px'; c.width = 16 * sc * dpr; c.height = 14 * sc * dpr; return { c, v, s: sc * dpr }; });
+let cLast = -1;
+function cTick(now) { const busy = document.getElementById('busy4').checked && !reduce.matches; const fi = busy ? Math.floor(now / 200) % 6 : 0;
+  if (fi !== cLast) { cLast = fi; cEls.forEach(({ c, v, s }) => { const ctx = c.getContext('2d'); ctx.clearRect(0, 0, c.width, c.height);
+    colFr[fi].forEach((r, y) => [...r].forEach((ch, x) => { const col = v.pal[ch]; if (!col) return; ctx.fillStyle = col;
+      ctx.fillRect(Math.round(x * s), Math.round(y * s), Math.round((x + 1) * s) - Math.round(x * s), Math.round((y + 1) * s) - Math.round(y * s)); })); }); }
+  requestAnimationFrame(cTick); }
+document.getElementById('busy4').addEventListener('change', () => { cLast = -1; });
+requestAnimationFrame(cTick);
+
+// ---------- son karar (app/Sources/ADE/UI/StatusItem.swift ile aynı) ----------
+const FBODY = ['.....######.....','...#hhh######...','..#hhh########..','.##hh#########s.','.#############s.','.#############s.','.###we####we##s.','.###ee####ee##s.','.###ee####ee##s.','.#c##########cs.','..###########s..'];
+const FLEGS = ['.##..##..##..##.','.##..##..##..##.','##...##..##...##'];
+const FSPREAD = ['.##..##..##..##.','##..##....##..##'], FTUCK = ['..##.##..##.##..','..##.##..##.##..','..#..##..##..#..'];
+const fFrames = (() => { const H = 15, pad = r => [...Array(H - r.length).fill('.'.repeat(16)), ...r];
+  const idle = pad([...FBODY, ...FLEGS]);
+  return [idle, pad([...FBODY.slice(0, 4), ...FBODY.slice(5), ...FSPREAD]), idle,
+          pad([...FBODY.slice(0, 5), FBODY[4], ...FBODY.slice(5), ...FTUCK]), idle, idle.map(r => r.replace(/[ew]/g, '#'))]; })();
+const FINAL = [
+  { id: 'f-color', name: 'Color', tag: 'varsayılan', pal: () => FLAT },
+  { id: 'f-mono', name: 'Monochrome', tag: 'tonlu şablon', mono: true },
+];
+const monoA = { '#': .72, 'h': .5, 's': .85, 'c': .5, 'e': 1 };
+const fgrid = document.getElementById('finalgrid');
+fgrid.innerHTML = FINAL.map(v => `<article class="mbcard">
+  <div class="title"><b>${v.name}</b><span>${v.tag}</span></div>
+  <div class="bar light"><canvas data-f="${v.id}" data-s="1" data-ink="0,0,0"></canvas>${sysIcons}<span>16:57</span></div>
+  <div class="bar dark"><canvas data-f="${v.id}" data-s="1" data-ink="255,255,255"></canvas>${sysIcons}<span>16:57</span></div>
+  <canvas class="zoom" data-f="${v.id}" data-s="5" data-ink="fg"></canvas></article>`).join('');
+const hexRgb = h => { const m = h.replace('#', '').match(/../g); return m ? m.map(x => parseInt(x, 16)).join(',') : '17,19,24'; };
+const fEls = [...fgrid.querySelectorAll('canvas[data-f]')].map(c => { const v = FINAL.find(x => x.id === c.dataset.f), sc = +c.dataset.s;
+  c.style.width = 16 * sc + 'px'; c.style.height = 15 * sc + 'px'; c.width = 16 * sc * dpr; c.height = 15 * sc * dpr; return { c, v, s: sc * dpr, ink: c.dataset.ink }; });
+let fLast = -1;
+function fTick(now) { const busy = document.getElementById('busy5').checked && !reduce.matches; const fi = busy ? Math.floor(now / 200) % 6 : 0;
+  if (fi !== fLast) { fLast = fi; fEls.forEach(({ c, v, s, ink }) => { const ctx = c.getContext('2d'); ctx.clearRect(0, 0, c.width, c.height);
+    const rgb = ink === 'fg' ? hexRgb(fgCol()) : ink;
+    fFrames[fi].forEach((r, y) => [...r].forEach((ch, x) => { let col;
+      if (v.mono) { const a = monoA[ch]; if (a == null) return; col = `rgba(${rgb},${a})`; } else { col = FLAT[ch]; if (!col) return; }
+      ctx.fillStyle = col; ctx.fillRect(Math.round(x * s), Math.round(y * s), Math.round((x + 1) * s) - Math.round(x * s), Math.round((y + 1) * s) - Math.round(y * s)); })); }); }
+  requestAnimationFrame(fTick); }
+document.getElementById('busy5').addEventListener('change', () => { fLast = -1; });
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { fLast = -1; });
+requestAnimationFrame(fTick);
+</script>

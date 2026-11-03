@@ -910,7 +910,7 @@ struct UsagePopover: View {
                      : "Always show applies to every workspace without a list of its own.")
                     .font(T.caption).foregroundStyle(T.text3)
             }
-            Text("Only the agents shown in the status bar (the focused one and those set to Always show) are refreshed: every minute while ADE is open, and right after their session finishes a turn. Claude is asked with its own `/usage` command (no tokens used); Codex is read from its session files.")
+            Text("Only the agents shown in the status bar (the focused one and those set to Always show) are refreshed: every minute while Octomux is open, and right after their session finishes a turn. Claude is asked with its own `/usage` command (no tokens used); Codex is read from its session files.")
                 .font(T.caption).foregroundStyle(T.text3).fixedSize(horizontal: false, vertical: true)
             // Readings so far, plus Claude/Codex profiles without one yet (so they can be set to Always show).
             let profiles = model.enabledProfiles.filter { p in model.state.usage.contains { $0.profileId == p.id } || p.kind == .claude || p.kind == .codex }

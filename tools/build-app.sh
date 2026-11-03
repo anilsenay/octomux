@@ -24,8 +24,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <plist version="1.0">
 <dict>
   <key>CFBundleIdentifier</key><string>dev.ade-dev.app</string>
-  <key>CFBundleName</key><string>ADE</string>
-  <key>CFBundleDisplayName</key><string>ADE</string>
+  <key>CFBundleName</key><string>Octomux</string>
+  <key>CFBundleDisplayName</key><string>Octomux</string>
   <key>CFBundleExecutable</key><string>ADE</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
