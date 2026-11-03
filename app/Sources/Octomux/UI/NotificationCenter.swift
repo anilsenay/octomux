@@ -99,18 +99,17 @@ struct NotificationBell: View {
     var body: some View {
         let count = center.unreadCount
         Button { open.toggle() } label: {
-            Image(systemName: count > 0 ? "bell.badge" : "bell").font(.system(size: 12.5))
-                .symbolRenderingMode(count > 0 ? .palette : .monochrome)
-                .foregroundStyle(count > 0 ? T.amber : T.text2, T.text2)
+            // Plain bell: `bell.badge` drew its own dot under our count badge.
+            Image(systemName: "bell").font(.system(size: 12.5)).foregroundStyle(T.text2)
         }
         .buttonStyle(IconButtonStyle(size: 26))
         .overlay(alignment: .topTrailing) {
             if count > 0 {
                 Text(count > 99 ? "99+" : "\(count)")
                     .font(.system(size: 8.5, weight: .bold)).monospacedDigit()
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Self.badgeInk(model.workspace?.color))
                     .padding(.horizontal, 3.5).frame(minWidth: 13, minHeight: 13)
-                    .background(Capsule().fill(T.amber))
+                    .background(Capsule().fill(Self.badgeFill(model.workspace?.color)))
                     .offset(x: 3, y: -1)
                     .allowsHitTesting(false)
             }
@@ -121,6 +120,119 @@ struct NotificationBell: View {
         .onReceive(NotificationCenter.default.publisher(for: .adeDebugPanel)) { n in
             if let v = n.userInfo?["notifications"] as? Bool { open = v }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .octomuxShowNotifications)) { _ in open = true }
+    }
+}
+
+extension Notification.Name {
+    /// Opens the bell's list (the menu bar panel's "All recent").
+    static let octomuxShowNotifications = Notification.Name("octomux.showNotifications")
+}
+
+/// The menu bar icon's panel: unread notifications (or, with none, the agents that are working or waiting), each with
+/// its workspace › project, a spinner while that agent works; "All recent" opens the app's list.
+struct MenuBarPanel: View {
+    @EnvironmentObject var model: AppModel
+    @ObservedObject var center = NotificationCenterModel.shared
+    let close: () -> Void
+
+    private struct Row: Identifiable {
+        let id: String
+        let title: String
+        let dot: Color?
+        let session: Session?
+        let projectId: String
+        let date: Date?
+        let open: () -> Void
+    }
+
+    private var rows: [Row] {
+        let unread = center.unread.prefix(6).map { item -> Row in
+            let s = model.session(item.n.sessionId)
+            return Row(id: "n" + item.id, title: s?.displayTitle ?? item.n.title, dot: NotificationRow.color(item.n.kind), session: s,
+                       projectId: item.n.projectId, date: item.date) { center.open(item) }
+        }
+        if !unread.isEmpty { return unread }
+        return model.state.sessions.filter { $0.isAgent && !$0.isDormant && ($0.activity == .working || $0.activity == .needsInput) }
+            .prefix(6).map { s in
+                Row(id: "s" + s.id, title: s.displayTitle, dot: s.activity == .needsInput ? T.amber : nil, session: s,
+                    projectId: s.projectId, date: nil) { model.selectSession(s.id) }
+            }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            let list = rows
+            if list.isEmpty {
+                Text("No new notifications").font(.system(size: 12.5)).foregroundStyle(T.text2)
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 14).padding(.vertical, 12)
+            } else {
+                VStack(spacing: 2) {
+                    ForEach(list) { r in row(r) }
+                }
+                .padding(6)
+            }
+            Hairline().padding(.horizontal, 12)
+            Button { show { NotificationCenter.default.post(name: .octomuxShowNotifications, object: nil) } } label: {
+                HStack {
+                    Text("All recent").font(.system(size: 12.5)).foregroundStyle(T.text2)
+                    Spacer()
+                    Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(T.text3)
+                }
+                .padding(.horizontal, 10).frame(height: 30).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain).hoverHighlight(radius: 6).padding(6)
+        }
+        .frame(width: 340)
+    }
+
+    private func row(_ r: Row) -> some View {
+        let project = model.project(r.projectId)
+        let ws = project.flatMap { p in model.state.workspaces.first { $0.id == p.workspaceId } }
+        return Button { show(r.open) } label: {
+            HStack(spacing: 9) {
+                Circle().fill(r.dot ?? .clear).frame(width: 7, height: 7)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(r.title).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(T.text).lineLimit(1)
+                    HStack(spacing: 4) {
+                        if let ws {
+                            Circle().fill(Color(hex: ws.color)).frame(width: 6, height: 6)
+                            Text(ws.name)
+                            if project != nil { Image(systemName: "chevron.right").font(.system(size: 7, weight: .bold)) }
+                        }
+                        if let project { Text(project.name) }
+                    }
+                    .font(.system(size: 11)).foregroundStyle(T.text3).lineLimit(1)
+                }
+                Spacer(minLength: 8)
+                if r.session?.activity == .working && r.session?.state == .running { WorkingRing(size: 12) }
+                else if let d = r.date { Text(NotificationRow.when(d)).font(.system(size: 10.5)).foregroundStyle(T.text3).monospacedDigit() }
+            }
+            .padding(.horizontal, 8).padding(.vertical, 6).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain).hoverHighlight(radius: 7)
+    }
+
+    /// Brings the window forward (switching to the row's workspace happens in selectSession), then acts.
+    private func show(_ then: @escaping () -> Void) {
+        close()
+        NSApp.activate(ignoringOtherApps: true)
+        (NSApp.delegate as? AppDelegate)?.openMainWindow()
+        DispatchQueue.main.async(execute: then)
+    }
+}
+
+extension NotificationBell {
+    /// The count badge takes the workspace's color (the dot in the workspace picker); gray or none → the accent.
+    static func badgeFill(_ hex: String?) -> Color {
+        guard let hex, let c = NSColor(Color(hex: hex)).usingColorSpace(.sRGB), c.saturationComponent > 0.12 else { return T.accent }
+        return Color(nsColor: c)
+    }
+    /// White on dark or saturated colors, near-black on light ones (yellow, lime).
+    static func badgeInk(_ hex: String?) -> Color {
+        guard let hex, let c = NSColor(Color(hex: hex)).usingColorSpace(.sRGB), c.saturationComponent > 0.12 else { return .white }
+        let l = 0.2126 * c.redComponent + 0.7152 * c.greenComponent + 0.0722 * c.blueComponent
+        return l > 0.62 ? Color(white: 0.1) : .white
     }
 }
 

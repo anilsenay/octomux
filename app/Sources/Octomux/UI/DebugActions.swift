@@ -5,6 +5,7 @@ import UserNotifications
 /// UI-level debug methods (dev only): drive the app like a user and read back what it shows.
 enum DebugActions {
     static func register() {
+        registerMenuBar()
         let d = DebugServer.shared
         let m = AppModel.shared
         d.register("ui_state") { _ in
@@ -489,6 +490,34 @@ enum DebugActions {
             else { throw DebugServer.DebugError.bad("settings not visible") }
             let data = NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:])
             try data?.write(to: URL(fileURLWithPath: path))
+            return ["path": path]
+        }
+    }
+
+    static func registerMenuBar() {
+        let d = DebugServer.shared
+        // Clicks the menu bar icon (opens or closes its panel); "screenshot" with "path" captures the icon or the panel.
+        d.register("menubar") { p in
+            let c = StatusItemController.shared
+            if (p["click"] as? Bool) == true { c.debugClick() }
+            guard let path = p["path"] as? String else { return c.debugState() }
+            if (p["what"] as? String) == "icon" {
+                // The status bar's window can't be captured by number; draw the button's image at 8× instead.
+                guard let img = c.debugImage else { throw DebugServer.DebugError.bad("no icon") }
+                let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(img.size.width * 8), pixelsHigh: Int(img.size.height * 8), bitsPerSample: 8,
+                                           samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
+                NSGraphicsContext.saveGraphicsState()
+                NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+                NSColor(white: 0.93, alpha: 1).setFill(); NSRect(x: 0, y: 0, width: rep.pixelsWide, height: rep.pixelsHigh).fill()
+                img.draw(in: NSRect(x: 0, y: 0, width: rep.pixelsWide, height: rep.pixelsHigh))
+                NSGraphicsContext.restoreGraphicsState()
+                try rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+                return ["path": path]
+            }
+            guard let w = c.debugPanelWindow, w.isVisible, w.windowNumber > 0,
+                  let cg = CGWindowListCreateImage(.null, .optionIncludingWindow, CGWindowID(w.windowNumber), [.boundsIgnoreFraming, .bestResolution])
+            else { throw DebugServer.DebugError.bad("not visible") }
+            try NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
             return ["path": path]
         }
     }

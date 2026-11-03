@@ -1,9 +1,13 @@
 import AppKit
+import Combine
+import SwiftUI
 
 /// Menu bar item: the logo's pixel octopus (design/brand/octomux-logo.html) at 1pt per pixel, 16×14pt. The menu bar
 /// version has one extra head row and 2px legs so it matches the height and stroke weight of system icons.
 /// While any agent is working it plays a low-fps bounce (squish, stretch, blink).
 /// Setting `menubar.style`: "color" (default, flat purple), "mono" (tonal template image), "hidden".
+/// Unread notifications put a dot on its top-right corner (not while it bounces). A click opens a small panel with
+/// them (MenuBarPanel); a right-click or Control-click the menu.
 final class StatusItemController: NSObject, NSMenuDelegate {
     static let shared = StatusItemController()
 
@@ -71,8 +75,25 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         img.isTemplate = template
         return img
     }
+    /// `base` with a dot on its top-right corner, cut out of the icon by a clear ring.
+    private static func dotted(_ base: NSImage, color: NSColor, template: Bool) -> NSImage {
+        let img = NSImage(size: base.size, flipped: true) { r in
+            base.draw(in: r)
+            let c = CGPoint(x: r.width - 2.3, y: 2.3)
+            NSGraphicsContext.current?.compositingOperation = .clear
+            NSBezierPath(ovalIn: NSRect(x: c.x - 3.4, y: c.y - 3.4, width: 6.8, height: 6.8)).fill()
+            NSGraphicsContext.current?.compositingOperation = .sourceOver
+            color.setFill()
+            NSBezierPath(ovalIn: NSRect(x: c.x - 2.2, y: c.y - 2.2, width: 4.4, height: 4.4)).fill()
+            return true
+        }
+        img.isTemplate = template
+        return img
+    }
     private static let colorFrames = rows.map { makeImage($0, palette: colorPalette, template: false) }
     private static let monoFrames = rows.map { makeImage($0, palette: monoPalette, template: true) }
+    private static let colorDotted = dotted(colorFrames[0], color: .systemBlue, template: false)
+    private static let monoDotted = dotted(monoFrames[0], color: .black, template: true)
     private static let fps: Double = 5
 
     private var item: NSStatusItem?
@@ -83,6 +104,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var waiting = 0
 
     private var frames: [NSImage] { style == .mono ? Self.monoFrames : Self.colorFrames }
+    private var unread = 0
+    private var unreadSub: AnyCancellable?
+    private let menu = NSMenu()
+    private var popover: NSPopover?
+    /// The still icon: with the dot while there are unread notifications.
+    private var restingImage: NSImage { unread > 0 ? (style == .mono ? Self.monoDotted : Self.colorDotted) : frames[0] }
 
     func sync(state: DaemonState) {
         let newStyle = AppModel.shared.setting("menubar.style")?.string.flatMap(Style.init(rawValue:)) ?? .color
@@ -97,12 +124,23 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         if item == nil {
             let it = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
             it.button?.imageScaling = .scaleNone
-            let menu = NSMenu()
+            it.button?.target = self
+            it.button?.action = #selector(clicked)
+            it.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
             menu.delegate = self
-            it.menu = menu
             item = it
         }
-        if restyled || item?.button?.image == nil { item?.button?.image = frames[frame] }
+        if unreadSub == nil {
+            unreadSub = NotificationCenterModel.shared.$items.receive(on: DispatchQueue.main).sink { [weak self] items in
+                guard let self else { return }
+                let n = items.reduce(0) { $0 + ($1.read ? 0 : 1) }
+                guard n != unread else { return }
+                unread = n
+                item?.button?.toolTip = tooltip
+                if timer == nil { item?.button?.image = restingImage }
+            }
+        }
+        if restyled || item?.button?.image == nil { item?.button?.image = timer == nil ? restingImage : frames[frame] }
         working = state.sessions.filter { $0.activity == .working && $0.state == .running }.count
         waiting = state.sessions.filter { $0.activity == .needsInput && $0.state == .running }.count
         item?.button?.toolTip = tooltip
@@ -113,6 +151,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         var parts: [String] = []
         if working > 0 { parts.append("\(working) working") }
         if waiting > 0 { parts.append("\(waiting) waiting for input") }
+        if unread > 0 { parts.append("\(unread) unread") }
         return parts.isEmpty ? nil : parts.joined(separator: ", ")
     }
     private var tooltip: String { summary.map { "Octomux — \($0)" } ?? "Octomux" }
@@ -132,8 +171,39 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         timer?.invalidate()
         timer = nil
         frame = 0
-        item?.button?.image = frames[0]
+        item?.button?.image = restingImage
     }
+
+    // MARK: Click
+
+    @objc private func clicked() {
+        guard let button = item?.button else { return }
+        let e = NSApp.currentEvent
+        if e?.type == .rightMouseUp || e?.modifierFlags.contains(.control) == true {
+            popover?.performClose(nil)
+            item?.menu = menu
+            button.performClick(nil)   // shows the menu
+            item?.menu = nil
+            return
+        }
+        if let p = popover, p.isShown { p.performClose(nil); return }
+        let p = NSPopover()
+        p.behavior = .transient
+        p.animates = false
+        let host = NSHostingController(rootView: MenuBarPanel { [weak p] in p?.performClose(nil) }.environmentObject(AppModel.shared))
+        host.sizingOptions = .preferredContentSize
+        p.contentViewController = host
+        popover = p
+        NotificationCenterModel.shared.refreshAll()
+        p.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        p.contentViewController?.view.window?.makeKey()
+    }
+
+    // Debug (DebugActions "menubar")
+    func debugClick() { clicked() }
+    var debugImage: NSImage? { item?.button?.image }
+    var debugPanelWindow: NSWindow? { popover?.isShown == true ? popover?.contentViewController?.view.window : nil }
+    func debugState() -> [String: Any] { ["unread": unread, "animating": timer != nil, "dot": timer == nil && unread > 0, "panel": popover?.isShown ?? false] }
 
     // MARK: Menu
 
