@@ -153,6 +153,20 @@ enum DebugActions {
             case "dock_position": UserDefaults.standard.set(p["value"] as? String ?? "bottom", forKey: "octomux.dockPosition")
             case "hover_project": m.debugHoverProject = id
             case "fan_stack": m.debugFanStack = id
+            case "drag":
+                // Left drag between window points (top-left origin): x, y → x2, y2, through AppKit.
+                if let w = (NSApp.delegate as? AppDelegate)?.mainWindow, let x = p["x"] as? Double, let y = p["y"] as? Double,
+                   let x2 = p["x2"] as? Double, let y2 = p["y2"] as? Double {
+                    let h = w.contentView!.bounds.height
+                    func ev(_ t: NSEvent.EventType, _ px: Double, _ py: Double) -> NSEvent? {
+                        NSEvent.mouseEvent(with: t, location: NSPoint(x: px, y: h - py), modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                           windowNumber: w.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)
+                    }
+                    // NSSplitView tracks the drag in a loop pulling events from the queue: post them, then send the down.
+                    for i in 1...8 { if let e = ev(.leftMouseDragged, x + (x2 - x) * Double(i) / 8, y + (y2 - y) * Double(i) / 8) { NSApp.postEvent(e, atStart: false) } }
+                    if let e = ev(.leftMouseUp, x2, y2) { NSApp.postEvent(e, atStart: false) }
+                    if let e = ev(.leftMouseDown, x, y) { w.sendEvent(e) }
+                }
             case "click":
                 // Left click at window point (top-left origin), through AppKit hit testing.
                 if let w = (NSApp.delegate as? AppDelegate)?.mainWindow, let x = p["x"] as? Double, let y = p["y"] as? Double {

@@ -581,6 +581,10 @@ final class RatioSplitView: NSSplitView, NSSplitViewDelegate {
     func splitViewDidResizeSubviews(_ notification: Notification) {
         // Only the user's drags change the ratio, not our own re-application.
         guard !applying, appliedTotal > 0, arrangedSubviews.count == 2, notification.userInfo?["NSSplitViewDividerIndex"] != nil else { return }
+        // AppKit also moves the divider (with a divider index) while a new nested split settles; taken as a
+        // drag, that stored the tiny first size as the ratio (clamped to 0.1) and the pane stayed a sliver.
+        // Only a mouse drag on the divider counts.
+        guard let e = NSApp.currentEvent, e.type == .leftMouseDragged || e.type == .leftMouseUp, e.window === window else { return }
         let total = isVertical ? bounds.width : bounds.height
         guard total > 10 else { return }
         let first = isVertical ? arrangedSubviews[0].frame.width : arrangedSubviews[0].frame.height
