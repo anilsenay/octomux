@@ -236,6 +236,77 @@ final class GitInfo: ObservableObject {
 
 // MARK: - Notifications
 
+/// Whether macOS lets Octomux show notifications (System Settings → Notifications → Octomux), for the Settings page.
+/// Read again when the app comes back to the front, so returning from System Settings updates it.
+final class NotificationPermission: ObservableObject {
+    static let shared = NotificationPermission()
+
+    enum Status: Equatable {
+        case checking
+        /// Not running from the app bundle (dev build): macOS has no notification settings for it.
+        case unavailable
+        /// Never asked.
+        case notDetermined
+        /// Turned off for Octomux.
+        case denied
+        /// Allowed, but the alert style is None (nothing on screen, only Notification Center).
+        case noBanners
+        case allowed
+    }
+
+    @Published private(set) var status: Status = .checking
+    /// Allowed but sounds are off in System Settings.
+    @Published private(set) var soundOff = false
+    private var token: Any?
+
+    private init() {
+        token = NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.refresh()
+        }
+    }
+
+    func refresh() {
+        guard Bundle.main.bundleIdentifier != nil, Bundle.main.bundleURL.pathExtension == "app" else { status = .unavailable; return }
+        UNUserNotificationCenter.current().getNotificationSettings { st in
+            let s: Status
+            switch st.authorizationStatus {
+            case .notDetermined: s = .notDetermined
+            case .denied: s = .denied
+            default: s = st.alertStyle == .none ? .noBanners : .allowed
+            }
+            let soundOff = st.soundSetting == .disabled
+            DispatchQueue.main.async {
+                self.status = s
+                self.soundOff = soundOff
+            }
+        }
+    }
+
+    /// Debug only (DebugActions "notification_permission"): show a status without changing System Settings.
+    func debugShow(_ name: String, soundOff: Bool = false) {
+        let all: [String: Status] = ["unavailable": .unavailable, "not_determined": .notDetermined, "denied": .denied, "no_banners": .noBanners, "allowed": .allowed]
+        if let s = all[name] { status = s }
+        self.soundOff = soundOff
+    }
+    var debugName: String { "\(status)" }
+
+    /// The macOS prompt (only shows while never asked).
+    func request() {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in
+            DispatchQueue.main.async { self.refresh() }
+        }
+    }
+
+    /// System Settings → Notifications, on Octomux's page where macOS supports it.
+    func openSystemSettings() {
+        let id = Bundle.main.bundleIdentifier ?? "dev.octomux.app"
+        for s in ["x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=\(id)",
+                  "x-apple.systempreferences:com.apple.preference.notifications"] {
+            if let u = URL(string: s), NSWorkspace.shared.open(u) { return }
+        }
+    }
+}
+
 final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     static let shared = Notifier()
     private(set) var available = false
@@ -252,6 +323,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
             DispatchQueue.main.async {
                 self.authorized = ok
                 self.lastAuthError = err.map { "\($0)" }
+                NotificationPermission.shared.refresh()
                 if let err { NSLog("Octomux notification authorization error: \(err)") }
             }
         }

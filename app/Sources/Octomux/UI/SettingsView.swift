@@ -637,11 +637,75 @@ struct ThemeSwatch: View {
 
 // MARK: Notifications
 
+/// Top of the Notifications page: whether macOS shows Octomux's notifications, with a way to turn them on.
+struct SystemNotificationStatus: View {
+    @ObservedObject var permission: NotificationPermission
+    var soundWanted = true
+
+    var body: some View {
+        switch permission.status {
+        case .checking:
+            EmptyView()
+        case .allowed:
+            HStack(spacing: 8) {
+                Image(systemName: "checkmark.circle.fill").foregroundStyle(T.green)
+                Text(permission.soundOff && soundWanted ? "Allowed in System Settings, but sounds are off there." : "Allowed in System Settings.")
+                    .font(.system(size: 12)).foregroundStyle(T.text2)
+                Spacer()
+                if permission.soundOff && soundWanted { settingsButton(prominent: false) }
+            }
+            .padding(.horizontal, 4)
+        case .unavailable:
+            warning("Not running from Octomux.app",
+                    "This build runs outside the app bundle, so macOS has no notification settings for it. It only plays a sound and bounces the Dock icon.",
+                    icon: "info.circle.fill", color: T.text3, button: nil)
+        case .notDetermined:
+            warning("Notifications aren't allowed yet",
+                    "macOS hasn't asked yet. Allow them to see a banner when an agent finishes, needs input or fails.",
+                    icon: "bell.badge.fill", color: T.amber, button: AnyView(Button("Allow Notifications") { permission.request() }.buttonStyle(.borderedProminent)))
+        case .denied:
+            warning("Notifications are off for Octomux",
+                    "macOS doesn't show Octomux's notifications, so you won't see when an agent finishes, needs input or fails. Turn on Allow Notifications in System Settings.",
+                    icon: "bell.slash.fill", color: T.red, button: AnyView(settingsButton(prominent: true)))
+        case .noBanners:
+            warning("Notifications are allowed, but without banners",
+                    "Their alert style is None in System Settings, so they only collect in Notification Center. Pick Banners or Alerts to see them.",
+                    icon: "exclamationmark.triangle.fill", color: T.amber, button: AnyView(settingsButton(prominent: true)))
+        }
+    }
+
+    private func settingsButton(prominent: Bool) -> some View {
+        Group {
+            if prominent { Button("Open System Settings") { permission.openSystemSettings() }.buttonStyle(.borderedProminent) }
+            else { Button("Open System Settings") { permission.openSystemSettings() } }
+        }
+    }
+
+    private func warning(_ title: String, _ text: String, icon: String, color: Color, button: AnyView?) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: icon).font(.system(size: 18)).foregroundStyle(color).frame(width: 22)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title).font(.system(size: 13, weight: .semibold)).foregroundStyle(T.text)
+                Text(text).font(.system(size: 12)).foregroundStyle(T.text2).fixedSize(horizontal: false, vertical: true)
+                if let button { button.padding(.top, 6) }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(color.opacity(0.09)))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(color.opacity(0.35)))
+    }
+}
+
 struct NotificationSettings: View {
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var sel: SettingsSelection
 
+    @ObservedObject var permission = NotificationPermission.shared
+
     var body: some View {
+        SystemNotificationStatus(permission: permission, soundWanted: model.settingValue("notifications.sound", scope: sel.scope)?.bool ?? true)
+            .onAppear { permission.refresh() }
         SettingsCard {
             toggle("Notifications", key: "notifications.enabled")
             Hairline()
@@ -663,10 +727,6 @@ struct NotificationSettings: View {
         }
         Text("You are never notified about the pane you are looking at. Mute a single project from its right-click menu.")
             .font(.caption).foregroundStyle(T.text2)
-        if !Notifier.shared.authorized {
-            Text("System notifications are not authorized for Octomux (or Octomux runs outside its app bundle). Enable them in System Settings → Notifications.")
-                .font(.caption).foregroundStyle(T.amber)
-        }
     }
 
     func toggle(_ title: String, key: String) -> some View {

@@ -496,6 +496,13 @@ enum DebugActions {
 
     static func registerMenuBar() {
         let d = DebugServer.shared
+        // Reads the System Settings notification status; "show" forces one for screenshots (nothing is changed in macOS).
+        d.register("notification_permission") { p in
+            let np = NotificationPermission.shared
+            if let v = p["show"] as? String { np.debugShow(v, soundOff: (p["sound_off"] as? Bool) ?? false) }
+            else { np.refresh() }
+            return ["status": np.debugName, "sound_off": np.soundOff]
+        }
         // Clicks the menu bar icon (opens or closes its panel); "screenshot" with "path" captures the icon or the panel.
         d.register("menubar") { p in
             let c = StatusItemController.shared
