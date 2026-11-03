@@ -242,7 +242,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc func toggleChat(_ s: Any?) { model.toggleChat() }
     @objc func toggleSidebar(_ s: Any?) { model.toggleSidebar() }
     @objc func toggleDock(_ s: Any?) { model.toggleDock() }
-    @objc func toggleRightPanel(_ s: Any?) { model.rightPanelVisible.toggle() }
+    @objc func toggleRightPanel(_ s: Any?) { model.toggleRightPanel() }
     @objc func prevTab(_ s: Any?) { model.cycleTab(-1) }
     @objc func nextTab(_ s: Any?) { model.cycleTab(1) }
     @objc func goToTab(_ s: NSMenuItem) { model.selectTab(index: s.tag == 9 ? -1 : s.tag - 1) }

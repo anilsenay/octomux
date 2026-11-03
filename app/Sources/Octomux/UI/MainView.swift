@@ -35,6 +35,7 @@ struct MainView: View {
                             .overlay(RoundedRectangle(cornerRadius: m.cardR, style: .continuous).stroke(T.border))
                             .padding(.leading, m.inset)
                             .padding(.trailing, m.inset)
+                            .transition(.move(edge: .trailing).combined(with: .opacity))
                     }
                 }
                 if flat { Hairline() }
@@ -418,7 +419,7 @@ struct TopBar: View {
                     Button { model.toggleChat(fs.id) } label: { Image(systemName: model.isChat(fs.id) ? "terminal" : "text.bubble") }
                         .buttonStyle(ChromeButtonStyle(active: model.isChat(fs.id))).help(model.isChat(fs.id) ? "Show terminal (⌘⇧C)" : "Show as chat (⌘⇧C)")
                 }
-                Button { model.rightPanelVisible.toggle() } label: { Image(systemName: "sidebar.right") }
+                Button { model.toggleRightPanel() } label: { Image(systemName: "sidebar.right") }
                     .buttonStyle(ChromeButtonStyle(active: model.rightPanelVisible)).help("Changes / History / Files (⌘⌥B)")
             }
             .fixedSize()

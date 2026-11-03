@@ -780,12 +780,19 @@ final class AppModel: ObservableObject {
     func toggleChangesPanel() {
         let onChanges = UserDefaults.standard.string(forKey: "octomux.rightTab") == "Changes"
         if rightPanelVisible && onChanges {
-            rightPanelVisible = false
+            setRightPanel(false)
         } else {
             UserDefaults.standard.set("Changes", forKey: "octomux.rightTab")
-            rightPanelVisible = true
+            setRightPanel(true)
         }
     }
+
+    /// Shows or hides the right panel, sliding like the sidebar.
+    func setRightPanel(_ on: Bool) {
+        guard on != rightPanelVisible else { return }
+        withAnimation(.easeOut(duration: 0.18)) { rightPanelVisible = on }
+    }
+    func toggleRightPanel() { setRightPanel(!rightPanelVisible) }
 
     func toggleSidebar() {
         sidebarPeek = false
