@@ -75,7 +75,7 @@ struct MainView: View {
     private var rootBackground: AnyView {
         // The veil spans the whole window: on the sidebar only, it ended in a hard edge in the top bar.
         if let s = theme.activeScene {
-            return AnyView(SceneBackdrop(scene: s).overlay(Color(nsColor: s.colors.frame).opacity(s.dark ? 0.4 : 0.35)))
+            return AnyView(SceneBackdrop(scene: s, textColumn: model.sidebarVisible ? model.sidebarWidth : 0).overlay(Color(nsColor: s.colors.frame).opacity(s.dark ? 0.4 : 0.35)))
         }
         return T.m.glass ? AnyView(VisualEffect(material: .underWindowBackground)) : AnyView(WorkspaceTintedFrame())
     }

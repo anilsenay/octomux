@@ -234,8 +234,12 @@ final class AmbientClock: ObservableObject {
 struct SceneBackdrop: NSViewRepresentable {
     let scene: AmbientScene
     var still = false
-    func makeNSView(context: Context) -> SceneLayerView { SceneLayerView(scene: scene, still: still) }
-    func updateNSView(_ v: SceneLayerView, context: Context) { v.set(scene) }
+    /// Width at the left edge that holds text (the sidebar): static art is laid out to its right.
+    var textColumn: CGFloat = 0
+    func makeNSView(context: Context) -> SceneLayerView {
+        let v = SceneLayerView(scene: scene, still: still); v.textColumn = textColumn; return v
+    }
+    func updateNSView(_ v: SceneLayerView, context: Context) { v.set(scene); v.setTextColumn(textColumn) }
 }
 
 final class SceneLayerView: NSView {
@@ -247,6 +251,8 @@ final class SceneLayerView: NSView {
     private var builtSize: CGSize = .zero
     private var pending: DispatchWorkItem?
     private var faded = false
+    /// See SceneBackdrop.textColumn.
+    var textColumn: CGFloat = 0
 
     init(scene: AmbientScene, still: Bool, frozen: Bool = false) {
         self.scene = scene
@@ -275,11 +281,22 @@ final class SceneLayerView: NSView {
         rebuild()
     }
 
+    /// The sidebar was shown, hidden or resized: rebuild once it settles.
+    func setTextColumn(_ w: CGFloat) {
+        guard abs(w - textColumn) > 1 else { return }
+        textColumn = w
+        if builtSize != .zero { rebuildSoon() }
+    }
+
     override func layout() {
         super.layout()
         guard abs(bounds.width - builtSize.width) > 1 || abs(bounds.height - builtSize.height) > 1 else { return }
         // Live window resizing: rebuild once it settles (keep the old layers scaled meanwhile).
         if builtSize == .zero { rebuild(); return }
+        rebuildSoon()
+    }
+
+    private func rebuildSoon() {
         pending?.cancel()
         let w = DispatchWorkItem { [weak self] in self?.rebuild() }
         pending = w
@@ -298,7 +315,8 @@ final class SceneLayerView: NSView {
         root.position = .zero
         root.setAffineTransform(still ? CGAffineTransform(scaleX: bounds.width / v.width, y: bounds.height / v.height) : .identity)
         root.timeOffset = still ? 37 : AmbientClock.shared.time
-        SceneBuilder(root: root, W: v.width, H: v.height, now: root.timeOffset, mood: still ? .calm : AmbientClock.shared.mood, art: scene.art, dark: scene.dark).build(scene)
+        SceneBuilder(root: root, W: v.width, H: v.height, now: root.timeOffset, mood: still ? .calm : AmbientClock.shared.mood, art: scene.art, dark: scene.dark,
+                     textColumn: still ? 0 : min(textColumn, v.width * 0.5)).build(scene)
         CATransaction.commit()
         // A new scene eases in over the window's frame color (the view's own layer runs on real time).
         if !still && !frozen && !faded {
@@ -514,6 +532,14 @@ private struct SceneBuilder {
     var mood: AmbientMood = .calm
     var art: [String: String] = [:]
     var dark = false
+    /// The sidebar's width: art that stays put (branches, weeds, reeds, traces, the moon, kites) goes to its right
+    /// so it never sits behind text; things passing through (particles, fish, clouds) and low ground stay.
+    var textColumn: CGFloat = 0
+
+    /// x for a fraction across the area right of the text column.
+    func px(_ f: CGFloat) -> CGFloat { textColumn + f * (W - textColumn) }
+    /// Under the text column, ground art keeps to this many cells (it sits behind the sidebar footer).
+    func groundCap(_ x: CGFloat, _ h: Int) -> Int { x < textColumn ? min(h, 2) : h }
 
     /// The scene's color for `key`, or the default drawing color.
     func a(_ key: String, _ fallback: String) -> String { art[key] ?? fallback }
@@ -686,7 +712,7 @@ private struct SceneBuilder {
         root.addSublayer(halo)
         pulse(halo, 0.6, 1, period: 12, phase: 0)
         let moon = add(Art.sprite(Sprites.moon, ["#": a("moon", "#E9E1C4"), "+": a("moonEdge", "#8C8670")], ink: a("moonInk", "#8F855F"), seed: 3),
-                       x: W * 0.16, y: H * 0.09)
+                       x: px(0.16), y: H * 0.09)
         swing(moon, "transform.translation.y", 3, period: 18, phase: 0)
         for i in 0..<2 {
             let l = add(Art.sprite(i == 0 ? Sprites.flatCloud : Sprites.smallCloud, ["#": a("cloud", "#33417F")], ink: a("cloudInk", "#5B6BB5"), seed: 10 + i),
@@ -720,7 +746,7 @@ private struct SceneBuilder {
             pulse(shape(p, fill: cg(a("ray", "#FFFFFF")), opacity: 0.035), 0.015, 0.06, period: 9 + Double(i) * 3, phase: Double(i) * 2)
         }
         for i in 0..<9 {
-            let x0 = rnd(i, 20) * W, h = 5 + hash(i, 21) % 8
+            let x0 = px(rnd(i, 20)), h = 5 + hash(i, 21) % 8
             for k in 0..<h {
                 let l = add(Art.sprite(["#"], ["#": i % 3 == 0 ? a("weed1", "#3E9E6A") : a("weed2", "#2E7D5B")], ink: a("weedInk", "#123A2A"), seed: hash(i, k)), x: x0, y: H - CGFloat(k + 1) * 12, opacity: 0.9)
                 swing(l, "transform.translation.x", 0.5 + CGFloat(k) * 0.9, period: 7, phase: Double(k) * 0.39 + Double(i))
@@ -742,7 +768,7 @@ private struct SceneBuilder {
     func fireflies() {
         let cols = Int(W / 12) + 1
         for c in 0..<cols {
-            let h = 1 + hash(c, 40) % 4
+            let h = groundCap(CGFloat(c) * 12, 1 + hash(c, 40) % 4)
             let l = add(Art.blade(h, a("grass", "#5FA35A")), x: CGFloat(c) * 12, y: H - 2 - CGFloat(h) * 12, anchorBottom: true)
             swing(l, "transform.rotation.z", 0.16, period: 5.7, phase: Double(c) * 0.16)
         }
@@ -751,7 +777,7 @@ private struct SceneBuilder {
             let h = 4 + hash(i, 41) % 4
             let rows = ["o", "o"] + Array(repeating: "|", count: h)
             let l = add(Art.sprite(rows, ["o": a("reedHead", "#6B4A2A"), "|": a("reed", "#3F6B3A")], ink: nil, seed: 300 + i),
-                        x: rnd(i, 42) * W, y: H - 4 - CGFloat(rows.count) * 12, opacity: 0.85, anchorBottom: true)
+                        x: px(rnd(i, 42)), y: H - 4 - CGFloat(rows.count) * 12, opacity: 0.85, anchorBottom: true)
             swing(l, "transform.rotation.z", 0.05, period: 7 + rnd(i, 43) * 3, phase: rnd(i, 44) * 6)
         }
         for i in 0..<28 {
@@ -841,7 +867,10 @@ private struct SceneBuilder {
         // Branches reach in from the right edge and the lower left, clear of the sidebar's header.
         let br = Art.sprite(Sprites.branch, colors, ink: a("branchInk", "#B85A78"), seed: 70, flip: true)
         swing(add(br, x: W - br.1.width + 12, y: 54), "transform.translation.y", 1.5, period: 15, phase: 0)
-        swing(add(Art.sprite(Sprites.branch, colors, ink: a("branchInk", "#B85A78"), seed: 71), x: -12, y: H * 0.7, opacity: 0.85), "transform.translation.y", 1.5, period: 17, phase: 3)
+        // The lower-left branch fills an empty corner; with a sidebar there it would sit behind its rows.
+        if textColumn == 0 {
+            swing(add(Art.sprite(Sprites.branch, colors, ink: a("branchInk", "#B85A78"), seed: 71), x: -12, y: H * 0.7, opacity: 0.85), "transform.translation.y", 1.5, period: 17, phase: 3)
+        }
         let pinks = [("*", "#E77C9C"), ("•", "#F2A3BA"), ("+", "#D9668A")]
         particles(48, art: { Art.glyph(pinks[$0 % 3].0, pinks[$0 % 3].1, size: 10 + CGFloat(hash($0, 5) % 4)) },
                   from: { CGPoint(x: rnd($0, 3) * W * 1.1 - W * 0.1, y: -15) },
@@ -902,14 +931,15 @@ private struct SceneBuilder {
         // Signals take the mood's color: amber when an agent waits for you, red on an error.
         let (sig, core) = mood == .attention ? ("#F5B841", "#FFE3A0") : mood == .error ? ("#FF6B5B", "#FFC2B8") : (a("sig", "#4BE3B0"), a("core", "#C8FFE9"))
         for i in 0..<Int(min(18, W * H / 50000) + 4) {
-            var x = Int(rnd(i, 1) * Double(gx)), y = Int(rnd(i, 2) * Double(gy))
+            let x0 = min(gx, Int((textColumn / step).rounded(.up)))   // traces stay right of the sidebar
+            var x = x0 + Int(rnd(i, 1) * Double(gx - x0)), y = Int(rnd(i, 2) * Double(gy))
             func pt(_ x: Int, _ y: Int) -> CGPoint { CGPoint(x: CGFloat(x) * step + 6, y: CGFloat(y) * step + 6) }
             var pts = [pt(x, y)]
             var horizontal = i % 2 == 0
             for seg in 0..<(3 + hash(i, 3) % 4) {
                 let len = 2 + hash(i * 7 + seg, 4) % 7
                 let sign = hash(i * 7 + seg, 5) % 2 == 0 ? 1 : -1
-                if horizontal { x = max(0, min(gx, x + sign * len)) } else { y = max(0, min(gy, y + sign * len)) }
+                if horizontal { x = max(x0, min(gx, x + sign * len)) } else { y = max(0, min(gy, y + sign * len)) }
                 pts.append(pt(x, y))
                 horizontal.toggle()
             }
@@ -961,7 +991,7 @@ private struct SceneBuilder {
         let balloonColors = [("#E86A5A", "#FFD27A"), ("#6AA8E8", "#FFFFFF")]
         for (i, c) in balloonColors.enumerated() {
             let a = Art.sprite(Sprites.balloon, ["#": c.0, "o": c.1, "|": "#7A5A40", "[": "#8A5A3A", "]": "#8A5A3A"], ink: "#5A2A20", seed: 100 + i)
-            let l = add(a, x: W * (0.55 + 0.3 * CGFloat(i)), y: H * 0.5, opacity: 0.95)
+            let l = add(a, x: px(0.55 + 0.3 * CGFloat(i)), y: H * 0.5, opacity: 0.95)
             rise(l, speed: 5 + CGFloat(i) * 2, phase: rnd(i, 30), up: true)
             swing(l, "transform.translation.x", 14, period: 17, phase: Double(i) * 4)
         }
@@ -971,7 +1001,7 @@ private struct SceneBuilder {
             let tail: CGFloat = 96
             // A container moves the kite, its tail and its string together (its own coordinates are y-up).
             let box = CALayer()
-            box.frame = CGRect(x: W * (0.12 + 0.3 * CGFloat(k)), y: H - H * (0.14 + 0.1 * CGFloat(k % 2)) - kite.1.height - tail,
+            box.frame = CGRect(x: px(0.12 + 0.3 * CGFloat(k)), y: H - H * (0.14 + 0.1 * CGFloat(k % 2)) - kite.1.height - tail,
                                width: kite.1.width, height: kite.1.height + tail)
             root.addSublayer(box)
             let string = CAShapeLayer()
@@ -1032,7 +1062,9 @@ private struct SceneBuilder {
             for c in 0..<min(sp.count ?? 1, 50) {
                 let i = 6000 + si * 100 + c
                 let art = Art.sprite(sp.rows, colors, ink: sp.ink, seed: i, flip: sp.flip ?? false)
-                let x = CGFloat(sp.x ?? rnd(i, 1)) * W, y = CGFloat(sp.y ?? rnd(i, 2)) * H
+                let moves = (sp.drift ?? 0) != 0
+                let fx = CGFloat(sp.x ?? rnd(i, 1)), y = CGFloat(sp.y ?? rnd(i, 2)) * H
+                let x = moves ? fx * W : px(fx)
                 let l = add(art, x: x, y: y, opacity: Float(sp.opacity ?? 1))
                 if let d = sp.drift, d != 0 { drift(l, speed: CGFloat(abs(d)), phase: rnd(i, 7), leftward: d < 0) }
                 if let r = sp.rise, r != 0 { rise(l, speed: CGFloat(abs(r)), phase: rnd(i, 8), up: r > 0) }
@@ -1075,7 +1107,7 @@ private struct SceneBuilder {
 
     func snow() {
         let cols = Int(W / 12) + 1
-        let heights = (0..<cols).map { c in 1 + Int((sin(Double(c) * 0.11) + 1) * 1.4 + (sin(Double(c) * 0.037 + 2) + 1)) }
+        let heights = (0..<cols).map { c in groundCap(CGFloat(c) * 12, 1 + Int((sin(Double(c) * 0.11) + 1) * 1.4 + (sin(Double(c) * 0.037 + 2) + 1))) }
         let top = heights.max() ?? 1
         let rows = (0..<top).map { r in String((0..<cols).map { heights[$0] >= top - r ? "#" : " " }) }
         add(Art.sprite(rows, ["#": a("drift", "#FFFFFF")], ink: a("driftInk", "#C3D3E3"), seed: 80), x: 0, y: H - CGFloat(top) * 12, opacity: dark ? 0.55 : 0.95)

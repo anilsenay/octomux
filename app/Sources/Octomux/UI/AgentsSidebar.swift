@@ -45,16 +45,7 @@ struct AgentsPanel: View {
                 .transition(.opacity)
             }
         }
-        .background { sceneVeil }
         .clipped()
-    }
-
-    /// With a scene the backdrop shows through the sidebar; the panel sits on the lower part where scenes draw
-    /// art (Sakura's branch, Reef's coral…), so it gets a near-opaque frame color of its own to stay readable.
-    @ViewBuilder private var sceneVeil: some View {
-        if let s = ThemeStore.shared.activeScene {
-            Color(nsColor: s.colors.frame).opacity(0.94)
-        }
     }
 
     private func toggle() {
