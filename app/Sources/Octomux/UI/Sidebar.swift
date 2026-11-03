@@ -638,10 +638,12 @@ struct SessionRow: View {
 struct SessionMenu: View {
     @EnvironmentObject var model: AppModel
     let session: Session
+    /// Inside a tab's menu (TabMenu): it has Rename, Pin and Close Tab itself; Remove stays only for a pane of a split.
+    var inTab = false
 
     var body: some View {
-        Button("Rename") { model.renamingSessionId = session.id }
-        if session.placement == .tab, let tab = model.tab(containing: session.id) {
+        if !inTab { Button("Rename") { model.renamingSessionId = session.id } }
+        if !inTab, session.placement == .tab, let tab = model.tab(containing: session.id) {
             Button(model.isPinned(tab) ? "Unpin" : "Pin") { withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { model.togglePin(tab) } }
         }
         if model.canChat(session) {
@@ -667,8 +669,12 @@ struct SessionMenu: View {
         if session.placement == .tab {
             Button("Move to Dock") { model.client(for: session.id).call("session.move", ["id": session.id, "placement": "dock"]) }
         }
-        Divider()
-        Button("Remove Session", role: .destructive) { model.remove(session.id) }
+        if !inTab {
+            Divider()
+            Button("Remove Session", role: .destructive) { model.remove(session.id) }
+        } else if (model.tab(containing: session.id)?.layout.sessions.count ?? 1) > 1 {
+            Button("Close “\(TabChip.clip(session.displayTitle, 24))” Pane", role: .destructive) { model.remove(session.id) }
+        }
     }
 }
 

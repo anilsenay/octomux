@@ -420,13 +420,6 @@ struct TopBar: View {
                 }
                 Button { model.rightPanelVisible.toggle() } label: { Image(systemName: "sidebar.right") }
                     .buttonStyle(ChromeButtonStyle(active: model.rightPanelVisible)).help("Changes / History / Files (⌘⌥B)")
-                if let s = model.session(model.focusedSessionId) {
-                    Menu {
-                        SessionMenu(session: s)
-                    } label: { Image(systemName: "ellipsis").foregroundStyle(T.text2).menuHitBox(26, 26) }
-                        .plainMenu().frame(width: 26, height: 26)
-                        .hoverHighlight().help("Session")
-                }
             }
             .fixedSize()
         }
@@ -1088,6 +1081,11 @@ struct TabMenu: View {
         }
         if tab.layout.sessions.count > 1, let lead {
             Button("Move “\(TabChip.clip(lead.displayTitle, 24))” to New Tab") { model.movePaneToNewTab(lead.id) }
+        }
+        // The session's own actions (the tab's active pane); Rename / Pin are above, closing is below.
+        if let lead {
+            Divider()
+            SessionMenu(session: lead, inTab: true)
         }
         Divider()
         Button("Close Tab") { model.closeTab(tab.id, confirmBusy: true) }
