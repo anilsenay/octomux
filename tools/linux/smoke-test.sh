@@ -1,5 +1,5 @@
 set -e
-export OCTOMUX_HOME=/tmp/adeL
+export OCTOMUX_HOME=/tmp/octomuxL
 mkdir -p /work/api && cd /work/api
 octomux ctl hello >/dev/null
 J() { python3 -c "import sys,json; d=json.load(sys.stdin); print($1)"; }

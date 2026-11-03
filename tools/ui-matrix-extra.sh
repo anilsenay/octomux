@@ -2,7 +2,7 @@
 # Secondary screens in dark/light: empty project, stopped (dormant) pane, every settings page.
 set -uo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd); cd "$ROOT"
-export OCTOMUX_HOME=/tmp/adeU
+export OCTOMUX_HOME=/tmp/octomuxU
 CLI=$ROOT/core/target/debug/octomux; OUT=$ROOT/screenshots
 q() { $CLI ctl state.get | python3 -c "import sys,json; d=json.load(sys.stdin); print($1)"; }
 dbg() { tools/dbg "$@" >/dev/null 2>&1; }

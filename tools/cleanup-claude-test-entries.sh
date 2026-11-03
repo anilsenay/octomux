@@ -1,11 +1,11 @@
 #!/bin/bash
 # Removes ONLY what the overnight (pre-rename ADE) resume tests left in your Claude configs:
 # the project entry "/private/tmp/aded-claude" and its transcript folders.
-# Backups are written next to each file (*.ade-backup).
+# Backups are written next to each file (*.octomux-backup).
 set -euo pipefail
 for f in ~/.claude.json ~/.claude-work/.claude.json ~/.claude/.claude.json; do
   [ -f "$f" ] || continue
-  cp "$f" "$f.ade-backup"
+  cp "$f" "$f.octomux-backup"
   python3 - "$f" <<'EOF'
 import json, os, sys, tempfile
 f = sys.argv[1]

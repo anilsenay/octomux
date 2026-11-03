@@ -23,7 +23,7 @@ impl Env {
         static N: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
         let n = N.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let tag = format!("{:x}{n}{:x}", std::process::id(), rand_u16());
-        let home = PathBuf::from(format!("/tmp/adet-{tag}"));
+        let home = PathBuf::from(format!("/tmp/octomuxt-{tag}"));
         let _ = std::fs::remove_dir_all(&home);
         std::fs::create_dir_all(&home).unwrap();
         let project_dir = home.join("proj");

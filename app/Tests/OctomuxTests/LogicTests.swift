@@ -225,9 +225,15 @@ final class DefaultsMigrationTests: XCTestCase {
     }
 
     func testCopiesWithoutOverwriting() {
-        let name = "octomux.test.\(UUID().uuidString)"
+        // One fixed suite, emptied before and after (a fresh name per run left a plist behind each time).
+        let name = "octomux.tests.defaultsMigration"
         let d = UserDefaults(suiteName: name)!
-        defer { d.removePersistentDomain(forName: name) }
+        d.removePersistentDomain(forName: name)
+        defer {
+            d.removePersistentDomain(forName: name)
+            let plist = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Preferences/\(name).plist")
+            try? FileManager.default.removeItem(at: plist)
+        }
         d.set(320.0, forKey: "ade.sidebarWidth")
         d.set("keep", forKey: "octomux.ws")
         d.set("old", forKey: "ade.ws")

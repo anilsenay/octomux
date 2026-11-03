@@ -87,10 +87,10 @@ UI fixture (fake agents in working / input / done states, git projects, usage re
 never touching your real data:
 
 ```sh
-tools/ui-fixture.sh              # builds OCTOMUX_HOME=/tmp/adeU
+tools/ui-fixture.sh              # builds OCTOMUX_HOME=/tmp/octomuxU
 tools/ui-restart.sh              # (re)starts the debug app against it; W=900 H=640 for a small window
-OCTOMUX_HOME=/tmp/adeU tools/dbg ui_action '{"name":"palette","value":"split"}'
-OCTOMUX_HOME=/tmp/adeU tools/dbg render_view '{"view":"usage","dark":true,"path":"/tmp/u.png"}'
+OCTOMUX_HOME=/tmp/octomuxU tools/dbg ui_action '{"name":"palette","value":"split"}'
+OCTOMUX_HOME=/tmp/octomuxU tools/dbg render_view '{"view":"usage","dark":true,"path":"/tmp/u.png"}'
 ```
 
 Note: `tools/build-app.sh` rebuilds `build/Octomux.app`, which the installed launchd daemon runs from.

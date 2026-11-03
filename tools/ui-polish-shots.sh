@@ -1,9 +1,9 @@
 #!/bin/bash
 # UI polish pass: main window, project-row hover actions, collapsed sidebar + peek, dock positions,
-# in dark/light × wide/narrow → screenshots/v-*.png. Fixture world only (/tmp/adeU).
+# in dark/light × wide/narrow → screenshots/v-*.png. Fixture world only (/tmp/octomuxU).
 set -uo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd); cd "$ROOT"
-export OCTOMUX_HOME=/tmp/adeU
+export OCTOMUX_HOME=/tmp/octomuxU
 CLI=$ROOT/core/target/debug/octomux
 OUT=${OUT:-$ROOT/screenshots}
 q() { $CLI ctl state.get | python3 -c "import sys,json; d=json.load(sys.stdin); print($1)"; }
