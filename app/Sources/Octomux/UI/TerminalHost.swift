@@ -547,6 +547,15 @@ final class RatioSplitView: NSSplitView, NSSplitViewDelegate {
     private var appliedTotal: CGFloat = 0
     private var applying = false
     private var debounce: DispatchWorkItem?
+    /// True while the user drags this split's divider (NSSplitView tracks the drag inside `mouseDown`).
+    private var draggingDivider = false
+
+    // Clicks reach the split view itself only on a divider (the panes take the rest).
+    override func mouseDown(with event: NSEvent) {
+        draggingDivider = true
+        defer { draggingDivider = false }
+        super.mouseDown(with: event)
+    }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -583,8 +592,9 @@ final class RatioSplitView: NSSplitView, NSSplitViewDelegate {
         guard !applying, appliedTotal > 0, arrangedSubviews.count == 2, notification.userInfo?["NSSplitViewDividerIndex"] != nil else { return }
         // AppKit also moves the divider (with a divider index) while a new nested split settles; taken as a
         // drag, that stored the tiny first size as the ratio (clamped to 0.1) and the pane stayed a sliver.
-        // Only a mouse drag on the divider counts.
-        guard let e = NSApp.currentEvent, e.type == .leftMouseDragged || e.type == .leftMouseUp, e.window === window else { return }
+        // Checking the current event was not enough: closing a pane with its ✕ rebuilds the splits during
+        // that click's mouse-up. Only a drag that started on this divider counts.
+        guard draggingDivider else { return }
         let total = isVertical ? bounds.width : bounds.height
         guard total > 10 else { return }
         let first = isVertical ? arrangedSubviews[0].frame.width : arrangedSubviews[0].frame.height

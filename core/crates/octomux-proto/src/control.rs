@@ -211,6 +211,83 @@ impl PaneNode {
         }
     }
 
+    /// Path to the leaf `id` (false = a, true = b).
+    pub fn path_to(&self, id: &str) -> Option<Vec<bool>> {
+        match self {
+            PaneNode::Leaf { session_id } => (session_id == id).then(Vec::new),
+            PaneNode::Split { a, b, .. } => {
+                if let Some(mut p) = a.path_to(id) {
+                    p.insert(0, false);
+                    return Some(p);
+                }
+                b.path_to(id).map(|mut p| {
+                    p.insert(0, true);
+                    p
+                })
+            }
+        }
+    }
+
+    fn node_at(&self, path: &[bool]) -> Option<&PaneNode> {
+        match (path.split_first(), self) {
+            (None, _) => Some(self),
+            (Some((first, rest)), PaneNode::Split { a, b, .. }) => if *first { b } else { a }.node_at(rest),
+            _ => None,
+        }
+    }
+
+    fn node_at_mut(&mut self, path: &[bool]) -> Option<&mut PaneNode> {
+        match path.split_first() {
+            None => Some(self),
+            Some((first, rest)) => match self {
+                PaneNode::Split { a, b, .. } => if *first { b } else { a }.node_at_mut(rest),
+                _ => None,
+            },
+        }
+    }
+
+    /// Panes side by side in `dir` (a split of the other direction counts as one).
+    fn run_items(&self, dir: SplitDir) -> usize {
+        match self {
+            PaneNode::Split { dir: d, a, b, .. } if *d == dir => a.run_items(dir) + b.run_items(dir),
+            _ => 1,
+        }
+    }
+
+    /// Equal shares for every pane of the `dir` run rooted here.
+    fn equalize(&mut self, dir: SplitDir) {
+        if let PaneNode::Split { dir: d, ratio, a, b } = self {
+            if *d == dir {
+                let (na, nb) = (a.run_items(dir), b.run_items(dir));
+                *ratio = na as f64 / (na + nb) as f64;
+                a.equalize(dir);
+                b.equalize(dir);
+            }
+        }
+    }
+
+    /// Removes `id` and gives the panes of the row (or column) it was in equal shares again: the
+    /// remaining ratios were set for one pane more (¼ ⅓ ½ for four), so three would get 25 · 25 · 50.
+    pub fn remove_balanced(self, id: &str) -> Option<PaneNode> {
+        let path = self.path_to(id)?;
+        let parent = &path[..path.len().saturating_sub(1)];
+        let dir = match self.node_at(parent) {
+            Some(PaneNode::Split { dir, .. }) => *dir,
+            _ => return self.remove(id),
+        };
+        let mut out = self.clone().remove(id)?;
+        // The sibling now sits where the parent was; the run's top is the highest ancestor reached
+        // through splits of the same direction.
+        let mut k = parent.len();
+        while k > 0 && matches!(out.node_at(&parent[..k - 1]), Some(PaneNode::Split { dir: d, .. }) if *d == dir) {
+            k -= 1;
+        }
+        if let Some(top) = out.node_at_mut(&parent[..k]) {
+            top.equalize(dir);
+        }
+        Some(out)
+    }
+
     /// Puts `new_id` next to the leaf `target`: split `dir`, before it (left / top) or after it.
     pub fn insert(self, target: &str, new_id: &str, dir: SplitDir, before: bool) -> (PaneNode, bool) {
         match self {
@@ -352,6 +429,48 @@ mod tests {
 
     fn leaf(s: &str) -> PaneNode {
         PaneNode::Leaf { session_id: s.into() }
+    }
+
+    fn ratios(n: &PaneNode) -> Vec<f64> {
+        match n {
+            PaneNode::Leaf { .. } => vec![],
+            PaneNode::Split { ratio, a, b, .. } => {
+                let mut v = vec![*ratio];
+                v.extend(ratios(a));
+                v.extend(ratios(b));
+                v
+            }
+        }
+    }
+
+    #[test]
+    fn closing_a_pane_rebalances_its_row() {
+        // 1 | 2 | 3 | 4 at equal shares, then 4 closes: 1 | 2 | 3 at ⅓ each.
+        let (t, _) = leaf("1").split("1", "2", SplitDir::Right);
+        let (t, _) = t.split("2", "3", SplitDir::Right);
+        let (mut t, _) = t.split("3", "4", SplitDir::Right);
+        t.set_ratios(&[0.25, 1.0 / 3.0, 0.5]);
+        let t = t.remove_balanced("4").unwrap();
+        let r = ratios(&t);
+        assert!((r[0] - 1.0 / 3.0).abs() < 1e-9 && (r[1] - 0.5).abs() < 1e-9, "{r:?}");
+        // Closing the middle one: 1 | 3 at ½.
+        let t = t.remove_balanced("2").unwrap();
+        assert_eq!(ratios(&t), vec![0.5]);
+    }
+
+    #[test]
+    fn closing_in_one_row_leaves_the_other_direction() {
+        // L | (T1 | T2 | T3 / B): close T3 → the top row is ½ ½, the left/right and top/bottom ratios stay.
+        let top = PaneNode::Split {
+            dir: SplitDir::Right,
+            ratio: 1.0 / 3.0,
+            a: Box::new(leaf("T1")),
+            b: Box::new(PaneNode::Split { dir: SplitDir::Right, ratio: 0.5, a: Box::new(leaf("T2")), b: Box::new(leaf("T3")) }),
+        };
+        let right = PaneNode::Split { dir: SplitDir::Down, ratio: 0.6, a: Box::new(top), b: Box::new(leaf("B")) };
+        let t = PaneNode::Split { dir: SplitDir::Right, ratio: 0.3, a: Box::new(leaf("L")), b: Box::new(right) };
+        let t = t.remove_balanced("T3").unwrap();
+        assert_eq!(ratios(&t), vec![0.3, 0.6, 0.5]);
     }
 
     #[test]

@@ -1458,7 +1458,7 @@ impl Daemon {
             if !t.layout.sessions().iter().any(|s| s == id) {
                 continue;
             }
-            match t.layout.clone().remove(id) {
+            match t.layout.clone().remove_balanced(id) {
                 Some(l) => {
                     t.layout = l;
                     if t.active_session_id.as_deref() == Some(id) {
