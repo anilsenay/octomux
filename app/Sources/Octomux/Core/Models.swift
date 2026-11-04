@@ -280,6 +280,9 @@ struct UsageReading: Codable, Equatable, Identifiable {
     /// The window already reset since this reading was taken.
     var isReset: Bool { resetsAt.map { Date().timeIntervalSince1970 >= $0 } ?? false }
     var effectivePercent: Double { isReset ? 0 : usedPercent }
+    static let showsLeftKey = "octomux.usageShowsLeft"
+    /// "34%" used, or "66%" left.
+    func label(left: Bool) -> String { "\(Int((left ? max(0, 100 - usedPercent) : usedPercent).rounded()))%" }
     var shortName: String {
         switch window {
         case "five_hour": return "5h"

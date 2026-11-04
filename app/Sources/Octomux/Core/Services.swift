@@ -339,20 +339,66 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         if NSApp.isActive, model.activeTab?.layout.sessions.contains(n.sessionId) == true, n.kind == "command_done" { return }
         recent.insert((n, Date()), at: 0)
         recent = Array(recent.prefix(50))
-        let sound = model.setting("notifications.sound")?.bool ?? true
+        post(n)
+    }
+
+    /// Shows the notification and plays its sound (no checks: `deliver` decides whether it is worth it).
+    private func post(_ n: AppNotification) {
+        let model = AppModel.shared
+        let sound = model.setting("notifications.sound", project: n.projectId)?.bool ?? true
+        let name = Self.soundName(for: n.kind, project: n.projectId)
         if available {
             let content = UNMutableNotificationContent()
             content.title = n.title
             content.body = n.body
-            if sound { content.sound = .default }
+            if sound { content.sound = name.map { UNNotificationSound(named: UNNotificationSoundName($0)) } ?? .default }
             content.userInfo = ["session_id": n.sessionId]
             let req = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
             UNUserNotificationCenter.current().add(req)
         }
         if !NSApp.isActive {
-            if !available, sound { NSSound(named: "Glass")?.play() }
+            if !available, sound { NSSound(named: name ?? "Glass")?.play() }
             NSApp.requestUserAttention(.informationalRequest)
+        } else if !available, sound, n.sessionId.isEmpty {
+            NSSound(named: name ?? "Glass")?.play()   // a test from Settings, in a build without notifications
         }
+    }
+
+    // MARK: Sounds
+
+    /// The notification kinds that have a sound of their own, and the setting that holds it.
+    static let soundKinds: [(kind: String, title: String, key: String)] = [
+        ("done", "Agent finished", "notifications.sound_done"),
+        ("needs_input", "Agent needs input", "notifications.sound_needs_input"),
+        ("error", "Agent error", "notifications.sound_error"),
+        ("other", "Commands and programs", "notifications.sound_other"),
+    ]
+
+    /// macOS's alert sounds (System Settings → Sound), by name.
+    static let systemSounds: [String] = {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: "/System/Library/Sounds")) ?? []
+        return names.filter { $0.hasSuffix(".aiff") }.map { String($0.dropLast(5)) }.sorted()
+    }()
+
+    static func soundKey(for kind: String) -> String {
+        soundKinds.first { $0.kind == kind }?.key ?? "notifications.sound_other"
+    }
+
+    /// The sound chosen for a kind; nil is the system's default notification sound.
+    static func soundName(for kind: String, project: String?) -> String? {
+        guard let v = AppModel.shared.setting(soundKey(for: kind), project: project)?.string, !v.isEmpty, v != "default" else { return nil }
+        return v
+    }
+
+    /// A sample of a kind, from Settings → Notifications → Send Test (ignores the focused pane and the
+    /// per-kind switches, so it always shows if macOS lets it).
+    func sendTest(kind: String = "needs_input") {
+        let samples = ["done": ("Fix the flaky test", "Claude finished its turn."),
+                       "needs_input": ("Fix the flaky test", "Claude wants to run: cargo test"),
+                       "error": ("Fix the flaky test", "Claude stopped with an error."),
+                       "other": ("cargo build", "The command finished after 42 s.")]
+        let (title, body) = samples[kind] ?? samples["needs_input"]!
+        post(AppNotification(sessionId: "", projectId: AppModel.shared.currentProject?.id ?? "", kind: kind, title: "Test: " + title, body: body))
     }
 
     var recent: [(AppNotification, Date)] = []

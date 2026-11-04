@@ -31,7 +31,8 @@ which version you have.
 When an agent finishes or needs input, you get a macOS notification; clicking it focuses that pane. The bell in
 the top bar keeps the recent ones, and ⌘⇧U jumps to the next session waiting for input. The menu bar icon
 animates while agents work, shows a dot for unread notifications, and opens a panel of recent activity.
-Settings → Notifications shows whether macOS allows Octomux's notifications; Settings → Appearance → Icons sets the
+Settings → Notifications shows whether macOS allows Octomux's notifications, sends a test one, and picks a sound
+for each kind (agent finished, needs input, error, commands and programs); Settings → Appearance → Icons sets the
 menu bar icon (color, monochrome or hidden). A workspace can override notification and appearance settings: pick
 Workspace at the top of those pages.
 
@@ -60,7 +61,8 @@ Claude sessions started by Octomux get a status line command (`octomux statuslin
 like the hooks). It reports the 5-hour and weekly limits to the daemon at most every 15 s and then runs **your
 own** `statusLine` command with the same input, so your status line is unchanged. Codex limits are read from
 its rollout files while a Codex session runs. The status bar shows the focused agent's profile plus profiles
-marked "Always show".
+marked "Always show". The meters show what is used or what is left (Used / Left in their popover, or
+Settings → Agents → Usage limits).
 
 ## Remote hosts
 

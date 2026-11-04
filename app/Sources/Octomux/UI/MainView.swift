@@ -938,6 +938,7 @@ struct StatusBar: View {
 /// profiles marked "always show". Click for details.
 struct UsageStatus: View {
     @EnvironmentObject var model: AppModel
+    @AppStorage(UsageReading.showsLeftKey) private var showsLeft = false
     var compact = false
 
     var body: some View {
@@ -951,9 +952,9 @@ struct UsageStatus: View {
                             AgentIcon(icon: prof.icon, size: 10)
                             ForEach(compact ? Array(readings.prefix(1)) : readings) { r in
                                 if !compact { Text(r.shortName).foregroundStyle(T.text3) }
-                                UsageMeter(percent: r.effectivePercent, primary: r.window == "five_hour").frame(width: compact ? 30 : 44)
+                                UsageMeter(used: r.effectivePercent, left: showsLeft, primary: r.window == "five_hour").frame(width: compact ? 30 : 44)
                                 // After the window resets the old reading says nothing: "—" until a new one arrives.
-                                Text(r.isReset ? "—" : "\(Int(r.usedPercent.rounded()))%").font(T.mono(11))
+                                Text(r.isReset ? "—" : r.label(left: showsLeft)).font(T.mono(11))
                                     .foregroundStyle(r.isReset ? T.text3 : T.text)
                             }
                         }
@@ -972,29 +973,36 @@ struct UsageStatus: View {
     }
 }
 
+/// A limit as a bar: filled with what is used, or with what is left. The color always follows the use.
 struct UsageMeter: View {
-    let percent: Double
+    let used: Double
+    var left = false
     var primary = true
     var body: some View {
+        let fill = left ? max(0, 100 - used) : used
         GeometryReader { g in
             ZStack(alignment: .leading) {
                 Capsule().fill(T.border)
-                Capsule().fill(color).frame(width: max(2, g.size.width * min(1, percent / 100)))
+                Capsule().fill(color).frame(width: max(2, g.size.width * min(1, fill / 100)))
             }
         }
         .frame(height: 5)
     }
-    var color: Color { percent >= 90 ? T.red : percent >= 70 ? T.amber : primary ? T.accent : T.text2 }
+    var color: Color { used >= 90 ? T.red : used >= 70 ? T.amber : primary ? T.accent : T.text2 }
 }
 
 struct UsagePopover: View {
     @EnvironmentObject var model: AppModel
+    @AppStorage(UsageReading.showsLeftKey) private var showsLeft = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 Text("Usage limits").font(T.headline).foregroundStyle(T.text)
                 Spacer()
+                Picker("", selection: $showsLeft) { Text("Used").tag(false); Text("Left").tag(true) }
+                    .pickerStyle(.segmented).labelsHidden().fixedSize()
+                    .help("Show how much of each limit is used, or how much is left")
                 Button {
                     // The profiles the status bar shows, like the automatic refresh.
                     for id in model.usageProfileIds { model.client(for: id).call("usage.refresh", ["profile_ids": [id]]) }
@@ -1035,10 +1043,10 @@ struct UsagePopover: View {
                             HStack {
                                 Text(r.longName).font(T.body).foregroundStyle(T.text2)
                                 Spacer()
-                                Text(r.isReset ? "no reading since reset" : "\(Int(r.usedPercent.rounded()))%")
+                                Text(r.isReset ? "no reading since reset" : r.label(left: showsLeft) + (showsLeft ? " left" : " used"))
                                     .font(r.isReset ? T.caption : T.mono(12, .semibold)).foregroundStyle(r.isReset ? T.text3 : T.text)
                             }
-                            UsageMeter(percent: r.effectivePercent, primary: r.window == "five_hour")
+                            UsageMeter(used: r.effectivePercent, left: showsLeft, primary: r.window == "five_hour")
                             HStack {
                                 if let at = r.resetsAt, !r.isReset { Text("resets \(relative(at))").font(T.caption).foregroundStyle(T.text3) }
                                 Spacer()

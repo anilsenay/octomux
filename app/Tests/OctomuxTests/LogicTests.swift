@@ -332,3 +332,19 @@ final class ShortcutTargetTests: XCTestCase {
         XCTAssertEqual(KeyBindings.target("cmd.settings"), "App")
     }
 }
+
+final class UsageLabelTests: XCTestCase {
+    func testUsedAndLeft() {
+        let r = UsageReading(profileId: "p", window: "five_hour", usedPercent: 34.4, resetsAt: nil, observedAt: 0)
+        XCTAssertEqual(r.label(left: false), "34%")
+        XCTAssertEqual(r.label(left: true), "66%")
+        let over = UsageReading(profileId: "p", window: "five_hour", usedPercent: 104, resetsAt: nil, observedAt: 0)
+        XCTAssertEqual(over.label(left: true), "0%")
+    }
+
+    func testSoundSettings() {
+        XCTAssertEqual(Notifier.soundKey(for: "done"), "notifications.sound_done")
+        XCTAssertEqual(Notifier.soundKey(for: "command_done"), "notifications.sound_other")
+        XCTAssertTrue(Notifier.systemSounds.contains("Glass"))
+    }
+}

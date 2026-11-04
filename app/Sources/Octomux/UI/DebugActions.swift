@@ -162,6 +162,8 @@ enum DebugActions {
             case "close_doc": if let d = m.activeDocId { m.closeDoc(d) }
             case "right_tab": UserDefaults.standard.set(p["value"] as? String ?? "Changes", forKey: "octomux.rightTab"); m.rightPanelVisible = true
             case "sidebar_peek": m.sidebarPeek = (p["value"] as? Bool) ?? true
+            case "usage_left": UserDefaults.standard.set((p["value"] as? Bool) ?? true, forKey: UsageReading.showsLeftKey)
+            case "usage_popover": m.usagePopoverOpen = (p["value"] as? Bool) ?? true
             case "dock_position": UserDefaults.standard.set(p["value"] as? String ?? "bottom", forKey: "octomux.dockPosition")
             case "hover_project": m.debugHoverProject = id
             case "fan_stack": m.debugFanStack = id

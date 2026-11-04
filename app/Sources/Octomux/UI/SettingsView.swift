@@ -525,11 +525,17 @@ enum SettingsIndex {
             e(.notifications, "Program notifications", "osc 9 777"),
             e(.notifications, "Command threshold", "seconds long running"),
             e(.notifications, "Sound", "audio"),
+            e(.notifications, "Test notification", "try send sample banner focus"),
+            e(.notifications, "Sound: Agent finished", "audio done tone"),
+            e(.notifications, "Sound: Agent needs input", "audio permission tone"),
+            e(.notifications, "Sound: Agent error", "audio failed tone"),
+            e(.notifications, "Sound: Commands and programs", "audio terminal tone"),
             e(.notifications, "Dock badge", "count"),
             e(.keyboard, "Shortcuts", "keys bindings hotkeys find by keys acts on"),
             e(.keyboard, "Reset all shortcuts", "defaults restore keybindings"),
             e(.agents, "Your agents", "claude codex profiles pin command arguments environment hooks"),
             e(.agents, "Detected on this Mac", "installed path"),
+            e(.agents, "Meters show", "usage limits used left remaining quota plan"),
             e(.workspaces, "Workspaces", "rename color reorder default agent new chat"),
             e(.workspaces, "Archived projects", "unarchive"),
             e(.hosts, "Hosts", "remote ssh server daemon connect"),
@@ -721,6 +727,7 @@ struct ColorDots: View {
 
 struct AgentsSettings: View {
     @EnvironmentObject var model: AppModel
+    @AppStorage(UsageReading.showsLeftKey) private var showsLeft = false
     @State private var editing: Profile?
     @State private var detected: [[String: Any]] = []
     /// Claude integration per profile id: config_dir, status (installed / outdated / missing).
@@ -787,6 +794,12 @@ struct AgentsSettings: View {
                     }
                     .padding(.horizontal, 14).padding(.vertical, 10)
                 }
+            }
+        }
+        SettingsGroup("Usage limits", desc: "The Claude and Codex plan limits in the status bar. Click them there to pick which agents show.") {
+            SettingRow("Meters show", desc: showsLeft ? "How much of each limit is left: the bar empties as you use it." : "How much of each limit is used: the bar fills as you use it.") {
+                Picker("", selection: $showsLeft) { Text("Used").tag(false); Text("Left").tag(true) }
+                    .pickerStyle(.segmented).labelsHidden().fixedSize()
             }
         }
         SettingsFootnote("Tip: for a second Claude account, duplicate the claude agent and set CLAUDE_CONFIG_DIR, or point Command at a wrapper like `claude-work`.")
@@ -1248,6 +1261,9 @@ struct NotificationSettings: View {
         SettingsGroup {
             toggle("Notifications", key: "notifications.enabled",
                    desc: "Banners for agents and terminals in every project. Mute a single project from its right-click menu.")
+            SettingRow("Test notification", desc: "A sample “needs input” notification with its sound, to check banners, sounds and Focus. It shows even while Octomux is in front.") {
+                Button("Send Test") { Notifier.shared.sendTest() }.buttonStyle(SecondaryButtonStyle())
+            }
         }
         SettingsGroup("Notify me when") {
             toggle("Agent finished", key: "notifications.done", desc: "An agent ends its turn and waits for your next message.")
@@ -1266,9 +1282,34 @@ struct NotificationSettings: View {
         }
         SettingsGroup("Alerts") {
             toggle("Sound", key: "notifications.sound", desc: "Plays with each notification.")
+            if (model.settingValue("notifications.sound", scope: sel.scope)?.bool ?? model.settingValue("notifications.sound", scope: "global")?.bool ?? true) {
+                ForEach(Notifier.soundKinds, id: \.kind) { k in soundRow(k.kind, title: k.title, key: k.key) }
+            }
             toggle("Dock badge", key: "notifications.badge", desc: "The number of agents waiting for you, on the Dock icon.")
         }
         SettingsFootnote("You are never notified about the pane you are looking at.")
+    }
+
+    /// The sound of one kind: picking one plays it, the speaker sends a test notification of that kind.
+    func soundRow(_ kind: String, title: String, key: String) -> some View {
+        let explicit = model.settingValue(key, scope: sel.scope)?.string
+        let current = explicit ?? model.settingValue(key, scope: "global")?.string ?? "default"
+        return SettingRow("Sound: \(title)", modified: sel.scope != "global" && explicit != nil,
+                          onReset: { model.setSetting(key, nil, scope: sel.scope) }) {
+            HStack(spacing: 6) {
+                Picker("", selection: Binding(get: { current }, set: { v in
+                    model.setSetting(key, v == "default" && sel.scope == "global" ? nil : v, scope: sel.scope)
+                    if v != "default" { NSSound(named: v)?.play() }
+                })) {
+                    Text("Default").tag("default")
+                    Divider()
+                    ForEach(Notifier.systemSounds, id: \.self) { Text($0).tag($0) }
+                }
+                .labelsHidden().fixedSize()
+                Button { Notifier.shared.sendTest(kind: kind) } label: { Image(systemName: "speaker.wave.2").font(.system(size: 11)) }
+                    .buttonStyle(ChromeButtonStyle()).help("Send a test notification with this sound")
+            }
+        }
     }
 
     func toggle(_ title: String, key: String, desc: String) -> some View {

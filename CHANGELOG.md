@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **Notifications:** Send Test in Settings → Notifications, and a sound for each kind (agent finished, needs
+  input, error, commands and programs), picked from the macOS alert sounds; picking one plays it. Sound and
+  other notification settings now follow the project the notification is about, not the one on screen.
+- **Usage meters** can show what is left instead of what is used (Used / Left in their popover, or Settings →
+  Agents → Usage limits). The color still warns at 70% and 90% used.
 - **Settings → Terminal:** font (installed monospaced fonts or the built-in JetBrains Mono), size, line height,
   cursor style and blink, and scrollback lines, with a preview; terminals change as you pick. The terminal.conf
   editor moved here from Appearance and keeps working for everything else.
