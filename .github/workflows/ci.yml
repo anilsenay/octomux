@@ -17,3 +17,28 @@ jobs:
       - run: cargo test --locked
         working-directory: core
         env: { OCTOMUX_NO_USAGE_PROBE: "1" }
+
+  app:
+    name: macOS app (Swift)
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v7
+      # libghostty at the commit pinned in tools/build-ghostty.sh, built once per pin.
+      - id: ghostty
+        run: echo "commit=$(sed -n 's/^GHOSTTY_COMMIT=\([0-9a-f]*\).*/\1/p' tools/build-ghostty.sh)" >> "$GITHUB_OUTPUT"
+      - id: cache
+        uses: actions/cache@v6
+        with:
+          path: vendor/GhosttyKit.xcframework
+          key: ghosttykit-${{ steps.ghostty.outputs.commit }}-${{ runner.os }}-${{ runner.arch }}
+      - if: steps.cache.outputs.cache-hit != 'true'
+        uses: mlugg/setup-zig@v2
+        with: { version: 0.17.0 }
+      - if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          xcodebuild -downloadComponent MetalToolchain || true
+          tools/build-ghostty.sh
+      - run: swift build
+        working-directory: app
+      - run: swift test
+        working-directory: app
