@@ -143,7 +143,7 @@ impl Store {
         self.conn.execute(
             "INSERT INTO history(id, project_id, last, json) VALUES (?1, ?2, ?3, ?4)
              ON CONFLICT(id) DO UPDATE SET project_id = excluded.project_id, last = excluded.last, json = excluded.json",
-            params![s.id, s.project_id, s.last_activity_at.max(s.created_at), serde_json::to_string(s)?],
+            params![s.id, s.project_id, s.last_activity_at.max(s.created_at) as i64, serde_json::to_string(s)?],
         )?;
         Ok(())
     }

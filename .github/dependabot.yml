@@ -3,6 +3,10 @@ updates:
   - package-ecosystem: cargo
     directory: /core
     schedule: { interval: monthly }
+    ignore:
+      # vt100 holds every session's screen; changing it is its own piece of work (likely a switch to a
+      # reflowing terminal library), not a routine bump.
+      - dependency-name: vt100
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: monthly }
