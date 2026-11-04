@@ -248,10 +248,8 @@ struct WorkspaceButton: View {
         let note = attentionText(a)
         WorkspaceIcon(workspace: workspace, size: 13, dimmed: !selected && !hover)
             .frame(width: selected ? 40 : 28, height: 24)
-            // Another workspace that wants you: amber when something waits for input, else green.
-            .overlay(alignment: .topTrailing) {
-                if !selected && !note.isEmpty { AttentionDot(attention: a).overlay(Circle().stroke(T.frame, lineWidth: 1.5)).offset(x: -2, y: 2) }
-            }
+            // Another workspace that wants you (something waits for input, or finished and not looked at yet).
+            .background { if !selected && !note.isEmpty { AttentionWave(color: Color(hex: workspace.color)) } }
             .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(selected ? T.raised : hover ? T.hover : .clear))
             .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(selected ? T.border : .clear))
             .contentShape(Rectangle())
@@ -873,6 +871,36 @@ func attentionText(_ a: (waiting: Int, unread: Int)) -> String {
 }
 
 /// Amber when something waits for input, else green (something new to look at).
+/// A soft wave behind a workspace that wants you, in the workspace's color: a glow spreads from the middle of
+/// its button to the corners and fades, then a pause. A faint still tint with Reduce Motion.
+struct AttentionWave: View {
+    let color: Color
+    /// The wave's life, then the pause before the next one.
+    var wave: Double = 1.4, pause: Double = 1.0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private let shape = RoundedRectangle(cornerRadius: 6, style: .continuous)
+
+    var body: some View {
+        if reduceMotion {
+            shape.fill(color.opacity(0.12))
+        } else {
+            TimelineView(.animation(minimumInterval: 1 / 30)) { ctx in
+                let t = ctx.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: wave + pause)
+                let p = min(1, t / wave)
+                let grow = 1 - pow(1 - p, 3)                        // ease out
+                let alpha = p >= 1 ? 0 : 0.42 * min(1, p * 4) * (1 - p)  // quick fade in, slow fade out
+                GeometryReader { g in
+                    // Reaches the corners (half the diagonal) as it grows.
+                    let reach = max(1, (hypot(g.size.width, g.size.height) / 2) * (0.35 + 0.75 * grow))
+                    shape.fill(RadialGradient(colors: [color.opacity(alpha), color.opacity(alpha * 0.55), color.opacity(0)],
+                                              center: .center, startRadius: 0, endRadius: reach))
+                }
+            }
+            .allowsHitTesting(false)
+        }
+    }
+}
+
 struct AttentionDot: View {
     let attention: (waiting: Int, unread: Int)
     var body: some View {

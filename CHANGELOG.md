@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **Workspaces that want you** show a soft wave in their own color behind their button in the switcher (it
+  replaces the small dot): something waits for your input there, or finished and you haven't looked yet. Still
+  with Reduce Motion.
 - **Add MCP servers** from Settings → MCP (Add Server… on each agent's group): a command or an HTTP/SSE URL,
   environment variables or headers, and for Claude Code where it applies (all projects, one project, or the
   project's shared .mcp.json). Runs the agent's own `mcp add`.
