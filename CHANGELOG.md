@@ -17,6 +17,8 @@
 - Codex waiting at its startup screens (trust this folder, review new hooks, update) shows as needing input.
 - Codex follows /new, /fork and /resume to the conversation you are in, and ignores the files of its subagents.
 - Sessions started in Octomux no longer inherit the variables Codex sets in its own shells.
+- A `claude` or `codex` typed in a terminal tab is reopened on restore with the flags it was started with (model,
+  permission or sandbox mode, extra directories, config), but not its first prompt.
 
 ## 0.1.2
 

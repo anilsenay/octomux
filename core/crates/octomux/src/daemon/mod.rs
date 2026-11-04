@@ -496,9 +496,10 @@ impl Daemon {
         if session.kind == SessionKind::Terminal {
             if let Some(r) = session.resume_agent.as_ref().filter(|r| matches!(r.app.as_str(), "claude-code" | "codex")) {
                 let (var, cmd) = if r.app == "codex" { ("CODEX_HOME", "codex resume") } else { ("CLAUDE_CONFIG_DIR", "claude --resume") };
+                let flags: String = r.args.iter().map(|a| format!(" {}", util::shell_quote(a))).collect();
                 let line = match &r.config_dir {
-                    Some(d) => format!("{var}={} {cmd} {}\r", util::shell_quote(d), util::shell_quote(&r.session_id)),
-                    None => format!("{cmd} {}\r", util::shell_quote(&r.session_id)),
+                    Some(d) => format!("{var}={} {cmd} {}{flags}\r", util::shell_quote(d), util::shell_quote(&r.session_id)),
+                    None => format!("{cmd} {}{flags}\r", util::shell_quote(&r.session_id)),
                 };
                 if let Ok(mut c) = HolderClient::connect(&self.paths, id, Role::Control, 0, 0) {
                     let _ = c.send(&Frame::new(Kind::Input, line.into_bytes()));
@@ -818,11 +819,18 @@ impl Daemon {
                 let t = last.entry(id.clone()).or_insert(Instant::now() - Duration::from_secs(60));
                 (t.elapsed() >= Duration::from_secs(2)).then(|| *t = Instant::now()).is_some()
             };
-            let needed = self.with_session(&id, |s| s.agent_app.as_deref() == Some("claude-code") && !s.resume_agent.as_ref().is_some_and(|r| r.from_hook)) == Some(true);
-            if !due || !needed {
+            let Some((claude, hooked)) = self.with_session(&id, |s| (s.agent_app.as_deref() == Some("claude-code"), s.resume_agent.as_ref().is_some_and(|r| r.from_hook))) else { continue };
+            if !due || !claude {
                 continue;
             }
-            if let Some(r) = self.find_claude_conversation(&id, pid) {
+            // The hook tells the conversation, not the flags claude was started with.
+            let found = if hooked {
+                let args = agents::running_resume_flags("claude-code", pid);
+                self.with_session(&id, |s| s.resume_agent.clone()).flatten().zip(args).map(|(r, args)| ResumeAgent { args, ..r })
+            } else {
+                self.find_claude_conversation(&id, pid)
+            };
+            if let Some(r) = found {
                 let changed = self.with_session(&id, |s| {
                     let c = s.resume_agent.as_ref() != Some(&r);
                     s.resume_agent = Some(r.clone());
@@ -851,7 +859,7 @@ impl Daemon {
         for cfg in configs {
             let Ok(text) = std::fs::read_to_string(cfg.join("sessions").join(format!("{pid}.json"))) else { continue };
             let Some(r) = claude_session_record(&text, pid, started) else { continue };
-            return Some(ResumeAgent { app: "claude-code".into(), session_id: r, config_dir: (cfg != home.join(".claude")).then(|| cfg.to_string_lossy().into_owned()), from_hook: false });
+            return Some(ResumeAgent { app: "claude-code".into(), session_id: r, config_dir: (cfg != home.join(".claude")).then(|| cfg.to_string_lossy().into_owned()), from_hook: false, args: agents::running_resume_flags("claude-code", pid).unwrap_or_default() });
         }
         None
     }
@@ -956,13 +964,13 @@ impl Daemon {
                 }
                 if e.0 > 0 {
                     if let Some(c) = agents::codex_conversation_of(e.0) {
-                        found.push((id, launched, c));
+                        found.push((id, launched, e.0, c));
                     }
                 }
             }
         }
         let default_home = util::home_dir().join(".codex");
-        for (id, launched, c) in found {
+        for (id, launched, pid, c) in found {
             let changed = self.with_session(&id, |s| {
                 let before = (s.transcript_path.clone(), s.agent_session_id.clone(), s.resume_agent.clone());
                 s.transcript_path = Some(c.path.clone());
@@ -970,7 +978,10 @@ impl Daemon {
                     s.agent_session_id = Some(c.id.clone());
                 } else {
                     let config_dir = (c.codex_home != default_home).then(|| c.codex_home.to_string_lossy().into_owned());
-                    s.resume_agent = Some(ResumeAgent { app: "codex".into(), session_id: c.id.clone(), config_dir, from_hook: false });
+                    let args = agents::running_resume_flags("codex", pid)
+                        .or_else(|| s.resume_agent.as_ref().filter(|r| r.app == "codex").map(|r| r.args.clone()))
+                        .unwrap_or_default();
+                    s.resume_agent = Some(ResumeAgent { app: "codex".into(), session_id: c.id.clone(), config_dir, from_hook: false, args });
                 }
                 before != (s.transcript_path.clone(), s.agent_session_id.clone(), s.resume_agent.clone())
             });
@@ -1237,7 +1248,9 @@ impl Daemon {
                         // <config>/projects/<cwd>/<id>.jsonl → <config>, kept only when not ~/.claude.
                         let cfg = s.transcript_path.as_deref().and_then(|t| std::path::Path::new(t).ancestors().nth(3)).map(|p| p.to_path_buf());
                         let cfg = cfg.filter(|c| *c != util::home_dir().join(".claude")).map(|c| c.to_string_lossy().into_owned());
-                        s.resume_agent = Some(ResumeAgent { app: "claude-code".into(), session_id: cid.clone(), config_dir: cfg, from_hook: true });
+                        // Same claude (a /clear or /resume): keep the flags it was started with.
+                        let args = s.resume_agent.as_ref().filter(|r| r.app == "claude-code").map(|r| r.args.clone()).unwrap_or_default();
+                        s.resume_agent = Some(ResumeAgent { app: "claude-code".into(), session_id: cid.clone(), config_dir: cfg, from_hook: true, args });
                     }
                 } else if s.state == SessionState::Running {
                     s.agent_app = None;

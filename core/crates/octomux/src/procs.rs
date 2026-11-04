@@ -88,6 +88,39 @@ pub fn claude_ancestors(pid: i32) -> usize {
     n
 }
 
+/// The process's command line (`argv`, including argv[0]).
+pub fn args(pid: i32) -> Option<Vec<String>> {
+    #[cfg(target_os = "macos")]
+    {
+        // KERN_PROCARGS2: argc (i32), the executable path, NUL padding, then argv[0..argc] and the environment.
+        let mut argmax: libc::c_int = 0;
+        let mut size = std::mem::size_of::<libc::c_int>();
+        let mut mib = [libc::CTL_KERN, libc::KERN_ARGMAX];
+        if unsafe { libc::sysctl(mib.as_mut_ptr(), 2, (&mut argmax as *mut libc::c_int).cast(), &mut size, std::ptr::null_mut(), 0) } != 0 {
+            return None;
+        }
+        let mut buf = vec![0u8; argmax.max(4096) as usize];
+        let mut size = buf.len();
+        let mut mib = [libc::CTL_KERN, libc::KERN_PROCARGS2, pid];
+        if unsafe { libc::sysctl(mib.as_mut_ptr(), 3, buf.as_mut_ptr().cast(), &mut size, std::ptr::null_mut(), 0) } != 0 || size < 4 {
+            return None;
+        }
+        buf.truncate(size);
+        let argc = i32::from_ne_bytes(buf[..4].try_into().ok()?) as usize;
+        let rest = &buf[4..];
+        let rest = &rest[rest.iter().position(|b| *b == 0)?..];
+        let rest = &rest[rest.iter().position(|b| *b != 0)?..];
+        let v: Vec<String> = rest.split(|b| *b == 0).take(argc).map(|a| String::from_utf8_lossy(a).into_owned()).collect();
+        (v.len() == argc).then_some(v)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let raw = std::fs::read(format!("/proc/{pid}/cmdline")).ok()?;
+        let raw = raw.strip_suffix(&[0]).unwrap_or(&raw);
+        Some(raw.split(|b| *b == 0).map(|a| String::from_utf8_lossy(a).into_owned()).collect())
+    }
+}
+
 /// Paths of the regular files the process has open (Codex keeps its conversation's rollout file open), in
 /// descriptor order: the file opened last comes last (descriptors are handed out lowest-free first, so this is
 /// opening order unless lower ones were closed in between).
@@ -166,5 +199,6 @@ mod tests {
         assert_eq!(super::cwd(me).map(std::path::PathBuf::from), Some(cwd));
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
         assert!(super::start_time(me).is_some_and(|t| t <= now && now - t < 3600));
+        assert_eq!(super::args(me), Some(std::env::args().collect::<Vec<_>>()));
     }
 }

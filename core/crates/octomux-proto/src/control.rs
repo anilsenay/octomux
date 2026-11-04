@@ -192,6 +192,9 @@ pub struct ResumeAgent {
     /// Reported by a hook (exact), else found from the transcripts.
     #[serde(default)]
     pub from_hook: bool,
+    /// The flags the agent was started with that the reopened one gets too (`agents::resume_flags`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub args: Vec<String>,
 }
 
 impl Session {

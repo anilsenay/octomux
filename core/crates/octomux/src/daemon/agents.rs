@@ -767,6 +767,62 @@ mod tests {
     }
 }
 
+/// The flags of a typed agent's command line worth keeping when it is reopened on restore (model, permission or
+/// sandbox mode, extra dirs, config…), as they appeared. Only flags known to be safe to repeat with a resume: a
+/// prompt or an image (positional / `-i`) would be sent again, `-p`, `--continue`, `--worktree` and the like would
+/// start something else, and an unknown flag might take the next word as its value. `argv[0]` is skipped.
+pub fn resume_flags(app: &str, argv: &[String]) -> Vec<String> {
+    // (one value, several values up to the next flag, no value)
+    let (one, many, bare): (&[&str], &[&str], &[&str]) = match app {
+        "claude-code" => (
+            &["--model", "--permission-mode", "--effort", "--agent", "--agents", "--settings", "--setting-sources", "--append-system-prompt", "--system-prompt", "--fallback-model", "--plugin-dir"],
+            &["--allowedTools", "--allowed-tools", "--disallowedTools", "--disallowed-tools", "--add-dir", "--mcp-config", "--tools"],
+            &["--dangerously-skip-permissions", "--allow-dangerously-skip-permissions", "--strict-mcp-config", "--verbose", "--ide", "--chrome", "--no-chrome", "--disable-slash-commands"],
+        ),
+        "codex" => (
+            &["-c", "--config", "--enable", "--disable", "-m", "--model", "--local-provider", "-p", "--profile", "-s", "--sandbox", "-a", "--ask-for-approval", "--add-dir"],
+            &[],
+            &["--oss", "--full-auto", "--approve-for-me", "--dangerously-bypass-approvals-and-sandbox", "--dangerously-bypass-hook-trust", "--search", "--no-alt-screen", "--strict-config", "--no-daemon"],
+        ),
+        _ => return vec![],
+    };
+    let mut out = Vec::new();
+    let mut i = 1;
+    while i < argv.len() {
+        let a = &argv[i];
+        i += 1;
+        if a == "--" {
+            break;
+        }
+        let (name, inline) = match a.split_once('=') {
+            Some((n, _)) if n.starts_with("--") => (n, true),
+            _ => (a.as_str(), false),
+        };
+        if bare.contains(&name) && !inline {
+            out.push(a.clone());
+        } else if one.contains(&name) {
+            if inline {
+                out.push(a.clone());
+            } else if let Some(v) = argv.get(i) {
+                out.extend([a.clone(), v.clone()]);
+                i += 1;
+            }
+        } else if many.contains(&name) {
+            out.push(a.clone());
+            while !inline && i < argv.len() && !argv[i].starts_with('-') {
+                out.push(argv[i].clone());
+                i += 1;
+            }
+        }
+    }
+    out
+}
+
+/// `resume_flags` of a running agent process; None when its command line can't be read.
+pub fn running_resume_flags(app: &str, pid: i32) -> Option<Vec<String>> {
+    crate::procs::args(pid).map(|a| resume_flags(app, &a))
+}
+
 #[cfg(test)]
 mod codex_tests {
     use super::*;
@@ -820,6 +876,25 @@ mod codex_tests {
         assert_eq!(ts, util::parse_iso_millis("2026-11-04T07:25:08.678Z"));
         assert_eq!(codex_last_turn_event("{\"type\":\"event_msg\",\"payload\":{\"type\":\"task_complete\"}}").map(|t| t.0), Some(CodexTurn::Complete));
         assert_eq!(codex_last_turn_event("{\"type\":\"response_item\"}"), None);
+    }
+
+    #[test]
+    fn flags_kept_on_resume() {
+        let v = |s: &[&str]| s.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+        assert_eq!(
+            resume_flags("codex", &v(&["codex", "-m", "gpt-5", "--full-auto", "-c", "model_reasoning_effort=\"high\"", "-i", "shot.png", "fix the build"])),
+            v(&["-m", "gpt-5", "--full-auto", "-c", "model_reasoning_effort=\"high\""])
+        );
+        // Already a resume (the previous restore): the subcommand and old id go, the flags stay.
+        assert_eq!(resume_flags("codex", &v(&["/opt/homebrew/bin/codex", "resume", "0199-old", "--sandbox=workspace-write", "--last"])), v(&["--sandbox=workspace-write"]));
+        assert_eq!(
+            resume_flags("claude-code", &v(&["claude", "--model", "opus", "--add-dir", "../a", "../b", "--dangerously-skip-permissions", "-p", "hi"])),
+            v(&["--model", "opus", "--add-dir", "../a", "../b", "--dangerously-skip-permissions"])
+        );
+        assert_eq!(resume_flags("claude-code", &v(&["claude", "--resume", "abc", "-c", "--worktree", "w", "write tests"])), Vec::<String>::new());
+        assert_eq!(resume_flags("claude-code", &v(&["claude", "--model"])), Vec::<String>::new());
+        assert_eq!(resume_flags("claude-code", &v(&["claude", "--", "--model", "x"])), Vec::<String>::new());
+        assert_eq!(resume_flags("aider", &v(&["aider", "--model", "x"])), Vec::<String>::new());
     }
 
     #[test]
