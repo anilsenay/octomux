@@ -8,6 +8,7 @@
   (Settings → Terminal → Ask before stopping a running program). The first time a closed tab leaves something
   running, a note says where it went. Settings → Sessions → Closing a terminal tab can make terminals end with
   their tab instead, as in other terminal apps (asking first when a program runs).
+  In the sidebar, a session running without a tab has a dimmer title and a dashed-tab mark.
 - **Discard changes** in the Changes panel: per file (hover, or right-click) and for a whole group, after a
   confirmation. New files go to the Trash.
 - **Preview tabs:** a click in the Files panel opens the file in a preview tab (italic) that the next file

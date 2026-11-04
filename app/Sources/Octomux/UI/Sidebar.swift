@@ -578,6 +578,10 @@ struct SessionRow: View {
         if stack.count > 1 { return model.activeDoc == nil && model.activeTab?.layout.sessions.contains(session.id) == true }
         return model.focusedSessionId == session.id && model.activeTab?.layout.sessions.contains(session.id) == true
     }
+    /// Running, but its tab was closed (sessions outlive their tab).
+    private var background: Bool {
+        stack.count <= 1 && session.placement == .tab && !session.isDormant && model.tab(containing: session.id) == nil
+    }
     /// The pane whose activity the row shows: one waiting for input beats one working, then unread.
     private var indicated: Session {
         stack.first { $0.activity == .needsInput } ?? stack.first { $0.activity == .working } ?? stack.first { $0.unread } ?? session
@@ -608,9 +612,14 @@ struct SessionRow: View {
             } else {
                 Text(session.displayTitle)
                     .font(.system(size: T.k * 13, weight: selected || session.unread ? .semibold : .regular))
-                    .foregroundStyle(selected ? T.text : T.text2)
+                    .foregroundStyle(selected ? T.text : background ? T.text3 : T.text2)
                     .lineLimit(1)
                     .truncationMode(.tail)
+                if background {
+                    // Its tab was closed: still running, opened again with a click.
+                    Image(systemName: "rectangle.dashed").font(.system(size: T.k * 9.5, weight: .medium)).foregroundStyle(T.text3)
+                        .help("Running without a tab. Click to open it in one; Stop ends it.")
+                }
             }
             Spacer(minLength: 4)
             if !hover, model.isPinned(session: session.id) {
