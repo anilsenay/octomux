@@ -64,6 +64,12 @@ OCTOMUX_HOME=/tmp/octomuxU tools/dbg ui_action '{"name":"palette","value":"split
 OCTOMUX_HOME=/tmp/octomuxU tools/dbg update_toast '{"show":"available"}'
 ```
 
+## Maintainer: install a local build
+
+`tools/install-local.sh` builds, signs with the Developer ID (no notarization), replaces
+`/Applications/Octomux.app` and reopens it; the daemon restarts into the new binary and sessions survive.
+Only for a Mac with the maintainer's certificate; everyone else uses the Dev variant below.
+
 ## Release
 
 Needs the maintainer's Developer ID certificate, the `octomux-notary` notarytool profile and the Sparkle EdDSA

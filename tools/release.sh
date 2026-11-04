@@ -27,20 +27,8 @@ mkdir -p "$DIST"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-echo "== sign with $SIGN_ID"
-# Inside out: nested executables first, then the bundle. --timestamp and the hardened runtime are what
-# notarization requires.
-sign() { codesign --force --timestamp --options runtime --sign "$SIGN_ID" "$@"; }
-sign "$APP/Contents/Resources/bin/octomux"
-# Sparkle's helpers, innermost first (as Sparkle documents for Developer ID apps).
-SP="$APP/Contents/Frameworks/Sparkle.framework/Versions/B"
-sign "$SP/XPCServices/Installer.xpc"
-sign --preserve-metadata=entitlements "$SP/XPCServices/Downloader.xpc"
-sign "$SP/Autoupdate"
-sign "$SP/Updater.app"
-sign "$APP/Contents/Frameworks/Sparkle.framework"
-codesign --force --timestamp --options runtime --sign "$SIGN_ID" "$APP"
-codesign --verify --strict --deep --verbose=2 "$APP"
+echo "== sign"
+OCTOMUX_SIGN_ID="$SIGN_ID" tools/sign-app.sh "$APP"
 
 notarize() {   # $1: file to submit (zip or dmg)
     [ "${OCTOMUX_SKIP_NOTARIZE:-}" = 1 ] && { echo "(notarization skipped)"; return; }
