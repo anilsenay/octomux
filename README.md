@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/screenshot.png" alt="Octomux in dark mode: projects and agents on the left, a Claude Code session in the middle, Changes and History on the right" width="900" />
+  <img src="docs/assets/screenshot-dark.png" alt="Octomux in dark mode: projects and agents on the left, a Claude Code session in the middle, Changes and History on the right" width="900" />
 </p>
 
 ---
