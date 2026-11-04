@@ -17,7 +17,7 @@ cat >> "$NOTES" <<NOTES
 
 ### Install
 
-Download **Octomux-$VERSION.dmg**, open it and drag Octomux into Applications. macOS 14+, Apple Silicon. Signed and
+Download **Octomux-$VERSION.dmg**, open it and drag Octomux into Applications. macOS 14+, Apple Silicon or Intel. Signed and
 notarized. Or with Homebrew: \`brew install --cask ${OCTOMUX_HOMEBREW_TAP/homebrew-/}/octomux\`. Already installed?
 Octomux offers the update itself.
 NOTES

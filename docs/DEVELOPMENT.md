@@ -12,7 +12,7 @@
 
 ## Requirements
 
-- macOS 14+, Apple Silicon
+- macOS 14+ (Apple Silicon or Intel)
 - Xcode, with the Metal toolchain: `xcodebuild -downloadComponent MetalToolchain`
 - Rust stable
 - Zig 0.17 (only to build libghostty)
@@ -105,6 +105,9 @@ and staples the app and the DMG, and writes `dist/Octomux-<v>.dmg`, `dist/Octomu
 `dist/updates/appcast.xml` (EdDSA-signed by Sparkle's `generate_appcast`). Public settings (feed URL, download
 prefix, EdDSA public key) are in `release.env`. The app's feed is `releases/latest/download/appcast.xml`, so
 publishing a release is what makes installed copies see it. The build number is the commit count, so it only grows.
+Releases are universal (arm64 + x86_64): they need the universal libghostty (`tools/build-ghostty.sh`, the
+default) and `rustup target add x86_64-apple-darwin`. `publish-release.sh` also writes the Homebrew cask
+(`tools/homebrew/octomux.rb`) to the tap.
 
 ### Updates
 

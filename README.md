@@ -63,7 +63,7 @@ Or with Homebrew:
 brew install --cask anilsenay/tap/octomux
 ```
 
-macOS 14 or later, Apple Silicon. Signed and notarized, so it opens without a Gatekeeper prompt. If you open it
+macOS 14 or later, Apple Silicon or Intel. Signed and notarized, so it opens without a Gatekeeper prompt. If you open it
 straight from the disk image or Downloads, Octomux offers to move itself to Applications first (its background
 service needs a fixed place).
 

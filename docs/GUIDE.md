@@ -115,7 +115,6 @@ octomux ctl state.get                # the whole catalog as JSON
 
 ## Known limitations
 
-- Apple Silicon only for now.
 - Scrollback replayed on attach is capped at 3000 lines per session.
 - Notifications are posted by the app: while it is fully quit, sessions keep running but nothing is shown.
 - Plain terminal sessions come back after a reboot as a fresh shell; only agents resume their conversation.

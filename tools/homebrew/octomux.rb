@@ -14,7 +14,6 @@ cask "octomux" do
 
   # Octomux updates itself (Sparkle), so `brew upgrade` leaves it alone unless --greedy.
   auto_updates true
-  depends_on arch: :arm64
   depends_on macos: :sonoma
 
   app "Octomux.app"

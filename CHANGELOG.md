@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Intel Macs:** the app is universal now (Apple Silicon and Intel).
 - **Homebrew:** `brew install --cask anilsenay/tap/octomux`, and `brew uninstall --zap --cask octomux` removes
   everything. The cask follows each release.
 - **Codex at the same level as Claude Code.** Working, waiting for approval and done for Codex 0.164 and
