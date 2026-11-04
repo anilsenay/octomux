@@ -322,8 +322,29 @@ pub fn parse_rollout_path(p: &str) -> Option<CodexConversation> {
 /// The conversation a running codex works on: the rollout file it keeps open. Exact (like Claude's own
 /// `sessions/<pid>.json`): two codex in the same folder never get each other's conversation. None until
 /// Codex has created the file (it does so at start, or with the first message).
+/// Subagents, reviews and memory runs have rollout files of their own in the same process; only a
+/// conversation you started (`thread_source` "user", or none in older files) counts. After /new, /fork or
+/// /resume the earlier conversation's file stays open too: the one opened last is the current one.
 pub fn codex_conversation_of(pid: i32) -> Option<CodexConversation> {
-    crate::procs::open_files(pid).iter().find_map(|p| parse_rollout_path(p))
+    crate::procs::open_files(pid).iter().rev().filter_map(|p| parse_rollout_path(p)).find(|c| is_user_thread(Path::new(&c.path)))
+}
+
+/// The rollout's first line (`session_meta`) says whose conversation it is.
+fn is_user_thread(path: &Path) -> bool {
+    use std::io::{BufRead, Read};
+    let mut line = String::new();
+    let Ok(f) = std::fs::File::open(path) else { return false };
+    if std::io::BufReader::new(f.take(1 << 20)).read_line(&mut line).is_err() {
+        return false;
+    }
+    user_thread_meta(&line)
+}
+
+pub fn user_thread_meta(first_line: &str) -> bool {
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(first_line) else { return false };
+    let Some(meta) = v.get("payload").filter(|_| v.get("type").and_then(|t| t.as_str()) == Some("session_meta")) else { return false };
+    let source_is_subagent = meta.get("source").is_some_and(|s| s.get("subagent").is_some() || s.as_str() == Some("subagent"));
+    !source_is_subagent && meta.get("thread_source").and_then(|t| t.as_str()).is_none_or(|t| t == "user")
 }
 
 /// Conversation names from `<CODEX_HOME>/session_index.jsonl` (`/rename`, or the name Codex picks after the
@@ -369,6 +390,15 @@ pub fn codex_last_turn_event(chunk: &str) -> Option<(CodexTurn, Option<u64>)> {
         last = Some((turn, v.get("timestamp").and_then(|t| t.as_str()).and_then(util::parse_iso_millis)));
     }
     last
+}
+
+/// A screen Codex shows before its main view, where it waits for you but reports nothing yet: the folder
+/// trust question, the review of new hooks, the update offer.
+pub fn codex_startup_dialog(screen: &str) -> bool {
+    let has = |s: &str| screen.contains(s);
+    (has("Trust this folder?") || has("Do you trust the contents of this directory?"))
+        || (has("Hooks need review") && has("Continue without trusting"))
+        || (has("Update available") && has("Skip until next version"))
 }
 
 /// `codex --version` as the profile runs Codex (alias, login shell): "0.166.0".
@@ -754,6 +784,17 @@ mod codex_tests {
     }
 
     #[test]
+    fn only_user_conversations() {
+        let meta = |extra: &str| format!("{{\"type\":\"session_meta\",\"payload\":{{\"id\":\"x\",\"source\":\"cli\"{extra}}}}}");
+        assert!(user_thread_meta(&meta(",\"thread_source\":\"user\"")));
+        assert!(user_thread_meta(&meta("")));
+        assert!(!user_thread_meta(&meta(",\"thread_source\":\"subagent\"")));
+        assert!(!user_thread_meta(&meta(",\"thread_source\":\"guardian_review\"")));
+        assert!(!user_thread_meta("{\"type\":\"session_meta\",\"payload\":{\"source\":{\"subagent\":{\"review\":null}}}}"));
+        assert!(!user_thread_meta("{\"type\":\"response_item\"}"));
+    }
+
+    #[test]
     fn conversation_names_last_entry_wins() {
         let text = concat!(
             "{\"id\":\"a\",\"thread_name\":\"First\",\"updated_at\":\"x\"}\n",
@@ -779,6 +820,16 @@ mod codex_tests {
         assert_eq!(ts, util::parse_iso_millis("2026-11-04T07:25:08.678Z"));
         assert_eq!(codex_last_turn_event("{\"type\":\"event_msg\",\"payload\":{\"type\":\"task_complete\"}}").map(|t| t.0), Some(CodexTurn::Complete));
         assert_eq!(codex_last_turn_event("{\"type\":\"response_item\"}"), None);
+    }
+
+    #[test]
+    fn startup_dialogs() {
+        assert!(codex_startup_dialog("  Folder access\n  /tmp/p\n  Trust this folder? Codex can read, edit, and run files here\n› 1. Trust and continue"));
+        assert!(codex_startup_dialog("  Hooks need review\n  3 hooks are new or changed.\n  3. Continue without trusting (hooks won't run)"));
+        assert!(codex_startup_dialog("  Update available · 0.167.0\n› 1. Update now\n  3. Skip until next version\n  enter continue · esc skip"));
+        assert!(!codex_startup_dialog("› Ask Codex to do anything\n  GPT-5.6-Luna medium · /tmp/p"));
+        // Codex talking about trust in a reply is not the dialog.
+        assert!(!codex_startup_dialog("• Hooks need review before they run; see /hooks."));
     }
 
     #[test]

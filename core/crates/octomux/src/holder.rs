@@ -91,6 +91,9 @@ pub fn is_inherited_agent_var(key: &str, value: &str) -> bool {
     key == "CLAUDECODE"
         || key.starts_with("CLAUDE_CODE_")
         || matches!(key, "CLAUDE_PID" | "CLAUDE_EFFORT" | "CLAUDE_CONFIG_DIR" | "CODEX_SANDBOX" | "CODEX_SANDBOX_NETWORK_DISABLED")
+        // What Codex sets in the shells it runs: a codex started in one of our tabs would take itself for a
+        // nested run of that conversation.
+        || matches!(key, "CODEX_THREAD_ID" | "CODEX_SHELL" | "CODEX_CI" | "CODEX_INTERNAL_ORIGINATOR_OVERRIDE" | "CODEX_TUI_RECORD_SESSION" | "CODEX_TUI_SESSION_LOG_PATH")
         || (key == "GIT_EDITOR" && value.contains("claude"))
         // Another multiplexer's session ids (Octomux started from its terminal): their global agent hooks
         // would report our sessions to it.

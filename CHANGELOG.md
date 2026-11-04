@@ -12,6 +12,9 @@
   message (AGENTS.md, environment) is no longer shown as your message.
 - Usage limits for Codex come from that profile's own running conversation.
 - A terminal tab whose agent conversation is reopened on restore keeps it while the agent is still starting.
+- Codex waiting at its startup screens (trust this folder, review new hooks, update) shows as needing input.
+- Codex follows /new, /fork and /resume to the conversation you are in, and ignores the files of its subagents.
+- Sessions started in Octomux no longer inherit the variables Codex sets in its own shells.
 
 ## 0.1.2
 

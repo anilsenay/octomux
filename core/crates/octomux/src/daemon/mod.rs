@@ -53,6 +53,8 @@ pub struct Daemon {
     resuming: Mutex<HashMap<String, Instant>>,
     /// Per session running Codex: its process (0 = not found yet) and when its open rollout was last read.
     codex_scan: Mutex<HashMap<String, (i32, Instant)>>,
+    /// Sessions we marked as waiting because Codex shows a startup dialog (see agents::codex_startup_dialog).
+    codex_dialog: Mutex<HashSet<String>>,
     /// Per CODEX_HOME: `session_index.jsonl`'s mtime and the conversation names in it.
     codex_names: Mutex<HashMap<std::path::PathBuf, (std::time::SystemTime, HashMap<String, String>)>>,
     /// `daemon.stop_all` is taking everything down: sessions that die now are restored on the next start.
@@ -220,6 +222,7 @@ pub fn run(paths: Paths) -> Result<()> {
         resuming: Mutex::new(HashMap::new()),
         codex_scan: Mutex::new(HashMap::new()),
         codex_names: Mutex::new(HashMap::new()),
+        codex_dialog: Mutex::new(HashSet::new()),
         stopping_all: std::sync::atomic::AtomicBool::new(false),
     });
 
@@ -480,6 +483,8 @@ impl Daemon {
             s.state = SessionState::Running;
             s.exit_code = None;
             s.activity = Activity::Idle;
+            // A new process: whatever reported before is gone, until the new one reports itself.
+            s.reports_status = false;
             s.last_activity_at = now;
             if spec.agent_session_id.is_some() {
                 s.agent_session_id = spec.agent_session_id.clone();
@@ -932,6 +937,7 @@ impl Daemon {
                 .collect()
         };
         let targets: Vec<(String, bool)> = targets.into_iter().filter(|(id, _)| holder_alive(&self.paths, id)).collect();
+        self.codex_startup_dialogs(&targets);
         let mut found = Vec::new();
         {
             let mut scans = self.codex_scan.lock().unwrap();
@@ -973,6 +979,27 @@ impl Daemon {
                     self.persist_session(&copy);
                 }
                 self.changed();
+            }
+        }
+    }
+
+    /// Before its main view Codex can stop at a dialog (trust this folder, review new hooks, update) without
+    /// reporting anything: the session would look idle while it waits for you. Until Codex reports by itself,
+    /// such a screen counts as needing input; its first report takes over.
+    fn codex_startup_dialogs(&self, targets: &[(String, bool)]) {
+        let mut marked = self.codex_dialog.lock().unwrap();
+        marked.retain(|id| targets.iter().any(|(t, _)| t == id));
+        for (id, _) in targets {
+            if self.with_session(id, |s| s.reports_status) != Some(false) {
+                marked.remove(id);
+                continue;
+            }
+            let Ok(v) = HolderClient::request(&self.paths, id, &HolderRequest::ScreenText) else { continue };
+            let dialog = v.get("text").and_then(|t| t.as_str()).is_some_and(agents::codex_startup_dialog);
+            if dialog && marked.insert(id.clone()) {
+                self.set_activity(id, Activity::NeedsInput);
+            } else if !dialog && marked.remove(id) && self.with_session(id, |s| s.activity == Activity::NeedsInput) == Some(true) {
+                self.set_activity(id, Activity::Idle);
             }
         }
     }

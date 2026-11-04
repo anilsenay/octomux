@@ -88,7 +88,9 @@ pub fn claude_ancestors(pid: i32) -> usize {
     n
 }
 
-/// Paths of the regular files the process has open (Codex keeps its conversation's rollout file open).
+/// Paths of the regular files the process has open (Codex keeps its conversation's rollout file open), in
+/// descriptor order: the file opened last comes last (descriptors are handed out lowest-free first, so this is
+/// opening order unless lower ones were closed in between).
 pub fn open_files(pid: i32) -> Vec<String> {
     #[cfg(target_os = "macos")]
     {
@@ -129,7 +131,10 @@ pub fn open_files(pid: i32) -> Vec<String> {
     #[cfg(not(target_os = "macos"))]
     {
         let Ok(rd) = std::fs::read_dir(format!("/proc/{pid}/fd")) else { return vec![] };
-        rd.flatten().filter_map(|e| std::fs::read_link(e.path()).ok()).filter(|p| p.is_file()).map(|p| p.to_string_lossy().into_owned()).collect()
+        let mut fds: Vec<(u32, std::path::PathBuf)> =
+            rd.flatten().filter_map(|e| Some((e.file_name().to_str()?.parse().ok()?, std::fs::read_link(e.path()).ok()?))).filter(|(_, p)| p.is_file()).collect();
+        fds.sort_by_key(|(fd, _)| *fd);
+        fds.into_iter().map(|(_, p)| p.to_string_lossy().into_owned()).collect()
     }
 }
 
@@ -138,11 +143,17 @@ mod tests {
     #[test]
     fn open_files_of_own_process() {
         let path = std::env::temp_dir().join(format!("octomux-open-{}", std::process::id()));
+        let later = path.with_extension("later");
         let f = std::fs::File::create(&path).unwrap();
-        let canon = path.canonicalize().unwrap().to_string_lossy().into_owned();
-        assert!(super::open_files(std::process::id() as i32).contains(&canon));
-        drop(f);
+        let g = std::fs::File::create(&later).unwrap();
+        let canon = |p: &std::path::Path| p.canonicalize().unwrap().to_string_lossy().into_owned();
+        let open = super::open_files(std::process::id() as i32);
+        let at = |p: &std::path::Path| open.iter().position(|x| *x == canon(p));
+        // Opened later, listed later (what picks Codex's current conversation after /new).
+        assert!(at(&path).unwrap() < at(&later).unwrap(), "{open:?}");
+        drop((f, g));
         let _ = std::fs::remove_file(path);
+        let _ = std::fs::remove_file(later);
     }
 
     #[test]
