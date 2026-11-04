@@ -3,8 +3,8 @@
 ## Unreleased
 
 - **Workspaces that want you** in the sidebar's switcher: a mark in amber (something waits for your input there)
-  or green (finished while you were away), as a bar under the workspace, a glow behind it, a corner dot or a
-  count (Settings → Appearance → Sidebar). It replaces the small corner dot, which is still one of the choices.
+  or green (finished while you were away), as a bar under the workspace, a glow behind it (each still or slowly
+  breathing), a corner dot or a count (Settings → Appearance → Sidebar). It replaces the small corner dot, which is still one of the choices.
 - **Add MCP servers** from Settings → MCP (Add Server… on each agent's group): a command or an HTTP/SSE URL,
   environment variables or headers, and for Claude Code where it applies (all projects, one project, or the
   project's shared .mcp.json). Runs the agent's own `mcp add`.
