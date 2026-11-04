@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **Prompts:** save prompts you send often (Settings → Prompts) for every project, a workspace or one project,
+  and pick them in a new chat, the quick composer or ⌘K. `{project}`, `{path}`, `{branch}`, `{clipboard}` and
+  `{date}` are filled in.
 - **Quick composer:** a small window over any app to start an agent: project, agent, prompt, Return. You stay
   in the app you were in (⌘Return brings Octomux forward instead). Set a shortcut that works everywhere in
   Settings → Keyboard → Anywhere; it is also in the File menu and the menu bar icon's menu.

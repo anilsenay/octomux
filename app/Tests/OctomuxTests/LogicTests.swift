@@ -499,3 +499,15 @@ final class GlobalHotKeyTests: XCTestCase {
         XCTAssertNil(hk.registered)
     }
 }
+
+final class PromptTemplateTests: XCTestCase {
+    func testExpandAndInsert() {
+        let p = Project(id: "p", workspaceId: "w", name: "storefront", path: "/src/storefront", color: "#fff", icon: ProjectIcon(kind: "folder"), sort: 0, archived: false)
+        var c = DateComponents(); c.year = 2026; c.month = 11; c.day = 4
+        let d = Calendar(identifier: .gregorian).date(from: c)!
+        let out = PromptTemplate.expand("Review {branch} of {project} in {path} ({date}): {clipboard} {unknown}", project: p, folder: nil, branch: "feat/x", clipboard: "err", date: d)
+        XCTAssertEqual(out, "Review feat/x of storefront in /src/storefront (2026-11-04): err {unknown}")
+        XCTAssertEqual(PromptTemplate.insert("T", into: "  "), "T")
+        XCTAssertEqual(PromptTemplate.insert("T", into: "hi"), "hi\nT")
+    }
+}

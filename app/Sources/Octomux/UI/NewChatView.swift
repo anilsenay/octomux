@@ -128,6 +128,16 @@ struct NewChatView: View {
                 }
                 Spacer()
                 if sending { WorkingRing().padding(.trailing, 6) }
+                TemplateMenu(projectId: project?.id, folder: path, pick: { t in
+                    draft = PromptTemplate.insert(t, into: draft)
+                    if NewChatDraft.pending[docId] != nil { NewChatDraft.pending[docId] = draft }
+                    focused = true
+                }) {
+                    Image(systemName: "text.bubble").font(.system(size: 12.5)).foregroundStyle(T.text2)
+                }
+                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().frame(width: 26, height: 26)
+                .tint(T.text2)
+                .help("Saved prompts")
                 Button { files += AttachmentChips.pick() } label: {
                     Image(systemName: "paperclip").font(.system(size: 12.5)).foregroundStyle(T.text2).frame(width: 26, height: 26)
                 }

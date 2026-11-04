@@ -124,6 +124,13 @@ closing a running program" or "Don't ask again" in the question.
 
 ![The Kraken scene behind translucent terminals](assets/scene-kraken.png)
 
+## Prompts
+
+Settings → Prompts keeps prompts you send often, for every project, a workspace's projects or one project. Pick
+one from the prompt button (text bubble) in a new chat or the quick composer, or type its name in ⌘K (it opens
+a new chat with it); the text goes into the message box, where you can still change it. `{project}`, `{path}`,
+`{branch}`, `{clipboard}` and `{date}` are filled in when you pick it.
+
 ## Quick composer
 
 A small window over any app: pick a project and an agent, type what to do, and press Return; the session starts

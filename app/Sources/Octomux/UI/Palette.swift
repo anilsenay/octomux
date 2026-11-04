@@ -40,6 +40,13 @@ enum PaletteSource {
             out.append(PaletteItem(id: "n:" + p.id, title: "New \(p.name)", subtitle: model.currentProject?.name ?? "", kind: "Agent",
                                    icon: AnyView(AgentIcon(icon: p.icon, size: 12).frame(width: 18))) { model.newSession(profileId: p.id) })
         }
+        let here = model.currentProject
+        for t in model.templates(project: here?.id) {
+            out.append(PaletteItem(id: "prompt:" + t.id, title: "Prompt: \(t.name)", subtitle: t.text.prefix(80).replacingOccurrences(of: "\n", with: " "),
+                                   kind: "Prompt", icon: sym("text.bubble")) {
+                model.openNewChat(projectId: here?.id, draft: model.expandTemplate(t, project: here, folder: model.currentWorkPath))
+            })
+        }
         for c in KeyBindings.shared.commands where c.id != "cmd.command-palette" {
             out.append(PaletteItem(id: c.id, title: c.title.replacingOccurrences(of: "…", with: ""), subtitle: c.group, kind: "Command",
                                    icon: sym("command"), shortcut: KeyBindings.shared.current(c.id)?.display ?? "") {

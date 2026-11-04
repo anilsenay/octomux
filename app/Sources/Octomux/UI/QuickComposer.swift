@@ -140,8 +140,12 @@ struct QuickComposerView: View {
                     ForEach(profiles) { p in Text(p.name).tag(Optional(p.id)) }
                 }
                 .labelsHidden().fixedSize()
+                TemplateMenu(projectId: state.projectId, pick: { t in state.text = PromptTemplate.insert(t, into: state.text); focused = true }) {
+                    Label("Prompts", systemImage: "text.bubble")
+                }
+                .fixedSize()
                 Spacer()
-                Text("↩ start   ⌘↩ start and show   ⇧↩ new line   esc close")
+                Text("↩ start · ⌘↩ and show · esc")
                     .font(.system(size: 11)).foregroundStyle(T.text3)
             }
         }
