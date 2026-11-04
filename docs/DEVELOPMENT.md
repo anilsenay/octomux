@@ -70,14 +70,17 @@ Needs the maintainer's Developer ID certificate, the `octomux-notary` notarytool
 private key in the login keychain.
 
 ```sh
-echo 0.2.0 > VERSION && git commit -am "Release 0.2.0"
-tools/release.sh
+echo 0.2.0 > VERSION            # and add a "## 0.2.0" section to CHANGELOG.md
+git commit -am "Release 0.2.0" && git push
+tools/release.sh                # build, sign, notarize → dist/
+tools/publish-release.sh        # GitHub release v0.2.0: DMG, update zip, appcast.xml
 ```
 
 `release.sh` builds, signs inside out with the hardened runtime (CLI, Sparkle's helpers, the app), notarizes
 and staples the app and the DMG, and writes `dist/Octomux-<v>.dmg`, `dist/Octomux-<v>.zip` and
 `dist/updates/appcast.xml` (EdDSA-signed by Sparkle's `generate_appcast`). Public settings (feed URL, download
-prefix, EdDSA public key) are in `release.env`. The build number is the commit count, so it only grows.
+prefix, EdDSA public key) are in `release.env`. The app's feed is `releases/latest/download/appcast.xml`, so
+publishing a release is what makes installed copies see it. The build number is the commit count, so it only grows.
 
 ### Updates
 

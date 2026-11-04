@@ -13,6 +13,7 @@ cd "$ROOT"
 VERSION="$(cat VERSION)"
 [ -f release.env ] && set -a && . ./release.env && set +a
 SPARKLE_BIN="$ROOT/app/.build/artifacts/sparkle/Sparkle/bin"
+[ -n "${OCTOMUX_GITHUB_REPO:-}" ] && : "${OCTOMUX_DOWNLOAD_PREFIX:=https://github.com/$OCTOMUX_GITHUB_REPO/releases/download/v$VERSION/}"
 PROFILE="${OCTOMUX_NOTARY_PROFILE:-octomux-notary}"
 SIGN_ID="${OCTOMUX_SIGN_ID:-$(security find-identity -v -p codesigning | sed -n 's/.*"\(Developer ID Application: [^"]*\)".*/\1/p' | head -1)}"
 [ -n "$SIGN_ID" ] || { echo "no Developer ID Application identity in the keychain" >&2; exit 1; }
@@ -60,9 +61,11 @@ ZIP="$DIST/Octomux-$VERSION.zip"
 rm -f "$ZIP"
 ditto -c -k --keepParent "$APP" "$ZIP"
 # The appcast: generate_appcast signs each zip with the EdDSA key from the keychain and keeps older entries.
+# Only the new version is listed: older zips sit under their own tags, and Sparkle only needs the newest.
 UPD="$DIST/updates"
-mkdir -p "$UPD"
+rm -rf "$UPD"; mkdir -p "$UPD"
 cp "$ZIP" "$UPD/"
+[ -f "$ROOT/CHANGELOG.md" ] && awk -v v="$VERSION" '$0 ~ "^## "v"( |$)" {on=1; next} /^## / {on=0} on' "$ROOT/CHANGELOG.md" > "$UPD/Octomux-$VERSION.md"
 if [ -n "${OCTOMUX_DOWNLOAD_PREFIX:-}" ]; then
     "$SPARKLE_BIN/generate_appcast" --download-url-prefix "$OCTOMUX_DOWNLOAD_PREFIX" --maximum-deltas 0 "$UPD"
 else
