@@ -17,11 +17,14 @@ pub fn script_path(paths: &Paths) -> PathBuf {
     paths.agent_dir().join("claude-hook.sh")
 }
 
-/// The script the installed hooks run: a no-op outside an Octomux tab, else our `hook` command.
+/// The script the installed hooks run: a no-op outside a tab of this Octomux (its data folder), else our
+/// `hook` command. The folder check lets Octomux and Octomux Dev both install the integration: each one's
+/// hook only answers in its own tabs. Rewritten at every daemon start, so existing installs pick it up.
 pub fn write_script(paths: &Paths, exe: &str) -> Result<()> {
     let body = format!(
         "#!/bin/sh\n# Octomux Claude Code integration v{VERSION}. Inert outside an Octomux terminal tab.\n\
-         [ -n \"$OCTOMUX_SESSION_ID\" ] || exit 0\nexec {} hook \"$1\"\n",
+         [ -n \"$OCTOMUX_SESSION_ID\" ] || exit 0\n[ \"$OCTOMUX_HOME\" = {} ] || exit 0\nexec {} hook \"$1\"\n",
+        shell_quote(&paths.home.to_string_lossy()),
         shell_quote(exe)
     );
     let p = script_path(paths);
@@ -223,5 +226,33 @@ mod tests {
         assert_eq!(std::fs::read_to_string(settings_file(&d)).unwrap(), "{ \"model\": ");
         std::fs::write(settings_file(&d), r#"{"hooks": []}"#).unwrap();
         assert!(install(&d, Path::new(SCRIPT)).is_err());
+    }
+
+    #[test]
+    fn hook_script_only_answers_in_its_own_data_folder() {
+        let dir = std::env::temp_dir().join(format!("octomux-hook-test-{}", std::process::id()));
+        let home = dir.join("Octomux Dev");
+        std::fs::create_dir_all(home.join("agent")).unwrap();
+        let paths = Paths { home: home.clone() };
+        // A fake `octomux` that records it was called.
+        let mark = dir.join("called");
+        let exe = dir.join("fake octomux");
+        std::fs::write(&exe, format!("#!/bin/sh\necho \"$1 $2\" > '{}'\n", mark.display())).unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
+        write_script(&paths, &exe.to_string_lossy()).unwrap();
+        let run = |session: Option<&str>, h: &str| {
+            let _ = std::fs::remove_file(&mark);
+            let mut c = std::process::Command::new(script_path(&paths));
+            c.arg("Stop").env_remove("OCTOMUX_SESSION_ID").env("OCTOMUX_HOME", h);
+            if let Some(s) = session { c.env("OCTOMUX_SESSION_ID", s); }
+            assert!(c.status().unwrap().success());
+            std::fs::read_to_string(&mark).ok()
+        };
+        let other = dir.join("Octomux");
+        assert_eq!(run(None, &home.to_string_lossy()), None, "outside any Octomux tab");
+        assert_eq!(run(Some("s1"), &other.to_string_lossy()), None, "in the other app's tab");
+        assert_eq!(run(Some("s1"), &home.to_string_lossy()).as_deref(), Some("hook Stop\n"), "in its own tab");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

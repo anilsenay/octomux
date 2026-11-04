@@ -44,7 +44,8 @@ survive that like in the release app. Remove it with
 `OCTOMUX_VARIANT=dev "build/Octomux Dev.app/Contents/Resources/bin/octomux" uninstall-agent` and
 `rm -rf ~/Library/Application\ Support/Octomux\ Dev`.
 
-Leave Settings → Agents → the Claude Code integration (hooks in your Claude settings) to one of the two apps.
+Both apps can have the Claude Code integration (Settings → Agents) on: each one's hook only answers in its
+own tabs.
 
 ## Test
 
