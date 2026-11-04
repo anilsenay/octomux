@@ -231,6 +231,69 @@ extension MCPConfig {
         return (p.terminationStatus, read(out), read(err))
     }
 
+    /// What the Add Server form asks for.
+    struct NewServer: Equatable {
+        enum Transport: String, CaseIterable { case stdio, http, sse }
+        enum Where: Equatable { case user, local(String), project(String) }
+        var name = ""
+        var transport = Transport.stdio
+        /// The command line (stdio) or the URL.
+        var target = ""
+        /// KEY=value per line (stdio).
+        var env = ""
+        /// `Name: value` per line (Claude, HTTP/SSE).
+        var headers = ""
+        /// An environment variable holding a bearer token (Codex, HTTP).
+        var bearerEnv = ""
+        var scope = Where.user
+
+        func lines(_ s: String) -> [String] {
+            s.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        }
+
+        /// Why it can't be added yet, or nil.
+        func problem(kind: AgentKind) -> String? {
+            let n = name.trimmingCharacters(in: .whitespaces)
+            if n.isEmpty { return "Give it a name." }
+            if n.contains(where: { $0.isWhitespace }) { return "The name can't have spaces." }
+            let t = target.trimmingCharacters(in: .whitespaces)
+            if t.isEmpty { return transport == .stdio ? "Enter the command that starts it." : "Enter its URL." }
+            if transport != .stdio, !(t.hasPrefix("http://") || t.hasPrefix("https://")) { return "The URL starts with http:// or https://." }
+            if kind == .codex, transport == .sse { return "Codex connects to HTTP servers, not SSE." }
+            if transport == .stdio, let bad = lines(env).first(where: { !$0.contains("=") || $0.hasPrefix("=") }) { return "“\(bad)” isn't KEY=value." }
+            if kind == .claude, transport != .stdio, let bad = lines(headers).first(where: { !$0.contains(":") }) { return "“\(bad)” isn't Name: value." }
+            return nil
+        }
+    }
+
+    /// The arguments that add `s` with the agent's CLI, and the folder to run them in (Claude's local and
+    /// project scopes belong to a folder). Claude's -e and -H take several values, so the name comes first and
+    /// the command after `--`.
+    static func addCommand(_ s: NewServer, kind: AgentKind) -> (args: [String], cwd: String?) {
+        let name = s.name.trimmingCharacters(in: .whitespaces)
+        let target = s.target.trimmingCharacters(in: .whitespaces)
+        if kind == .codex {
+            if s.transport == .stdio {
+                return (["mcp", "add", name] + s.lines(s.env).flatMap { ["--env", $0] } + ["--"] + ShellWords.split(target), nil)
+            }
+            let bearer = s.bearerEnv.trimmingCharacters(in: .whitespaces)
+            return (["mcp", "add", name, "--url", target] + (bearer.isEmpty ? [] : ["--bearer-token-env-var", bearer]), nil)
+        }
+        var a = ["mcp", "add", name]
+        let cwd: String?
+        switch s.scope {
+        case .user: a += ["-s", "user"]; cwd = nil
+        case .local(let p): a += ["-s", "local"]; cwd = p
+        case .project(let p): a += ["-s", "project"]; cwd = p
+        }
+        if s.transport == .stdio {
+            a += s.lines(s.env).flatMap { ["-e", $0] } + ["--"] + ShellWords.split(target)
+        } else {
+            a += ["-t", s.transport.rawValue, target] + s.lines(s.headers).flatMap { ["-H", $0] }
+        }
+        return (a, cwd)
+    }
+
     /// The arguments that remove this server with the agent's CLI, and the folder to run them in.
     static func removeCommand(_ s: MCPServer, kind: AgentKind) -> (args: [String], cwd: String?) {
         if kind == .codex { return (["mcp", "remove", s.name], nil) }

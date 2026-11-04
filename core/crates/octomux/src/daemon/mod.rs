@@ -1078,6 +1078,10 @@ impl Daemon {
         for (id, launched, pid, c) in found {
             let changed = self.with_session(&id, |s| {
                 let before = (s.transcript_path.clone(), s.agent_session_id.clone(), s.resume_agent.clone());
+                // Another conversation in the same tab (/new, /resume): its first message is not ours.
+                if s.transcript_path.is_some() && s.transcript_path.as_deref() != Some(c.path.as_str()) {
+                    s.first_prompt = None;
+                }
                 s.transcript_path = Some(c.path.clone());
                 if launched {
                     s.agent_session_id = Some(c.id.clone());
@@ -1090,7 +1094,15 @@ impl Daemon {
                 }
                 before != (s.transcript_path.clone(), s.agent_session_id.clone(), s.resume_agent.clone())
             });
-            if changed == Some(true) {
+            // The first message typed into it, for "Tab titles from your first message" (Claude's comes with
+            // its UserPromptSubmit hook).
+            let mut prompt_found = false;
+            if self.with_session(&id, |s| s.first_prompt.is_none()) == Some(true) {
+                if let Some(p) = agents::codex_first_prompt(&c.path).map(|t| first_prompt_line(&t)).filter(|t| !t.is_empty()) {
+                    prompt_found = self.with_session(&id, |s| s.first_prompt.is_none().then(|| s.first_prompt = Some(p)).is_some()) == Some(true);
+                }
+            }
+            if changed == Some(true) || prompt_found {
                 if let Some(copy) = self.with_session(&id, |s| s.clone()) {
                     self.persist_session(&copy);
                 }

@@ -11,6 +11,8 @@ struct MCPSettings: View {
     @State private var others: [String: [(name: String, target: String, status: String)]] = [:]
     @State private var checking: Set<String> = []
     @State private var message = ""
+    /// The group whose Add Server form is open.
+    @State private var adding: Group?
 
     struct Group: Identifiable {
         var id: String { file }
@@ -36,6 +38,10 @@ struct MCPSettings: View {
                         .buttonStyle(SecondaryButtonStyle()).disabled(checking.contains(g.file))
                         .help("Starts each server the way Claude Code does (claude mcp list) and shows whether it connects")
                 }
+                if g.profile != nil {
+                    Button("Add Server…") { adding = g }.buttonStyle(SecondaryButtonStyle())
+                        .help("Adds a server with \(g.kind == .codex ? "codex" : "claude") mcp add")
+                }
                 if g.exists {
                     Button("Show File") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: g.file)]) }
                         .buttonStyle(SecondaryButtonStyle())
@@ -54,12 +60,24 @@ struct MCPSettings: View {
             }
         }
         if !message.isEmpty { Text(message).font(.system(size: T.k * 12)).foregroundStyle(T.amber).fixedSize(horizontal: false, vertical: true) }
-        SettingsFootnote("Read from the agents' own config files when this page opens. Add servers with `claude mcp add` or `codex mcp add`; Remove and Check use those same commands. Turning a server off is done in the agent (Claude: /mcp). Values of environment variables and headers are not shown.")
+        SettingsFootnote("Read from the agents' own config files when this page opens. Add Server, Remove and Check run the agents' own commands (`claude mcp add`, `codex mcp add`…). Turning a server off is done in the agent (Claude: /mcp). Values of environment variables and headers are not shown.")
         HStack {
             Spacer()
             Button("Reload") { load() }.buttonStyle(SecondaryButtonStyle())
         }
         Color.clear.frame(height: 0).onAppear(perform: load)
+            .onReceive(NotificationCenter.default.publisher(for: .adeDebugPanel)) { n in
+                if let k = n.userInfo?["mcpAdd"] as? String { adding = groups.first { $0.profile != nil && ($0.kind == .codex) == (k == "codex") } }
+            }
+            .sheet(item: $adding) { g in
+                if let profile = g.profile {
+                    MCPAddSheet(kind: g.kind, profile: profile, agents: g.agents) { added in
+                        adding = nil
+                        if added { load() }
+                    }
+                    .environmentObject(model)
+                }
+            }
     }
 
     private func row(_ s: MCPServer, _ g: Group) -> some View {
@@ -198,6 +216,107 @@ struct MCPSettings: View {
                 servers = MCPConfig.codex(toml: (try? String(contentsOfFile: g.file, encoding: .utf8)) ?? "", file: g.file)
             }
             return Group(kind: g.kind, agents: g.agents, profile: g.profile, file: g.file, exists: exists, servers: servers)
+        }
+    }
+}
+
+/// Settings → MCP → Add Server…: a server for one agent's config, added with its own `mcp add`.
+struct MCPAddSheet: View {
+    @EnvironmentObject var model: AppModel
+    let kind: AgentKind
+    let profile: Profile
+    let agents: [String]
+    let done: (Bool) -> Void
+    @State private var s = MCPConfig.NewServer()
+    @State private var scopeKind = "user"
+    @State private var project = ""
+    @State private var running = false
+    @State private var error = ""
+
+    private var projects: [Project] { model.state.projects.filter { !$0.archived }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending } }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Add an MCP server").font(.title2.weight(.semibold))
+            Text("For \(kind == .codex ? "Codex" : "Claude Code") · \(agents.joined(separator: ", ")). It starts with the agent's next session.")
+                .font(.system(size: T.k * 12)).foregroundStyle(T.text2)
+            Form {
+                TextField("Name", text: $s.name, prompt: Text("github"))
+                Picker("Type", selection: $s.transport) {
+                    Text("Command (stdio)").tag(MCPConfig.NewServer.Transport.stdio)
+                    Text("HTTP").tag(MCPConfig.NewServer.Transport.http)
+                    if kind == .claude { Text("SSE").tag(MCPConfig.NewServer.Transport.sse) }
+                }
+                TextField(s.transport == .stdio ? "Command" : "URL", text: $s.target,
+                          prompt: Text(s.transport == .stdio ? "npx -y @modelcontextprotocol/server-github" : "https://mcp.example.com/mcp"))
+                    .font(.system(.body, design: .monospaced))
+                if s.transport == .stdio {
+                    LabeledContent("Environment") {
+                        VStack(alignment: .leading, spacing: 3) {
+                            TextEditor(text: $s.env).font(.system(.body, design: .monospaced)).frame(height: 54)
+                            Text("KEY=value, one per line").font(.caption).foregroundStyle(T.text3)
+                        }
+                    }
+                } else if kind == .claude {
+                    LabeledContent("Headers") {
+                        VStack(alignment: .leading, spacing: 3) {
+                            TextEditor(text: $s.headers).font(.system(.body, design: .monospaced)).frame(height: 54)
+                            Text("Name: value, one per line").font(.caption).foregroundStyle(T.text3)
+                        }
+                    }
+                } else {
+                    TextField("Bearer token from variable", text: $s.bearerEnv, prompt: Text("optional, e.g. GITHUB_TOKEN"))
+                        .font(.system(.body, design: .monospaced))
+                }
+                if kind == .claude {
+                    Picker("Available in", selection: $scopeKind) {
+                        Text("All projects").tag("user")
+                        Text("One project, only for you").tag("local")
+                        Text("One project, shared in its .mcp.json").tag("project")
+                    }
+                    if scopeKind != "user" {
+                        Picker("Project", selection: $project) {
+                            ForEach(projects) { p in Text(p.name).tag(p.path) }
+                        }
+                    }
+                }
+            }
+            if !error.isEmpty {
+                Text(error).font(.system(size: T.k * 12)).foregroundStyle(T.red).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+            } else if let p = current.problem(kind: kind), !s.name.isEmpty || !s.target.isEmpty {
+                Text(p).font(.system(size: T.k * 12)).foregroundStyle(T.text2)
+            }
+            HStack {
+                Spacer()
+                Button("Cancel") { done(false) }.buttonStyle(SecondaryButtonStyle()).keyboardShortcut(.cancelAction)
+                Button(running ? "Adding…" : "Add") { add() }.buttonStyle(PrimaryButtonStyle()).keyboardShortcut(.defaultAction)
+                    .disabled(running || current.problem(kind: kind) != nil || (scopeKind != "user" && project.isEmpty))
+            }
+        }
+        .padding(20)
+        .frame(width: 520)
+        .onAppear { project = model.currentProject?.path ?? projects.first?.path ?? "" }
+    }
+
+    private var current: MCPConfig.NewServer {
+        var c = s
+        c.scope = kind == .codex || scopeKind == "user" ? .user : scopeKind == "local" ? .local(project) : .project(project)
+        return c
+    }
+
+    private func add() {
+        let (args, cwd) = MCPConfig.addCommand(current, kind: kind)
+        running = true
+        error = ""
+        DispatchQueue.global(qos: .userInitiated).async {
+            let (code, out, err) = MCPConfig.runCLI(profile, args, cwd: cwd)
+            DispatchQueue.main.async {
+                running = false
+                if code == 0 { done(true) } else {
+                    let text = (err.isEmpty ? out : err).trimmingCharacters(in: .whitespacesAndNewlines)
+                    error = "\(kind == .codex ? "codex" : "claude") mcp add failed: " + (text.isEmpty ? "exit \(code)" : String(text.suffix(400)))
+                }
+            }
         }
     }
 }

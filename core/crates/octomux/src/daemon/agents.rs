@@ -306,6 +306,32 @@ pub struct CodexConversation {
     pub codex_home: PathBuf,
 }
 
+/// The first message the user typed in a Codex rollout (its `user_message` event; the `response_item`
+/// messages also carry what Codex injects, AGENTS.md and the like). Reads at most the first 4 MiB.
+pub fn codex_first_prompt(path: &str) -> Option<String> {
+    use std::io::{BufRead, Read};
+    let f = std::fs::File::open(path).ok()?;
+    for line in std::io::BufReader::new(f.take(4 << 20)).lines() {
+        let line = line.ok()?;
+        if let Some(m) = codex_user_message(&line) {
+            return Some(m);
+        }
+    }
+    None
+}
+
+fn codex_user_message(line: &str) -> Option<String> {
+    if !line.contains("\"user_message\"") {
+        return None;
+    }
+    let v: serde_json::Value = serde_json::from_str(line).ok()?;
+    let p = v.get("payload")?;
+    if v.get("type")?.as_str()? != "event_msg" || p.get("type")?.as_str()? != "user_message" {
+        return None;
+    }
+    p.get("message")?.as_str().map(str::to_string).filter(|m| !m.trim().is_empty())
+}
+
 pub fn parse_rollout_path(p: &str) -> Option<CodexConversation> {
     let path = Path::new(p);
     let stem = path.file_name()?.to_str()?.strip_prefix("rollout-")?.strip_suffix(".jsonl")?;
@@ -1089,5 +1115,26 @@ mod claude_usage_tests {
         assert_eq!(r[0].2.unwrap() - now, 3 * 3600 + 1800);
         assert_eq!(r[1].2.unwrap() - now, 6 * 86_400 + 15 * 3600);
         assert_eq!(parse_reset_time("12am", now).unwrap() - now, 3600);
+    }
+}
+
+#[cfg(test)]
+mod codex_prompt_tests {
+    #[test]
+    fn first_user_message_skips_injected_context() {
+        let dir = std::env::temp_dir().join(format!("octomux-rollout-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("r.jsonl");
+        let lines = [
+            r#"{"type":"session_meta","payload":{"id":"x"}}"#,
+            r#"{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<environment_context>…"}]}}"#,
+            r#"{"type":"event_msg","payload":{"type":"user_message","message":"fix the login test\nplease","images":[]}}"#,
+            r#"{"type":"event_msg","payload":{"type":"user_message","message":"second","images":[]}}"#,
+        ];
+        std::fs::write(&f, lines.join("\n")).unwrap();
+        assert_eq!(super::codex_first_prompt(f.to_str().unwrap()).as_deref(), Some("fix the login test\nplease"));
+        std::fs::write(&f, lines[..2].join("\n")).unwrap();
+        assert_eq!(super::codex_first_prompt(f.to_str().unwrap()), None);
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

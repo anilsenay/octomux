@@ -62,6 +62,7 @@ enum DebugActions {
                     let staged = p["staged"] as? Bool ?? false
                     DispatchQueue.global().async { NSLog("discard: %@", ChangesModel.discardFiles(files, staged: staged, in: wp, remote: false) ? "ok" : "failed") }
                 }
+            case "mcp_add": NotificationCenter.default.post(name: .adeDebugPanel, object: nil, userInfo: ["mcpAdd": p["value"] as? String ?? "claude"])
             case "close_tab": if let t = id ?? m.activeTabId { m.closeTab(t, confirm: false) }
             case "reset_hints": UserDefaults.standard.removeObject(forKey: "octomux.hint.closedTabKeepsSessions"); m.hint = nil
             case "running_work":   // what "Ask before stopping a running program" would list for a tab (to the app log)

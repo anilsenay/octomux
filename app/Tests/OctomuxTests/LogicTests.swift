@@ -605,6 +605,24 @@ final class MCPCommandTests: XCTestCase {
         XCTAssertEqual(d.count, 3)
     }
 
+    func testAddCommands() {
+        var s = MCPConfig.NewServer(name: "fs", target: "npx -y \"@m/fs server\" /tmp", env: "A=1\n\n B=two words ")
+        XCTAssertEqual(MCPConfig.addCommand(s, kind: .claude).args,
+                       ["mcp", "add", "fs", "-s", "user", "-e", "A=1", "-e", "B=two words", "--", "npx", "-y", "@m/fs server", "/tmp"])
+        XCTAssertNil(MCPConfig.addCommand(s, kind: .claude).cwd)
+        XCTAssertEqual(MCPConfig.addCommand(s, kind: .codex).args,
+                       ["mcp", "add", "fs", "--env", "A=1", "--env", "B=two words", "--", "npx", "-y", "@m/fs server", "/tmp"])
+        s = MCPConfig.NewServer(name: "docs", transport: .http, target: "https://x/mcp", headers: "Authorization: Bearer t", bearerEnv: "TOK", scope: .project("/p"))
+        XCTAssertEqual(MCPConfig.addCommand(s, kind: .claude).args, ["mcp", "add", "docs", "-s", "project", "-t", "http", "https://x/mcp", "-H", "Authorization: Bearer t"])
+        XCTAssertEqual(MCPConfig.addCommand(s, kind: .claude).cwd, "/p")
+        XCTAssertEqual(MCPConfig.addCommand(s, kind: .codex).args, ["mcp", "add", "docs", "--url", "https://x/mcp", "--bearer-token-env-var", "TOK"])
+        XCTAssertNil(s.problem(kind: .claude))
+        XCTAssertEqual(MCPConfig.NewServer(name: "a b", target: "x").problem(kind: .claude), "The name can't have spaces.")
+        XCTAssertEqual(MCPConfig.NewServer(name: "a", transport: .http, target: "x.com").problem(kind: .claude), "The URL starts with http:// or https://.")
+        XCTAssertEqual(MCPConfig.NewServer(name: "a", transport: .sse, target: "https://x").problem(kind: .codex), "Codex connects to HTTP servers, not SSE.")
+        XCTAssertEqual(MCPConfig.NewServer(name: "a", target: "x", env: "NOVALUE").problem(kind: .claude), "“NOVALUE” isn't KEY=value.")
+    }
+
     func testRemoveCommands() {
         let s = MCPServer(name: "db", scope: .project("/p"), command: "x", url: nil, transport: "stdio", file: "/p/.mcp.json")
         XCTAssertEqual(MCPConfig.removeCommand(s, kind: .claude).args, ["mcp", "remove", "-s", "project", "db"])

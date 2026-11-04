@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Add MCP servers** from Settings → MCP (Add Server… on each agent's group): a command or an HTTP/SSE URL,
+  environment variables or headers, and for Claude Code where it applies (all projects, one project, or the
+  project's shared .mcp.json). Runs the agent's own `mcp add`.
+- **Tab titles from your first message** now work for Codex too (read from its conversation file).
 - **Sessions outlive their tab:** closing a tab or pane (×, ⌘W) leaves its sessions, agents and terminals alike, in
   the sidebar and still running; clicking one opens it in a tab again. A session ends with Stop and Remove in the
   sidebar, and Stop now asks first when a program (a dev server, `sleep`) or a busy agent would be stopped
