@@ -543,6 +543,28 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// What a workspace has for you (the same rule as a project row): sessions waiting for your input, and ones
+    /// with something new you haven't looked at (a finished turn, an error, new output).
+    func attention(workspace id: String) -> (waiting: Int, unread: Int) {
+        let projects = Set(state.projects.filter { $0.workspaceId == id }.map(\.id))
+        let live = state.sessions.filter { projects.contains($0.projectId) && !$0.isDormant }
+        return (live.filter { $0.activity == .needsInput }.count, live.filter { $0.unread && $0.activity != .needsInput }.count)
+    }
+
+    /// The other workspaces' attention, summed (the workspace menu's dot).
+    var attentionElsewhere: (waiting: Int, unread: Int) {
+        state.workspaces.filter { $0.id != selectedWorkspaceId }.map { attention(workspace: $0.id) }
+            .reduce((0, 0)) { ($0.0 + $1.waiting, $0.1 + $1.unread) }
+    }
+
+    /// Agent sessions for the Agents panel: every workspace's, or only the current one's.
+    func agentSessions(onlyCurrentWorkspace: Bool) -> [Session] {
+        state.sessions.filter { s in
+            guard s.isAgent, let p = project(s.projectId) else { return false }
+            return !onlyCurrentWorkspace || p.workspaceId == selectedWorkspaceId
+        }
+    }
+
     func nextNeedingInput() {
         let candidates = state.sessions.filter { $0.activity == .needsInput || ($0.unread && $0.activity == .done) }
             .sorted { $0.lastActivityAt > $1.lastActivityAt }

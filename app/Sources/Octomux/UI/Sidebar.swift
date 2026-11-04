@@ -75,7 +75,9 @@ struct SidebarView: View {
             WindowDragArea().frame(height: floating ? 6 : 38)  // traffic lights row: drags the window
             Menu {
                 ForEach(model.state.workspaces.sorted { $0.sort < $1.sort }) { w in
-                    Button((w.id == model.selectedWorkspaceId ? "✓ " : "") + w.name) { model.selectWorkspace(w.id) }
+                    let a = model.attention(workspace: w.id)
+                    let note = attentionText(a)
+                    Button((w.id == model.selectedWorkspaceId ? "✓ " : "") + w.name + (note.isEmpty ? "" : "   ·  " + note)) { model.selectWorkspace(w.id) }
                 }
                 Divider()
                 if (model.setting("features.remote")?.bool ?? true) || model.host.isRemote { Section("Host") {
@@ -91,6 +93,10 @@ struct SidebarView: View {
                     if let w = model.workspace { WorkspaceIcon(workspace: w, size: 12).frame(width: 14) }
                     Text(model.workspace?.name ?? "Octomux").font(T.headline).foregroundStyle(T.text)
                     Spacer()
+                    let elsewhere = model.attentionElsewhere
+                    if elsewhere.waiting + elsewhere.unread > 0 {
+                        AttentionDot(attention: elsewhere).help("Other workspaces: " + attentionText(elsewhere))
+                    }
                     if !model.connected {
                         Image(systemName: "bolt.horizontal.circle").foregroundStyle(T.amber).help("Reconnecting to the Octomux daemon…")
                     }
@@ -238,15 +244,21 @@ struct WorkspaceButton: View {
     @State private var hover = false
 
     var body: some View {
+        let a = model.attention(workspace: workspace.id)
+        let note = attentionText(a)
         WorkspaceIcon(workspace: workspace, size: 13, dimmed: !selected && !hover)
             .frame(width: selected ? 40 : 28, height: 24)
+            // Another workspace that wants you: amber when something waits for input, else green.
+            .overlay(alignment: .topTrailing) {
+                if !selected && !note.isEmpty { AttentionDot(attention: a).overlay(Circle().stroke(T.frame, lineWidth: 1.5)).offset(x: -2, y: 2) }
+            }
             .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(selected ? T.raised : hover ? T.hover : .clear))
             .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(selected ? T.border : .clear))
             .contentShape(Rectangle())
             .onHover { hover = $0 }
             .pointerCursor()
             .onTapGesture { model.selectWorkspace(workspace.id) }
-            .help(index >= 1 && index <= 9 ? "\(workspace.name)  ⌃\(index)   (⌃⌘← → or scroll to switch)" : workspace.name)
+            .help((index >= 1 && index <= 9 ? "\(workspace.name)  ⌃\(index)   (⌃⌘← → or scroll to switch)" : workspace.name) + (note.isEmpty ? "" : "\n" + note))
             .contextMenu { WorkspaceMenu(workspace: workspace) }
             .animation(.easeOut(duration: 0.12), value: selected)
     }
@@ -841,5 +853,21 @@ struct SidebarEmptyState: View {
         .padding(.horizontal, 8)
         .frame(height: T.m.rowH - 4)
         .opacity(opacity)
+    }
+}
+
+/// "1 waiting for input · 2 with something new", or "" when nothing wants you.
+func attentionText(_ a: (waiting: Int, unread: Int)) -> String {
+    var parts: [String] = []
+    if a.waiting > 0 { parts.append("\(a.waiting) waiting for input") }
+    if a.unread > 0 { parts.append("\(a.unread) with something new") }
+    return parts.joined(separator: " · ")
+}
+
+/// Amber when something waits for input, else green (something new to look at).
+struct AttentionDot: View {
+    let attention: (waiting: Int, unread: Int)
+    var body: some View {
+        Circle().fill(attention.waiting > 0 ? T.amber : T.green).frame(width: 6, height: 6)
     }
 }

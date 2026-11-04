@@ -10,13 +10,13 @@ struct AgentsPanel: View {
     let maxHeight: CGFloat
     static let minHeight: CGFloat = 140
     @AppStorage("octomux.agentsPanelHeight") private var height: Double = 300
-    @AppStorage("octomux.agentsGrouping") private var byProject = false
+    @AppStorage(AgentsMenu.onlyHereKey) private var onlyHere = false
     @State private var dragStart: Double?
     @State private var hover = false
 
     var body: some View {
         let open = model.sidebarAgents
-        let agents = model.state.sessions.filter { $0.isAgent && model.project($0.projectId) != nil }
+        let agents = model.agentSessions(onlyCurrentWorkspace: onlyHere && model.state.workspaces.count > 1)
         let live = agents.filter { !$0.isDormant }
         let counts = Counts(working: live.filter { $0.activity == .working }.count,
                             waiting: live.filter { $0.activity == .needsInput }.count,
@@ -47,6 +47,10 @@ struct AgentsPanel: View {
             Image(systemName: "chevron.up").font(.system(size: 9, weight: .semibold)).foregroundStyle(T.text3)
                 .rotationEffect(.degrees(open ? 180 : 0)).frame(width: 12)
             SectionLabel("Agents")
+            if onlyHere && model.state.workspaces.count > 1 {
+                Text("this workspace").font(.system(size: 10.5)).foregroundStyle(T.text3).lineLimit(1)
+                    .help("Showing only \(model.workspace?.name ?? "this workspace")'s agents. Change it in the panel's menu.")
+            }
             Spacer(minLength: 4)
             indicators(counts)
             if counts.isEmpty && !open && total > 0 {
@@ -54,17 +58,7 @@ struct AgentsPanel: View {
                     .help("\(total) agents, none busy")
             }
             if open {
-                Menu {
-                    Picker("Sort agents", selection: $byProject) {
-                        Label("Priority", systemImage: "clock").tag(false)
-                        Label("Grouped by project", systemImage: "square.stack.3d.up").tag(true)
-                    }
-                    .pickerStyle(.inline)
-                } label: {
-                    Image(systemName: byProject ? "square.stack.3d.up" : "line.3.horizontal.decrease")
-                        .font(.system(size: 11, weight: .medium)).foregroundStyle(T.text3).menuHitBox(22, 20)
-                }
-                .plainMenu().fixedSize().hoverHighlight(radius: 5).help("Sort agents")
+                AgentsMenu()
             }
         }
         .padding(.leading, 12).padding(.trailing, 10).frame(height: 30)
@@ -72,7 +66,7 @@ struct AgentsPanel: View {
         .contentShape(Rectangle())
         .onHover { hover = $0 }
         .onTapGesture(perform: toggle)
-        .help(open ? "Hide agents (⌥⌘A)" : "Show every agent across workspaces (⌥⌘A)")
+        .help(open ? "Hide agents (⌥⌘A)" : onlyHere && model.state.workspaces.count > 1 ? "Show this workspace's agents (⌥⌘A)" : "Show every agent across workspaces (⌥⌘A)")
     }
 
     /// What agents are doing, most urgent first, each with its count; the same marks as the session rows.
@@ -147,6 +141,7 @@ struct AgentsList: View {
     /// Inside the bottom panel: the panel's header bar carries the title and sort menu.
     var embedded = false
     @AppStorage("octomux.agentsGrouping") private var byProject = false
+    @AppStorage(AgentsMenu.onlyHereKey) private var onlyHere = false
     /// Collapsed group headers (state raw values or project ids), comma-separated.
     @AppStorage("octomux.agentsCollapsed") private var collapsedRaw = ""
     private var collapsed: Set<String> { Set(collapsedRaw.split(separator: ",").map(String.init)) }
@@ -191,22 +186,13 @@ struct AgentsList: View {
     }
 
     var body: some View {
-        let agents = model.state.sessions.filter { $0.isAgent && model.project($0.projectId) != nil }
+        let filtered = onlyHere && model.state.workspaces.count > 1
+        let agents = model.agentSessions(onlyCurrentWorkspace: filtered)
         VStack(spacing: 0) {
             if !embedded { HStack {
                 SectionLabel(agents.isEmpty ? "Agents" : "\(agents.count) agents")
                 Spacer()
-                Menu {
-                    Picker("Sort agents", selection: $byProject) {
-                        Label("Priority", systemImage: "clock").tag(false)
-                        Label("Grouped by project", systemImage: "square.stack.3d.up").tag(true)
-                    }
-                    .pickerStyle(.inline)
-                } label: {
-                    Image(systemName: byProject ? "square.stack.3d.up" : "line.3.horizontal.decrease")
-                        .font(.system(size: 11, weight: .medium)).foregroundStyle(T.text3).menuHitBox(22, 20)
-                }
-                .plainMenu().fixedSize().hoverHighlight(radius: 5).help("Sort agents")
+                AgentsMenu()
             }
             .padding(.leading, 18).padding(.trailing, 12).padding(.top, 8).padding(.bottom, 2)
             }
@@ -239,12 +225,17 @@ struct AgentsList: View {
         }
     }
 
-    private var empty: some View {
+    @ViewBuilder private var empty: some View {
+        let filtered = onlyHere && model.state.workspaces.count > 1
         VStack(spacing: 8) {
             Image(systemName: "sparkles").font(.system(size: 18)).foregroundStyle(T.text3)
-            Text("No agents yet").font(T.body).foregroundStyle(T.text2)
-            Text("Agents you start in any workspace show up here, most urgent first.")
-                .font(T.caption).foregroundStyle(T.text3).multilineTextAlignment(.center)
+            Text(filtered ? "No agents in this workspace" : "No agents yet").font(T.body).foregroundStyle(T.text2)
+            if filtered {
+                Button("Show all workspaces") { onlyHere = false }.buttonStyle(.link).font(T.caption)
+            } else {
+                Text("Agents you start in any workspace show up here, most urgent first.")
+                    .font(T.caption).foregroundStyle(T.text3).multilineTextAlignment(.center)
+            }
         }
         .frame(maxWidth: .infinity).padding(.vertical, 30).padding(.horizontal, 16)
     }
@@ -300,6 +291,7 @@ private struct GroupHeaderRow: View {
 
 struct AgentRow: View {
     @EnvironmentObject var model: AppModel
+    @AppStorage(AgentsMenu.onlyHereKey) private var onlyHere = false
     let session: Session
     let showProject: Bool
     @State private var hover = false
@@ -309,7 +301,8 @@ struct AgentRow: View {
         let selected = model.activeDoc == nil && model.focusedSessionId == s.id
         let project = model.project(s.projectId)
         let ws = model.state.workspaces.first { $0.id == project?.workspaceId }
-        let multiWs = model.state.workspaces.count > 1
+        // The workspace name tells agents apart only while others' agents are listed too.
+        let multiWs = model.state.workspaces.count > 1 && !onlyHere
         HStack(spacing: 9) {
             AgentIcon(icon: iconName(for: s, model: model), size: 13).frame(width: 16)
             VStack(alignment: .leading, spacing: 1) {
@@ -353,5 +346,35 @@ struct AgentRow: View {
         if s < 3600 { return "\(s / 60)m" }
         if s < 86400 { return "\(s / 3600)h" }
         return "\(s / 86400)d"
+    }
+}
+
+/// The Agents panel's menu: how agents are sorted, and (with several workspaces) whose are shown.
+struct AgentsMenu: View {
+    static let onlyHereKey = "octomux.agentsOnlyWorkspace"
+    @EnvironmentObject var model: AppModel
+    @AppStorage("octomux.agentsGrouping") private var byProject = false
+    @AppStorage(onlyHereKey) private var onlyHere = false
+
+    var body: some View {
+        let several = model.state.workspaces.count > 1
+        Menu {
+            Picker("Sort agents", selection: $byProject) {
+                Label("Priority", systemImage: "clock").tag(false)
+                Label("Grouped by project", systemImage: "square.stack.3d.up").tag(true)
+            }
+            .pickerStyle(.inline)
+            if several {
+                Picker("Show", selection: $onlyHere) {
+                    Label("All workspaces", systemImage: "square.grid.2x2").tag(false)
+                    Label("This workspace", systemImage: "square").tag(true)
+                }
+                .pickerStyle(.inline)
+            }
+        } label: {
+            Image(systemName: byProject ? "square.stack.3d.up" : "line.3.horizontal.decrease")
+                .font(.system(size: 11, weight: .medium)).foregroundStyle(several && onlyHere ? T.accent : T.text3).menuHitBox(22, 20)
+        }
+        .plainMenu().fixedSize().hoverHighlight(radius: 5).help(several ? "Sort and filter agents" : "Sort agents")
     }
 }

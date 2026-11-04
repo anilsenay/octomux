@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **Other workspaces:** the workspace menu and the workspace buttons show a dot when another workspace has an
+  agent waiting for input (amber) or something new (green); the menu lists the counts.
+- **Agents panel filter:** its menu can show only the current workspace's agents.
 - **App icon:** Settings → Appearance → App icon, Color or Monochrome (a white and grey octopus on a charcoal
   tile). It changes the Dock icon while Octomux runs.
 - **Shells still running:** when Claude ends its turn with commands still running in the background (a build it
