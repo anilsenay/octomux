@@ -31,7 +31,9 @@ which version you have.
 When an agent finishes or needs input, you get a macOS notification; clicking it focuses that pane. The bell in
 the top bar keeps the recent ones, and ⌘⇧U jumps to the next session waiting for input. The menu bar icon
 animates while agents work, shows a dot for unread notifications, and opens a panel of recent activity.
-Settings → Notifications shows whether macOS allows Octomux's notifications.
+Settings → Notifications shows whether macOS allows Octomux's notifications; Settings → General sets the menu
+bar icon (color, monochrome or hidden). A workspace can override notification and appearance settings: pick
+Workspace at the top of those pages.
 
 ## Worktrees and the right panel
 

@@ -1656,22 +1656,25 @@ struct SceneSettingsCard: View {
     @State private var highlighted: SceneChoice?
 
     var body: some View {
-        SettingsCard {
-            Text("Scene").font(.headline)
-            Text(scope == "global"
-                 ? "A palette and a live backdrop drawn in characters, behind the sidebar, bars and empty panes. Workspaces can pick their own."
-                 : "This workspace's scene. “Global” follows the choice in the global settings.")
-                .font(.caption).foregroundStyle(T.text2)
-            SceneStrip(scope: scope, tileWidth: 110, wrapRows: true, previewOnHover: false, highlighted: $highlighted)
-            TerminalSceneControls(scope: scope)
-            if scope == "global" {
-                Toggle("React to agents: faster while they work, a glow while one waits for you (amber) or fails (red)", isOn: Binding(
-                    get: { model.scenesReactToAgents },
-                    set: { model.setSetting("appearance.scene_reactive", $0 ? nil : false) }))
-                UserScenesRow()
+        SettingsGroup("Scene", desc: scope == "global"
+                      ? "A palette and a live backdrop drawn in characters, behind the sidebar, bars and empty panes. Workspaces can pick their own."
+                      : "This workspace's scene. “Global” follows the choice in the global settings.") {
+            SettingBlock {
+                SceneStrip(scope: scope, tileWidth: 110, wrapRows: true, previewOnHover: false, highlighted: $highlighted)
             }
-            Text("Animates at \(Int(AmbientClock.activeFPS)) fps while Octomux is in front, \(Int(AmbientClock.backgroundFPS)) fps when it is visible behind another app, and stops when the window is hidden, in Low Power Mode, or with Reduce Motion.")
-                .font(.caption).foregroundStyle(T.text3)
+            .settingAnchor("Scene")
+            SettingBlock { TerminalSceneControls(scope: scope) }
+                .settingAnchor("Behind terminals")
+            if scope == "global" {
+                SettingRow("React to agents", desc: "The scene moves faster while agents work, and glows while one waits for you (amber) or fails (red).") {
+                    SettingSwitch(isOn: Binding(
+                        get: { model.scenesReactToAgents },
+                        set: { model.setSetting("appearance.scene_reactive", $0 ? nil : false) }))
+                }
+                SettingBlock { UserScenesRow() }
+                    .settingAnchor("Your scenes")
+            }
         }
+        SettingsFootnote("Animates at \(Int(AmbientClock.activeFPS)) fps while Octomux is in front, \(Int(AmbientClock.backgroundFPS)) fps when it is visible behind another app, and stops when the window is hidden, in Low Power Mode, or with Reduce Motion.")
     }
 }

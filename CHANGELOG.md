@@ -5,7 +5,11 @@
 - **Other workspaces:** the workspace menu and the workspace buttons show a dot when another workspace has an
   agent waiting for input (amber) or something new (green); the menu lists the counts.
 - **Agents panel filter:** its menu can show only the current workspace's agents.
-- **App icon:** Settings → Appearance → App icon, Color or Monochrome (a white and grey octopus on a charcoal
+- **Settings, rearranged:** pages in groups (App, Work, Advanced), a search field that jumps to the setting,
+  every setting with a line on what it does and its control on the right, and the Global / Workspace switch at
+  the top of the pages a workspace can override (a dot marks what it overrides, Reset goes back to Global). A new
+  General page has the version, Check for Updates, and the Dock and menu bar icons.
+- **App icon:** Settings → General → App icon, Color or Monochrome (a white and grey octopus on a charcoal
   tile). It changes the Dock icon while Octomux runs.
 - **Shells still running:** when Claude ends its turn with commands still running in the background (a build it
   waits for, a dev server it left up), the session shows a terminal mark with their count, stays under Finished,

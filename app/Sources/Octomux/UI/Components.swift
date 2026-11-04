@@ -842,11 +842,14 @@ extension NSColor {
 /// SwiftUI API to read it). Put it in the scroll view's content as a background.
 struct ScrollOffsetKeeper: NSViewRepresentable {
     let initial: CGFloat
+    /// Hands over the enclosing scroll view (to scroll it from outside).
+    var onScrollView: ((NSScrollView) -> Void)?
     let onChange: (CGFloat) -> Void
 
     final class KeeperView: NSView {
         var initial: CGFloat = 0
         var onChange: ((CGFloat) -> Void)?
+        var onScrollView: ((NSScrollView) -> Void)?
         private var restored = false
         private var observer: Any?
 
@@ -856,6 +859,7 @@ struct ScrollOffsetKeeper: NSViewRepresentable {
             super.viewDidMoveToWindow()
             if let o = observer { NotificationCenter.default.removeObserver(o); observer = nil }
             guard window != nil, let sv = enclosingScrollView else { return }
+            onScrollView?(sv)
             let clip = sv.contentView
             clip.postsBoundsChangedNotifications = true
             observer = NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: clip, queue: .main) { [weak self] _ in
@@ -884,6 +888,7 @@ struct ScrollOffsetKeeper: NSViewRepresentable {
         let v = KeeperView()
         v.initial = initial
         v.onChange = onChange
+        v.onScrollView = onScrollView
         return v
     }
 

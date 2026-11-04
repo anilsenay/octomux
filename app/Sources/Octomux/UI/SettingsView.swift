@@ -2,11 +2,13 @@ import AppKit
 import SwiftUI
 
 enum SettingsSection: String, CaseIterable, Identifiable {
-    case workspaces = "Workspaces", agents = "Agents", appearance = "Appearance", notifications = "Notifications"
-    case hosts = "Hosts", features = "Features", keyboard = "Keyboard", advanced = "Advanced"
+    case general = "General", appearance = "Appearance", notifications = "Notifications", keyboard = "Keyboard"
+    case agents = "Agents", workspaces = "Workspaces", hosts = "Hosts"
+    case features = "Features", advanced = "Advanced"
     var id: String { rawValue }
     var icon: String {
         switch self {
+        case .general: return "gearshape"
         case .workspaces: return "square.stack"
         case .agents: return "sparkles"
         case .appearance: return "paintbrush"
@@ -14,11 +16,32 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .hosts: return "network"
         case .features: return "flask"
         case .keyboard: return "keyboard"
-        case .advanced: return "gearshape.2"
+        case .advanced: return "wrench.and.screwdriver"
+        }
+    }
+    /// One line under the page title.
+    var subtitle: String {
+        switch self {
+        case .general: return "The version you run, updates, and the icons Octomux shows in the Dock and the menu bar."
+        case .appearance: return "Theme, scene and how terminals look."
+        case .notifications: return "When Octomux tells you an agent finished or needs you."
+        case .keyboard: return "Every shortcut Octomux handles. Keys not bound here go straight to the terminal program."
+        case .agents: return "The agents in the + menu, how they start, and how Octomux follows their state."
+        case .workspaces: return "Workspaces group projects. Switch with the dots under the sidebar, a two-finger swipe on it, or ⌃1…⌃9."
+        case .hosts: return "Machines that run their own Octomux daemon, reached over SSH."
+        case .features: return "Optional parts of Octomux you can turn on or off."
+        case .advanced: return "The daemon behind your sessions, its data and its logs."
         }
     }
     /// Sections whose settings can be overridden per workspace.
     var scoped: Bool { self == .notifications || self == .appearance }
+
+    /// Sidebar groups, in order.
+    static let groups: [(title: String, items: [SettingsSection])] = [
+        ("App", [.general, .appearance, .notifications, .keyboard]),
+        ("Work", [.agents, .workspaces, .hosts]),
+        ("Advanced", [.features, .advanced]),
+    ]
 }
 
 final class SettingsWindow {
@@ -26,15 +49,16 @@ final class SettingsWindow {
     static let selection = SettingsSelection()
 
     static func show(section: SettingsSection? = nil) {
-        if let section { selection.section = section }
+        if let section { selection.section = section; selection.query = "" }
         if window == nil {
-            let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 860, height: 600),
+            let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 940, height: 660),
                              styleMask: [.titled, .closable, .resizable, .miniaturizable], backing: .buffered, defer: false)
             w.title = "Settings"
             w.titlebarAppearsTransparent = true
             w.titleVisibility = .hidden
             w.styleMask.insert(.fullSizeContentView)
             w.isReleasedWhenClosed = false
+            w.minSize = NSSize(width: 760, height: 480)
             w.contentView = NSHostingView(rootView: SettingsView().environmentObject(AppModel.shared).environmentObject(selection))
             w.center()
             window = w
@@ -44,12 +68,26 @@ final class SettingsWindow {
 }
 
 final class SettingsSelection: ObservableObject {
-    @Published var section: SettingsSection = .workspaces
+    @Published var section: SettingsSection = .general
     /// "global" or "workspace:<id>"
     @Published var scope: String = "global"
+    /// Text in the sidebar's search field; while it is not empty the page shows the matching settings.
+    @Published var query = ""
+    /// A row to scroll to and flash once its page is shown (a search result that was picked).
+    @Published var target: String?
+    @Published var flash: String?
     /// Scroll position per section. The view is rebuilt when the theme or scene changes (`.id(revision)`),
     /// which would otherwise jump back to the top after every pick.
     var scrollOffsets: [SettingsSection: CGFloat] = [:]
+    /// Where each row starts in the page (`SettingAnchor`), and the page's scroll view, to scroll to a row.
+    var anchors: [String: CGFloat] = [:]
+    weak var scrollView: NSScrollView?
+
+    func open(_ s: SettingsSection, row: String?) {
+        query = ""
+        section = s
+        target = row
+    }
 }
 
 struct SettingsView: View {
@@ -59,62 +97,31 @@ struct SettingsView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 1) {
-                Spacer().frame(height: 30)
-                SectionLabel("Scope").padding(.horizontal, 10).padding(.bottom, 2)
-                Picker("", selection: $sel.scope) {
-                    Text("Global").tag("global")
-                    ForEach(model.state.workspaces) { w in Text("Workspace: \(w.name)").tag("workspace:\(w.id)") }
-                }
-                .labelsHidden()
-                .padding(.horizontal, 6)
-                .padding(.bottom, 12)
-                .help("Some settings can be overridden per workspace")
-                ForEach(SettingsSection.allCases) { s in
-                    Button { sel.section = s } label: {
-                        HStack(spacing: 9) {
-                            Image(systemName: s.icon).font(.system(size: 12)).frame(width: 16)
-                                .foregroundStyle(sel.section == s ? T.accent : T.text3)
-                            Text(s.rawValue).font(.system(size: 13, weight: sel.section == s ? .semibold : .regular))
-                                .foregroundStyle(sel.section == s ? T.text : T.text2)
-                            Spacer()
-                        }
-                        .padding(.horizontal, 10).frame(height: T.m.rowH)
-                        .background(RoundedRectangle(cornerRadius: T.m.rowR, style: .continuous).fill(sel.section == s ? T.selection : .clear))
-                        .contentShape(Rectangle())
-                    }.buttonStyle(.plain)
-                }
-                Spacer()
-            }
-            .padding(10)
-            .frame(width: 212)
-            .background(T.frame)
+            SettingsSidebar()
+                .frame(width: 220)
+                .background(T.frame)
             Hairline(vertical: true)
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    Text(sel.section.rawValue).font(T.title).foregroundStyle(T.text).padding(.top, 8)
-                    if sel.section.scoped {
-                        Text(sel.scope == "global" ? "Applies everywhere unless a workspace or project overrides it." : "Overrides for this workspace. Unset values fall back to Global.")
-                            .font(T.body).foregroundStyle(T.text2)
-                    }
-                    switch sel.section {
-                    case .workspaces: WorkspacesSettings()
-                    case .agents: AgentsSettings()
-                    case .appearance: AppearanceSettings()
-                    case .notifications: NotificationSettings()
-                    case .hosts: HostsSettings()
-                    case .features: FeatureSettings()
-                    case .keyboard: KeyboardSettings()
-                    case .advanced: AdvancedSettings()
+                VStack(alignment: .leading, spacing: 22) {
+                    if sel.query.trimmingCharacters(in: .whitespaces).isEmpty {
+                        SettingsHeader(section: sel.section)
+                        page
+                    } else {
+                        SettingsSearchResults()
                     }
                 }
-                .padding(.horizontal, 30).padding(.vertical, 24)
-                .frame(maxWidth: 700, alignment: .leading)
-                .background(ScrollOffsetKeeper(initial: sel.scrollOffsets[sel.section] ?? 0) { [sel] y in
-                    sel.scrollOffsets[sel.section] = y
+                .padding(.horizontal, 36).padding(.top, 34).padding(.bottom, 40)
+                .frame(maxWidth: 760, alignment: .leading)
+                .frame(maxWidth: .infinity)
+                .coordinateSpace(name: SettingAnchor.space)
+                .onPreferenceChange(SettingAnchor.Key.self) { [sel] in sel.anchors = $0 }
+                .background(ScrollOffsetKeeper(initial: sel.scrollOffsets[sel.section] ?? 0, onScrollView: { [sel] in sel.scrollView = $0 }) { [sel] y in
+                    if sel.query.isEmpty { sel.scrollOffsets[sel.section] = y }
                 })
-                .id(sel.section)
+                .id(sel.query.isEmpty ? sel.section.rawValue : "search")
             }
+            .onChange(of: sel.target) { _, t in jump(t) }
+            .onAppear { jump(sel.target) }
             .frame(maxWidth: .infinity)
             .background(T.surface)
         }
@@ -123,16 +130,451 @@ struct SettingsView: View {
         .ignoresSafeArea()
         .id(theme.revision)
     }
+
+    @ViewBuilder private var page: some View {
+        switch sel.section {
+        case .general: GeneralSettings()
+        case .workspaces: WorkspacesSettings()
+        case .agents: AgentsSettings()
+        case .appearance: AppearanceSettings()
+        case .notifications: NotificationSettings()
+        case .hosts: HostsSettings()
+        case .features: FeatureSettings()
+        case .keyboard: KeyboardSettings()
+        case .advanced: AdvancedSettings()
+        }
+    }
+
+    /// Scrolls to a picked search result and flashes it.
+    private func jump(_ t: String?) {
+        guard let t else { return }
+        // After ScrollOffsetKeeper has put back the page's last position (it does so for 0.15 s).
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            if let y = sel.anchors[t], let sv = sel.scrollView {
+                let clip = sv.contentView
+                let maxY = max(0, (sv.documentView?.frame.height ?? 0) - clip.bounds.height)
+                let target = min(max(0, y - clip.bounds.height / 3), maxY)
+                NSAnimationContext.runAnimationGroup { ctx in
+                    ctx.duration = 0.25
+                    clip.animator().setBoundsOrigin(NSPoint(x: clip.bounds.origin.x, y: target))
+                }
+                sv.reflectScrolledClipView(clip)
+            }
+            sel.flash = t
+            sel.target = nil
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { if sel.flash == t { withAnimation { sel.flash = nil } } }
+        }
+    }
+}
+
+// MARK: Sidebar
+
+struct SettingsSidebar: View {
+    @EnvironmentObject var sel: SettingsSelection
+    @FocusState private var searching: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Spacer().frame(height: 38)
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass").font(.system(size: 11)).foregroundStyle(T.text3)
+                TextField("Search settings", text: $sel.query)
+                    .textFieldStyle(.plain).font(.system(size: 12.5))
+                    .focused($searching)
+                    .onExitCommand { sel.query = "" }
+                if !sel.query.isEmpty {
+                    Button { sel.query = "" } label: { Image(systemName: "xmark.circle.fill").font(.system(size: 11)).foregroundStyle(T.text3) }
+                        .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 9).frame(height: 28)
+            .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(T.surface.opacity(0.7)))
+            .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(searching ? T.accent.opacity(0.6) : T.border))
+            .padding(.bottom, 14)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 1) {
+                    ForEach(SettingsSection.groups, id: \.title) { g in
+                        Text(g.title).font(.system(size: 11, weight: .semibold)).foregroundStyle(T.text3)
+                            .padding(.horizontal, 10).padding(.top, g.title == SettingsSection.groups.first?.title ? 0 : 14).padding(.bottom, 4)
+                        ForEach(g.items) { s in item(s) }
+                    }
+                }
+            }
+            .scrollIndicators(.never)
+            Spacer(minLength: 8)
+            Text(Updater.shared.isEnabled ? "Octomux \(Updater.shared.currentVersion)" : "Octomux · development build").font(.system(size: 11)).foregroundStyle(T.text3)
+                .padding(.horizontal, 10).padding(.bottom, 4)
+                .textSelection(.enabled)
+        }
+        .padding(.horizontal, 10).padding(.bottom, 10)
+    }
+
+    private func item(_ s: SettingsSection) -> some View {
+        let on = sel.section == s && sel.query.isEmpty
+        return Button { sel.open(s, row: nil) } label: {
+            HStack(spacing: 9) {
+                Image(systemName: s.icon).font(.system(size: 12)).frame(width: 16)
+                    .foregroundStyle(on ? T.accent : T.text3)
+                Text(s.rawValue).font(.system(size: 13, weight: on ? .semibold : .regular))
+                    .foregroundStyle(on ? T.text : T.text2)
+                Spacer()
+            }
+            .padding(.horizontal, 10).frame(height: 28)
+            .background(RoundedRectangle(cornerRadius: max(T.m.rowR, 6), style: .continuous).fill(on ? T.selection : .clear))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// Title, subtitle and (on pages with per-workspace settings) the scope switch.
+struct SettingsHeader: View {
+    let section: SettingsSection
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 9) {
+                Image(systemName: section.icon).font(.system(size: 17, weight: .medium)).foregroundStyle(T.text2)
+                Text(section.rawValue).font(.system(size: 22, weight: .bold))
+            }
+            Text(section.subtitle).font(.system(size: 13)).foregroundStyle(T.text2).fixedSize(horizontal: false, vertical: true)
+            if section.scoped { ScopeBar().padding(.top, 10) }
+        }
+    }
+}
+
+/// Global or one workspace, for the pages whose settings a workspace can override.
+struct ScopeBar: View {
+    @EnvironmentObject var model: AppModel
+    @EnvironmentObject var sel: SettingsSelection
+
+    var body: some View {
+        let ws = model.state.workspaces.sorted { $0.sort < $1.sort }
+        let current = ws.first { "workspace:\($0.id)" == sel.scope }
+        HStack(spacing: 10) {
+            Picker("", selection: Binding(
+                get: { current == nil ? "global" : "workspace" },
+                set: { v in
+                    if v == "global" { sel.scope = "global" } else if current == nil, let w = ws.first(where: { $0.id == model.selectedWorkspaceId }) ?? ws.first {
+                        sel.scope = "workspace:\(w.id)"
+                    }
+                })) {
+                Text("Global").tag("global")
+                Text("Workspace").tag("workspace")
+            }
+            .pickerStyle(.segmented).labelsHidden().fixedSize()
+            if let current {
+                Menu {
+                    ForEach(ws) { w in Button(w.name) { sel.scope = "workspace:\(w.id)" } }
+                } label: {
+                    HStack(spacing: 6) {
+                        Circle().fill(Color(hex: current.color)).frame(width: 8, height: 8)
+                        Text(current.name).font(.system(size: 12.5, weight: .medium))
+                    }
+                }
+                .menuStyle(.borderlessButton).fixedSize()
+            }
+            Spacer()
+        }
+        Text(current == nil
+             ? "These apply everywhere, unless a workspace sets its own."
+             : "Only for \(current!.name). Settings marked with a dot override Global; Reset goes back to it.")
+            .font(.system(size: 12)).foregroundStyle(T.text3)
+    }
+}
+
+// MARK: Building blocks
+
+/// A titled group of rows in one card, with hairlines between the rows.
+struct SettingsGroup<Content: View, Trailing: View>: View {
+    var title: String?
+    var desc: String?
+    @ViewBuilder var trailing: () -> Trailing
+    @ViewBuilder var content: () -> Content
+
+    init(_ title: String? = nil, desc: String? = nil, @ViewBuilder trailing: @escaping () -> Trailing = { EmptyView() },
+         @ViewBuilder content: @escaping () -> Content) {
+        self.title = title; self.desc = desc; self.trailing = trailing; self.content = content
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            if title != nil || desc != nil {
+                HStack(alignment: .bottom, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        if let title { Text(title).font(.system(size: 13.5, weight: .semibold)) }
+                        if let desc { Text(desc).font(.system(size: 12)).foregroundStyle(T.text2).fixedSize(horizontal: false, vertical: true) }
+                    }
+                    Spacer(minLength: 0)
+                    trailing()
+                }
+                .padding(.horizontal, 2)
+                .settingAnchor(title ?? "")
+            }
+            SettingsCard { _VariadicView.Tree(DividedRows()) { content() } }
+        }
+    }
+}
+
+/// Rows of a card, a hairline between each two.
+struct DividedRows: _VariadicView_UnaryViewRoot {
+    func body(children: _VariadicView.Children) -> some View {
+        let last = children.last?.id
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(children) { c in
+                c
+                if c.id != last { Hairline().padding(.horizontal, 14) }
+            }
+        }
+    }
 }
 
 struct SettingsCard<Content: View>: View {
     @ViewBuilder var content: Content
     var body: some View {
+        VStack(alignment: .leading, spacing: 0) { content }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: max(T.m.cardR, 8), style: .continuous).fill(T.frame.opacity(0.55)))
+            .overlay(RoundedRectangle(cornerRadius: max(T.m.cardR, 8), style: .continuous).stroke(T.border))
+    }
+}
+
+/// One setting: title and description on the left, its control on the right. A dot marks a value this
+/// workspace overrides; `onReset` then shows a Reset button. The title is the row's id, for search.
+struct SettingRow<Control: View>: View {
+    @EnvironmentObject var sel: SettingsSelection
+    let title: String
+    var desc: String?
+    var modified = false
+    var onReset: (() -> Void)?
+    var mono = false
+    @ViewBuilder var control: () -> Control
+
+    init(_ title: String, desc: String? = nil, modified: Bool = false, onReset: (() -> Void)? = nil, mono: Bool = false,
+         @ViewBuilder control: @escaping () -> Control) {
+        self.title = title; self.desc = desc; self.modified = modified; self.onReset = onReset; self.mono = mono; self.control = control
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 16) {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    if modified { Circle().fill(T.accent).frame(width: 6, height: 6).help("Set for this workspace") }
+                    Text(title).font(.system(size: 13, weight: .medium))
+                }
+                if let desc {
+                    Text(desc).font(mono ? T.mono(11) : .system(size: 11.5)).foregroundStyle(T.text2)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
+                }
+            }
+            Spacer(minLength: 12)
+            if modified, let onReset {
+                Button("Reset", action: onReset).buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(T.accent)
+                    .help("Use the Global value")
+            }
+            control()
+        }
+        .padding(.horizontal, 14).padding(.vertical, 11)
+        .frame(minHeight: 46)
+        .background(T.accent.opacity(sel.flash == title ? 0.14 : 0))
+        .settingAnchor(title)
+    }
+}
+
+/// A place on a settings page that search can scroll to: reports where it starts in the page.
+enum SettingAnchor {
+    static let space = "settings-page"
+    struct Key: PreferenceKey {
+        static var defaultValue: [String: CGFloat] = [:]
+        static func reduce(value: inout [String: CGFloat], nextValue: () -> [String: CGFloat]) {
+            value.merge(nextValue()) { a, _ in a }
+        }
+    }
+}
+
+extension View {
+    func settingAnchor(_ name: String) -> some View {
+        background(GeometryReader { g in
+            Color.clear.preference(key: SettingAnchor.Key.self, value: name.isEmpty ? [:] : [name: g.frame(in: .named(SettingAnchor.space)).minY])
+        })
+    }
+}
+
+/// Free content inside a card (pickers made of tiles, an editor), padded like a row.
+struct SettingBlock<Content: View>: View {
+    @ViewBuilder var content: Content
+    var body: some View {
         VStack(alignment: .leading, spacing: 10) { content }
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: max(T.m.cardR, 4), style: .continuous).fill(T.frame.opacity(0.55)))
-            .overlay(RoundedRectangle(cornerRadius: max(T.m.cardR, 4), style: .continuous).stroke(T.border))
+    }
+}
+
+/// Small print under a group.
+struct SettingsFootnote: View {
+    let text: String
+    init(_ text: String) { self.text = text }
+    var body: some View {
+        Text(text).font(.system(size: 11.5)).foregroundStyle(T.text3).fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 2).padding(.top, -12)
+    }
+}
+
+/// The switch used on every page.
+struct SettingSwitch: View {
+    @Binding var isOn: Bool
+    var body: some View { Toggle("", isOn: $isOn).labelsHidden().toggleStyle(.switch).controlSize(.small) }
+}
+
+// MARK: Search
+
+/// What the sidebar's search finds: a page, the row's title (its scroll target) and words that describe it.
+struct SettingsEntry: Identifiable {
+    let section: SettingsSection
+    let title: String
+    let words: String
+    var id: String { section.rawValue + "/" + title }
+}
+
+enum SettingsIndex {
+    static let all: [SettingsEntry] = {
+        func e(_ s: SettingsSection, _ t: String, _ w: String = "") -> SettingsEntry { SettingsEntry(section: s, title: t, words: w) }
+        return [
+            e(.general, "Version", "about update release check"),
+            e(.general, "Check automatically", "updates sparkle background"),
+            e(.general, "Menu bar icon", "status item octopus hidden monochrome"),
+            e(.general, "App icon", "dock icon monochrome color"),
+            e(.appearance, "Theme", "ink grid glass look style"),
+            e(.appearance, "Appearance", "dark light system mode"),
+            e(.appearance, "Use theme colors in the terminal", "terminal colors palette"),
+            e(.appearance, "Split tabs as one row", "sidebar panes stacked"),
+            e(.appearance, "Scene", "backdrop background animation ambient"),
+            e(.appearance, "Behind terminals", "scene transparent translucent opacity"),
+            e(.appearance, "React to agents", "scene glow working"),
+            e(.appearance, "Your scenes", "custom import template"),
+            e(.appearance, "Terminal config", "ghostty font size cursor family"),
+            e(.appearance, "Workspace color", "tint"),
+            e(.notifications, "Notifications", "banners alerts mute"),
+            e(.notifications, "Agent finished", "done turn"),
+            e(.notifications, "Agent needs input", "permission question waiting"),
+            e(.notifications, "Agent error", "failed crash"),
+            e(.notifications, "Long-running command finished", "terminal command threshold"),
+            e(.notifications, "Program notifications", "osc 9 777"),
+            e(.notifications, "Command threshold", "seconds long running"),
+            e(.notifications, "Sound", "audio"),
+            e(.notifications, "Dock badge", "count"),
+            e(.keyboard, "Shortcuts", "keys bindings hotkeys"),
+            e(.agents, "Your agents", "claude codex profiles pin command arguments environment hooks"),
+            e(.agents, "Detected on this Mac", "installed path"),
+            e(.workspaces, "Workspaces", "rename color reorder default agent new chat"),
+            e(.workspaces, "Archived projects", "unarchive"),
+            e(.hosts, "Hosts", "remote ssh server daemon connect"),
+            e(.features, "Git worktrees", "branch"),
+            e(.features, "Remote hosts", "ssh"),
+            e(.features, "Hosts side by side", "multi host"),
+            e(.features, "Chat view for Claude", "transcript"),
+            e(.features, "Usage via OAuth API", "limits plan"),
+            e(.advanced, "Daemon", "pid protocol restart"),
+            e(.advanced, "Data folder", "home files"),
+            e(.advanced, "Logs", "diagnostics"),
+            e(.advanced, "Restart daemon", ""),
+            e(.advanced, "Stop Octomux", "quit end sessions start"),
+        ]
+    }()
+
+    static func search(_ q: String) -> [SettingsEntry] {
+        let words = q.lowercased().split(separator: " ").map(String.init)
+        guard !words.isEmpty else { return [] }
+        return all.filter { e in
+            let hay = (e.title + " " + e.words + " " + e.section.rawValue).lowercased()
+            return words.allSatisfy { hay.contains($0) }
+        }
+    }
+}
+
+struct SettingsSearchResults: View {
+    @EnvironmentObject var sel: SettingsSelection
+
+    var body: some View {
+        let hits = SettingsIndex.search(sel.query)
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Search").font(.system(size: 22, weight: .bold))
+            Text(hits.isEmpty ? "Nothing matches “\(sel.query)”." : "\(hits.count) \(hits.count == 1 ? "setting matches" : "settings match") “\(sel.query)”.")
+                .font(.system(size: 13)).foregroundStyle(T.text2)
+        }
+        let bySection = Dictionary(grouping: hits, by: \.section)
+        ForEach(SettingsSection.allCases.filter { bySection[$0] != nil }) { s in
+            SettingsGroup(s.rawValue) {
+                ForEach(bySection[s] ?? []) { e in
+                    Button { sel.open(e.section, row: e.title) } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: s.icon).font(.system(size: 12)).foregroundStyle(T.text3).frame(width: 16)
+                            Text(e.title).font(.system(size: 13, weight: .medium))
+                            Spacer()
+                            Text("\(s.rawValue)  ›").font(.system(size: 12)).foregroundStyle(T.text3)
+                        }
+                        .padding(.horizontal, 14).frame(height: 38)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+}
+
+// MARK: General
+
+struct GeneralSettings: View {
+    @EnvironmentObject var model: AppModel
+    @ObservedObject var updater = Updater.shared
+    @AppStorage(AppIconStyle.key) private var appIcon = "color"
+
+    var body: some View {
+        SettingsGroup("About") {
+            SettingRow("Version", desc: updater.isEnabled ? "Octomux updates itself from the release feed: \(statusText)" : "Updates are off in this build (development builds don't check the release feed).") {
+                Text(updater.isEnabled ? updater.currentVersion : "dev").font(T.mono(12)).foregroundStyle(T.text2)
+                if updater.isEnabled {
+                    Button("Check for Updates") { updater.checkNow() }.buttonStyle(SecondaryButtonStyle())
+                }
+            }
+            if updater.isEnabled {
+                SettingRow("Check automatically", desc: "Looks for a new version in the background once a day and offers it when it's ready.") {
+                    SettingSwitch(isOn: Binding(get: { updater.automaticChecks }, set: { updater.automaticChecks = $0 }))
+                }
+            }
+        }
+        SettingsGroup("Dock and menu bar") {
+            SettingRow("Menu bar icon", desc: "The octopus in the menu bar, which bounces while an agent is working.") {
+                Picker("", selection: Binding(get: { model.settingValue("menubar.style", scope: "global")?.string ?? "color" },
+                                              set: { model.setSetting("menubar.style", $0, scope: "global") })) {
+                    Text("Color").tag("color"); Text("Monochrome").tag("mono"); Text("Hidden").tag("hidden")
+                }
+                .pickerStyle(.segmented).labelsHidden().fixedSize()
+            }
+            if !Paths.isDevVariant {
+                SettingRow("App icon", desc: "In the Dock while Octomux runs. Finder, and the Dock while Octomux is quit, keep the color icon.") {
+                    Picker("", selection: $appIcon) {
+                        Text("Color").tag("color"); Text("Monochrome").tag("mono")
+                    }
+                    .pickerStyle(.segmented).labelsHidden().fixedSize()
+                    .onChange(of: appIcon) { _, v in AppIconStyle.set(v) }
+                }
+            }
+        }
+    }
+
+    private var statusText: String {
+        switch updater.phase {
+        case .checking: return "checking…"
+        case .upToDate: return "you have the latest version."
+        case .available(let v): return "version \(v) is available."
+        case .downloading, .extracting: return "downloading an update…"
+        case .ready(let v): return "version \(v) installs when you relaunch."
+        case .installing: return "installing…"
+        case .failed(let e): return "the last check failed (\(e))."
+        case .idle: return "new versions show up as a note in the main window."
+        }
     }
 }
 
@@ -141,20 +583,29 @@ struct SettingsCard<Content: View>: View {
 struct WorkspacesSettings: View {
     @EnvironmentObject var model: AppModel
     @State private var newName = ""
+    @State private var picking: String?
 
     var body: some View {
-        Text("Workspaces group projects. Switch with the dots at the bottom of the sidebar, a two-finger swipe on the sidebar, or ⌃1…⌃9.")
-            .foregroundStyle(T.text2)
-        SettingsCard {
-            ForEach(model.state.workspaces.sorted { $0.sort < $1.sort }) { w in
-                HStack {
-                    Menu {
-                        ForEach(Palette.colors, id: \.self) { c in Button(c) { model.updateWorkspace(w.id, ["color": c]) } }
-                    } label: { Circle().fill(Color(hex: w.color)).frame(width: 12, height: 12) }
-                        .menuStyle(.borderlessButton).menuIndicator(.hidden).frame(width: 20)
-                    TextField("Name", text: Binding(get: { w.name }, set: { model.updateWorkspace(w.id, ["name": $0]) }))
-                        .textFieldStyle(.plain).font(.system(size: 13, weight: .medium))
-                    Text("\(model.state.projects.filter { $0.workspaceId == w.id }.count) projects").foregroundStyle(T.text2)
+        let ws = model.state.workspaces.sorted { $0.sort < $1.sort }
+        SettingsGroup("Workspaces", desc: "Click the dot to pick a color, the name to rename it. New Chat starts with the agent set here.") {
+            ForEach(Array(ws.enumerated()), id: \.element.id) { i, w in
+                HStack(spacing: 12) {
+                    Button { picking = w.id } label: {
+                        Circle().fill(Color(hex: w.color)).frame(width: 14, height: 14)
+                            .overlay(Circle().stroke(T.text.opacity(0.15)))
+                            .frame(width: 22, height: 22).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain).help("Color")
+                    .popover(isPresented: Binding(get: { picking == w.id }, set: { if !$0 { picking = nil } }), arrowEdge: .bottom) {
+                        ColorDots(selected: w.color) { model.updateWorkspace(w.id, ["color": $0]); picking = nil }.padding(12)
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        TextField("Name", text: Binding(get: { w.name }, set: { model.updateWorkspace(w.id, ["name": $0]) }))
+                            .textFieldStyle(.plain).font(.system(size: 13, weight: .medium))
+                        let n = model.state.projects.filter { $0.workspaceId == w.id }.count
+                        Text("\(n) \(n == 1 ? "project" : "projects")").font(.system(size: 11.5)).foregroundStyle(T.text2)
+                    }
+                    Spacer()
                     let def = model.defaultChatProfile(workspace: w.id)
                     Menu {
                         Button((def == nil ? "✓ " : "") + "Last used") { model.setDefaultChatProfile(nil, workspace: w.id) }
@@ -163,34 +614,35 @@ struct WorkspacesSettings: View {
                             Button((def?.id == p.id ? "✓ " : "") + p.name) { model.setDefaultChatProfile(p.id, workspace: w.id) }
                         }
                     } label: {
-                        HStack(spacing: 4) {
-                            if let def { AgentIcon(icon: def.icon, size: 11) }
-                            Text(def?.name ?? "Last used agent").font(.system(size: 12)).foregroundStyle(T.text2)
-                        }
+                        Text("New chat: \(def?.name ?? "last used agent")").font(.system(size: 12))
                     }
-                    .menuStyle(.borderlessButton).fixedSize()
+                    .menuStyle(.borderlessButton).fixedSize().tint(T.text2)
                     .help("Agent the New Chat screen starts with in this workspace")
-                    Button { model.updateWorkspace(w.id, ["sort": w.sort - 2]) } label: { Image(systemName: "arrow.up") }.buttonStyle(.plain)
-                    Button(role: .destructive) { model.deleteWorkspace(w.id) } label: { Image(systemName: "trash") }
-                        .buttonStyle(.plain).disabled(model.state.workspaces.count <= 1)
+                    Menu {
+                        Button("Move Up") { model.updateWorkspace(w.id, ["sort": w.sort - 2]) }.disabled(i == 0)
+                        Button("Move Down") { model.updateWorkspace(w.id, ["sort": w.sort + 2]) }.disabled(i == ws.count - 1)
+                        Divider()
+                        Button("Delete Workspace", role: .destructive) { model.deleteWorkspace(w.id) }.disabled(ws.count <= 1)
+                    } label: { Image(systemName: "ellipsis").font(.system(size: 13)).foregroundStyle(T.text2) }
+                        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().tint(T.text2)
                 }
-                Hairline()
+                .padding(.horizontal, 14).frame(minHeight: 52)
             }
-            HStack {
-                TextField("New workspace name", text: $newName).onSubmit(add)
-                Button("Add", action: add).disabled(newName.isEmpty)
+            HStack(spacing: 10) {
+                Image(systemName: "plus").font(.system(size: 12)).foregroundStyle(T.text3).frame(width: 22)
+                TextField("New workspace", text: $newName).textFieldStyle(.plain).onSubmit(add)
+                Button("Add", action: add).buttonStyle(SecondaryButtonStyle()).disabled(newName.isEmpty)
             }
+            .padding(.horizontal, 14).frame(minHeight: 46)
         }
         let archived = model.state.projects.filter { $0.archived }
-        if !archived.isEmpty {
-            Text("Archived projects").font(.headline)
-            SettingsCard {
-                ForEach(archived) { p in
-                    HStack {
-                        Text(p.name)
-                        Spacer()
-                        Button("Unarchive") { model.updateProject(p.id, ["archived": false]) }
-                    }
+        SettingsGroup("Archived projects", desc: "Archive a project from its right-click menu to hide it from the sidebar; its sessions are kept.") {
+            if archived.isEmpty {
+                Text("No archived projects.").font(.system(size: 12.5)).foregroundStyle(T.text2).padding(14)
+            }
+            ForEach(archived) { p in
+                SettingRow(p.name, desc: (p.path as NSString).abbreviatingWithTildeInPath, mono: true) {
+                    Button("Unarchive") { model.updateProject(p.id, ["archived": false]) }.buttonStyle(SecondaryButtonStyle())
                 }
             }
         }
@@ -200,6 +652,23 @@ struct WorkspacesSettings: View {
         guard !newName.isEmpty else { return }
         model.createWorkspace(name: newName)
         newName = ""
+    }
+}
+
+/// The workspace colors as a row of dots.
+struct ColorDots: View {
+    let selected: String
+    let pick: (String) -> Void
+    var body: some View {
+        HStack(spacing: 8) {
+            ForEach(Palette.colors, id: \.self) { c in
+                Circle().fill(Color(hex: c)).frame(width: 20, height: 20)
+                    .overlay(Circle().stroke(T.text, lineWidth: selected.caseInsensitiveCompare(c) == .orderedSame ? 2 : 0).padding(-3))
+                    .contentShape(Circle())
+                    .onTapGesture { pick(c) }
+                    .pointerCursor()
+            }
+        }
     }
 }
 
@@ -216,57 +685,67 @@ struct AgentsSettings: View {
     @State private var confirming: (profile: Profile, install: Bool)?
 
     var body: some View {
-        Text("Agents appear in the + menu. Pinned agents also get a one-click button in the tab bar. Claude and Codex sessions resume their conversation after a crash or reboot.")
-            .foregroundStyle(T.text2)
-        SettingsCard {
+        SettingsGroup("Your agents", desc: "They appear in the + menu; pinned ones also get a button in the tab bar. Claude and Codex sessions pick up their conversation after a crash or reboot.", trailing: {
+            Button { editing = Profile(id: "", name: "", icon: "terminal", kind: .generic, command: "", args: [], env: [:], viaLoginShell: true, resumeTemplate: "", enabled: true, pinned: false, sort: 99) } label: {
+                Label("Add Agent", systemImage: "plus")
+            }
+            .buttonStyle(SecondaryButtonStyle())
+        }) {
             ForEach(model.state.profiles.filter { model.owner[$0.id] == nil }.sorted { $0.sort < $1.sort }) { p in
-                HStack(spacing: 10) {
-                    AgentIcon(icon: p.icon, size: 14).frame(width: 20)
-                    VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 12) {
+                    AgentIcon(icon: p.icon, size: 15).frame(width: 22)
+                    VStack(alignment: .leading, spacing: 3) {
                         Text(p.name).font(.system(size: 13, weight: .medium))
                         Text(([p.command] + p.args).joined(separator: " ") + (p.env.isEmpty ? "" : "  ·  " + p.env.map { "\($0)=\($1)" }.joined(separator: " ")))
-                            .font(.system(size: 11, design: .monospaced)).foregroundStyle(T.text2).lineLimit(1)
+                            .font(T.mono(11)).foregroundStyle(T.text3).lineLimit(1).truncationMode(.middle)
                         if p.kind == .claude, let i = integration[p.id] { integrationLine(i) }
                         if p.kind == .codex, let c = codex[p.id] { codexLine(c) }
                     }
-                    Spacer()
+                    .opacity(p.enabled ? 1 : 0.55)
+                    Spacer(minLength: 8)
                     if p.kind == .claude, let i = integration[p.id] { integrationButton(p, i) }
-                    Text(p.kind.rawValue).font(.caption).padding(.horizontal, 6).padding(.vertical, 2)
-                        .background(Capsule().fill(T.hover))
-                    Button { update(p, ["pinned": !p.pinned]) } label: { Image(systemName: p.pinned ? "pin.fill" : "pin") }
-                        .buttonStyle(.plain).help("Show as a shortcut next to +")
-                    Toggle("", isOn: Binding(get: { p.enabled }, set: { update(p, ["enabled": $0]) })).labelsHidden().toggleStyle(.switch).controlSize(.small)
-                    Button { editing = p } label: { Image(systemName: "slider.horizontal.3") }.buttonStyle(.plain)
+                    Button { update(p, ["pinned": !p.pinned]) } label: {
+                        Image(systemName: p.pinned ? "pin.fill" : "pin").font(.system(size: 12))
+                            .foregroundStyle(p.pinned ? T.accent : T.text3).frame(width: 24, height: 24)
+                    }
+                    .buttonStyle(.plain).help(p.pinned ? "Pinned to the tab bar" : "Pin to the tab bar")
+                    SettingSwitch(isOn: Binding(get: { p.enabled }, set: { update(p, ["enabled": $0]) }))
+                        .help(p.enabled ? "Shown in the + menu" : "Hidden from the + menu")
+                    Button { editing = p } label: {
+                        Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundStyle(T.text3).frame(width: 22, height: 24)
+                    }
+                    .buttonStyle(.plain).help("Edit command, arguments and environment")
                 }
-                Hairline()
+                .padding(.horizontal, 14).padding(.vertical, 11)
+                .contentShape(Rectangle())
             }
-            Button { editing = Profile(id: "", name: "", icon: "terminal", kind: .generic, command: "", args: [], env: [:], viaLoginShell: true, resumeTemplate: "", enabled: true, pinned: false, sort: 99) } label: {
-                Label("Add custom agent…", systemImage: "plus")
-            }.buttonStyle(.plain)
         }
         let notAdded = detected.filter { d in
             let cmd = d["command"] as? String ?? ""
             return (d["installed"] as? Bool) == true && !model.state.profiles.contains { $0.command == cmd }
         }
         if !notAdded.isEmpty {
-            Text("Installed on this Mac").font(.headline)
-            SettingsCard {
+            SettingsGroup("Detected on this Mac", desc: "Agent programs on your PATH that aren't in your list yet.") {
                 ForEach(Array(notAdded.enumerated()), id: \.offset) { _, d in
-                    HStack {
-                        AgentIcon(icon: d["icon"] as? String ?? "agent")
-                        Text(d["command"] as? String ?? "")
-                        Text(d["path"] as? String ?? "").font(.caption).foregroundStyle(T.text2)
+                    HStack(spacing: 12) {
+                        AgentIcon(icon: d["icon"] as? String ?? "agent", size: 15).frame(width: 22)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(d["command"] as? String ?? "").font(.system(size: 13, weight: .medium))
+                            Text(d["path"] as? String ?? "").font(T.mono(11)).foregroundStyle(T.text3).lineLimit(1).truncationMode(.middle)
+                        }
                         Spacer()
                         Button("Add") {
                             model.client.call("profile.create", ["name": d["command"] as? String ?? "", "command": d["command"] as? String ?? "",
                                                                  "icon": d["icon"] as? String ?? "agent", "kind": d["kind"] as? String ?? "generic"])
                         }
+                        .buttonStyle(SecondaryButtonStyle())
                     }
+                    .padding(.horizontal, 14).padding(.vertical, 10)
                 }
             }
         }
-        Text("Tip: for a second Claude account, duplicate the claude agent and set CLAUDE_CONFIG_DIR, or point Command at a wrapper like `claude-work`.")
-            .font(.caption).foregroundStyle(T.text2)
+        SettingsFootnote("Tip: for a second Claude account, duplicate the claude agent and set CLAUDE_CONFIG_DIR, or point Command at a wrapper like `claude-work`.")
+            .padding(.top, 12)
             .sheet(item: $editing) { p in ProfileEditor(profile: p) { editing = nil } }
             .confirmationDialog(confirmTitle, isPresented: Binding(get: { confirming != nil }, set: { if !$0 { confirming = nil } })) {
                 if let c = confirming {
@@ -285,37 +764,37 @@ struct AgentsSettings: View {
     /// state (sessions started from the + menu always get them). Claude 2.1.296+ also reports by itself.
     @ViewBuilder private func integrationLine(_ i: (dir: String, status: String)) -> some View {
         let dir = (i.dir as NSString).abbreviatingWithTildeInPath
-        HStack(spacing: 4) {
+        HStack(spacing: 5) {
             Circle().fill(i.status == "installed" ? T.green : i.status == "outdated" ? T.amber : T.text3.opacity(0.5)).frame(width: 6, height: 6)
             Text(i.status == "installed" ? "Terminal tabs: hooks installed in \(dir)"
                  : i.status == "outdated" ? "Terminal tabs: hooks in \(dir) are out of date"
                  : "Terminal tabs: hooks not installed (\(dir))")
         }
-        .font(.system(size: 11)).foregroundStyle(T.text2).lineLimit(1)
+        .font(.system(size: 11.5)).foregroundStyle(T.text2).lineLimit(1)
         .help("With hooks, a claude you type in a terminal tab shows in Agents with its state and notifications, and \"done\" shows the moment a turn ends.")
     }
 
     /// Codex needs no hooks: from 0.164 on it reports its state itself (launched sessions and terminal tabs).
     @ViewBuilder private func codexLine(_ c: (version: String?, status: String)) -> some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 5) {
             Circle().fill(c.status == "reports" ? T.green : c.status == "old" ? T.amber : T.text3.opacity(0.5)).frame(width: 6, height: 6)
             Text(c.status == "reports" ? "Reports its state itself (Codex \(c.version ?? ""))"
                  : c.status == "old" ? "Codex \(c.version ?? "") shows working and done only: update to 0.164 or later"
                  : "Codex version unknown")
         }
-        .font(.system(size: 11)).foregroundStyle(T.text2).lineLimit(1)
+        .font(.system(size: 11.5)).foregroundStyle(T.text2).lineLimit(1)
         .help("Codex 0.164 and later tell Octomux when they work, wait for your approval or finish, also when you type codex in a terminal tab. Older versions only show working and done.")
     }
 
     private func integrationButton(_ p: Profile, _ i: (dir: String, status: String)) -> some View {
         Group {
             switch i.status {
-            case "installed": Button("Remove hooks") { confirming = (p, false) }
-            case "outdated": Button("Update hooks") { setIntegration(p, install: true) }
-            default: Button("Install hooks") { confirming = (p, true) }
+            case "installed": Button("Remove Hooks") { confirming = (p, false) }
+            case "outdated": Button("Update Hooks") { setIntegration(p, install: true) }
+            default: Button("Install Hooks") { confirming = (p, true) }
             }
         }
-        .controlSize(.small)
+        .buttonStyle(SecondaryButtonStyle())
     }
 
     private var confirmTitle: String {
@@ -500,38 +979,35 @@ struct AppearanceSettings: View {
         if sel.scope == "global" {
             ThemePicker()
         }
-        if sel.scope == "global" || sel.scope.hasPrefix("workspace:") {
-            SceneSettingsCard(scope: sel.scope)
-        }
         if sel.scope.hasPrefix("workspace:"), let w = model.state.workspaces.first(where: { "workspace:\($0.id)" == sel.scope }) {
-            SettingsCard {
-                Text("Workspace color").font(.headline)
-                HStack {
-                    ForEach(Palette.colors, id: \.self) { c in
-                        Circle().fill(Color(hex: c)).frame(width: 22, height: 22)
-                            .overlay(Circle().stroke(T.text, lineWidth: w.color == c ? 2 : 0))
-                            .onTapGesture { model.updateWorkspace(w.id, ["color": c]) }
-                    }
+            SettingsGroup("Workspace") {
+                SettingRow("Workspace color", desc: "Its dot in the sidebar, and the tint of the window while it is shown.") {
+                    ColorDots(selected: w.color) { model.updateWorkspace(w.id, ["color": $0]) }
                 }
             }
         }
-        SettingsCard {
-            Text("Terminal").font(.headline)
-            Text("Uses Ghostty's config syntax (font-family, font-size, cursor-style, …). The theme's colors are applied on top unless “Use theme colors” is off. Saved to \(Paths.terminalConfig.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")).")
-                .font(.caption).foregroundStyle(T.text2)
-            TextEditor(text: $config).font(T.mono(12)).frame(height: 220)
-                .scrollContentBackground(.hidden).padding(6)
-                .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(T.surface))
-                .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(T.border))
-            HStack {
-                Button("Import from Ghostty") { importGhostty() }
-                Button("Insert example") { config += (config.isEmpty ? "" : "\n") + "font-family = JetBrains Mono\nfont-size = 13\ncursor-style = bar\n" }
-                Spacer()
-                Text(status).font(.caption).foregroundStyle(T.text2)
-                Button("Apply") { save() }.keyboardShortcut("s")
+        SceneSettingsCard(scope: sel.scope)
+        if sel.scope == "global" {
+            SettingsGroup("Terminal config", desc: "Ghostty's config syntax (font-family, font-size, cursor-style, …). The theme's colors go on top unless “Use theme colors in the terminal” is off.") {
+                SettingBlock {
+                    TextEditor(text: $config).font(T.mono(12)).frame(height: 200)
+                        .scrollContentBackground(.hidden).padding(6)
+                        .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(T.surface))
+                        .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(T.border))
+                    HStack(spacing: 8) {
+                        Button("Import from Ghostty") { importGhostty() }.buttonStyle(SecondaryButtonStyle())
+                        Button("Insert Example") { config += (config.isEmpty ? "" : "\n") + "font-family = JetBrains Mono\nfont-size = 13\ncursor-style = bar\n" }
+                            .buttonStyle(SecondaryButtonStyle())
+                        Spacer()
+                        Text(status).font(.caption).foregroundStyle(T.text2)
+                        Button("Apply") { save() }.buttonStyle(PrimaryButtonStyle()).keyboardShortcut("s")
+                    }
+                }
+                .settingAnchor("Terminal config")
             }
+            SettingsFootnote("Saved to \(Paths.terminalConfig.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")).")
+                .onAppear { config = (try? String(contentsOf: Paths.terminalConfig, encoding: .utf8)) ?? "" }
         }
-        .onAppear { config = (try? String(contentsOf: Paths.terminalConfig, encoding: .utf8)) ?? "" }
     }
 
     func save() {
@@ -567,69 +1043,48 @@ struct ThemePicker: View {
     @EnvironmentObject var model: AppModel
     @ObservedObject var store = ThemeStore.shared
     @AppStorage("octomux.sidebarStackedTabs") private var stackedTabs = true
-    @AppStorage(AppIconStyle.key) private var appIcon = "color"
 
     var body: some View {
-        SettingsCard {
-            Text("Theme").font(.headline)
-            HStack(spacing: 12) {
-                ForEach(Themes.all) { p in
-                    let on = p.id == store.preset.id
-                    Button { store.set(theme: p.id) } label: {
-                        VStack(alignment: .leading, spacing: 8) {
-                            ThemeSwatch(preset: p)
-                            Text(p.name).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(T.text)
-                            Text(p.summary).font(.system(size: 11)).foregroundStyle(T.text2).lineLimit(2, reservesSpace: true)
+        SettingsGroup("Theme", desc: "The shape of the window: chrome, spacing and the accent color.") {
+            SettingBlock {
+                HStack(spacing: 12) {
+                    ForEach(Themes.all) { p in
+                        let on = p.id == store.preset.id
+                        Button { store.set(theme: p.id) } label: {
+                            VStack(alignment: .leading, spacing: 8) {
+                                ThemeSwatch(preset: p)
+                                HStack(spacing: 6) {
+                                    Text(p.name).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(T.text)
+                                    if on { Image(systemName: "checkmark.circle.fill").font(.system(size: 11)).foregroundStyle(T.accent) }
+                                }
+                                Text(p.summary).font(.system(size: 11)).foregroundStyle(T.text2).lineLimit(2, reservesSpace: true)
+                            }
+                            .padding(10)
+                            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(on ? T.selection : .clear))
+                            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(on ? T.accent : T.border, lineWidth: on ? 1.5 : 1))
+                            .contentShape(Rectangle())
                         }
-                        .padding(10)
-                        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(on ? T.selection : .clear))
-                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(on ? T.accent : T.border, lineWidth: on ? 1.5 : 1))
-                        .contentShape(Rectangle())
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
             }
-            HStack {
-                Text("Appearance")
-                Spacer()
+            .settingAnchor("Theme")
+            SettingRow("Appearance", desc: store.scene.map { "The current workspace's scene (\($0.name)) is \($0.dark ? "dark" : "light"), so it decides while it is shown." }
+                       ?? "System follows the macOS appearance.") {
                 Picker("", selection: Binding(get: { store.mode }, set: { store.set(mode: $0) })) {
                     Text("System").tag("system"); Text("Dark").tag("dark"); Text("Light").tag("light")
                 }
-                .pickerStyle(.segmented).labelsHidden().frame(width: 220)
+                .pickerStyle(.segmented).labelsHidden().fixedSize()
             }
-            HStack {
-                Text("Menu bar icon")
-                Spacer()
-                Picker("", selection: Binding(get: { model.settingValue("menubar.style", scope: "global")?.string ?? "color" },
-                                              set: { model.setSetting("menubar.style", $0, scope: "global") })) {
-                    Text("Color").tag("color"); Text("Monochrome").tag("mono"); Text("Hidden").tag("hidden")
-                }
-                .pickerStyle(.segmented).labelsHidden().frame(width: 260)
+            SettingRow("Use theme colors in the terminal", desc: "Terminal background, text and palette follow the theme. Off uses the colors of your terminal config.") {
+                SettingSwitch(isOn: Binding(
+                    get: { model.settingValue("appearance.terminal_colors", scope: "global")?.bool ?? true },
+                    set: { model.setSetting("appearance.terminal_colors", $0 ? nil : false) }))
             }
-            Text("The octopus bounces while an agent is working.").font(.caption).foregroundStyle(T.text3)
-            if !Paths.isDevVariant {
-                HStack {
-                    Text("App icon")
-                    Spacer()
-                    Picker("", selection: $appIcon) {
-                        Text("Color").tag("color"); Text("Monochrome").tag("mono")
-                    }
-                    .pickerStyle(.segmented).labelsHidden().frame(width: 174)
-                    .onChange(of: appIcon) { _, v in AppIconStyle.set(v) }
-                }
-                Text("In the Dock while Octomux runs. Finder, and the Dock while Octomux is quit, keep the color icon.")
-                    .font(.caption).foregroundStyle(T.text3)
+            SettingRow("Split tabs as one row", desc: stackedTabs ? "A tab with several panes is one sidebar row with a stack of its panes' icons."
+                                                                 : "Each pane of a split tab is its own sidebar row, grouped in a frame.") {
+                SettingSwitch(isOn: $stackedTabs)
             }
-            if let sc = store.scene {
-                Text("The current workspace's scene (\(sc.name)) is \(sc.dark ? "dark" : "light"), so it decides while it is shown.")
-                    .font(.caption).foregroundStyle(T.text3)
-            }
-            Toggle("Use theme colors in the terminal", isOn: Binding(
-                get: { model.settingValue("appearance.terminal_colors", scope: "global")?.bool ?? true },
-                set: { model.setSetting("appearance.terminal_colors", $0 ? nil : false) }))
-            Toggle("Show split tabs as one row in the sidebar", isOn: $stackedTabs)
-            Text(stackedTabs ? "A tab with several panes is one row with a stack of its panes' icons." : "Each pane of a split tab is its own row, grouped in a frame.")
-                .font(.caption).foregroundStyle(T.text3)
         }
     }
 }
@@ -743,38 +1198,38 @@ struct NotificationSettings: View {
     var body: some View {
         SystemNotificationStatus(permission: permission, soundWanted: model.settingValue("notifications.sound", scope: sel.scope)?.bool ?? true)
             .onAppear { permission.refresh() }
-        SettingsCard {
-            toggle("Notifications", key: "notifications.enabled")
-            Hairline()
-            toggle("Agent finished", key: "notifications.done")
-            toggle("Agent needs input or permission", key: "notifications.needs_input")
-            toggle("Agent error", key: "notifications.error")
-            toggle("Long-running terminal command finished", key: "notifications.command_done")
-            toggle("Program notifications (OSC 9 / 777)", key: "notifications.program")
-            Hairline()
-            HStack {
-                Text("Command threshold")
-                Spacer()
-                let v = Int(model.settingValue("notifications.command_threshold_secs", scope: sel.scope)?.number ?? 10)
-                Stepper("\(v) s", value: Binding(get: { v }, set: { model.setSetting("notifications.command_threshold_secs", $0, scope: sel.scope) }), in: 1...600)
-            }
-            Hairline()
-            toggle("Sound", key: "notifications.sound")
-            toggle("Dock badge", key: "notifications.badge")
+        SettingsGroup {
+            toggle("Notifications", key: "notifications.enabled",
+                   desc: "Banners for agents and terminals in every project. Mute a single project from its right-click menu.")
         }
-        Text("You are never notified about the pane you are looking at. Mute a single project from its right-click menu.")
-            .font(.caption).foregroundStyle(T.text2)
+        SettingsGroup("Notify me when") {
+            toggle("Agent finished", key: "notifications.done", desc: "An agent ends its turn and waits for your next message.")
+            toggle("Agent needs input", key: "notifications.needs_input", desc: "An agent asks you something or wants a permission.")
+            toggle("Agent error", key: "notifications.error", desc: "An agent stops with an error.")
+            toggle("Long-running command finished", key: "notifications.command_done", desc: "A terminal command that ran longer than the threshold below is done.")
+            let explicit = model.settingValue("notifications.command_threshold_secs", scope: sel.scope)?.number
+            let v = Int(explicit ?? model.settingValue("notifications.command_threshold_secs", scope: "global")?.number ?? 10)
+            SettingRow("Command threshold", desc: "How long a command has to run before its end is worth a notification.",
+                       modified: sel.scope != "global" && explicit != nil,
+                       onReset: { model.setSetting("notifications.command_threshold_secs", nil, scope: sel.scope) }) {
+                Stepper("\(v) s", value: Binding(get: { v }, set: { model.setSetting("notifications.command_threshold_secs", $0, scope: sel.scope) }), in: 1...600)
+                    .monospacedDigit().fixedSize()
+            }
+            toggle("Program notifications", key: "notifications.program", desc: "Programs in a terminal that send their own notifications (OSC 9 and 777).")
+        }
+        SettingsGroup("Alerts") {
+            toggle("Sound", key: "notifications.sound", desc: "Plays with each notification.")
+            toggle("Dock badge", key: "notifications.badge", desc: "The number of agents waiting for you, on the Dock icon.")
+        }
+        SettingsFootnote("You are never notified about the pane you are looking at.")
     }
 
-    func toggle(_ title: String, key: String) -> some View {
+    func toggle(_ title: String, key: String, desc: String) -> some View {
         let explicit = model.settingValue(key, scope: sel.scope)?.bool
         let inherited = sel.scope == "global" ? true : (model.settingValue(key, scope: "global")?.bool ?? true)
-        return HStack {
-            Toggle(title, isOn: Binding(get: { explicit ?? inherited }, set: { model.setSetting(key, $0, scope: sel.scope) }))
-                .toggleStyle(.switch)
-            if sel.scope != "global", explicit != nil {
-                Button("Reset") { model.setSetting(key, nil, scope: sel.scope) }.controlSize(.small)
-            }
+        return SettingRow(title, desc: desc, modified: sel.scope != "global" && explicit != nil,
+                          onReset: { model.setSetting(key, nil, scope: sel.scope) }) {
+            SettingSwitch(isOn: Binding(get: { explicit ?? inherited }, set: { model.setSetting(key, $0, scope: sel.scope) }))
         }
     }
 }
@@ -785,24 +1240,23 @@ struct FeatureSettings: View {
     @EnvironmentObject var model: AppModel
 
     var body: some View {
-        SettingsCard {
-            feature("Git worktrees", key: "features.worktrees", desc: "New Worktree… in the project menu and worktree groups in the sidebar.", available: true, defaultOn: true)
-            Hairline()
-            feature("Remote hosts", key: "features.remote", desc: "Connect the window to an Octomux daemon on another machine over SSH (Settings → Hosts).", available: true, defaultOn: true)
-            Hairline()
-            feature("Hosts side by side", key: "features.multi_host", desc: "Show projects of selected remote hosts next to this Mac's, in the workspace with the same name (Settings → Hosts → Show here).", available: true, defaultOn: false)
-            Hairline()
+        SettingsGroup {
+            feature("Git worktrees", key: "features.worktrees", desc: "New Worktree… in the project menu, and worktree groups in the sidebar.", available: true, defaultOn: true)
+            feature("Remote hosts", key: "features.remote", desc: "Connect the window to an Octomux daemon on another machine over SSH (Settings › Hosts).", available: true, defaultOn: true)
+            feature("Hosts side by side", key: "features.multi_host", desc: "Show projects of chosen remote hosts next to this Mac's, in the workspace with the same name (Hosts › Show here).", available: true, defaultOn: false)
             feature("Chat view for Claude", key: "features.chat", desc: "Show a Claude session as a chat (its transcript) and type into the same session. ⌘⇧C.", available: true, defaultOn: true)
-            Hairline()
-            feature("Usage via OAuth API", key: "features.usage_oauth", desc: "Read Claude plan limits from Anthropic's usage endpoint even with no session open. (Phase 2.)", available: false)
+            feature("Usage via OAuth API", key: "features.usage_oauth", desc: "Read Claude plan limits from Anthropic's usage endpoint even with no session open.", available: false)
         }
     }
 
     func feature(_ title: String, key: String, desc: String, available: Bool, defaultOn: Bool = false) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Toggle(title, isOn: Binding(get: { model.setting(key)?.bool ?? defaultOn }, set: { model.setSetting(key, $0) }))
-                .toggleStyle(.switch).disabled(!available)
-            Text(desc).font(.caption).foregroundStyle(T.text2)
+        SettingRow(title, desc: desc) {
+            if !available {
+                Text("Later").font(.system(size: 10.5, weight: .semibold)).foregroundStyle(T.text3)
+                    .padding(.horizontal, 6).padding(.vertical, 2).background(Capsule().fill(T.hover))
+            }
+            SettingSwitch(isOn: Binding(get: { model.setting(key)?.bool ?? defaultOn }, set: { model.setSetting(key, $0) }))
+                .disabled(!available)
         }
     }
 }
@@ -816,42 +1270,60 @@ struct KeyboardSettings: View {
     @State private var filter = ""
 
     var body: some View {
-        Text("Click a shortcut to record a new one. Esc cancels, Delete removes it. Keys not bound here go straight to the terminal program.")
-            .font(T.body).foregroundStyle(T.text2)
-        TextField("Filter", text: $filter).textFieldStyle(.roundedBorder).frame(maxWidth: 260)
-        let groups = Dictionary(grouping: kb.commands.filter { filter.isEmpty || $0.title.localizedCaseInsensitiveContains(filter) }, by: \.group)
+        let shown = kb.commands.filter { filter.isEmpty || $0.title.localizedCaseInsensitiveContains(filter) || (kb.current($0.id)?.display ?? "").contains(filter) }
+        let groups = Dictionary(grouping: shown, by: \.group)
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Shortcuts").font(.system(size: 13.5, weight: .semibold))
+                Text("Click a shortcut to record new keys. Esc cancels, Delete removes it.").font(.system(size: 12)).foregroundStyle(T.text2)
+            }
+            .settingAnchor("Shortcuts")
+            Spacer()
+            Text("\(shown.count) of \(kb.commands.count)").font(.system(size: 11.5)).foregroundStyle(T.text3).monospacedDigit()
+            HStack(spacing: 5) {
+                Image(systemName: "line.3.horizontal.decrease").font(.system(size: 10)).foregroundStyle(T.text3)
+                TextField("Filter", text: $filter).textFieldStyle(.plain).font(.system(size: 12))
+            }
+            .padding(.horizontal, 8).frame(width: 180, height: 26)
+            .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(T.frame.opacity(0.55)))
+            .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(T.border))
+        }
+        .padding(.horizontal, 2)
         ForEach(["Octomux", "File", "Session", "View", "Window"].filter { groups[$0] != nil }, id: \.self) { g in
-            SettingsCard {
-                SectionLabel(g)
+            SettingsGroup(g) {
                 ForEach(groups[g] ?? []) { c in
-                    HStack {
-                        Text(c.title).font(T.body)
+                    HStack(spacing: 10) {
+                        Text(c.title).font(.system(size: 13))
                         if kb.isOverridden(c.id) {
-                            Text("custom").font(T.caption).foregroundStyle(T.accent)
+                            Circle().fill(T.accent).frame(width: 6, height: 6).help("Changed from the default")
                         }
                         Spacer()
                         if let sc = kb.current(c.id), recording != c.id, let other = kb.conflict(sc, except: c.id) {
-                            Text("also: \(other.title)").font(T.caption).foregroundStyle(T.amber).lineLimit(1)
+                            Label("also \(other.title)", systemImage: "exclamationmark.triangle.fill")
+                                .font(.system(size: 11)).foregroundStyle(T.amber).lineLimit(1)
                         }
+                        Button { kb.reset(c.id) } label: { Image(systemName: "arrow.uturn.backward").font(.system(size: 10)) }
+                            .buttonStyle(ChromeButtonStyle()).help("Reset to default")
+                            .opacity(kb.isOverridden(c.id) ? 1 : 0).disabled(!kb.isOverridden(c.id))
                         Button { startRecording(c.id) } label: {
                             Text(recording == c.id ? "Press keys…" : (kb.current(c.id)?.display ?? "—"))
                                 .font(T.mono(12, .medium))
-                                .foregroundStyle(recording == c.id ? T.accent : T.text)
-                                .frame(minWidth: 86)
+                                .foregroundStyle(recording == c.id ? T.accent : kb.current(c.id) == nil ? T.text3 : T.text)
+                                .frame(minWidth: 96)
                                 .padding(.horizontal, 8).frame(height: 24)
                                 .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(T.surface))
                                 .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(recording == c.id ? T.accent : T.border))
                         }
                         .buttonStyle(.plain)
-                        Button { kb.reset(c.id) } label: { Image(systemName: "arrow.uturn.backward").font(.system(size: 10)) }
-                            .buttonStyle(ChromeButtonStyle()).help("Reset to default")
-                            .opacity(kb.isOverridden(c.id) ? 1 : 0).disabled(!kb.isOverridden(c.id))
                     }
-                    .frame(height: 28)
+                    .padding(.horizontal, 14).frame(height: 38)
                 }
             }
         }
-        .onDisappear { stopRecording() }
+        if shown.isEmpty {
+            Text("No shortcut matches “\(filter)”.").font(.system(size: 12.5)).foregroundStyle(T.text2)
+        }
+        Color.clear.frame(height: 0).onDisappear { stopRecording() }
     }
 
     private func startRecording(_ id: String) {
@@ -882,53 +1354,66 @@ struct HostsSettings: View {
     @State private var status: [String: String] = [:]
 
     var body: some View {
-        Text("A host is a machine running its own Octomux daemon. Octomux reaches it with `ssh <host> octomux stdio` (no open ports); panes attach with `ssh -t`. Sessions keep running there when you disconnect. Install `octomux` on the host first (Linux build: see README).")
-            .font(T.body).foregroundStyle(T.text2).fixedSize(horizontal: false, vertical: true)
-        SettingsCard {
+        SettingsGroup("Hosts", desc: "Octomux reaches a host with `ssh <host> octomux stdio` (no open ports); panes attach with `ssh -t`. Sessions keep running there when you disconnect. Install `octomux` on the host first (Linux build: see README).", trailing: {
+            Button { editing = Host(id: String(UUID().uuidString.prefix(8)).lowercased(), name: "", kind: "ssh") } label: {
+                Label("Add Host", systemImage: "plus")
+            }
+            .buttonStyle(SecondaryButtonStyle())
+        }) {
             ForEach(HostStore.withLocal) { h in
-                HStack(spacing: 10) {
-                    Image(systemName: h.isRemote ? "server.rack" : "laptopcomputer").foregroundStyle(T.text3).frame(width: 18)
+                HStack(spacing: 12) {
+                    Image(systemName: h.isRemote ? "server.rack" : "laptopcomputer").font(.system(size: 14)).foregroundStyle(T.text3).frame(width: 22)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(h.name).font(.system(size: 13, weight: .semibold))
+                        HStack(spacing: 6) {
+                            Text(h.name).font(.system(size: 13, weight: .medium))
+                            if model.hostId == h.id {
+                                Text("Connected").font(.system(size: 10.5, weight: .semibold)).foregroundStyle(T.green)
+                                    .padding(.horizontal, 6).padding(.vertical, 1).background(Capsule().fill(T.green.opacity(0.14)))
+                            }
+                        }
                         Text(h.subtitle).font(T.mono(11)).foregroundStyle(T.text3).lineLimit(1)
+                        if let st = status[h.id] {
+                            Text(st).font(.system(size: 11.5)).foregroundStyle(st.hasPrefix("OK") ? T.green : st.hasPrefix("Testing") ? T.text2 : T.red).lineLimit(1)
+                        }
                     }
                     Spacer()
-                    if let st = status[h.id] { Text(st).font(T.caption).foregroundStyle(st.hasPrefix("OK") ? T.green : T.red).lineLimit(1) }
-                    if h.isRemote {
-                        Button("Test") { test(h) }.buttonStyle(SecondaryButtonStyle())
-                        Button { editing = h } label: { Image(systemName: "slider.horizontal.3") }.buttonStyle(ChromeButtonStyle())
-                        Button { HostStore.all.removeAll { $0.id == h.id }; hosts = HostStore.all; if model.hostId == h.id { model.switchHost("local") } } label: { Image(systemName: "trash") }
-                            .buttonStyle(ChromeButtonStyle())
-                    }
                     if h.isRemote, model.multiHost, model.hostId != h.id {
                         Toggle("Show here", isOn: Binding(get: { HostStore.attached.contains(h.id) }, set: { model.setAttached(h.id, $0); hosts = HostStore.all }))
-                            .toggleStyle(.checkbox).font(T.caption)
+                            .toggleStyle(.checkbox).font(.system(size: 12))
                     }
-                    if model.hostId == h.id {
-                        Text("Connected").font(T.caption).foregroundStyle(T.accent)
-                    } else {
-                        Button("Connect") { model.switchHost(h.id) }.buttonStyle(PrimaryButtonStyle())
+                    if h.isRemote {
+                        Button("Test") { test(h) }.buttonStyle(SecondaryButtonStyle())
+                    }
+                    if model.hostId != h.id {
+                        Button("Connect") { model.switchHost(h.id) }.buttonStyle(SecondaryButtonStyle())
+                    }
+                    if h.isRemote {
+                        Menu {
+                            Button("Edit…") { editing = h }
+                            Divider()
+                            Button("Remove Host", role: .destructive) {
+                                HostStore.all.removeAll { $0.id == h.id }; hosts = HostStore.all
+                                if model.hostId == h.id { model.switchHost("local") }
+                            }
+                        } label: { Image(systemName: "ellipsis").font(.system(size: 13)).foregroundStyle(T.text2) }
+                            .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().tint(T.text2)
                     }
                 }
-                .frame(minHeight: 40)
+                .padding(.horizontal, 14).padding(.vertical, 11)
             }
-            Button { editing = Host(id: String(UUID().uuidString.prefix(8)).lowercased(), name: "", kind: "ssh") } label: {
-                Label("Add host…", systemImage: "plus")
-            }.buttonStyle(.plain).foregroundStyle(T.text2)
         }
-        Text("Changes / History / Files and worktrees work on remote projects too: the host's daemon runs git (allowlisted commands) and serves file previews. Open in… is local only.")
-            .font(T.caption).foregroundStyle(T.text3)
-        .sheet(item: $editing) { h in
-            HostEditor(host: h) { saved in
-                if let saved {
-                    var all = HostStore.all
-                    if let i = all.firstIndex(where: { $0.id == saved.id }) { all[i] = saved } else { all.append(saved) }
-                    HostStore.all = all
-                    hosts = all
+        SettingsFootnote("Changes, History, Files and worktrees work on remote projects too: the host's daemon runs git (allowlisted commands) and serves file previews. Open in… is local only.")
+            .sheet(item: $editing) { h in
+                HostEditor(host: h) { saved in
+                    if let saved {
+                        var all = HostStore.all
+                        if let i = all.firstIndex(where: { $0.id == saved.id }) { all[i] = saved } else { all.append(saved) }
+                        HostStore.all = all
+                        hosts = all
+                    }
+                    editing = nil
                 }
-                editing = nil
             }
-        }
     }
 
     private func test(_ h: Host) {
@@ -988,34 +1473,49 @@ struct HostEditor: View {
 
 struct AdvancedSettings: View {
     @EnvironmentObject var model: AppModel
-    @State private var info = ""
+    @State private var info: [String: Any] = [:]
+    @State private var restarting = false
     @State private var confirmStop = false
 
     var body: some View {
-        Group {
-        SettingsCard {
-            Text("Daemon").font(.headline)
-            Text(info.isEmpty ? "…" : info).font(.system(size: 11, design: .monospaced)).textSelection(.enabled)
-            HStack {
-                Button("Restart Daemon") {
+        let home = (info["home"] as? String) ?? Paths.home.path
+        SettingsGroup("Daemon", desc: "It runs your sessions; each tab's program lives in its own process, so they keep running while the daemon restarts.") {
+            SettingRow("Status", desc: info.isEmpty ? "Not answering" : "Running · pid \(info["pid"] ?? "?") · protocol v\(info["version"] ?? "?")") {
+                Circle().fill(info.isEmpty ? T.red : T.green).frame(width: 8, height: 8)
+            }
+            SettingRow("Restart daemon", desc: "Starts a fresh daemon process. Sessions keep running.") {
+                Button(restarting ? "Restarting…" : "Restart") {
+                    restarting = true
                     model.client.call("daemon.shutdown") { _ in
-                        DispatchQueue.global().async { _ = DaemonClient.ensureDaemon(); DispatchQueue.main.async { refresh() } }
+                        DispatchQueue.global().async {
+                            _ = DaemonClient.ensureDaemon()
+                            DispatchQueue.main.async { restarting = false; refresh() }
+                        }
                     }
                 }
-                Button("Open Data Folder") { NSWorkspace.shared.open(Paths.home) }
-                Button("Open Logs") { NSWorkspace.shared.open(Paths.home.appendingPathComponent("logs")) }
+                .buttonStyle(SecondaryButtonStyle()).disabled(restarting)
             }
-            Text("Sessions keep running while the daemon restarts; they live in their own processes.").font(.caption).foregroundStyle(T.text2)
+            SettingRow("Data folder", desc: (home as NSString).abbreviatingWithTildeInPath, mono: true) {
+                Button("Show in Finder") { NSWorkspace.shared.open(URL(fileURLWithPath: home)) }.buttonStyle(SecondaryButtonStyle())
+            }
+            SettingRow("Logs", desc: ((home as NSString).appendingPathComponent("logs") as NSString).abbreviatingWithTildeInPath, mono: true) {
+                Button("Show in Finder") { NSWorkspace.shared.open(URL(fileURLWithPath: home).appendingPathComponent("logs")) }.buttonStyle(SecondaryButtonStyle())
+            }
+            SettingRow("Command line tool", desc: (Paths.cliBinary as NSString).abbreviatingWithTildeInPath, mono: true) {
+                Button("Copy Path") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(Paths.cliBinary, forType: .string)
+                }
+                .buttonStyle(SecondaryButtonStyle())
+            }
         }
         if !model.host.isRemote {
-            SettingsCard {
-                Text("Stop Octomux").font(.headline)
-                Text("Ends the programs in every tab (shells, agents) and the daemon, like quitting a terminal app. The window waits with a Start button; starting brings the tabs back and agents pick up their conversations.")
-                    .font(.caption).foregroundStyle(T.text2)
-                HStack {
+            SettingsGroup("Danger zone") {
+                SettingRow("Stop Octomux", desc: "Ends the programs in every tab (shells, agents) and the daemon, like quitting a terminal app. The window waits with a Start button; starting brings the tabs back and agents pick up their conversations.") {
                     switch model.power {
-                    case .running: Button("Stop Octomux…", role: .destructive) { confirmStop = true }
-                    case .stopped: Button("Start Octomux") { model.startOctomux() }.buttonStyle(.borderedProminent)
+                    case .running:
+                        Button { confirmStop = true } label: { Text("Stop Octomux…").foregroundStyle(T.red) }.buttonStyle(SecondaryButtonStyle())
+                    case .stopped: Button("Start Octomux") { model.startOctomux() }.buttonStyle(PrimaryButtonStyle())
                     case .stopping: Text("Stopping…").foregroundStyle(T.text2)
                     case .starting: Text("Starting…").foregroundStyle(T.text2)
                     }
@@ -1028,14 +1528,13 @@ struct AdvancedSettings: View {
                 Text("Every shell and agent running in your tabs will be ended. Unsaved work in them is lost. Start brings the tabs back; agents resume their conversations.")
             }
         }
-        }
-        .onAppear(perform: refresh)
+        Color.clear.frame(height: 0).onAppear(perform: refresh)
     }
 
     func refresh() {
         model.client.call("hello") { r in
-            if case .success(let v) = r, let d = v as? [String: Any] {
-                info = "pid \(d["pid"] ?? "?") · protocol v\(d["version"] ?? "?")\nhome \(d["home"] ?? "")\ncli \(Paths.cliBinary)"
+            DispatchQueue.main.async {
+                if case .success(let v) = r, let d = v as? [String: Any] { info = d } else { info = [:] }
             }
         }
     }

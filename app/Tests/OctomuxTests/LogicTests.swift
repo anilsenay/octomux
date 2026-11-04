@@ -265,3 +265,16 @@ final class NotificationTextTests: XCTestCase {
         XCTAssertEqual(NotificationRow.message(n("Claude finished · 1 shell still running"), hasSession: true), "Finished a turn · 1 shell still running")
     }
 }
+
+final class SettingsSearchTests: XCTestCase {
+    func testMatchesTitlesAndWords() {
+        XCTAssertEqual(Set(SettingsIndex.search("dock").map(\.title)), ["App icon", "Dock badge"])
+        XCTAssertEqual(SettingsIndex.search("ssh remote").first?.section, .hosts)
+        XCTAssertTrue(SettingsIndex.search("  ").isEmpty)
+        XCTAssertTrue(SettingsIndex.search("nothing-like-this").isEmpty)
+    }
+
+    func testEveryPageIsFindable() {
+        for s in SettingsSection.allCases { XCTAssertFalse(SettingsIndex.search(s.rawValue).isEmpty, s.rawValue) }
+    }
+}
