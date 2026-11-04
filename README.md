@@ -57,6 +57,12 @@ through translucent terminals. Pick them in Settings → Appearance or with ⌘K
 3. Open Octomux. It installs its background service (a launchd agent) on first launch and asks for
    notification permission.
 
+Or with Homebrew:
+
+```sh
+brew install --cask anilsenay/tap/octomux
+```
+
 macOS 14 or later, Apple Silicon. Signed and notarized, so it opens without a Gatekeeper prompt. If you open it
 straight from the disk image or Downloads, Octomux offers to move itself to Applications first (its background
 service needs a fixed place).

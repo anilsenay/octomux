@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// The Agents panel pinned to the bottom of the sidebar (like Herdr). Closed it is only a header bar whose right
+/// The Agents panel pinned to the bottom of the sidebar. Closed it is only a header bar whose right
 /// side shows what agents are doing (working, need input, error, finished); open it grows upward to a resizable
 /// height (drag its top edge). It never opens by itself.
 /// ⌥⌘A or clicking the header opens and closes it.

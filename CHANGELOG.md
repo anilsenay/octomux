@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Homebrew:** `brew install --cask anilsenay/tap/octomux`, and `brew uninstall --zap --cask octomux` removes
+  everything. The cask follows each release.
 - **Codex at the same level as Claude Code.** Working, waiting for approval and done for Codex 0.164 and
   later (it reports its state itself, no hooks or setup), also for a `codex` typed in a terminal tab. The tab
   takes the conversation's name, the chat view and Copy Transcript Path follow the running conversation, and a

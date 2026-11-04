@@ -122,6 +122,9 @@ octomux ctl state.get                # the whole catalog as JSON
 
 ## Uninstall
 
+Installed with Homebrew: `brew uninstall --zap --cask octomux` stops the sessions and removes the app, its
+background service and all Octomux data. Otherwise:
+
 ```sh
 /Applications/Octomux.app/Contents/Resources/bin/octomux uninstall-agent   # removes the launchd agent
 pkill -f 'Octomux.app/Contents/Resources/bin/octomux'                       # stops the daemon and all sessions

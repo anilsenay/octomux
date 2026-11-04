@@ -101,7 +101,7 @@ pub fn is_inherited_agent_var(key: &str, value: &str) -> bool {
         || key.starts_with("HERDR_")
 }
 
-/// Our answer to `OSC 7501 ; ?`: the states and blocked kinds we understand (same as Herdr and Unpeel send).
+/// Our answer to `OSC 7501 ; ?`: the states and blocked kinds we understand, in the shape other multiplexers send.
 pub const PROGRAM_STATUS_REPLY: &[u8] = b"\x1b]7501;?:states=idle,working,done,blocked,error:kinds=permission,question,auth\x1b\\";
 
 /// Parses the OSC sequences Octomux cares about.
