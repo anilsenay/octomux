@@ -70,7 +70,13 @@ struct PromptsSettings: View {
                     HStack(alignment: .top, spacing: 10) {
                         Image(systemName: "text.bubble").font(.system(size: 12)).foregroundStyle(T.text3).frame(width: 18).padding(.top, 2)
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(t.name).font(.system(size: 13, weight: .medium))
+                            HStack(spacing: 6) {
+                                Text(t.name).font(.system(size: 13, weight: .medium))
+                                if t.changes {
+                                    Text("Changes").font(.system(size: 10.5, weight: .semibold)).foregroundStyle(T.text2)
+                                        .padding(.horizontal, 6).padding(.vertical, 1).background(Capsule().fill(T.hover))
+                                }
+                            }
                             Text(t.text).font(.system(size: 11.5)).foregroundStyle(T.text2).lineLimit(2)
                         }
                         .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
@@ -110,6 +116,8 @@ struct PromptEditor: View {
                     }
                 }
             }
+            Toggle("Also in the Changes panel's Ask Agent menu (sends it to the focused agent, or a new one)", isOn: $template.changes)
+                .font(.system(size: 12))
             TextEditor(text: $template.text).font(T.mono(12.5)).frame(height: 160)
                 .scrollContentBackground(.hidden).padding(6)
                 .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(T.surface))

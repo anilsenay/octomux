@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **✨ Commit messages:** the sparkles in the Changes panel's message box ask an agent for a commit message from
+  the staged changes (or all of them) and the repository's recent commit style. Your own `claude` or `codex` CLI
+  runs once in the background (no tools, nothing saved, hooks and MCP off); the agent, model (Claude: Haiku) and
+  a style are set in Settings → Projects. Click again to stop.
+- **Ask Agent in the Changes panel:** prompts marked for it show in a menu on the panel and on each changed
+  file (`{file}`, `{base}`), and go to the focused agent when it is free there, else to a new one.
 - **Prompts:** save prompts you send often (Settings → Prompts) for every project, a workspace or one project,
   and pick them in a new chat, the quick composer or ⌘K. `{project}`, `{path}`, `{branch}`, `{clipboard}` and
   `{date}` are filled in.

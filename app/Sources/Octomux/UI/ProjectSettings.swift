@@ -8,6 +8,8 @@ struct ProjectSettings: View {
     @State private var name = ""
     @State private var setup = ""
     @State private var teardown = ""
+    @State private var styleGlobal = ""
+    @State private var styleProject = ""
     @State private var loadedFor: String?
 
     var body: some View {
@@ -17,8 +19,10 @@ struct ProjectSettings: View {
             projectGroup(p)
             worktreeGroup(p)
             scriptsGroup(p)
+            commitGroup(p)
             defaultsGroup
             Color.clear.frame(height: 0)
+                .onDisappear { saveStyle(styleGlobal, scope: "global") }
                 .onAppear { load(p) }
                 .onChange(of: p.id) { _, _ in load(p) }
         } else {
@@ -123,8 +127,30 @@ struct ProjectSettings: View {
         }
     }
 
+    private func commitGroup(_ p: Project) -> some View {
+        let own = model.settingValue("commit_message.instructions", scope: "project:\(p.id)")?.string
+        return SettingsGroup("Commit messages", desc: "✨ next to the commit message box in the Changes panel asks an agent for a message.") {
+            SettingRow("Style for this project", desc: own == nil ? "Uses the style for all projects below." : "Used instead of the style for all projects.",
+                       modified: own != nil, onReset: { model.setSetting("commit_message.instructions", nil, scope: "project:\(p.id)"); styleProject = "" }) {
+                TextField("e.g. Conventional Commits, scope = crate", text: $styleProject, axis: .vertical)
+                    .textFieldStyle(.roundedBorder).lineLimit(1...3).frame(width: 280)
+                    .onSubmit { saveStyle(styleProject, scope: "project:\(p.id)") }
+            }
+        }
+        .onDisappear { saveStyle(styleProject, scope: "project:\(p.id)") }
+    }
+
+    private func saveStyle(_ v: String, scope: String) {
+        let t = v.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cur = model.settingValue("commit_message.instructions", scope: scope)?.string ?? ""
+        if t != cur { model.setSetting("commit_message.instructions", t.isEmpty ? nil : t, scope: scope) }
+    }
+
     private var defaultsGroup: some View {
         let root = model.settingValue("worktrees.root", scope: "global")?.string
+        let agents = model.enabledProfiles.filter { $0.kind == .claude || $0.kind == .codex }
+        let agent = CommitMessageGen.profile(model: model, project: nil)
+        let storedModel = model.settingValue("commit_message.model", scope: "global")?.string
         return SettingsGroup("All projects", desc: "Used by every project that doesn't set its own.") {
             SettingRow("Worktree folder", desc: root.map { "Worktrees go to " + ($0 as NSString).abbreviatingWithTildeInPath + "/<project>/<branch>." }
                        ?? "Next to each project, in <project>.worktrees/<branch>. Projects on other hosts always use this.") {
@@ -136,6 +162,28 @@ struct ProjectSettings: View {
             SettingRow("Delete the branch with its worktree", desc: "The default for the checkbox when you remove a worktree.") {
                 SettingSwitch(isOn: Binding(get: { model.settingValue("worktrees.delete_branch", scope: "global")?.bool ?? false },
                                             set: { model.setSetting("worktrees.delete_branch", $0 ? true : nil) }))
+            }
+            SettingRow("Commit message agent", desc: "Runs once in the background with the diff (\(agent?.kind == .codex ? "codex exec" : "claude -p"), no tools, nothing saved). The diff goes to its provider like any agent prompt; each message uses a little of your plan.") {
+                Picker("", selection: Binding(get: { agent?.id ?? "" }, set: { model.setSetting("commit_message.profile", $0) })) {
+                    ForEach(agents) { a in Text(a.name).tag(a.id) }
+                }
+                .labelsHidden().fixedSize()
+            }
+            SettingRow("Commit message model", desc: agent?.kind == .codex ? "Empty: Codex's own default." : "Haiku is fast and enough for a commit message.") {
+                if agent?.kind == .codex {
+                    TextField("default", text: Binding(get: { storedModel ?? "" }, set: { model.setSetting("commit_message.model", $0.isEmpty ? nil : $0) }))
+                        .textFieldStyle(.roundedBorder).frame(width: 160)
+                } else {
+                    Picker("", selection: Binding(get: { storedModel ?? "haiku" }, set: { model.setSetting("commit_message.model", $0 == "haiku" ? nil : $0) })) {
+                        Text("Haiku").tag("haiku"); Text("Sonnet").tag("sonnet"); Text("Opus").tag("opus"); Text("CLI default").tag("default")
+                    }
+                    .labelsHidden().fixedSize()
+                }
+            }
+            SettingRow("Commit message style", desc: "Extra instructions, e.g. “Conventional Commits”, “one line only”. Without any, it follows the repository's recent commits.") {
+                TextField("Follow the repository's style", text: $styleGlobal, axis: .vertical)
+                    .textFieldStyle(.roundedBorder).lineLimit(1...3).frame(width: 280)
+                    .onSubmit { saveStyle(styleGlobal, scope: "global") }
             }
         }
     }
@@ -176,6 +224,8 @@ struct ProjectSettings: View {
         guard loadedFor != p.id else { return }
         loadedFor = p.id
         name = p.name
+        styleProject = model.settingValue("commit_message.instructions", scope: "project:\(p.id)")?.string ?? ""
+        styleGlobal = model.settingValue("commit_message.instructions", scope: "global")?.string ?? ""
         setup = model.settingValue("worktrees.setup", scope: "project:\(p.id)")?.string ?? ""
         teardown = model.settingValue("worktrees.teardown", scope: "project:\(p.id)")?.string ?? ""
     }

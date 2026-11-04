@@ -511,3 +511,33 @@ final class PromptTemplateTests: XCTestCase {
         XCTAssertEqual(PromptTemplate.insert("T", into: "hi"), "hi\nT")
     }
 }
+
+final class CommitMessageGenTests: XCTestCase {
+    func testCleanStripsWrapping() {
+        XCTAssertEqual(CommitMessageGen.clean("```\nFix the resize race\n\nBody here\n```\n"), "Fix the resize race\n\nBody here")
+        XCTAssertEqual(CommitMessageGen.clean("Generating…\n\"Add usage meter\""), "Add usage meter")
+        XCTAssertEqual(CommitMessageGen.clean("Add x\n\nCo-authored-by: Bot <b@x>"), "Add x")
+    }
+
+    func testTruncateSharesBudgetPerFile() {
+        let small = "diff --git a/s b/s\n+tiny\n"
+        let huge = "diff --git a/h b/h\n" + String(repeating: "+line of a generated file\n", count: 5000)
+        let out = CommitMessageGen.truncate(huge + small, budget: 2000)
+        XCTAssertTrue(out.contains("+tiny"), "the small file survives the huge one")
+        XCTAssertTrue(out.contains("left out"))
+        XCTAssertLessThan(out.count, 2400)
+        XCTAssertEqual(CommitMessageGen.truncate(small, budget: 2000), small)
+    }
+
+    func testPromptAndCommandLine() {
+        let p = CommitMessageGen.prompt(diff: "D", untracked: ["new.swift"], branch: "feat/x", recent: ["Fix a", "Add b"], instructions: "Use Conventional Commits")
+        for part in ["Branch: feat/x", "- Fix a", "Use Conventional Commits", "- new.swift", "```diff\nD\n```"] { XCTAssertTrue(p.contains(part), part) }
+        let claude = Profile(id: "c", name: "Claude", icon: "claude", kind: .claude, command: "claude", args: [], env: [:], viaLoginShell: true, resumeTemplate: "", enabled: true, pinned: false, sort: 0)
+        let cl = CommitMessageGen.commandLine(claude, model: "haiku")
+        XCTAssertTrue(cl.hasPrefix("claude -p --output-format text --tools '' --no-session-persistence"), cl)
+        XCTAssertTrue(cl.contains("--model haiku"))
+        var codex = claude; codex.kind = .codex; codex.command = "codex"
+        let cx = CommitMessageGen.commandLine(codex, model: nil, lastMessage: "/tmp/l")
+        XCTAssertEqual(cx, "codex exec --ephemeral --skip-git-repo-check -s read-only --color never -o /tmp/l -")
+    }
+}

@@ -53,7 +53,26 @@ final class ChangesModel: ObservableObject {
     @Published var status = ""
     @Published var busy = false
     @Published var isRepo = true
+    /// ✨ writing a commit message right now.
+    @Published var generating: CommitMessageGen.Run?
     private var path: String?
+    var workPath: String? { path }
+
+    /// ✨: asks the commit-message agent for a message and puts it in the box (Settings → Projects → Commit messages).
+    func generateMessage(projectId: String?, model: AppModel) {
+        if let g = generating { g.cancel(); generating = nil; status = ""; return }
+        guard let path else { return }
+        status = "Writing a commit message…"
+        generating = CommitMessageGen.generate(path: path, projectId: projectId, model: model) { [weak self] r in
+            guard let self else { return }
+            self.generating = nil
+            switch r {
+            case .success(let m): self.message = m; self.status = ""
+            case .failure(let e): self.status = e.localizedDescription
+            }
+        }
+        if generating == nil, status == "Writing a commit message…" { status = "" }
+    }
     private var timer: Timer?
 
     func attach(path: String?) {
@@ -181,6 +200,13 @@ struct ChangesPanel: View {
                     .foregroundStyle(T.text3).help("Worktree: \(wp)")
                 }
                 Spacer()
+                if let wp = model.currentWorkPath, let pid = model.currentProject?.id {
+                    AskAgentMenu(projectId: pid, folder: wp, file: nil) {
+                        Image(systemName: "sparkles.rectangle.stack").font(.system(size: 11))
+                    }
+                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().tint(T.text2)
+                    .help("Ask an agent about these changes")
+                }
                 Button { changes.refresh() } label: { Image(systemName: "arrow.clockwise").font(.system(size: 11)) }.buttonStyle(ChromeButtonStyle())
             }
             .padding(.leading, 14).padding(.trailing, 8).frame(height: 32)
@@ -195,7 +221,19 @@ struct ChangesPanel: View {
                 VStack(spacing: 6) {
                     TextField("Message (⌘↩ to commit)", text: $changes.message, axis: .vertical)
                         .lineLimit(1...5).textFieldStyle(.plain).font(T.body)
-                        .padding(.horizontal, 10).padding(.vertical, 7)
+                        .padding(.leading, 10).padding(.trailing, 30).padding(.vertical, 7)
+                        .overlay(alignment: .topTrailing) {
+                            Button { changes.generateMessage(projectId: model.currentProject?.id, model: model) } label: {
+                                Group {
+                                    if changes.generating != nil { Image(systemName: "stop.circle") } else { Image(systemName: "sparkles") }
+                                }
+                                .font(.system(size: 12))
+                            }
+                            .buttonStyle(IconButtonStyle(size: 22)).padding(3)
+                            .disabled(changes.changes.isEmpty && changes.generating == nil)
+                            .help(changes.generating != nil ? "Stop writing the message"
+                                  : "Write a commit message with \(CommitMessageGen.profile(model: model, project: model.currentProject?.id)?.name ?? "an agent")")
+                        }
                         .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(T.frame.opacity(0.6)))
                         .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(T.border))
                         .onKeyPress(.return, phases: .down) { press in
@@ -329,6 +367,9 @@ private struct ChangeRow: View {
         }
         .contextMenu {
             Button("Open File") { model.openDoc(.file(c.path)) }
+            if let wp = changes.workPath, let pid = model.currentProject?.id {
+                AskAgentMenu(projectId: pid, folder: wp, file: c.path) { Text("Ask Agent") }
+            }
             Button(staged ? "Unstage" : "Stage") { staged ? changes.unstage([c.path]) : changes.stage([c.path]) }
             Button("Copy Path") { copy(c.path) }
         }
@@ -403,5 +444,29 @@ private struct CommitButton: View {
         m.addItem(.separator())
         add("Push", true) { changes.push() }
         return m
+    }
+}
+
+/// Prompts marked for the Changes panel (Settings → Prompts), sent to the focused agent or a new one.
+struct AskAgentMenu<Label: View>: View {
+    @EnvironmentObject var model: AppModel
+    let projectId: String
+    let folder: String
+    /// A changed file (its menu): fills {file}.
+    let file: String?
+    @ViewBuilder var label: () -> Label
+
+    var body: some View {
+        let list = model.templates(project: projectId).filter(\.changes)
+        Menu {
+            if list.isEmpty { Text("No prompts for the Changes panel yet") }
+            ForEach(list) { t in
+                Button(t.name) {
+                    model.askAgent(model.expandTemplate(t, project: model.project(projectId), folder: folder, file: file), projectId: projectId, folder: folder)
+                }
+            }
+            Divider()
+            Button("Edit Prompts…") { SettingsWindow.show(section: .prompts) }
+        } label: { label() }
     }
 }

@@ -178,6 +178,15 @@ enum DebugActions {
                 }
             case "quick_composer_send":   // as Return (false) or ⌘Return (true)
                 QuickComposer.shared.debugSend(show: (p["value"] as? Bool) ?? false)
+            case "commit_message":   // runs ✨ for the current project; the result goes to the app log
+                if let path = m.currentWorkPath {
+                    CommitMessageGen.generate(path: path, projectId: m.currentProject?.id, model: m) { r in
+                        switch r {
+                        case .success(let t): NSLog("commit_message ok: %@", t.replacingOccurrences(of: "\n", with: " / "))
+                        case .failure(let e): NSLog("commit_message failed: %@", e.localizedDescription)
+                        }
+                    }
+                }
             case "usage_left": UserDefaults.standard.set((p["value"] as? Bool) ?? true, forKey: UsageReading.showsLeftKey)
             case "usage_popover": m.usagePopoverOpen = (p["value"] as? Bool) ?? true
             case "dock_position": UserDefaults.standard.set(p["value"] as? String ?? "bottom", forKey: "octomux.dockPosition")

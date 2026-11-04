@@ -131,6 +131,18 @@ one from the prompt button (text bubble) in a new chat or the quick composer, or
 a new chat with it); the text goes into the message box, where you can still change it. `{project}`, `{path}`,
 `{branch}`, `{clipboard}` and `{date}` are filled in when you pick it.
 
+A prompt marked "Also in the Changes panel" shows in the Changes panel's Ask Agent menu (the stacked-sparkles
+button) and in a changed file's right-click menu, where `{file}` is that file and `{base}` the branch Changes
+compares with. It goes to the focused agent when that one works in the same folder and is free, else to a new
+agent session.
+
+**✨ commit messages.** The sparkles in the Changes panel's message box write a commit message from the staged
+changes (or all of them): Octomux runs your agent CLI once in the background (`claude -p` or `codex exec`, no
+tools, nothing saved, hooks and MCP servers off) with the diff and the repository's recent commit subjects, and
+puts the answer in the box for you to edit. Settings → Projects picks the agent and model (Claude: Haiku by
+default) and a style ("Conventional Commits", …) for all projects or one. The diff goes to that agent's provider
+like any prompt, and each message uses a little of your plan (Codex more than Claude Haiku).
+
 ## Quick composer
 
 A small window over any app: pick a project and an agent, type what to do, and press Return; the session starts
