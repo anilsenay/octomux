@@ -348,3 +348,46 @@ final class UsageLabelTests: XCTestCase {
         XCTAssertTrue(Notifier.systemSounds.contains("Glass"))
     }
 }
+
+final class StartOptionTests: XCTestCase {
+    func testFlagsReadAndRewrite() {
+        let a = ["--add-dir", "../x", "--model=sonnet", "--verbose", "--model", "opus"]
+        XCTAssertEqual(ArgFlags.value(a, ["--model"]), "opus", "last one wins")
+        XCTAssertEqual(ArgFlags.set(a, ["--model"], "haiku"), ["--add-dir", "../x", "--verbose", "--model", "haiku"])
+        XCTAssertEqual(ArgFlags.set(a, ["--model"], nil), ["--add-dir", "../x", "--verbose"])
+    }
+
+    func testClaudeOptions() {
+        var o = ProfileStartOptions(kind: .claude, args: ["--dangerously-skip-permissions", "--add-dir", "a"])
+        XCTAssertEqual(o.permission, "bypassPermissions")
+        o.permission = "plan"
+        XCTAssertEqual(o.args, ["--add-dir", "a", "--permission-mode", "plan"])
+        o.effort = "high"
+        o.model = "opus"
+        XCTAssertEqual(o.args, ["--add-dir", "a", "--permission-mode", "plan", "--effort", "high", "--model", "opus"])
+        o.permission = nil
+        XCTAssertNil(o.permission)
+    }
+
+    func testCodexOptions() {
+        var o = ProfileStartOptions(kind: .codex, args: ["-m", "gpt-x", "-c", "model_reasoning_effort=\"low\"", "-c", "other=1"])
+        XCTAssertEqual(o.model, "gpt-x")
+        XCTAssertEqual(o.effort, "low")
+        o.effort = "high"
+        XCTAssertEqual(o.args, ["-m", "gpt-x", "-c", "other=1", "-c", "model_reasoning_effort=\"high\""])
+        o.permission = "bypass"
+        XCTAssertTrue(o.args.contains(ProfileStartOptions.codexBypass))
+        XCTAssertEqual(o.permission, "bypass")
+        o.permission = "on-request"
+        XCTAssertFalse(o.args.contains(ProfileStartOptions.codexBypass))
+        XCTAssertEqual(o.permission, "on-request")
+        o.sandbox = "read-only"
+        XCTAssertEqual(o.sandbox, "read-only")
+    }
+
+    func testOpenInOrder() {
+        let apps = [ExternalApp(id: "a", name: "A"), ExternalApp(id: "b", name: "B"), ExternalApp(id: "c", name: "C")]
+        XCTAssertEqual(OpenIn.ordered(apps, order: ["c", "a"]).map(\.id), ["c", "a", "b"])
+        XCTAssertEqual(OpenIn.ordered(apps, order: []).map(\.id), ["a", "b", "c"])
+    }
+}

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Agent start options:** editing an agent in Settings → Agents sets its model, effort and permission mode
+  (Claude Code) or model, effort, approvals and sandbox (Codex) from lists. They become flags in its Arguments.
+- **Open in:** Settings → General lists the apps for every Open in menu: reorder them, hide some, add any other
+  app, and pick the default for ⌘O. The menus have an "Edit This List…" item.
 - **Notifications:** Send Test in Settings → Notifications, and a sound for each kind (agent finished, needs
   input, error, commands and programs), picked from the macOS alert sounds; picking one plays it. Sound and
   other notification settings now follow the project the notification is about, not the one on screen.

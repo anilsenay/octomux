@@ -15,6 +15,12 @@
 
 Settings → Agents lists the agent CLIs installed on this Mac (Claude Code, Codex and others) and lets you add
 your own (any command, e.g. an alias that uses another account). Pinned agents get a button next to **+**.
+Editing an agent sets its start options from lists: model, effort and permission mode for Claude Code; model,
+effort, approvals and sandbox for Codex. They are written as flags into the agent's Arguments, and a new chat's
+own choices go on top.
+
+Settings → General → Open in picks the apps in every Open in menu, their order, the default one (⌘O and the top
+bar's button), and any other app you add.
 
 Octomux doesn't wrap the agent: it runs your CLI with your config and login. For Claude Code it passes its
 hooks and status line with `--settings` (your `~/.claude/settings.json` is left alone) to know when an agent is

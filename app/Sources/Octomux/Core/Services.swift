@@ -26,13 +26,40 @@ enum OpenIn {
         .init(id: "com.sublimetext.4", name: "Sublime Text"),
     ]
 
+    /// Apps added in Settings → General → Open in (bundle ids), after the known ones.
+    static var customIds: [String] { strings("open_in.custom") }
+
+    /// Every app that can be in the menu and is on this Mac, in the user's order (new ones at the end).
     static var installed: [ExternalApp] {
-        known.filter { $0.id == "com.apple.finder" || $0.url != nil }
+        let custom = customIds.filter { id in !known.contains { $0.id == id } }.map { id in
+            ExternalApp(id: id, name: NSWorkspace.shared.urlForApplication(withBundleIdentifier: id)
+                .map { FileManager.default.displayName(atPath: $0.path).replacingOccurrences(of: ".app", with: "") } ?? id)
+        }
+        let all = (known + custom).filter { $0.id == "com.apple.finder" || $0.url != nil }
+        return ordered(all, order: strings("open_in.order"))
+    }
+
+    /// The apps the Open in menus list: installed and not hidden.
+    static var shown: [ExternalApp] {
+        let hidden = Set(strings("open_in.hidden"))
+        return installed.filter { !hidden.contains($0.id) }
+    }
+
+    static func ordered(_ apps: [ExternalApp], order: [String]) -> [ExternalApp] {
+        apps.enumerated().sorted { a, b in
+            let ia = order.firstIndex(of: a.element.id) ?? Int.max, ib = order.firstIndex(of: b.element.id) ?? Int.max
+            return ia != ib ? ia < ib : a.offset < b.offset
+        }.map(\.element)
     }
 
     static var defaultAppId: String {
         let v = AppModel.shared.setting("open_in.default")?.string ?? "com.apple.finder"
         return installed.contains { $0.id == v } ? v : "com.apple.finder"
+    }
+
+    private static func strings(_ key: String) -> [String] {
+        guard case .array(let a)? = AppModel.shared.settingValue(key, scope: "global") else { return [] }
+        return a.compactMap(\.string)
     }
 
     static func open(_ path: String, appId: String) {
@@ -50,7 +77,7 @@ struct OpenInMenu: View {
     let path: String
     var body: some View {
         Menu("Open in") {
-            ForEach(Array(OpenIn.installed.enumerated()), id: \.element.id) { i, app in
+            ForEach(OpenIn.shown) { app in
                 Button(app.name) { OpenIn.open(path, appId: app.id) }
             }
         }
@@ -71,17 +98,18 @@ struct OpenInButton: View {
             .buttonStyle(ChromeButtonStyle())
             .help("Open in \(OpenIn.installed.first { $0.id == OpenIn.defaultAppId }?.name ?? "Finder") (⌘O)")
             Menu {
-                ForEach(Array(OpenIn.installed.enumerated()), id: \.element.id) { i, app in
+                ForEach(OpenIn.shown) { app in
                     Button("\(app.name)") { OpenIn.open(path, appId: app.id) }
                 }
                 Divider()
                 Menu("Default") {
-                    ForEach(OpenIn.installed) { app in
+                    ForEach(OpenIn.shown) { app in
                         Button((app.id == OpenIn.defaultAppId ? "✓ " : "") + app.name) {
                             AppModel.shared.setSetting("open_in.default", app.id)
                         }
                     }
                 }
+                Button("Edit This List…") { SettingsWindow.show(section: .general); SettingsWindow.selection.open(.general, row: "Open in") }
             } label: { Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold)).foregroundStyle(T.text3).frame(width: 14, height: 26) }
                 .plainMenu().pointerCursor()
         }

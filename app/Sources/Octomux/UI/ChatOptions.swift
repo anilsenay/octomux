@@ -294,3 +294,111 @@ struct AttachmentChips: View {
 
     private static func quoted(_ p: String) -> String { p.contains(" ") ? "\"\(p)\"" : p }
 }
+
+/// Reads and rewrites one option in an agent's argument list (`--model opus`, `--model=opus`, `-c key=value`),
+/// leaving every other argument where it is.
+enum ArgFlags {
+    /// The value of the last occurrence of any of `names`.
+    static func value(_ args: [String], _ names: [String]) -> String? {
+        var out: String?
+        var i = 0
+        while i < args.count {
+            let a = args[i]
+            if names.contains(a), i + 1 < args.count { out = args[i + 1]; i += 2; continue }
+            if let n = names.first(where: { a.hasPrefix($0 + "=") }) { out = String(a.dropFirst(n.count + 1)) }
+            i += 1
+        }
+        return out
+    }
+
+    /// Removes every occurrence of the option, then appends `names[0] value` when there is a value.
+    static func set(_ args: [String], _ names: [String], _ value: String?) -> [String] {
+        var out: [String] = []
+        var i = 0
+        while i < args.count {
+            let a = args[i]
+            if names.contains(a) { i += i + 1 < args.count ? 2 : 1; continue }
+            if names.contains(where: { a.hasPrefix($0 + "=") }) { i += 1; continue }
+            out.append(a)
+            i += 1
+        }
+        if let value, let n = names.first { out += [n, value] }
+        return out
+    }
+
+    static func has(_ args: [String], _ flag: String) -> Bool { args.contains(flag) }
+
+    static func setFlag(_ args: [String], _ flag: String, _ on: Bool) -> [String] {
+        let rest = args.filter { $0 != flag }
+        return on ? rest + [flag] : rest
+    }
+
+    /// A `-c key=value` config override (Codex): its value without quotes.
+    static func config(_ args: [String], _ key: String) -> String? {
+        var out: String?
+        var i = 0
+        while i < args.count {
+            if ["-c", "--config"].contains(args[i]), i + 1 < args.count, args[i + 1].hasPrefix(key + "=") {
+                out = String(args[i + 1].dropFirst(key.count + 1)).trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+                i += 2; continue
+            }
+            i += 1
+        }
+        return out
+    }
+
+    static func setConfig(_ args: [String], _ key: String, _ value: String?) -> [String] {
+        var out: [String] = []
+        var i = 0
+        while i < args.count {
+            if ["-c", "--config"].contains(args[i]), i + 1 < args.count, args[i + 1].hasPrefix(key + "=") { i += 2; continue }
+            out.append(args[i])
+            i += 1
+        }
+        if let value { out += ["-c", "\(key)=\"\(value)\""] }
+        return out
+    }
+}
+
+/// Start options of an agent profile (Settings → Agents → edit): pickers over the same choices as a new chat,
+/// written into the profile's arguments.
+struct ProfileStartOptions {
+    var kind: AgentKind
+    var args: [String]
+
+    var model: String? {
+        get { ArgFlags.value(args, kind == .codex ? ["--model", "-m"] : ["--model"]) }
+        set { args = ArgFlags.set(args, kind == .codex ? ["--model", "-m"] : ["--model"], newValue) }
+    }
+    var effort: String? {
+        get { kind == .codex ? ArgFlags.config(args, "model_reasoning_effort") : ArgFlags.value(args, ["--effort"]) }
+        set { args = kind == .codex ? ArgFlags.setConfig(args, "model_reasoning_effort", newValue) : ArgFlags.set(args, ["--effort"], newValue) }
+    }
+    static let codexBypass = "--dangerously-bypass-approvals-and-sandbox"
+    var permission: String? {
+        get {
+            if kind == .codex { return ArgFlags.has(args, Self.codexBypass) ? "bypass" : ArgFlags.value(args, ["--ask-for-approval", "-a"]) }
+            return ArgFlags.has(args, "--dangerously-skip-permissions") ? "bypassPermissions" : ArgFlags.value(args, ["--permission-mode"])
+        }
+        set {
+            if kind == .codex {
+                args = ArgFlags.setFlag(args, Self.codexBypass, newValue == "bypass")
+                args = ArgFlags.set(args, ["--ask-for-approval", "-a"], newValue == "bypass" ? nil : newValue)
+            } else {
+                args = ArgFlags.setFlag(args, "--dangerously-skip-permissions", false)
+                args = ArgFlags.set(args, ["--permission-mode"], newValue)
+            }
+        }
+    }
+    /// Codex only.
+    var sandbox: String? {
+        get { ArgFlags.value(args, ["--sandbox", "-s"]) }
+        set { args = ArgFlags.set(args, ["--sandbox", "-s"], newValue) }
+    }
+    static let sandboxes: [ChatLaunchOptions.Choice] = [
+        .init(id: nil, title: "CLI settings", detail: "Use the sandbox from Codex's config"),
+        .init(id: "read-only", title: "Read only", detail: "No writes, no network"),
+        .init(id: "workspace-write", title: "Workspace write", detail: "Writes inside the project"),
+        .init(id: "danger-full-access", title: "Full access", detail: "No sandbox — use with care", warn: true),
+    ]
+}

@@ -23,7 +23,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     /// One line under the page title.
     var subtitle: String {
         switch self {
-        case .general: return "The version you run and how Octomux updates itself."
+        case .general: return "The version you run, how Octomux updates itself, and the apps it opens projects in."
         case .appearance: return "Theme, scene, and the icons in the Dock and the menu bar."
         case .terminal: return "Font, cursor and scrollback of every terminal, and what happens when you close one."
         case .notifications: return "When Octomux tells you an agent finished or needs you."
@@ -497,6 +497,8 @@ enum SettingsIndex {
         return [
             e(.general, "Version", "about update release check"),
             e(.general, "Check automatically", "updates sparkle background"),
+            e(.general, "Open in", "editor finder apps vscode cursor zed order hide default external"),
+            e(.general, "Default app", "open in editor ⌘O project"),
             e(.appearance, "Menu bar icon", "status item octopus hidden monochrome"),
             e(.appearance, "App icon", "dock icon monochrome color"),
             e(.appearance, "Theme", "ink grid glass look style"),
@@ -613,6 +615,7 @@ struct GeneralSettings: View {
                 }
             }
         }
+        OpenInSettings()
     }
 
     private var statusText: String {
@@ -805,6 +808,9 @@ struct AgentsSettings: View {
         SettingsFootnote("Tip: for a second Claude account, duplicate the claude agent and set CLAUDE_CONFIG_DIR, or point Command at a wrapper like `claude-work`.")
             .padding(.top, 12)
             .sheet(item: $editing) { p in ProfileEditor(profile: p) { editing = nil } }
+            .onReceive(NotificationCenter.default.publisher(for: .adeDebugPanel)) { n in
+                if let name = n.userInfo?["editProfile"] as? String { editing = model.state.profiles.first { $0.name == name } }
+            }
             .confirmationDialog(confirmTitle, isPresented: Binding(get: { confirming != nil }, set: { if !$0 { confirming = nil } })) {
                 if let c = confirming {
                     Button(c.install ? "Install" : "Remove", role: c.install ? nil : .destructive) { setIntegration(c.profile, install: c.install) }
@@ -929,6 +935,7 @@ struct ProfileEditor: View {
                     .onSubmit(check)
                 if !resolved.isEmpty { Text(resolved).font(.caption).foregroundStyle(T.text2) }
                 TextField("Arguments", text: $argsText).font(.system(.body, design: .monospaced))
+                if profile.kind == .claude || profile.kind == .codex { startOptions }
                 VStack(alignment: .leading) {
                     Text("Environment (KEY=value per line)").font(.caption)
                     TextEditor(text: $envText).font(.system(.body, design: .monospaced)).frame(height: 60)
@@ -966,6 +973,49 @@ struct ProfileEditor: View {
             envText = profile.env.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: "\n")
             check()
         }
+    }
+
+    /// Model, effort and permissions as pickers; they rewrite the matching flags in Arguments.
+    @ViewBuilder private var startOptions: some View {
+        let kind = profile.kind
+        Section {
+            if kind == .claude {
+                choicePicker("Model", ChatLaunchOptions.models(kind), \.model)
+            } else {
+                TextField("Model", text: option(\.model), prompt: Text("CLI default"))
+                    .font(.system(.body, design: .monospaced))
+            }
+            choicePicker("Effort", ChatLaunchOptions.efforts(kind), \.effort)
+            choicePicker(kind == .codex ? "Approvals" : "Permission mode", ChatLaunchOptions.permissions(kind), \.permission)
+            if kind == .codex { choicePicker("Sandbox", ProfileStartOptions.sandboxes, \.sandbox) }
+        } header: {
+            Text("Start options").font(.caption)
+        } footer: {
+            Text("Every new session of this agent starts with these. They are flags in Arguments above; a new chat's own choices go on top.")
+                .font(.caption).foregroundStyle(T.text3).fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func option(_ key: WritableKeyPath<ProfileStartOptions, String?>) -> Binding<String> {
+        Binding(get: { ProfileStartOptions(kind: profile.kind, args: ShellWords.split(argsText))[keyPath: key] ?? "" },
+                set: { v in
+                    var o = ProfileStartOptions(kind: profile.kind, args: ShellWords.split(argsText))
+                    let t = v.trimmingCharacters(in: .whitespaces)
+                    o[keyPath: key] = t.isEmpty ? nil : t
+                    argsText = o.args.map(\.shellQuoted).joined(separator: " ")
+                })
+    }
+
+    private func choicePicker(_ title: String, _ choices: [ChatLaunchOptions.Choice], _ key: WritableKeyPath<ProfileStartOptions, String?>) -> some View {
+        let b = option(key)
+        let extra = b.wrappedValue.isEmpty || choices.contains { $0.id == b.wrappedValue } ? nil : b.wrappedValue
+        return Picker(title, selection: b) {
+            ForEach(choices) { c in
+                Text(c.warn ? "\(c.title) ⚠︎" : c.title).tag(c.id ?? "")
+            }
+            if let extra { Text(extra).tag(extra) }
+        }
+        .help(choices.first { $0.id == b.wrappedValue }?.detail ?? "")
     }
 
     func check() {
