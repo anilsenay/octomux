@@ -48,6 +48,8 @@ struct MainView: View {
         .allowsHitTesting(model.power == .running)
         .overlay { if model.power != .running && !model.stopFalling { StoppedOverlay() } }
         .overlay(alignment: .top) { if model.power == .running { DisconnectBanner().padding(.top, T.m.topH + 6) } }
+        // Until the daemon's first catalog arrives: the app icon, not an empty window.
+        .overlay { if !model.loaded && model.lastError == nil { LaunchCover().transition(.opacity) } }
         // App update offer / download progress / "Relaunch Now", above the status bar.
         .overlay(alignment: .bottomTrailing) { UpdateToast().padding(.trailing, 14).padding(.bottom, 34) }
         .onChange(of: model.power) { _, p in if p == .running { TerminalHost.shared.render(force: true); TerminalHost.shared.renderDock(force: true) } }
@@ -267,6 +269,35 @@ struct StoppedOverlay: View {
 
 /// The daemon has been unreachable for a few seconds (it can't start, or a remote host is cut off). Open
 /// terminals keep working (they talk to their sessions directly); lists, new tabs and states don't.
+/// Covers the window while Octomux connects to its daemon at launch. Appears after a moment (a fast start
+/// shows nothing), and explains itself if it takes long.
+struct LaunchCover: View {
+    @State private var shown = Date()
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 0.5)) { ctx in
+            let t = ctx.date.timeIntervalSince(shown)
+            ZStack {
+                Rectangle().fill(T.frame)
+                VStack(spacing: 14) {
+                    Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 72, height: 72)
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text(t > 8 ? "Still starting Octomux's background service…" : "Starting Octomux…")
+                            .font(T.body).foregroundStyle(T.text2)
+                    }
+                    if t > 15 {
+                        Button("Open Logs") { NSWorkspace.shared.open(Paths.home.appendingPathComponent("logs")) }
+                            .controlSize(.small)
+                    }
+                }
+                .opacity(t > 0.3 ? 1 : 0)
+            }
+        }
+        .ignoresSafeArea()
+    }
+}
+
 struct DisconnectBanner: View {
     @EnvironmentObject var model: AppModel
 

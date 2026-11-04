@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- While Octomux connects to its background service at launch (a few seconds right after an update), the window
+  shows "Starting Octomux…" instead of an empty sidebar.
+
 ## 0.1.1
 
 - Only one copy of Octomux runs at a time: opening a second copy (say, one in Downloads and one in

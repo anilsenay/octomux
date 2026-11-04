@@ -10,6 +10,9 @@ final class AppModel: ObservableObject {
     let client = DaemonClient()
     @Published private(set) var state = DaemonState()
     @Published var connected = false
+    /// The first catalog from the daemon has arrived. Until then the window shows `LaunchCover`, not an empty
+    /// catalog (after an update the daemon restarts first, which takes a few seconds).
+    @Published private(set) var loaded = false
     /// Since when the daemon is unreachable (nil while connected): a banner after a few seconds.
     @Published var disconnectedSince: Date?
 
@@ -233,6 +236,7 @@ final class AppModel: ObservableObject {
 
     private func applyMerged(_ s: DaemonState) {
         connected = true
+        if !loaded { withAnimation(.easeOut(duration: 0.25)) { loaded = true } }
         disconnectedSince = nil
         // A daemon answers again: started from Settings, or by someone else (`octomux` CLI) while stopped.
         // A last state from the daemon that is stopping right now doesn't count.
