@@ -3,7 +3,7 @@ import SwiftUI
 
 enum SettingsSection: String, CaseIterable, Identifiable {
     case general = "General", appearance = "Appearance", terminal = "Terminal", notifications = "Notifications", keyboard = "Keyboard"
-    case agents = "Agents", workspaces = "Workspaces", sessions = "Sessions", hosts = "Hosts"
+    case agents = "Agents", workspaces = "Workspaces", projects = "Projects", sessions = "Sessions", hosts = "Hosts"
     case features = "Features", advanced = "Advanced"
     var id: String { rawValue }
     var icon: String {
@@ -12,6 +12,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .workspaces: return "square.stack"
         case .agents: return "sparkles"
         case .sessions: return "cpu"
+        case .projects: return "folder"
         case .appearance: return "paintbrush"
         case .terminal: return "terminal"
         case .notifications: return "bell"
@@ -31,6 +32,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .keyboard: return "Every shortcut Octomux handles. Keys not bound here go straight to the terminal program."
         case .agents: return "The agents in the + menu, how they start, and how Octomux follows their state."
         case .workspaces: return "Workspaces group projects. Switch with the dots under the sidebar, a two-finger swipe on it, or ⌃1…⌃9."
+        case .projects: return "A project's name, folder, color and icon, where its worktrees go, and the scripts they run."
         case .sessions: return "What runs in your tabs right now, what it costs, and when idle agents stop."
         case .hosts: return "Machines that run their own Octomux daemon, reached over SSH."
         case .features: return "Optional parts of Octomux you can turn on or off."
@@ -43,7 +45,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     /// Sidebar groups, in order.
     static let groups: [(title: String, items: [SettingsSection])] = [
         ("App", [.general, .appearance, .terminal, .notifications, .keyboard]),
-        ("Work", [.agents, .workspaces, .sessions, .hosts]),
+        ("Work", [.agents, .workspaces, .projects, .sessions, .hosts]),
         ("Advanced", [.features, .advanced]),
     ]
 }
@@ -53,7 +55,7 @@ final class SettingsWindow {
     static let selection = SettingsSelection()
 
     static func show(section: SettingsSection? = nil) {
-        if let section { selection.section = section; selection.query = "" }
+        if let section { selection.section = section; selection.query = ""; selection.project = nil }
         if window == nil {
             let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 940, height: 660),
                              styleMask: [.titled, .closable, .resizable, .miniaturizable], backing: .buffered, defer: false)
@@ -80,6 +82,8 @@ final class SettingsSelection: ObservableObject {
     /// A row to scroll to and flash once its page is shown (a search result that was picked).
     @Published var target: String?
     @Published var flash: String?
+    /// The project Settings → Projects shows (nil: the current one).
+    @Published var project: String?
     /// Scroll position per section. The view is rebuilt when the theme or scene changes (`.id(revision)`),
     /// which would otherwise jump back to the top after every pick.
     var scrollOffsets: [SettingsSection: CGFloat] = [:]
@@ -156,6 +160,7 @@ struct SettingsView: View {
         case .appearance: AppearanceSettings()
         case .terminal: TerminalSettings()
         case .notifications: NotificationSettings()
+        case .projects: ProjectSettings()
         case .sessions: SessionsSettings()
         case .hosts: HostsSettings()
         case .features: FeatureSettings()
@@ -543,6 +548,12 @@ enum SettingsIndex {
             e(.agents, "Meters show", "usage limits used left remaining quota plan"),
             e(.workspaces, "Workspaces", "rename color reorder default agent new chat"),
             e(.workspaces, "Archived projects", "unarchive"),
+            e(.projects, "Project", "rename name folder path color icon emoji mascot image"),
+            e(.projects, "Worktree folder", "worktrees root location directory"),
+            e(.projects, "Delete the branch with its worktree", "remove worktree branch cleanup"),
+            e(.projects, "Setup", "script worktree install dependencies env bootstrap"),
+            e(.projects, "Teardown", "script worktree cleanup stop remove"),
+            e(.projects, "All projects", "worktree defaults"),
             e(.sessions, "Running", "cpu memory ram processes activity monitor stop"),
             e(.sessions, "Stop idle agents", "auto stop idle timeout sleep memory"),
             e(.hosts, "Hosts", "remote ssh server daemon connect"),

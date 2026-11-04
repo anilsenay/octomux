@@ -1,0 +1,207 @@
+import SwiftUI
+
+/// Settings → Projects: one project's name, folder, color, icon, worktree folder and scripts, plus the
+/// worktree defaults for all projects.
+struct ProjectSettings: View {
+    @EnvironmentObject var model: AppModel
+    @EnvironmentObject var sel: SettingsSelection
+    @State private var name = ""
+    @State private var setup = ""
+    @State private var teardown = ""
+    @State private var loadedFor: String?
+
+    var body: some View {
+        let projects = model.state.projects.filter { !$0.archived }
+        if let p = projects.first(where: { $0.id == sel.project }) ?? model.currentProject ?? projects.first {
+            picker(p, projects)
+            projectGroup(p)
+            worktreeGroup(p)
+            scriptsGroup(p)
+            defaultsGroup
+            Color.clear.frame(height: 0)
+                .onAppear { load(p) }
+                .onChange(of: p.id) { _, _ in load(p) }
+        } else {
+            Text("Add a project first (⌘⇧O).").font(.system(size: 13)).foregroundStyle(T.text2)
+            defaultsGroup
+        }
+    }
+
+    // MARK: Groups
+
+    private func picker(_ p: Project, _ projects: [Project]) -> some View {
+        HStack(spacing: 10) {
+            Text("Project").font(.system(size: 12.5)).foregroundStyle(T.text2)
+            Menu {
+                ForEach(model.state.workspaces.sorted { $0.sort < $1.sort }) { w in
+                    let ps = projects.filter { $0.workspaceId == w.id }.sorted { $0.sort < $1.sort }
+                    if !ps.isEmpty {
+                        Section(w.name) {
+                            ForEach(ps) { x in Button(x.name) { sel.project = x.id } }
+                        }
+                    }
+                }
+            } label: {
+                Text(p.name).font(.system(size: 13, weight: .medium))
+            }
+            .menuStyle(.button).fixedSize()
+            ProjectIconView(project: p, size: 18)
+            Spacer()
+        }
+        .padding(.horizontal, 2)
+    }
+
+    private func projectGroup(_ p: Project) -> some View {
+        let remote = model.host(for: p.id).isRemote
+        return SettingsGroup("Project") {
+            SettingRow("Name") {
+                TextField("", text: $name).textFieldStyle(.roundedBorder).frame(width: 220)
+                    .onSubmit { commitName(p) }
+            }
+            SettingRow("Folder", desc: (p.path as NSString).abbreviatingWithTildeInPath + (remote ? " on \(model.host(for: p.id).name)" : ""), mono: true) {
+                if !remote {
+                    Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: p.path)]) }
+                        .buttonStyle(SecondaryButtonStyle())
+                }
+                Button("Copy Path") { copy(p.path) }.buttonStyle(SecondaryButtonStyle())
+            }
+            SettingRow("Color") {
+                ColorDots(selected: p.color) { model.updateProject(p.id, ["color": $0]) }
+            }
+            SettingRow("Icon", desc: iconDesc(p)) {
+                ProjectIconView(project: p, size: 22)
+                Menu("Change") {
+                    Button("Folder") { model.updateProject(p.id, ["icon": ["kind": "folder"]]) }
+                    Menu("Mascot") {
+                        ForEach(Mascot.names, id: \.self) { m in
+                            Button(m.capitalized) { model.updateProject(p.id, ["icon": ["kind": "mascot", "value": m]]) }
+                        }
+                    }
+                    Button("Emoji…") { ProjectEditor.emoji(p) }
+                    if !remote {
+                        Button("Image…") { ProjectEditor.image(p) }
+                        if let found = ProjectEditor.detectLogo(p.path) {
+                            Button("Use \(URL(fileURLWithPath: found).lastPathComponent)") {
+                                model.updateProject(p.id, ["icon": ["kind": "image", "value": found]])
+                            }
+                        }
+                    }
+                }
+                .menuStyle(.button).fixedSize()
+            }
+        }
+        .onDisappear { commitName(p) }
+    }
+
+    private func worktreeGroup(_ p: Project) -> some View {
+        let remote = model.host(for: p.id).isRemote
+        let own = model.settingValue("worktrees.root", scope: "project:\(p.id)")?.string
+        let ownDelete = model.settingValue("worktrees.delete_branch", scope: "project:\(p.id)")?.bool
+        return SettingsGroup("Worktrees") {
+            SettingRow("Worktree folder", desc: remote ? "Worktrees of a project on another host go next to it."
+                       : "New worktrees go to " + Self.pattern(p.path) + ".",
+                       modified: own != nil, onReset: { model.setSetting("worktrees.root", nil, scope: "project:\(p.id)") }) {
+                if !remote {
+                    Button("Choose…") { if let f = chooseFolder() { model.setSetting("worktrees.root", f, scope: "project:\(p.id)") } }
+                        .buttonStyle(SecondaryButtonStyle())
+                }
+            }
+            SettingRow("Delete the branch with its worktree", desc: "Ticks “Also delete the branch” when you remove a worktree. A branch that isn't merged asks first.",
+                       modified: ownDelete != nil, onReset: { model.setSetting("worktrees.delete_branch", nil, scope: "project:\(p.id)") }) {
+                SettingSwitch(isOn: Binding(get: { model.setting("worktrees.delete_branch", project: p.id)?.bool ?? false },
+                                            set: { model.setSetting("worktrees.delete_branch", $0, scope: "project:\(p.id)") }))
+            }
+        }
+    }
+
+    private func scriptsGroup(_ p: Project) -> some View {
+        SettingsGroup("Scripts", desc: "Shell commands for this project's worktrees. They get OCTOMUX_PROJECT_PATH (the main checkout), OCTOMUX_WORKTREE and OCTOMUX_BRANCH. Commands you run often belong in the dock's Actions (▶).") {
+            script("Setup", desc: "Runs in a new worktree, in the dock, right after it is created: install dependencies, copy .env files.",
+                   text: $setup, key: "setup", p)
+            script("Teardown", desc: "Runs in the worktree before it is removed (this Mac only, up to 2 minutes): stop its services, clean up.",
+                   text: $teardown, key: "teardown", p)
+        }
+    }
+
+    private var defaultsGroup: some View {
+        let root = model.settingValue("worktrees.root", scope: "global")?.string
+        return SettingsGroup("All projects", desc: "Used by every project that doesn't set its own.") {
+            SettingRow("Worktree folder", desc: root.map { "Worktrees go to " + ($0 as NSString).abbreviatingWithTildeInPath + "/<project>/<branch>." }
+                       ?? "Next to each project, in <project>.worktrees/<branch>. Projects on other hosts always use this.") {
+                if root != nil {
+                    Button("Next to Project") { model.setSetting("worktrees.root", nil) }.buttonStyle(SecondaryButtonStyle())
+                }
+                Button("Choose…") { if let f = chooseFolder() { model.setSetting("worktrees.root", f) } }.buttonStyle(SecondaryButtonStyle())
+            }
+            SettingRow("Delete the branch with its worktree", desc: "The default for the checkbox when you remove a worktree.") {
+                SettingSwitch(isOn: Binding(get: { model.settingValue("worktrees.delete_branch", scope: "global")?.bool ?? false },
+                                            set: { model.setSetting("worktrees.delete_branch", $0 ? true : nil) }))
+            }
+        }
+    }
+
+    private func script(_ title: String, desc: String, text: Binding<String>, key: String, _ p: Project) -> some View {
+        let saved = model.settingValue("worktrees.\(key)", scope: "project:\(p.id)")?.string ?? ""
+        return SettingBlock {
+            HStack {
+                Text(title).font(.system(size: 13, weight: .medium))
+                Spacer()
+                if text.wrappedValue != saved {
+                    Button("Revert") { text.wrappedValue = saved }.buttonStyle(SecondaryButtonStyle())
+                    Button("Save") {
+                        let v = text.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                        model.setSetting("worktrees.\(key)", v.isEmpty ? nil : v, scope: "project:\(p.id)")
+                    }
+                    .buttonStyle(PrimaryButtonStyle())
+                }
+            }
+            Text(desc).font(.system(size: 11.5)).foregroundStyle(T.text2).fixedSize(horizontal: false, vertical: true)
+            TextEditor(text: text).font(T.mono(12)).frame(height: 64)
+                .scrollContentBackground(.hidden).padding(6)
+                .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(T.surface))
+                .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(T.border))
+        }
+        .settingAnchor(title)
+    }
+
+    // MARK: Helpers
+
+    /// Where a new worktree of this project goes, with `<branch>` for the branch's folder.
+    static func pattern(_ project: String) -> String {
+        let path = (Worktrees.defaultPath(project: project, branch: "b") as NSString).deletingLastPathComponent
+        return (path as NSString).abbreviatingWithTildeInPath + "/<branch>"
+    }
+
+    private func load(_ p: Project) {
+        guard loadedFor != p.id else { return }
+        loadedFor = p.id
+        name = p.name
+        setup = model.settingValue("worktrees.setup", scope: "project:\(p.id)")?.string ?? ""
+        teardown = model.settingValue("worktrees.teardown", scope: "project:\(p.id)")?.string ?? ""
+    }
+
+    private func commitName(_ p: Project) {
+        let n = name.trimmingCharacters(in: .whitespaces)
+        if !n.isEmpty, n != p.name { model.updateProject(p.id, ["name": n]) }
+    }
+
+    private func iconDesc(_ p: Project) -> String {
+        switch p.icon.kind {
+        case "mascot": return "Mascot: \(p.icon.value?.capitalized ?? "")"
+        case "symbol": return "Symbol"
+        case "emoji": return "Emoji"
+        case "image": return ((p.icon.value ?? "") as NSString).lastPathComponent
+        default: return "The project's initial on its color"
+        }
+    }
+
+    private func chooseFolder() -> String? {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.prompt = "Use Folder"
+        guard panel.runModal() == .OK, let u = panel.url else { return nil }
+        return (u.path as NSString).abbreviatingWithTildeInPath
+    }
+}

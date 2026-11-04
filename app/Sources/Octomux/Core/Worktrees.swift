@@ -82,11 +82,33 @@ final class Worktrees: ObservableObject {
         return res
     }
 
-    /// `<parent>/<repo>.worktrees/<branch-slug>`
+    /// `<parent>/<repo>.worktrees/<branch-slug>`, or `<root>/<repo>/<branch-slug>` with a worktree folder set
+    /// (Settings → Projects, or for all projects; this Mac's projects only).
     static func defaultPath(project: String, branch: String) -> String {
+        defaultPath(project: project, branch: branch, root: customRoot(project))
+    }
+
+    static func defaultPath(project: String, branch: String, root: String?) -> String {
         let url = URL(fileURLWithPath: project)
         let slug = branch.replacingOccurrences(of: "/", with: "-").filter { $0.isLetter || $0.isNumber || "-_.".contains($0) }
+        if let root { return URL(fileURLWithPath: root).appendingPathComponent(url.lastPathComponent).appendingPathComponent(slug).path }
         return url.deletingLastPathComponent().appendingPathComponent(url.lastPathComponent + ".worktrees").appendingPathComponent(slug).path
+    }
+
+    /// The worktree folder set for this project (project setting, else the global one); nil: next to the project.
+    static func customRoot(_ projectPath: String) -> String? {
+        let m = AppModel.shared
+        guard !m.host(forPath: projectPath).0.isRemote else { return nil }
+        let pid = m.state.projects.first { $0.path == projectPath }?.id
+        guard let v = m.setting("worktrees.root", project: pid)?.string?.trimmingCharacters(in: .whitespaces), !v.isEmpty else { return nil }
+        return (v as NSString).expandingTildeInPath
+    }
+
+    /// Made where Octomux puts worktrees (next to the project, or under the worktree folder).
+    static func isOurs(project: String, path: String) -> Bool {
+        if path.hasPrefix(project + ".worktrees/") { return true }
+        guard let root = customRoot(project) else { return false }
+        return path.hasPrefix(defaultPath(project: project, branch: "x", root: root).dropLast(1))
     }
 
     /// Creates a new branch in a new worktree (or checks out an existing branch).
@@ -141,16 +163,73 @@ extension AppModel {
             let r = Worktrees.create(project: project.path, branch: b)
             DispatchQueue.main.async {
                 switch r {
-                case .success(let path): self.newSession(profileId: profileId, projectId: project.id, worktree: path)
+                case .success(let path):
+                    self.runWorktreeSetup(project: project, path: path, branch: b)
+                    self.newSession(profileId: profileId, projectId: project.id, worktree: path)
                 case .failure(let e): self.lastError = "git worktree add failed: \(e)"
                 }
             }
         }
     }
 
-    /// Closes the worktree's sessions and removes it (asks before discarding changes).
+    // MARK: Worktree scripts (Settings → Projects)
+
+    func worktreeScript(_ which: String, project: Project) -> String? {
+        let v = setting("worktrees.\(which)", project: project.id)?.string?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return v?.isEmpty == false ? v : nil
+    }
+
+    /// What a script sees: the main checkout, the worktree and its branch.
+    static func worktreeEnv(project: Project, path: String, branch: String) -> String {
+        "export OCTOMUX_PROJECT_PATH=\(project.path.shellQuoted) OCTOMUX_WORKTREE=\(path.shellQuoted) OCTOMUX_BRANCH=\(branch.shellQuoted)"
+    }
+
+    /// The setup script runs in the new worktree, in the dock, so its output stays visible.
+    func runWorktreeSetup(project: Project, path: String, branch: String) {
+        guard let script = worktreeScript("setup", project: project) else { return }
+        setDockOpen(project.id, true)
+        let cmd = Self.worktreeEnv(project: project, path: path, branch: branch) + "; " + script
+        client(for: project.id).call("session.create", ["project_id": project.id, "placement": "dock", "worktree": path,
+                                                         "command": cmd, "title": "Setup \(branch)"], completion: report)
+    }
+
+    /// The teardown script, before the folder goes (this Mac only, up to 2 minutes). Nil when it passed or
+    /// there is none; else what went wrong.
+    func runWorktreeTeardown(project: Project, path: String) -> String? {
+        guard let script = worktreeScript("teardown", project: project) else { return nil }
+        if host(for: project.id).isRemote { return "teardown scripts run on this Mac only; skipped" }
+        let branch = Worktrees.shared.info(path)?.branch ?? ""
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh")
+        p.arguments = ["-lc", Self.worktreeEnv(project: project, path: path, branch: branch) + "; " + script]
+        p.currentDirectoryURL = URL(fileURLWithPath: path)
+        // Output to a file: a pipe nobody reads while we wait would stall a chatty script.
+        let log = FileManager.default.temporaryDirectory.appendingPathComponent("octomux-teardown-\(UUID().uuidString).log")
+        FileManager.default.createFile(atPath: log.path, contents: nil)
+        defer { try? FileManager.default.removeItem(at: log) }
+        guard let fh = try? FileHandle(forWritingTo: log) else { return "teardown didn't start: no log file" }
+        p.standardOutput = fh
+        p.standardError = fh
+        do { try p.run() } catch { return "teardown didn't start: \(error.localizedDescription)" }
+        let deadline = Date().addingTimeInterval(120)
+        while p.isRunning && Date() < deadline { Thread.sleep(forTimeInterval: 0.1) }
+        try? fh.close()
+        if p.isRunning { p.terminate(); return "teardown script still running after 2 minutes; stopped it" }
+        let text = String(decoding: ((try? Data(contentsOf: log)) ?? Data()).suffix(400), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        return p.terminationStatus == 0 ? nil : "teardown script exited with \(p.terminationStatus)\(text.isEmpty ? "" : ": \(text)")"
+    }
+
+    /// `git branch -d` (only when merged; -D after the user agreed to lose its commits).
+    static func deleteBranch(project: String, branch: String, force: Bool) -> (Bool, String) {
+        Worktrees.gitWithError(["branch", force ? "-D" : "-d", branch], in: project)
+    }
+
+    /// Closes the worktree's sessions, runs the teardown script, removes it (asks before discarding changes),
+    /// and deletes its branch when the box is ticked.
     func removeWorktree(project: Project, path: String) {
-        let lock = Worktrees.shared.info(path)?.locked
+        let info = Worktrees.shared.info(path)
+        let lock = info?.locked
+        let branch = info.flatMap { $0.detached || $0.isMain ? nil : $0.branch }
         let a = NSAlert()
         a.messageText = "Remove worktree “\((path as NSString).lastPathComponent)”?"
         if let lock {
@@ -158,23 +237,31 @@ extension AppModel {
                 + "Removing it deletes the folder, uncommitted changes included. To only get it out of the sidebar, use Hide instead."
             a.addButton(withTitle: "Unlock and Remove").hasDestructiveAction = true
         } else {
-            a.informativeText = "Its sessions are closed and the folder is deleted. The branch is kept."
+            a.informativeText = "Its sessions are closed and the folder is deleted."
+                + (worktreeScript("teardown", project: project) != nil ? " The project's teardown script runs first." : "")
             a.addButton(withTitle: "Remove").hasDestructiveAction = true
         }
         a.addButton(withTitle: "Cancel")
-        guard a.runModal() == .alertFirstButtonReturn else { return }
-        if lock != nil {
-            for s in state.sessions where s.worktree == path { remove(s.id, confirm: false) }
-            DispatchQueue.global(qos: .userInitiated).async {
-                let r = Worktrees.remove(project: project.path, path: path, force: true, locked: true)
-                DispatchQueue.main.async { if case .failure(let e) = r { self.lastError = "git worktree remove failed: \(e)" } }
-            }
-            return
+        var box: NSButton?
+        if let branch {
+            let b = NSButton(checkboxWithTitle: "Also delete the branch “\(branch)”", target: nil, action: nil)
+            b.state = (setting("worktrees.delete_branch", project: project.id)?.bool ?? false) ? .on : .off
+            a.accessoryView = b
+            box = b
         }
+        guard a.runModal() == .alertFirstButtonReturn else { return }
+        performWorktreeRemoval(project: project, path: path, locked: lock != nil, dropBranch: box?.state == .on ? branch : nil)
+    }
+
+    /// After the question: close its sessions, teardown, `git worktree remove`, then the branch.
+    func performWorktreeRemoval(project: Project, path: String, locked: Bool, dropBranch: String?) {
+        let lock: String? = locked ? "" : nil
         for s in state.sessions where s.worktree == path { remove(s.id, confirm: false) }
         DispatchQueue.global(qos: .userInitiated).async {
-            var r = Worktrees.remove(project: project.path, path: path, force: false)
-            if case .failure(let e) = r, e.contains("modified or untracked") || e.contains("--force") {
+            var notes: [String] = []
+            if let t = self.runWorktreeTeardown(project: project, path: path) { notes.append(t) }
+            var r = Worktrees.remove(project: project.path, path: path, force: lock != nil, locked: lock != nil)
+            if lock == nil, case .failure(let e) = r, e.contains("modified or untracked") || e.contains("--force") {
                 var force = false
                 DispatchQueue.main.sync {
                     let b = NSAlert()
@@ -186,9 +273,25 @@ extension AppModel {
                 }
                 if force { r = Worktrees.remove(project: project.path, path: path, force: true) } else { return }
             }
-            DispatchQueue.main.async {
-                if case .failure(let e) = r { self.lastError = "git worktree remove failed: \(e)" }
+            if case .failure(let e) = r { notes.append("git worktree remove failed: \(e)") }
+            if case .success = r, let dropBranch {
+                var (ok, err) = Self.deleteBranch(project: project.path, branch: dropBranch, force: false)
+                if !ok, err.contains("not fully merged") {
+                    var force = false
+                    DispatchQueue.main.sync {
+                        let b = NSAlert()
+                        b.messageText = "“\(dropBranch)” is not merged"
+                        b.informativeText = "Its commits are not in another branch. Delete it anyway and lose them?"
+                        b.addButton(withTitle: "Delete Branch").hasDestructiveAction = true
+                        b.addButton(withTitle: "Keep Branch")
+                        force = b.runModal() == .alertFirstButtonReturn
+                    }
+                    if force { (ok, err) = Self.deleteBranch(project: project.path, branch: dropBranch, force: true) } else { ok = true }
+                }
+                if !ok { notes.append("git branch -d \(dropBranch) failed: \(err)") }
+                Worktrees.shared.refresh(project.path)
             }
+            DispatchQueue.main.async { if !notes.isEmpty { self.lastError = notes.joined(separator: " · ") } }
         }
     }
 }
@@ -204,7 +307,8 @@ struct NewWorktreeSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("New worktree").font(T.title)
-            Text("Creates a branch in its own folder next to the project, so an agent can work there without touching your checkout.")
+            Text("Creates a branch in its own folder, so an agent can work there without touching your checkout."
+                 + (model.worktreeScript("setup", project: project) != nil ? " The project's setup script then runs in the dock." : ""))
                 .font(T.body).foregroundStyle(T.text2).fixedSize(horizontal: false, vertical: true)
             TextField("Branch name (e.g. feat/usage-limits)", text: $branch).textFieldStyle(.roundedBorder).onSubmit(create)
             if !branch.isEmpty {

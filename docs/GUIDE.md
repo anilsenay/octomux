@@ -55,6 +55,12 @@ Workspace at the top of those pages.
 Project right-click → **New Worktree…** creates a branch in `<parent>/<repo>.worktrees/<branch>` and opens it
 with an agent or a terminal. Worktrees show under their project (right-click to open, reveal or remove).
 
+Settings → Projects (or a project's right-click → Project Settings…) holds a project's name, color and icon,
+where its worktrees go (any folder, as `<folder>/<repo>/<branch>`, for one project or all), and two scripts: a
+setup script that runs in the dock right after a worktree is created (install dependencies, copy `.env`) and a
+teardown script that runs before one is removed. Both get `OCTOMUX_PROJECT_PATH`, `OCTOMUX_WORKTREE` and
+`OCTOMUX_BRANCH`. Removing a worktree can delete its branch too; a branch that isn't merged asks first.
+
 ⌘⌥B opens the right panel, which follows the focused session's folder:
 
 - **Files**: tree, filter, preview, Open in.

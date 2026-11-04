@@ -423,3 +423,10 @@ final class DiagnosticsTests: XCTestCase {
         XCTAssertGreaterThan(size, 100)
     }
 }
+
+final class WorktreePathTests: XCTestCase {
+    func testDefaultAndCustomRoot() {
+        XCTAssertEqual(Worktrees.defaultPath(project: "/p/app", branch: "feat/x", root: nil), "/p/app.worktrees/feat-x")
+        XCTAssertEqual(Worktrees.defaultPath(project: "/p/app", branch: "feat/x", root: "/w"), "/w/app/feat-x")
+    }
+}

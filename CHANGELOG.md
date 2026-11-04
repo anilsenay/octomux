@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **Settings → Projects:** a project's name, folder, color and icon in one place (also from its right-click
+  menu, Project Settings…), where its worktrees go, and setup / teardown scripts for its worktrees (setup runs in
+  the dock after a worktree is created, teardown before it is removed; both get the project, worktree and
+  branch as variables). A worktree folder can also be set for all projects.
+- **Remove Worktree** can delete the branch as well ("Also delete the branch", default per project); a branch
+  that isn't merged asks before it goes.
 - **Settings → Sessions:** every running session with the CPU and memory of its processes (shell or agent plus
   what it started), with Open and Stop. "Stop idle agents" (off by default: 15 min to 4 hours) stops agents
   that finished and sat without output; Resume continues them. Terminals are never stopped for being idle.

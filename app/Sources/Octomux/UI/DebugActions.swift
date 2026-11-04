@@ -88,6 +88,10 @@ enum DebugActions {
                 if let id, let proj = m.project(id) {
                     m.newWorktree(project: proj, branch: p["value"] as? String ?? "feat/x", open: p["profile_id"] as? String)
                 }
+            case "remove_worktree":   // the real removal without its question: teardown, then {"drop_branch": "<b>"}
+                if let id, let proj = m.project(id), let path = p["value"] as? String {
+                    m.performWorktreeRemoval(project: proj, path: path, locked: false, dropBranch: p["drop_branch"] as? String)
+                }
             case "remove_worktree_noconfirm":
                 if let id, let proj = m.project(id), let path = p["value"] as? String {
                     for s in m.state.sessions where s.worktree == path { m.remove(s.id, confirm: false) }

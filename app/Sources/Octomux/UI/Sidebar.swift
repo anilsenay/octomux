@@ -436,7 +436,7 @@ struct WorktreeRow: View {
         var lines = [path]
         if let w, w.detached { lines.append("Detached HEAD at \(w.head) (no branch)") }
         if let lock = w?.locked { lines.append("Locked" + (lock.isEmpty ? "" : ": \(lock)")) }
-        if !path.hasPrefix(project.path + ".worktrees/") { lines.append("Not created by Octomux") }
+        if !Worktrees.isOurs(project: project.path, path: path) { lines.append("Not created by Octomux") }
         return lines.joined(separator: "\n")
     }
 }
@@ -459,6 +459,7 @@ struct ProjectMenu: View {
         }
         Divider()
         Button("Rename…") { ProjectEditor.rename(project) }
+        Button("Project Settings…") { SettingsWindow.show(section: .projects); SettingsWindow.selection.project = project.id }
         Menu("Color") {
             ForEach(Palette.colors, id: \.self) { c in
                 Button { model.updateProject(project.id, ["color": c]) } label: { Text(Self.colorName(c)) }
