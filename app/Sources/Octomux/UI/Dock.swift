@@ -137,6 +137,7 @@ struct DockView: View {
                         ForEach(sessions) { s in
                             Chip(selected: s.id == sel, action: { if let pid { model.selectDock(pid, s.id) } }) {
                                 Circle().fill(s.isDormant ? T.text3 : s.kind == .action ? T.green : T.text3.opacity(0.7)).frame(width: 6, height: 6)
+                                    .help(s.isDormant ? "Exited" : s.kind == .action ? "Action running" : "Running")
                                 Text(s.displayTitle).lineLimit(1)
                                 if s.isDormant { Text("exited").font(.system(size: 10)).foregroundStyle(T.text3) }
                                 Button { model.remove(s.id, confirm: false) } label: { Image(systemName: "xmark").font(.system(size: 7.5, weight: .bold)) }

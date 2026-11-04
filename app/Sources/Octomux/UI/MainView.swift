@@ -601,9 +601,12 @@ struct TabChip: View {
             .animation(.easeOut(duration: 0.2), value: lead?.id)
             if width != nil { Spacer(minLength: 0) }
             if let s = ids.compactMap({ model.session($0) }).first(where: { $0.activity == .needsInput || $0.activity == .working || $0.unread }), !hover {
-                if s.activity == .needsInput { Circle().fill(T.amber).frame(width: 6, height: 6) }
-                else if s.activity == .working { Circle().fill(T.accent).frame(width: 6, height: 6) }
-                else { Circle().fill(T.green).frame(width: 6, height: 6) }
+                Group {
+                    if s.activity == .needsInput { Circle().fill(T.amber).frame(width: 6, height: 6) }
+                    else if s.activity == .working { Circle().fill(T.accent).frame(width: 6, height: 6) }
+                    else { Circle().fill(T.green).frame(width: 6, height: 6) }
+                }
+                .help("\(s.displayTitle): \(activityHelp(s))")
             }
             Button { model.closeTab(tab.id, confirmBusy: false) } label: {
                 Image(systemName: "xmark").font(.system(size: 8, weight: .bold))
@@ -1086,6 +1089,7 @@ struct PinnedTabChip: View {
                     .frame(width: 6, height: 6)
                     .overlay(Circle().stroke(T.frame, lineWidth: 1.5))
                     .offset(x: -3, y: 3)
+                    .help("\(busy.displayTitle): \(activityHelp(busy))")
             }
         }
         .background(RoundedRectangle(cornerRadius: 7, style: .continuous)

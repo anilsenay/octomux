@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Shells still running:** when Claude ends its turn with commands still running in the background (a build it
+  waits for, a dev server it left up), the session shows a terminal mark with their count, stays under Finished,
+  and the notification says "1 shell still running". When they end, Claude goes on by itself as before.
+- Every status mark (dots, badges, counts) explains itself on hover.
 - **Intel Macs:** the app is universal now (Apple Silicon and Intel).
 - **Homebrew:** `brew install --cask anilsenay/tap/octomux`, and `brew uninstall --zap --cask octomux` removes
   everything. The cask follows each release.

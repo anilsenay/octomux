@@ -179,6 +179,14 @@ pub struct Session {
     /// stop, restart or crash. Cleared when the agent exits by itself (`/exit`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resume_agent: Option<ResumeAgent>,
+    /// Shells the agent started in the background that are still running (Claude's "N shells still running").
+    /// The turn may be done while they run; when one ends the agent is told and may go on by itself.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub background_shells: u32,
+}
+
+fn is_zero(n: &u32) -> bool {
+    *n == 0
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

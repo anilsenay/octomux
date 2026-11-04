@@ -144,7 +144,7 @@ struct PaneStackFan: View {
             .opacity(open || k < 3 ? 1 : 0)
             .contentShape(Rectangle())
             .onTapGesture { model.selectSession(s.id) }
-            .help(open ? s.displayTitle : "")
+            .help(open ? "\(s.displayTitle) · \(activityHelp(s))" : "")
             .padding(.leading, x)
             // Collapsed: the tile (centered in its chip box) starts at the stack's left edge.
             .offset(x: open ? 0 : -3.5, y: y)
@@ -318,12 +318,14 @@ struct ActivityIndicator: View {
                 case .needsInput:
                     Badge(text: "input").fixedSize().help("Needs your input")
                 case .error:
-                    Circle().fill(T.red).frame(width: 7, height: 7).help("Error")
-                case .done where session.unread:
-                    Circle().fill(T.green).frame(width: 7, height: 7).help("Finished")
+                    Circle().fill(T.red).frame(width: 7, height: 7).help("Hit an error")
+                case .done where session.unread && (session.backgroundShells ?? 0) == 0:
+                    Circle().fill(T.green).frame(width: 7, height: 7).help(activityHelp(session))
                 default:
-                    if session.unread {
-                        Circle().fill(T.accent).frame(width: 6, height: 6)
+                    if let n = session.backgroundShells, n > 0 {
+                        BackgroundShells(count: n, unread: session.unread)
+                    } else if session.unread {
+                        Circle().fill(T.accent).frame(width: 6, height: 6).help(activityHelp(session))
                     } else {
                         EmptyView()
                     }
@@ -331,6 +333,39 @@ struct ActivityIndicator: View {
             }
         }
         .frame(minWidth: 14, minHeight: 14)
+    }
+}
+
+/// The turn is over but shells the agent started still run (a build it waits for, or a dev server it left up):
+/// the finished dot, if unread, plus a terminal with the count.
+struct BackgroundShells: View {
+    let count: Int
+    let unread: Bool
+
+    var body: some View {
+        HStack(spacing: 3) {
+            if unread { Circle().fill(T.green).frame(width: 7, height: 7) }
+            Image(systemName: "apple.terminal").font(.system(size: 9, weight: .semibold))
+            Text("\(count)").font(.system(size: 9.5, weight: .semibold)).monospacedDigit()
+        }
+        .foregroundStyle(T.text2)
+        .fixedSize()
+        .help(count == 1 ? "Finished · 1 shell still running in the background" : "Finished · \(count) shells still running in the background")
+    }
+}
+
+/// What a session's status mark means, for its tooltip (sidebar, tabs, Agents, dock).
+func activityHelp(_ s: Session) -> String {
+    if s.state == .interrupted { return "Restoring…" }
+    if s.isDormant { return s.state == .stopped ? "Stopped" : "Exited" }
+    let shells = s.backgroundShells ?? 0
+    let bg = shells == 0 ? "" : shells == 1 ? " · 1 shell still running in the background" : " · \(shells) shells still running in the background"
+    switch s.activity {
+    case .working: return "Working"
+    case .needsInput: return "Needs your input"
+    case .error: return "Hit an error"
+    case .done: return (s.unread ? "Finished, not looked at yet" : "Finished") + bg
+    case .idle: return (s.unread ? "New output since you last looked" : "Idle") + bg
     }
 }
 

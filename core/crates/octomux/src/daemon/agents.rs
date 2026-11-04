@@ -818,6 +818,17 @@ pub fn resume_flags(app: &str, argv: &[String]) -> Vec<String> {
     out
 }
 
+/// A command Claude Code's Bash tool runs: `<shell> -c source <config>/shell-snapshots/snapshot-….sh … && eval …`.
+/// (Its MCP servers, hooks and plugin updates are children too, but don't look like this.)
+pub fn is_claude_bash(args: &[String]) -> bool {
+    args.iter().any(|a| a.contains("/shell-snapshots/snapshot-"))
+}
+
+/// Claude's Bash commands running right now under `claude_pid`, given `(pid, ppid)` of every process.
+pub fn claude_shells(claude_pid: i32, table: &[(i32, i32)]) -> u32 {
+    table.iter().filter(|(_, pp)| *pp == claude_pid).filter(|(p, _)| crate::procs::args(*p).is_some_and(|a| is_claude_bash(&a))).count() as u32
+}
+
 /// `resume_flags` of a running agent process; None when its command line can't be read.
 pub fn running_resume_flags(app: &str, pid: i32) -> Option<Vec<String>> {
     crate::procs::args(pid).map(|a| resume_flags(app, &a))
@@ -876,6 +887,16 @@ mod codex_tests {
         assert_eq!(ts, util::parse_iso_millis("2026-11-04T07:25:08.678Z"));
         assert_eq!(codex_last_turn_event("{\"type\":\"event_msg\",\"payload\":{\"type\":\"task_complete\"}}").map(|t| t.0), Some(CodexTurn::Complete));
         assert_eq!(codex_last_turn_event("{\"type\":\"response_item\"}"), None);
+    }
+
+    #[test]
+    fn claude_bash_commands() {
+        let v = |s: &[&str]| s.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+        assert!(is_claude_bash(&v(&["/bin/zsh", "-c", "source /Users/a/.claude-work/shell-snapshots/snapshot-zsh-1793787532941-9dohcc.sh 2>/dev/null || true && eval 'sleep 45'"])));
+        // Claude's other children: MCP servers, caffeinate, plugin updates, hooks.
+        assert!(!is_claude_bash(&v(&["mcp-grafana"])));
+        assert!(!is_claude_bash(&v(&["caffeinate", "-i", "-t", "300"])));
+        assert!(!is_claude_bash(&v(&["/bin/sh", "-c", "say done"])));
     }
 
     #[test]

@@ -55,6 +55,8 @@ pub struct Daemon {
     codex_scan: Mutex<HashMap<String, (i32, Instant)>>,
     /// Sessions we marked as waiting because Codex shows a startup dialog (see agents::codex_startup_dialog).
     codex_dialog: Mutex<HashSet<String>>,
+    /// Claude sessions → their claude process, for counting its background shells.
+    claude_pid: Mutex<HashMap<String, i32>>,
     /// Per CODEX_HOME: `session_index.jsonl`'s mtime and the conversation names in it.
     codex_names: Mutex<HashMap<std::path::PathBuf, (std::time::SystemTime, HashMap<String, String>)>>,
     /// `daemon.stop_all` is taking everything down: sessions that die now are restored on the next start.
@@ -223,6 +225,7 @@ pub fn run(paths: Paths) -> Result<()> {
         codex_scan: Mutex::new(HashMap::new()),
         codex_names: Mutex::new(HashMap::new()),
         codex_dialog: Mutex::new(HashSet::new()),
+        claude_pid: Mutex::new(HashMap::new()),
         stopping_all: std::sync::atomic::AtomicBool::new(false),
     });
 
@@ -283,6 +286,7 @@ pub fn run(paths: Paths) -> Result<()> {
             d.poll_agent_titles();
             d.check_reporting_programs();
             d.track_codex();
+            d.track_background_shells();
         });
     }
 
@@ -1032,7 +1036,65 @@ impl Daemon {
         }
     }
 
+    /// Claude's Bash commands still running (`Session::background_shells`), for every live Claude session. A
+    /// command running while Claude works is just the current tool; the count matters once the turn is done.
+    pub(crate) fn track_background_shells(&self) {
+        let targets: Vec<String> = {
+            let st = self.state.lock().unwrap();
+            st.sessions
+                .iter()
+                .filter(|s| s.state == SessionState::Running)
+                .filter(|s| {
+                    s.agent_app.as_deref() == Some("claude-code")
+                        || (s.kind == SessionKind::Agent && s.profile_id.as_ref().is_some_and(|pid| st.profiles.iter().any(|p| &p.id == pid && p.kind == AgentKind::Claude)))
+                })
+                .map(|s| s.id.clone())
+                .collect()
+        };
+        let counts: HashMap<String, u32> = if targets.is_empty() {
+            HashMap::new()
+        } else {
+            let table = process_table();
+            let mut pids = self.claude_pid.lock().unwrap();
+            pids.retain(|id, _| targets.contains(id));
+            targets
+                .iter()
+                .map(|id| {
+                    let pid = pids.get(id).copied().filter(|p| unsafe { libc::kill(*p, 0) } == 0).or_else(|| match self.find_program_pid(id, Some("claude-code")) {
+                        Some(Some(p)) => Some(p),
+                        _ => None,
+                    });
+                    match pid {
+                        Some(p) => {
+                            pids.insert(id.clone(), p);
+                            (id.clone(), agents::claude_shells(p, &table))
+                        }
+                        None => (id.clone(), 0),
+                    }
+                })
+                .collect()
+        };
+        let mut changed = false;
+        {
+            let mut st = self.state.lock().unwrap();
+            for s in st.sessions.iter_mut() {
+                let n = counts.get(&s.id).copied().unwrap_or(0);
+                if s.background_shells != n {
+                    s.background_shells = n;
+                    changed = true;
+                }
+            }
+        }
+        if changed {
+            self.changed();
+        }
+    }
+
     fn set_activity(&self, id: &str, new: Activity) {
+        if new == Activity::Done {
+            // Fresh, for the notification: the count from a second ago could still hold the turn's last command.
+            self.track_background_shells();
+        }
         let info = {
             let mut st = self.state.lock().unwrap();
             let Some(s) = st.sessions.iter_mut().find(|s| s.id == id) else { return };
@@ -1064,7 +1126,14 @@ impl Daemon {
         let name = if !s.custom_title.is_empty() { s.custom_title.clone() } else if !s.agent_title.is_empty() { s.agent_title.clone() } else if !s.title.is_empty() { s.title.clone() } else { profile.clone().unwrap_or("Session".into()) };
         let agent = profile.or_else(|| s.agent_app.as_deref().map(app_label)).unwrap_or_else(|| "Terminal".into());
         let note = match new {
-            Activity::Done => Some(("done", format!("{agent} finished"), format!("{project} · {name}"))),
+            Activity::Done => {
+                let bg = match s.background_shells {
+                    0 => String::new(),
+                    1 => " · 1 shell still running".into(),
+                    n => format!(" · {n} shells still running"),
+                };
+                Some(("done", format!("{agent} finished{bg}"), format!("{project} · {name}")))
+            }
             Activity::NeedsInput => Some(("needs_input", format!("{agent} needs your input"), format!("{project} · {name}"))),
             Activity::Error => Some(("error", format!("{agent} hit an error"), format!("{project} · {name}"))),
             _ => None,
@@ -2015,6 +2084,7 @@ impl Daemon {
             extra_args: p.get("extra_args").and_then(|v| serde_json::from_value::<Vec<String>>(v.clone()).ok()).unwrap_or_default(),
             agent_app: None,
             reports_status: false,
+            background_shells: 0,
             resume_agent: None,
         };
         {
@@ -2204,4 +2274,16 @@ mod turn_tests {
         let chunk = rec("user", r#""why did I see [Request interrupted by user] earlier?""#, "2026-11-03T10:00:02.000Z");
         assert_eq!(last_turn_record(&chunk).map(|r| r.0), Some(false));
     }
+}
+
+/// `(pid, ppid)` of every process.
+fn process_table() -> Vec<(i32, i32)> {
+    let Ok(out) = std::process::Command::new("ps").args(["-A", "-o", "pid=,ppid="]).output() else { return vec![] };
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter_map(|l| {
+            let mut it = l.split_whitespace();
+            Some((it.next()?.parse().ok()?, it.next()?.parse().ok()?))
+        })
+        .collect()
 }

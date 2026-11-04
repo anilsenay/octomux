@@ -198,6 +198,7 @@ struct MenuBarPanel: View {
         return Button { show(r.open) } label: {
             HStack(spacing: 9) {
                 Circle().fill(r.dot ?? .clear).frame(width: 7, height: 7)
+                    .help(r.session.map(activityHelp) ?? "")
                 VStack(alignment: .leading, spacing: 2) {
                     Text(r.title).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(T.text).lineLimit(1)
                     HStack(spacing: 4) {
@@ -323,7 +324,7 @@ struct NotificationRow: View {
             .frame(width: 28, height: 28)
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
-                    if !item.read { Circle().fill(Self.color(n.kind)).frame(width: 6, height: 6) }
+                    if !item.read { Circle().fill(Self.color(n.kind)).frame(width: 6, height: 6).help("Unread · \(Self.status(n.kind))") }
                     Text(session?.displayTitle ?? n.title).font(.system(size: 12.5, weight: .semibold))
                         .foregroundStyle(item.read ? T.text2 : T.text).lineLimit(1)
                     Spacer(minLength: 6)
@@ -346,7 +347,10 @@ struct NotificationRow: View {
     /// The headline is the session; this line says what happened.
     static func message(_ n: AppNotification, hasSession: Bool) -> String {
         switch n.kind {
-        case "done": return "Finished a turn"
+        case "done":
+            // "Claude finished · 1 shell still running": keep the note after the agent's name.
+            let note = n.title.components(separatedBy: " · ").dropFirst().joined(separator: " · ")
+            return note.isEmpty ? "Finished a turn" : "Finished a turn · \(note)"
         case "needs_input": return "Needs your input"
         case "error": return "Hit an error"
         case "command_done": return [n.title, n.body.components(separatedBy: " · ").last].compactMap { $0 }.joined(separator: " · ")

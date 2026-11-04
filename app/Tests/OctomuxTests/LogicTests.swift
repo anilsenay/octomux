@@ -257,3 +257,11 @@ final class CodexChatTests: XCTestCase {
         XCTAssertEqual(rest["command"] as? String, "console.log(1)")
     }
 }
+
+final class NotificationTextTests: XCTestCase {
+    func testDoneKeepsBackgroundNote() {
+        let n = { (t: String) in AppNotification(sessionId: "s", projectId: "p", kind: "done", title: t, body: "proj · name") }
+        XCTAssertEqual(NotificationRow.message(n("Claude finished"), hasSession: true), "Finished a turn")
+        XCTAssertEqual(NotificationRow.message(n("Claude finished · 1 shell still running"), hasSession: true), "Finished a turn · 1 shell still running")
+    }
+}

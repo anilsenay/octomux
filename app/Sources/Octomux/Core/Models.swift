@@ -110,6 +110,8 @@ struct Session: Codable, Identifiable, Equatable {
     var agentApp: String?
     /// The program reports its own state (OSC 7501).
     var reportsStatus: Bool?
+    /// Shells the agent left running in the background (Claude's "N shells still running").
+    var backgroundShells: Int?
 
     /// Launched as an agent, or a terminal where one runs now.
     var isAgent: Bool { kind == .agent || agentApp != nil }
@@ -118,6 +120,7 @@ struct Session: Codable, Identifiable, Equatable {
         case id, kind, title, cwd, state, activity, unread, placement, command, worktree
         case agentApp = "agent_app"
         case reportsStatus = "reports_status"
+        case backgroundShells = "background_shells"
         case transcriptPath = "transcript_path"
         case agentTitle = "agent_title"
         case projectId = "project_id"

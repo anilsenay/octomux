@@ -184,7 +184,8 @@ struct AgentsList: View {
             case .working: return .working
             case .error: return .error
             case .done where s.unread: return .finished
-            default: return s.unread ? .finished : .idle
+            // Its turn is over but shells it started still run: not idle yet.
+            default: return s.unread || (s.backgroundShells ?? 0) > 0 ? .finished : .idle
             }
         }
     }

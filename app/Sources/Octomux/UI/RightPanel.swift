@@ -546,7 +546,7 @@ struct FilesPanel: View {
                 FolderIcon(open: open, tint: dirty ? T.amber.opacity(0.85) : nil)
                 Text(n.name).font(.system(size: 12.5)).foregroundStyle(dirty ? T.amber : T.text).lineLimit(1)
                 Spacer()
-                if dirty { Circle().fill(T.amber.opacity(0.7)).frame(width: 5, height: 5).padding(.trailing, 6) }
+                if dirty { Circle().fill(T.amber.opacity(0.7)).frame(width: 5, height: 5).padding(.trailing, 6).help("Has changed files") }
             }
             .padding(.leading, CGFloat(depth) * 14 + 6).frame(height: 24)
             .background(HoverFill())

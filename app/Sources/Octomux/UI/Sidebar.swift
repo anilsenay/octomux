@@ -338,13 +338,17 @@ struct ProjectRow: View {
             }
             if collapsed && !sessions.isEmpty {
                 Text("\(sessions.count)").font(T.caption).foregroundStyle(T.text3)
+                    .help(sessions.count == 1 ? "1 session" : "\(sessions.count) sessions")
             }
             Spacer(minLength: 4)
             if hover || model.debugHoverProject == project.id {
                 ProjectQuickActions(project: project)
             } else {
-                if waiting > 0 { Badge(text: "\(waiting)") }
-                else if collapsed && unread > 0 { Circle().fill(T.green).frame(width: 6, height: 6) }
+                if waiting > 0 { Badge(text: "\(waiting)").help(waiting == 1 ? "1 session needs your input" : "\(waiting) sessions need your input") }
+                else if collapsed && unread > 0 {
+                    Circle().fill(T.green).frame(width: 6, height: 6)
+                        .help(unread == 1 ? "1 session finished, not looked at yet" : "\(unread) sessions finished, not looked at yet")
+                }
                 if let b = git.branch(for: project.path) {
                     Text(b).font(T.mono(10.5)).foregroundStyle(T.text3).lineLimit(1).frame(maxWidth: 80, alignment: .trailing)
                 }
