@@ -10,11 +10,27 @@ VARIANT="${2:-}"
 # Version: VERSION file (marketing) and OCTOMUX_BUILD (monotonic build number; release.sh uses the commit count).
 VERSION="${OCTOMUX_VERSION:-$(cat "$ROOT/VERSION" 2>/dev/null || echo 0.1.0)}"
 BUILD="${OCTOMUX_BUILD:-$(git -C "$ROOT" rev-list --count HEAD 2>/dev/null || echo 1)}"
+# OCTOMUX_ARCHS: "arm64 x86_64" for a universal app (release.sh; needs the universal libghostty from
+# tools/build-ghostty.sh and `rustup target add x86_64-apple-darwin`). Unset: this Mac's architecture only.
+ARCHS="${OCTOMUX_ARCHS:-}"
 cd "$ROOT/core"
-if [ "$CONF" = release ]; then cargo build --release -q; CLI="$ROOT/core/target/release/octomux"; else cargo build -q; CLI="$ROOT/core/target/debug/octomux"; fi
+if [ -n "$ARCHS" ] && [ "$CONF" = release ]; then
+    CLIS=()
+    for a in $ARCHS; do
+        t="$([ "$a" = arm64 ] && echo aarch64 || echo "$a")-apple-darwin"
+        cargo build --release -q --target "$t"; CLIS+=("$ROOT/core/target/$t/release/octomux")
+    done
+    CLI="$ROOT/core/target/octomux-universal"; lipo -create "${CLIS[@]}" -output "$CLI"
+elif [ "$CONF" = release ]; then cargo build --release -q; CLI="$ROOT/core/target/release/octomux"; else cargo build -q; CLI="$ROOT/core/target/debug/octomux"; fi
 cd "$ROOT/app"
-if [ "$CONF" = release ]; then swift build -c release 2>&1 | grep -E "error|warning: unre" || true; BIN="$(swift build -c release --show-bin-path)/Octomux";
+SWIFT_ARCHS=(); for a in $ARCHS; do SWIFT_ARCHS+=(--arch "$a"); done
+if [ "$CONF" = release ]; then swift build -c release ${SWIFT_ARCHS[@]+"${SWIFT_ARCHS[@]}"} 2>&1 | grep -E "error|warning: unre" || true; BIN="$(swift build -c release ${SWIFT_ARCHS[@]+"${SWIFT_ARCHS[@]}"} --show-bin-path)/Octomux";
 else swift build 2>&1 | grep -E "error" || true; BIN="$(swift build --show-bin-path)/Octomux"; fi
+for f in "$BIN" "$CLI"; do
+    for a in $ARCHS; do
+        lipo -archs "$f" 2>/dev/null | tr ' ' '\n' | grep -qx "$a" || { echo "$f: no $a slice (did the build fail?)" >&2; exit 1; }
+    done
+done
 if [ "$VARIANT" = dev ]; then
     NAME="Octomux Dev"; BUNDLE_ID=dev.octomux.app.dev; OCTOMUX_FEED_URL=""; OCTOMUX_ED_PUBLIC_KEY=""
 else

@@ -27,17 +27,23 @@ jobs:
       - id: ghostty
         run: echo "commit=$(sed -n 's/^GHOSTTY_COMMIT=\([0-9a-f]*\).*/\1/p' tools/build-ghostty.sh)" >> "$GITHUB_OUTPUT"
       - id: cache
-        uses: actions/cache@v6
+        uses: actions/cache/restore@v6
         with:
           path: vendor/GhosttyKit.xcframework
-          key: ghosttykit-${{ steps.ghostty.outputs.commit }}-${{ runner.os }}-${{ runner.arch }}
+          key: ghosttykit-native-${{ steps.ghostty.outputs.commit }}-${{ runner.os }}-${{ runner.arch }}
       - if: steps.cache.outputs.cache-hit != 'true'
         uses: mlugg/setup-zig@v2
         with: { version: 0.17.0 }
       - if: steps.cache.outputs.cache-hit != 'true'
         run: |
           xcodebuild -downloadComponent MetalToolchain || true
-          tools/build-ghostty.sh
+          GHOSTTY_TARGET=native tools/build-ghostty.sh
+      # Saved right away, so a later failing step doesn't throw the build away.
+      - if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: vendor/GhosttyKit.xcframework
+          key: ${{ steps.cache.outputs.cache-primary-key }}
       - run: swift build
         working-directory: app
       - run: swift test

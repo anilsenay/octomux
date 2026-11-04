@@ -1333,7 +1333,11 @@ private struct SceneBuilder {
 
     func snow() {
         let cols = Int(W / 12) + 1
-        let heights = (0..<cols).map { c in groundCap(CGFloat(c) * 12, 1 + Int((sin(Double(c) * 0.11) + 1) * 1.4 + (sin(Double(c) * 0.037 + 2) + 1))) }
+        let heights = (0..<cols).map { c -> Int in
+            let x = Double(c)
+            let wave: Double = (sin(x * 0.11) + 1) * 1.4 + (sin(x * 0.037 + 2) + 1)
+            return groundCap(CGFloat(c) * 12, 1 + Int(wave))
+        }
         let top = heights.max() ?? 1
         let rows = (0..<top).map { r in String((0..<cols).map { heights[$0] >= top - r ? "#" : " " }) }
         add(Art.sprite(rows, ["#": a("drift", "#FFFFFF")], ink: a("driftInk", "#C3D3E3"), seed: 80), x: 0, y: H - CGFloat(top) * 12, opacity: dark ? 0.55 : 0.95)

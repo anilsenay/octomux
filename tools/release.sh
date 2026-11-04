@@ -20,7 +20,7 @@ SIGN_ID="${OCTOMUX_SIGN_ID:-$(security find-identity -v -p codesigning | sed -n 
 if [ -n "$(git status --porcelain)" ]; then echo "warning: uncommitted changes go into this build" >&2; fi
 
 echo "== build $VERSION ($(git rev-list --count HEAD))"
-tools/build-app.sh release
+OCTOMUX_ARCHS="arm64 x86_64" tools/build-app.sh release   # universal: Apple Silicon and Intel
 APP="$ROOT/build/Octomux.app"
 DIST="$ROOT/dist"
 mkdir -p "$DIST"
