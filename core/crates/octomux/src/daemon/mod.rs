@@ -2054,15 +2054,8 @@ impl Daemon {
             }
             "tab.close" => {
                 let id = req("id")?;
-                // A tab is a view: agent sessions outlive it (they stay in the sidebar, running or stopped, until
-                // removed there). Terminals end with their tab.
-                let sessions = self.state.lock().unwrap().tabs.iter().find(|t| t.id == id).map(|t| t.layout.sessions()).unwrap_or_default();
-                for sid in sessions {
-                    let agent = self.state.lock().unwrap().sessions.iter().any(|s| s.id == sid && s.kind == SessionKind::Agent);
-                    if !agent {
-                        self.remove_session(&sid)?;
-                    }
-                }
+                // A tab is a view: its sessions outlive it (they stay in the sidebar, running or stopped, until
+                // removed there).
                 self.state.lock().unwrap().tabs.retain(|t| t.id != id);
                 self.store.lock().unwrap().delete("tab", &id)?;
                 self.changed();

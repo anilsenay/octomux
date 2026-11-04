@@ -2,18 +2,20 @@
 
 ## Unreleased
 
-- **Agent sessions outlive their tab:** closing an agent's tab or pane (×, ⌘W) leaves the session in the sidebar,
-  still running; clicking it opens it in a tab again. A session is deleted only with Remove in the sidebar.
-  Closing a tab that also holds terminals still ends those terminals.
+- **Sessions outlive their tab:** closing a tab or pane (×, ⌘W) leaves its sessions, agents and terminals alike, in
+  the sidebar and still running; clicking one opens it in a tab again. A session ends with Stop and Remove in the
+  sidebar, and Stop now asks first when a program (a dev server, `sleep`) or a busy agent would be stopped
+  (Settings → Terminal → Ask before stopping a running program).
 - **Discard changes** in the Changes panel: per file (hover, or right-click) and for a whole group, after a
   confirmation. New files go to the Trash.
 - **Preview tabs:** a click in the Files panel opens the file in a preview tab (italic) that the next file
   replaces; double-click the file or the tab, or edit it, to keep it.
-- Ask before closing now sees programs behind shell wrappers that run your shell in a terminal of their own (it
+- Ask before stopping now sees programs behind shell wrappers that run your shell in a terminal of their own (it
   saw nothing there). A program whose binary is named after its version (Claude Code) shows by its name.
 - Buttons now take clicks on their whole area, not only on their text or icon (the − / + in Settings → Terminal,
   bordered buttons across Settings).
-- The Settings sidebar no longer jumps when you switch pages (the previous page's sections showed for a moment).
+- The Settings sidebar no longer jumps when you switch pages (the previous page's sections showed for a moment);
+  the MCP page, whose sections load after it opens, no longer lists them there.
 - MCP Check also lists the servers Claude Code gets from your claude.ai account and plugins, with their status.
 - With Codex as the commit-message agent, its model is picked from the models your Codex offers.
 - Recording the quick composer shortcut no longer opens the composer when you press the current one.

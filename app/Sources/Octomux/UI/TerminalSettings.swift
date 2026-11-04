@@ -75,7 +75,7 @@ struct TerminalSettings: View {
         }
 
         SettingsGroup("Closing") {
-            SettingRow("Ask before closing a running program", desc: "When you close a tab or pane where an agent is working or waiting for you, or where a program other than the shell runs (a dev server, vim, a build).") {
+            SettingRow("Ask before stopping a running program", desc: "When you stop or remove a session where an agent is working or waiting for you, or where a program other than the shell runs (a dev server, vim, a build). Closing a tab doesn't stop anything: its sessions stay in the sidebar.") {
                 SettingSwitch(isOn: $confirmClose)
             }
         }

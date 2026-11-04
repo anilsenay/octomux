@@ -1,7 +1,7 @@
 import AppKit
 
-/// "Ask before closing a running program" (Settings → Terminal): what closing some sessions would stop,
-/// and the question before it happens.
+/// "Ask before stopping a running program" (Settings → Terminal): what stopping or removing some sessions
+/// would end, and the question before it happens. Closing a tab doesn't ask: its sessions stay in the sidebar.
 extension AppModel {
     static let confirmCloseKey = "octomux.confirmCloseRunning"
 
@@ -63,7 +63,8 @@ extension AppModel {
     }
 
     /// Runs `close` now, or after asking when something in the sessions is still running.
-    func closeAsking(_ ids: [String], noun: String, many: Int = 1, button: String, close: @escaping () -> Void) {
+    /// `verb`: how the question names the act ("Closing the tab stops it", "Stopping it ends it").
+    func closeAsking(_ ids: [String], noun: String, many: Int = 1, button: String, verb: String = "Closing", close: @escaping () -> Void) {
         guard confirmsClose, !ids.isEmpty else { close(); return }
         let key = ids.sorted().joined(separator: ",")
         guard !CloseQuestion.open.contains(key) else { return }   // a second ⌘W while the first one asks
@@ -71,28 +72,29 @@ extension AppModel {
         runningWork(ids) { work in
             defer { CloseQuestion.open.remove(key) }
             guard !work.isEmpty else { close(); return }
-            if Self.askToClose(work, noun: noun, many: many, button: button) { close() }
+            if Self.askToClose(work, noun: noun, many: many, button: button, verb: verb) { close() }
         }
     }
 
     /// The question itself. True when the user chose to close.
-    static func askToClose(_ work: [RunningWork], noun: String, many: Int, button: String) -> Bool {
-        let a = closeAlert(work, noun: noun, many: many, button: button)
+    static func askToClose(_ work: [RunningWork], noun: String, many: Int, button: String, verb: String = "Closing") -> Bool {
+        let a = closeAlert(work, noun: noun, many: many, button: button, verb: verb)
         let ok = a.runModal() == .alertFirstButtonReturn
         if ok, a.suppressionButton?.state == .on { UserDefaults.standard.set(false, forKey: confirmCloseKey) }
         return ok
     }
 
-    static func closeAlert(_ work: [RunningWork], noun: String, many: Int, button: String) -> NSAlert {
+    static func closeAlert(_ work: [RunningWork], noun: String, many: Int, button: String, verb: String = "Closing") -> NSAlert {
         let a = NSAlert()
+        let stopping = verb == "Stopping"
         if many == 1, work.count == 1, let w = work.first {
-            a.messageText = "Close “\(w.session.displayTitle)”?"
-            a.informativeText = "\(w.sentence) Closing the \(noun) stops it."
+            a.messageText = stopping ? "Stop “\(w.session.displayTitle)”?" : "Close “\(w.session.displayTitle)”?"
+            a.informativeText = stopping ? "\(w.sentence) Stopping the session ends it." : "\(w.sentence) Closing the \(noun) stops it."
         } else {
-            a.messageText = many > 1 ? "Close \(many) \(noun)s?" : "Close this \(noun)?"
+            a.messageText = stopping ? "Stop \(many) \(noun)s?" : many > 1 ? "Close \(many) \(noun)s?" : "Close this \(noun)?"
             let list = work.prefix(4).map { "• \($0.session.displayTitle): \($0.short)" }.joined(separator: "\n")
             let more = work.count > 4 ? "\n• and \(work.count - 4) more" : ""
-            a.informativeText = "Still running:\n\(list)\(more)\n\nClosing stops \(work.count == 1 ? "it" : "them")."
+            a.informativeText = "Still running:\n\(list)\(more)\n\n\(verb) stops \(work.count == 1 ? "it" : "them")."
         }
         a.addButton(withTitle: button)
         a.addButton(withTitle: "Cancel")

@@ -413,14 +413,11 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// Closes a tab. With `confirmBusy`, asks first when something in it still runs (see `closeAsking`).
-    func closeTab(_ tabId: String, confirmBusy: Bool) {
-        guard let tab = state.tabs.first(where: { $0.id == tabId }) else { return }
-        let close = { self.client(for: tabId).call("tab.close", ["id": tabId], completion: self.report) }
-        guard confirmBusy else { close(); return }
-        // Agents keep running without their tab (they stay in the sidebar): only terminals are stopped.
-        let ending = tab.layout.sessions.filter { session($0)?.kind != .agent }
-        closeAsking(ending, noun: "tab", button: "Close Tab", close: close)
+    /// Closes a tab. Its sessions stay in the sidebar, still running (a tab is a view): they end with Stop
+    /// and Remove there, so nothing is asked here.
+    func closeTab(_ tabId: String) {
+        guard state.tabs.contains(where: { $0.id == tabId }) else { return }
+        client(for: tabId).call("tab.close", ["id": tabId], completion: report)
     }
 
     /// Starts a session and remembers the choice for the tab bar's button.
@@ -643,13 +640,19 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func stop(_ id: String) { if ensureManageable() { client(for: id).call("session.stop", ["id": id], completion: report) } }
+    /// Stops a session; with `confirm`, asks first when a program or a busy agent would be stopped (`closeAsking`).
+    func stop(_ id: String, confirm: Bool = true) {
+        guard ensureManageable() else { return }
+        let stop = { self.client(for: id).call("session.stop", ["id": id], completion: self.report) }
+        guard confirm else { stop(); return }
+        closeAsking([id], noun: "session", button: "Stop", verb: "Stopping", close: stop)
+    }
     func restart(_ id: String) { if ensureManageable() { client(for: id).call("session.restart", ["id": id], completion: report) } }
 
-    /// Closes a pane. An agent's session only leaves its tab (it stays in the sidebar, still running, until
-    /// removed there); a terminal ends.
+    /// Closes a pane. Its session only leaves the tab: it stays in the sidebar, still running, until it is
+    /// stopped and removed there.
     func closePane(_ id: String) {
-        guard let s = session(id), s.kind == .agent, s.placement == .tab else { remove(id); return }
+        guard let s = session(id), s.placement == .tab else { remove(id); return }
         guard ensureManageable() else { return }
         client(for: id).call("session.detach", ["id": id], completion: report)
     }

@@ -882,7 +882,7 @@ fn agent_started_with_a_first_message_gets_it_as_cli_prompt() {
 }
 
 #[test]
-fn closing_a_tab_keeps_agent_sessions_and_ends_terminals() {
+fn closing_a_tab_keeps_its_sessions() {
     let e = Env::new();
     let p = e.project();
     let script = fake_agent(&e);
@@ -893,20 +893,19 @@ fn closing_a_tab_keeps_agent_sessions_and_ends_terminals() {
     let tab = e.call("state.get", json!({}))["tabs"][0]["id"].as_str().unwrap().to_string();
 
     e.call("tab.close", json!({ "id": tab }));
-    wait_until(Duration::from_secs(6), || !e.holder_alive(&term));
     let st = e.call("state.get", json!({}));
     assert!(st["tabs"].as_array().unwrap().is_empty());
     let ids: Vec<&str> = st["sessions"].as_array().unwrap().iter().filter_map(|s| s["id"].as_str()).collect();
-    assert!(ids.contains(&agent.as_str()) && !ids.contains(&term.as_str()), "{ids:?}");
-    assert!(e.holder_alive(&agent), "the agent keeps running without its tab");
+    assert!(ids.contains(&agent.as_str()) && ids.contains(&term.as_str()), "{ids:?}");
+    assert!(e.holder_alive(&agent) && e.holder_alive(&term), "sessions keep running without their tab");
 
     // Opened again from the sidebar: a new tab for the same session.
-    e.call("session.move", json!({ "id": agent, "placement": "tab" }));
+    e.call("session.move", json!({ "id": term, "placement": "tab" }));
     let st = e.call("state.get", json!({}));
-    assert_eq!(st["tabs"][0]["layout"]["session_id"], agent.as_str(), "{}", st["tabs"]);
+    assert_eq!(st["tabs"][0]["layout"]["session_id"], term.as_str(), "{}", st["tabs"]);
     // Closing its pane only takes it out of the tab.
-    e.call("session.detach", json!({ "id": agent }));
+    e.call("session.detach", json!({ "id": term }));
     let st = e.call("state.get", json!({}));
     assert!(st["tabs"].as_array().unwrap().is_empty());
-    assert_eq!(e.session(&agent)["state"], "running");
+    assert_eq!(e.session(&term)["state"], "running");
 }

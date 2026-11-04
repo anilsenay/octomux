@@ -74,12 +74,9 @@ extension AppModel {
         return picked.filter { !isPinned($0) }
     }
 
-    /// Closes several tabs with one question when something in them still runs.
+    /// Closes several tabs (their sessions stay in the sidebar).
     func closeTabs(_ tabs: [Tab]) {
-        guard !tabs.isEmpty else { return }
-        closeAsking(tabs.flatMap { $0.layout.sessions }.filter { session($0)?.kind != .agent }, noun: "tab", many: tabs.count, button: "Close Tabs") {
-            for t in tabs { self.closeTab(t.id, confirmBusy: false) }
-        }
+        for t in tabs { closeTab(t.id) }
     }
 
     func docs(_ scope: CloseScope, of docId: String) -> [DocTab] {

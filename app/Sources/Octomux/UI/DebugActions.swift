@@ -52,24 +52,24 @@ enum DebugActions {
             case "cycle_workspace": m.cycleWorkspace((p["delta"] as? Int) ?? 1)
             case "select_tab": if let id { m.selectTab(id) }
             case "select_project": if let id { m.selectProject(id) }
-            case "stop": if let id { m.stop(id) }
+            case "stop": if let id { m.stop(id, confirm: false) }
             case "restart": if let id { m.restart(id) }
             case "remove": if let id { m.remove(id, confirm: false) }
             case "close_pane":
-                if let id = m.focusedSessionId { if m.session(id)?.kind == .agent { m.closePane(id) } else { m.remove(id, confirm: false) } }
+                if let id = m.focusedSessionId { m.closePane(id) }
             case "discard":   // ChangesModel.discardFiles without the question; value: work path, files: [rel]
                 if let wp = p["value"] as? String, let files = p["files"] as? [String] {
                     let staged = p["staged"] as? Bool ?? false
                     DispatchQueue.global().async { NSLog("discard: %@", ChangesModel.discardFiles(files, staged: staged, in: wp, remote: false) ? "ok" : "failed") }
                 }
-            case "close_tab": if let t = id ?? m.activeTabId { m.closeTab(t, confirmBusy: false) }
-            case "running_work":   // what "Ask before closing a running program" would list for a tab (to the app log)
+            case "close_tab": if let t = id ?? m.activeTabId { m.closeTab(t) }
+            case "running_work":   // what "Ask before stopping a running program" would list for a tab (to the app log)
                 let ids = id.flatMap { t in m.state.tabs.first { $0.id == t }?.layout.sessions } ?? [id].compactMap { $0 }
                 m.runningWork(ids) { w in
                     NSLog("running_work: %@", w.map { "\($0.session.id) \($0.short)" }.joined(separator: "; "))
                     // The question it would ask, as text (showing it would block this server).
                     if !w.isEmpty {
-                        let a = AppModel.closeAlert(w, noun: "tab", many: (p["many"] as? Int) ?? 1, button: "Close Tab")
+                        let a = AppModel.closeAlert(w, noun: "session", many: (p["many"] as? Int) ?? 1, button: "Stop", verb: "Stopping")
                         NSLog("running_work alert: %@ | %@", a.messageText, a.informativeText.replacingOccurrences(of: "\n", with: " / "))
                     }
                 }

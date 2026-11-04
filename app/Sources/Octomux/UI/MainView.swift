@@ -610,7 +610,7 @@ struct TabChip: View {
                 }
                 .help("\(s.displayTitle): \(activityHelp(s))")
             }
-            Button { model.closeTab(tab.id, confirmBusy: true) } label: {
+            Button { model.closeTab(tab.id) } label: {
                 Image(systemName: "xmark").font(.system(size: T.k * 8, weight: .bold))
             }
             .buttonStyle(IconButtonStyle(size: 16)).opacity(hover ? 1 : 0)
@@ -629,7 +629,7 @@ struct TabChip: View {
         .onHover { hover = $0 }
         .pointerCursor()
         .onTapGesture { model.selectTab(tab.id) }
-        .overlay(MiddleClick { model.closeTab(tab.id, confirmBusy: true) })
+        .overlay(MiddleClick { model.closeTab(tab.id) })
         .contextMenu { TabMenu(tab: tab) }
         .help(index < 9 ? "⌘\(index + 1)" : "")
     }
@@ -1137,7 +1137,7 @@ struct TabMenu: View {
             SessionMenu(session: lead, inTab: true)
         }
         Divider()
-        Button("Close Tab") { model.closeTab(tab.id, confirmBusy: true) }
+        Button("Close Tab") { model.closeTab(tab.id) }
         Button("Close Other Tabs") { model.closeTabs(model.tabs(.others, of: tab.id)) }.disabled(model.tabs(.others, of: tab.id).isEmpty)
         Button("Close Tabs to the Right") { model.closeTabs(model.tabs(.right, of: tab.id)) }.disabled(model.tabs(.right, of: tab.id).isEmpty)
         Button("Close Tabs to the Left") { model.closeTabs(model.tabs(.left, of: tab.id)) }.disabled(model.tabs(.left, of: tab.id).isEmpty)

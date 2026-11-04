@@ -6,6 +6,9 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case agents = "Agents", mcp = "MCP", prompts = "Prompts", workspaces = "Workspaces", projects = "Projects", sessions = "Sessions", hosts = "Hosts"
     case features = "Features", advanced = "Advanced"
     var id: String { rawValue }
+    /// Its sections are listed under it in the sidebar. Not for pages whose sections come from data loaded after
+    /// the page opens (MCP: one per config file), where the list would appear late and push the sidebar down.
+    var listsSections: Bool { self != .mcp }
     var icon: String {
         switch self {
         case .general: return "gearshape"
@@ -232,7 +235,7 @@ struct SettingsSidebar: View {
                             .padding(.horizontal, 10).padding(.top, g.title == SettingsSection.groups.first?.title ? 0 : 14).padding(.bottom, 4)
                         ForEach(g.items) { s in
                             item(s)
-                            if sel.section == s, sel.query.isEmpty, sel.groups.count > 1 { SettingsSubItems() }
+                            if sel.section == s, sel.query.isEmpty, s.listsSections, sel.groups.count > 1 { SettingsSubItems() }
                         }
                     }
                 }
@@ -535,7 +538,7 @@ enum SettingsIndex {
             e(.terminal, "Cursor style", "block bar underline caret"),
             e(.terminal, "Blink", "cursor blinking"),
             e(.terminal, "Lines to keep", "scrollback history buffer limit"),
-            e(.terminal, "Ask before closing a running program", "confirm close tab pane quit warn"),
+            e(.terminal, "Ask before stopping a running program", "confirm close stop remove session pane warn"),
             e(.terminal, "Config file", "ghostty terminal.conf import"),
             e(.appearance, "Icons", "dock menu bar"),
             e(.appearance, "Diff colors", "color blind colorblind green red blue orange added removed accessibility"),
