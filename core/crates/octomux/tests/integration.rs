@@ -880,3 +880,33 @@ fn agent_started_with_a_first_message_gets_it_as_cli_prompt() {
     assert!(!last.contains("explain the build"), "{text}");
     assert!(last.contains("--permission-mode acceptEdits"), "flags survive a restart: {text}");
 }
+
+#[test]
+fn closing_a_tab_keeps_agent_sessions_and_ends_terminals() {
+    let e = Env::new();
+    let p = e.project();
+    let script = fake_agent(&e);
+    let prof = e.call("profile.create", json!({ "name": "Fake", "kind": "claude", "command": script, "via_login_shell": false }));
+    let agent = e.call("session.create", json!({ "project_id": p, "profile_id": prof["id"] }))["session"]["id"].as_str().unwrap().to_string();
+    e.wait_screen(&agent, "FAKE-ARGS");
+    let term = e.call("session.create", json!({ "project_id": p, "split_target": agent, "split_dir": "right" }))["session"]["id"].as_str().unwrap().to_string();
+    let tab = e.call("state.get", json!({}))["tabs"][0]["id"].as_str().unwrap().to_string();
+
+    e.call("tab.close", json!({ "id": tab }));
+    wait_until(Duration::from_secs(6), || !e.holder_alive(&term));
+    let st = e.call("state.get", json!({}));
+    assert!(st["tabs"].as_array().unwrap().is_empty());
+    let ids: Vec<&str> = st["sessions"].as_array().unwrap().iter().filter_map(|s| s["id"].as_str()).collect();
+    assert!(ids.contains(&agent.as_str()) && !ids.contains(&term.as_str()), "{ids:?}");
+    assert!(e.holder_alive(&agent), "the agent keeps running without its tab");
+
+    // Opened again from the sidebar: a new tab for the same session.
+    e.call("session.move", json!({ "id": agent, "placement": "tab" }));
+    let st = e.call("state.get", json!({}));
+    assert_eq!(st["tabs"][0]["layout"]["session_id"], agent.as_str(), "{}", st["tabs"]);
+    // Closing its pane only takes it out of the tab.
+    e.call("session.detach", json!({ "id": agent }));
+    let st = e.call("state.get", json!({}));
+    assert!(st["tabs"].as_array().unwrap().is_empty());
+    assert_eq!(e.session(&agent)["state"], "running");
+}

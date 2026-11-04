@@ -115,9 +115,9 @@ struct TerminalSettings: View {
 
     private func stepper(value: String, minus: Bool, plus: Bool, step: @escaping (Int) -> Void) -> some View {
         HStack(spacing: 0) {
-            Button { step(-1) } label: { Image(systemName: "minus").frame(width: 26, height: 24) }.disabled(!minus)
+            Button { step(-1) } label: { Image(systemName: "minus").frame(width: 26, height: 24).contentShape(Rectangle()) }.disabled(!minus)
             Text(value).font(.system(size: T.k * 12.5).monospacedDigit()).frame(minWidth: 64)
-            Button { step(1) } label: { Image(systemName: "plus").frame(width: 26, height: 24) }.disabled(!plus)
+            Button { step(1) } label: { Image(systemName: "plus").frame(width: 26, height: 24).contentShape(Rectangle()) }.disabled(!plus)
         }
         .buttonStyle(.plain).font(.system(size: T.k * 11, weight: .semibold))
         .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(T.surface))

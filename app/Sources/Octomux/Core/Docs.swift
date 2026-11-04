@@ -14,6 +14,10 @@ struct DocTab: Codable, Identifiable, Equatable {
     var projectId: String
     var workPath: String
     var kind: Kind
+    /// A preview tab (one click in Files): the next file opened that way replaces it. Double-clicking the
+    /// file or the tab, or editing it, keeps it. Nil for kept tabs (and in tabs saved before there were previews).
+    var preview: Bool? = nil
+    var isPreview: Bool { preview == true }
 
     var title: String {
         switch kind {
@@ -51,13 +55,25 @@ extension AppModel {
     /// The doc tab showing right now (only when it belongs to the current project).
     var activeDoc: DocTab? { currentDocs.first { $0.id == activeDocId } }
 
-    func openDoc(_ kind: DocTab.Kind, workPath: String? = nil, scrollTo: String? = nil, line: Int? = nil) {
+    /// `preview`: open as the project's preview tab, replacing the file it showed (unless that has unsaved edits).
+    func openDoc(_ kind: DocTab.Kind, workPath: String? = nil, scrollTo: String? = nil, line: Int? = nil, preview: Bool = false) {
         guard let p = currentProject, let wp = workPath ?? currentWorkPath else { return }
         let doc: DocTab
-        if let existing = docTabs.first(where: { $0.projectId == p.id && $0.workPath == wp && $0.kind == kind }) {
-            doc = existing
+        if let i = docTabs.firstIndex(where: { $0.projectId == p.id && $0.workPath == wp && $0.kind == kind }) {
+            if !preview && docTabs[i].isPreview { docTabs[i].preview = nil }
+            doc = docTabs[i]
+        } else if preview, let i = docTabs.firstIndex(where: { $0.projectId == p.id && $0.isPreview }) {
+            let old = docTabs[i]
+            doc = DocTab(id: UUID().uuidString, projectId: p.id, workPath: wp, kind: kind, preview: true)
+            if DocHost.shared.isDirty(old.id) {
+                docTabs[i].preview = nil   // edited meanwhile: it stays, the new preview goes after it
+                docTabs.insert(doc, at: i + 1)
+            } else {
+                docTabs[i] = doc
+                DocHost.shared.drop(old.id)
+            }
         } else {
-            doc = DocTab(id: UUID().uuidString, projectId: p.id, workPath: wp, kind: kind)
+            doc = DocTab(id: UUID().uuidString, projectId: p.id, workPath: wp, kind: kind, preview: preview ? true : nil)
             docTabs.append(doc)
         }
         activeDocId = doc.id
@@ -87,6 +103,11 @@ extension AppModel {
         guard let d = docTabs.first(where: { $0.id == id }) else { return }
         if d.projectId != currentProject?.id { selectedProjectId = d.projectId; activeTabId = tabs(ofProject: d.projectId).first?.id }
         activeDocId = id
+    }
+
+    /// Turns a preview tab into a kept one.
+    func keepDoc(_ id: String) {
+        if let i = docTabs.firstIndex(where: { $0.id == id }), docTabs[i].isPreview { docTabs[i].preview = nil }
     }
 
     func closeDoc(_ id: String) {

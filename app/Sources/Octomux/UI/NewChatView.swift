@@ -344,7 +344,7 @@ struct SendButton: View {
     let action: () -> Void
     var body: some View {
         Button(action: action) {
-            Image(systemName: "arrow.up").font(.system(size: T.k * 11.5, weight: .bold)).frame(width: 26, height: 26)
+            Image(systemName: "arrow.up").font(.system(size: T.k * 11.5, weight: .bold)).frame(width: 26, height: 26).contentShape(Circle())
         }
         .buttonStyle(.plain)
         .foregroundStyle(enabled ? Color.white : T.text3)

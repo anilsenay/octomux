@@ -240,7 +240,7 @@ struct AttachmentChips: View {
                             }
                             Text(u.lastPathComponent).font(.system(size: T.k * 11.5)).foregroundStyle(T.text).lineLimit(1)
                             Button { files.removeAll { $0 == u } } label: {
-                                Image(systemName: "xmark").font(.system(size: T.k * 8, weight: .bold)).foregroundStyle(T.text3)
+                                Image(systemName: "xmark").font(.system(size: T.k * 8, weight: .bold)).foregroundStyle(T.text3).menuHitBox(16, 16)
                             }
                             .buttonStyle(.plain).pointerCursor().help("Remove")
                         }

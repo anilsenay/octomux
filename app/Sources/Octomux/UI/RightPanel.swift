@@ -481,10 +481,10 @@ final class FilesModel: ObservableObject {
         return Array(all.filter { $0.localizedCaseInsensitiveContains(q) }.prefix(300))
     }
 
-    func open(_ rel: String) {
+    func open(_ rel: String, preview: Bool = false) {
         selected = rel
         guard let path else { return }
-        AppModel.shared.openDoc(.file(rel), workPath: path)
+        AppModel.shared.openDoc(.file(rel), workPath: path, preview: preview)
     }
 }
 
@@ -572,7 +572,9 @@ struct FilesPanel: View {
         .background(open ? AnyView(RoundedRectangle(cornerRadius: T.m.rowR, style: .continuous).fill(T.selection)) : AnyView(HoverFill()))
         .contentShape(Rectangle())
         .pointerCursor()
-        .onTapGesture { f.open(rel) }
+        // One click: a preview tab (the next file replaces it); a double click keeps it.
+        .onTapGesture { f.open(rel, preview: true) }
+        .simultaneousGesture(TapGesture(count: 2).onEnded { f.open(rel) })
         .contextMenu {
             if let base = f.path {
                 let full = (base as NSString).appendingPathComponent(rel)

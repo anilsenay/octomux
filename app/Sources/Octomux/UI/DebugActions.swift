@@ -55,7 +55,14 @@ enum DebugActions {
             case "stop": if let id { m.stop(id) }
             case "restart": if let id { m.restart(id) }
             case "remove": if let id { m.remove(id, confirm: false) }
-            case "close_pane": if let id = m.focusedSessionId { m.remove(id, confirm: false) }
+            case "close_pane":
+                if let id = m.focusedSessionId { if m.session(id)?.kind == .agent { m.closePane(id) } else { m.remove(id, confirm: false) } }
+            case "discard":   // ChangesModel.discardFiles without the question; value: work path, files: [rel]
+                if let wp = p["value"] as? String, let files = p["files"] as? [String] {
+                    let staged = p["staged"] as? Bool ?? false
+                    DispatchQueue.global().async { NSLog("discard: %@", ChangesModel.discardFiles(files, staged: staged, in: wp, remote: false) ? "ok" : "failed") }
+                }
+            case "close_tab": if let t = id ?? m.activeTabId { m.closeTab(t, confirmBusy: false) }
             case "running_work":   // what "Ask before closing a running program" would list for a tab (to the app log)
                 let ids = id.flatMap { t in m.state.tabs.first { $0.id == t }?.layout.sessions } ?? [id].compactMap { $0 }
                 m.runningWork(ids) { w in
@@ -123,7 +130,10 @@ enum DebugActions {
             case "move_tab": if let id, let to = p["value"] as? String { m.moveTab(id, to: to) }
             case "move_project_before": if let id, let to = p["value"] as? String { m.moveProject(id, before: to) }
             case "toggle_changes": m.toggleChangesPanel()
-            case "open_file": if let v = p["value"] as? String { m.openFile(v, line: p["line"] as? Int) }
+            case "open_file":
+                if let v = p["value"] as? String {
+                    if p["preview"] as? Bool == true { m.openDoc(.file(v), preview: true) } else { m.openFile(v, line: p["line"] as? Int) }
+                }
             case "open_changes": m.openChanges(scrollTo: p["value"] as? String)
             case "open_commit": if let v = p["value"] as? String { m.openCommit(v, subject: p["subject"] as? String ?? "") }
             case "doc_js": if let d = m.activeDoc, let v = p["value"] as? String { DocHost.shared.controller(for: d).web.evaluateJavaScript(v) }

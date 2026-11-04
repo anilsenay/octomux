@@ -930,7 +930,7 @@ impl Daemon {
     }
 
     /// Settings → Sessions → "Close stopped agent tabs": an agent tab that has been stopped or ended for that many
-    /// hours is closed. Its conversation stays in the history (Sessions panel → Resume). Pinned tabs stay.
+    /// hours is closed. The session stays in the sidebar (Resume there opens it again). Pinned tabs stay.
     fn close_stopped_agents(&self) {
         let hours = self.setting("sessions.close_stopped_after_hours", None).and_then(|v| v.as_f64()).unwrap_or(0.0);
         if hours <= 0.0 {
@@ -944,6 +944,7 @@ impl Daemon {
                 .filter(|s| {
                     s.kind == SessionKind::Agent
                         && matches!(s.state, SessionState::Stopped | SessionState::Exited)
+                        && st.tabs.iter().any(|t| t.layout.sessions().contains(&s.id))
                         && now.saturating_sub(s.last_activity_at) as f64 >= hours * 3600.0
                 })
                 .map(|s| (s.id.clone(), s.project_id.clone()))
@@ -959,10 +960,9 @@ impl Daemon {
             if in_pinned {
                 continue;
             }
-            eprintln!("[sessions] closing {id}: stopped for {hours} h");
-            if self.remove_session(&id).is_ok() {
-                closed = true;
-            }
+            eprintln!("[sessions] closing the tab of {id}: stopped for {hours} h");
+            self.detach_from_tabs(&id);
+            closed = true;
         }
         if closed {
             self.changed();
@@ -1871,6 +1871,13 @@ impl Daemon {
                 self.spawn_session(&id, true)?;
                 Ok(json!({ "ok": true }))
             }
+            "session.detach" => {
+                // Out of its tab, still a session (closing an agent's pane: it stays in the sidebar).
+                let id = req("id")?;
+                self.detach_from_tabs(&id);
+                self.changed();
+                Ok(json!({ "ok": true }))
+            }
             "session.remove" => {
                 let id = req("id")?;
                 self.remove_session(&id)?;
@@ -2047,9 +2054,14 @@ impl Daemon {
             }
             "tab.close" => {
                 let id = req("id")?;
+                // A tab is a view: agent sessions outlive it (they stay in the sidebar, running or stopped, until
+                // removed there). Terminals end with their tab.
                 let sessions = self.state.lock().unwrap().tabs.iter().find(|t| t.id == id).map(|t| t.layout.sessions()).unwrap_or_default();
                 for sid in sessions {
-                    self.remove_session(&sid)?;
+                    let agent = self.state.lock().unwrap().sessions.iter().any(|s| s.id == sid && s.kind == SessionKind::Agent);
+                    if !agent {
+                        self.remove_session(&sid)?;
+                    }
                 }
                 self.state.lock().unwrap().tabs.retain(|t| t.id != id);
                 self.store.lock().unwrap().delete("tab", &id)?;
@@ -2058,7 +2070,7 @@ impl Daemon {
             }
             "git.run" => {
                 // Git for clients on other machines (remote hosts): `git -C <cwd> <args…>`, allowlisted.
-                const ALLOWED: &[&str] = &["status", "diff", "log", "show", "ls-files", "rev-parse", "worktree", "add", "commit", "push", "branch", "restore", "checkout", "switch", "for-each-ref", "merge-base", "remote"];
+                const ALLOWED: &[&str] = &["status", "diff", "log", "show", "ls-files", "rev-parse", "worktree", "add", "commit", "push", "branch", "restore", "checkout", "switch", "for-each-ref", "merge-base", "remote", "clean"];
                 let cwd = util::expand_tilde(&req("cwd")?);
                 let args: Vec<String> = p.get("args").and_then(|v| v.as_array()).map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default();
                 let sub = args.first().cloned().unwrap_or_default();

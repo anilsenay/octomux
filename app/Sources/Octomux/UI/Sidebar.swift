@@ -697,7 +697,7 @@ struct SessionMenu: View {
             Divider()
             Button("Remove Session", role: .destructive) { model.remove(session.id) }
         } else if (model.tab(containing: session.id)?.layout.sessions.count ?? 1) > 1 {
-            Button("Close “\(TabChip.clip(session.displayTitle, 24))” Pane", role: .destructive) { model.remove(session.id) }
+            Button("Close “\(TabChip.clip(session.displayTitle, 24))” Pane", role: .destructive) { model.closePane(session.id) }
         }
     }
 }

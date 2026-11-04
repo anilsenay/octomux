@@ -2,13 +2,25 @@
 
 ## Unreleased
 
+- **Agent sessions outlive their tab:** closing an agent's tab or pane (×, ⌘W) leaves the session in the sidebar,
+  still running; clicking it opens it in a tab again. A session is deleted only with Remove in the sidebar.
+  Closing a tab that also holds terminals still ends those terminals.
+- **Discard changes** in the Changes panel: per file (hover, or right-click) and for a whole group, after a
+  confirmation. New files go to the Trash.
+- **Preview tabs:** a click in the Files panel opens the file in a preview tab (italic) that the next file
+  replaces; double-click the file or the tab, or edit it, to keep it.
+- Ask before closing now sees programs behind shell wrappers that run your shell in a terminal of their own (it
+  saw nothing there). A program whose binary is named after its version (Claude Code) shows by its name.
+- Buttons now take clicks on their whole area, not only on their text or icon (the − / + in Settings → Terminal,
+  bordered buttons across Settings).
+- The Settings sidebar no longer jumps when you switch pages (the previous page's sections showed for a moment).
 - MCP Check also lists the servers Claude Code gets from your claude.ai account and plugins, with their status.
 - With Codex as the commit-message agent, its model is picked from the models your Codex offers.
 - Recording the quick composer shortcut no longer opens the composer when you press the current one.
 - **Agent events** (Settings → Advanced, or a tab's right-click → Show Agent Events): the last 500 hooks,
   agents' own status reports and state changes, with time and session; also in the diagnostics zip.
 - **Close stopped agent tabs** after 1 hour to 1 week (Settings → Sessions, off by default); pinned tabs stay and
-  the conversation can be resumed from the Sessions panel.
+  the session stays in the sidebar, where Resume opens it again.
 - **MCP page:** Check shows whether each Claude Code server connects (`claude mcp list`), and Remove takes a
   server out with the agent's own `mcp remove`.
 - **Create Pull Request** (Changes panel ▾, ⌘K): base branch, title, description and Draft; ✨ writes the title and

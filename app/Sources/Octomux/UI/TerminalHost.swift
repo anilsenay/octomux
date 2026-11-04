@@ -723,7 +723,7 @@ struct PaneHeader: View {
                     Menu { SessionMenu(session: s) } label: { Image(systemName: "ellipsis").menuHitBox(20, 20) }
                         .plainMenu().frame(width: 20, height: 20)
                         .hoverHighlight(radius: 5).help("Session")
-                    Button { model.remove(s.id) } label: { Image(systemName: "xmark").font(.system(size: T.k * 9, weight: .bold)) }
+                    Button { model.closePane(s.id) } label: { Image(systemName: "xmark").font(.system(size: T.k * 9, weight: .bold)) }
                         .help("Close pane (⌘W)").disabled(!model.canManage)
                 }
                 .buttonStyle(IconButtonStyle(size: 20))

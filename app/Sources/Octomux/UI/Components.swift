@@ -543,6 +543,7 @@ struct PrimaryButtonStyle: ButtonStyle {
             .foregroundStyle(.white)
             .padding(.horizontal, 12).frame(height: 28)
             .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(T.accent.opacity(configuration.isPressed ? 0.8 : 1)))
+            .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
             .opacity(enabled ? 1 : 0.45)
             .pointerCursor()
     }
@@ -558,6 +559,8 @@ struct SecondaryButtonStyle: ButtonStyle {
             .padding(.horizontal, 12).frame(height: 28)
             .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(configuration.isPressed ? T.border : hover ? T.hover : .clear))
             .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(T.border))
+            // The whole button takes the click, not only its text (the fill is clear until hovered).
+            .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
             .opacity(enabled ? 1 : 0.45)
             .onHover { hover = $0 }
             .pointerCursor()

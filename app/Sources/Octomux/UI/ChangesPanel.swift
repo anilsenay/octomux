@@ -136,6 +136,70 @@ final class ChangesModel: ObservableObject {
         }
     }
 
+    /// Throws away changes, after asking. From the Changes group: what isn't staged (staged edits stay, a new
+    /// file goes to the Trash). From the Staged group: everything since the last commit.
+    func discardAsking(_ list: [GitChange], staged: Bool) {
+        guard !list.isEmpty, let path else { return }
+        let remote = AppModel.shared.host(forPath: path).0.isRemote
+        let a = NSAlert()
+        let new = list.filter { $0.x == "?" || (staged && $0.x == "A") }
+        if list.count == 1, let c = list.first {
+            a.messageText = "Discard changes in “\((c.path as NSString).lastPathComponent)”?"
+            a.informativeText = new.isEmpty
+                ? (staged ? "The file goes back to the last commit, staged changes included." : "The file goes back to its staged version, or the last commit if nothing is staged.") + " This can't be undone."
+                : remote ? "The file is new; it is deleted. This can't be undone." : "The file is new; it is moved to the Trash."
+        } else {
+            a.messageText = "Discard \(list.count) changes?"
+            let names = list.prefix(5).map { "• " + $0.path }.joined(separator: "\n") + (list.count > 5 ? "\n• and \(list.count - 5) more" : "")
+            let what = staged ? "These files go back to the last commit, staged changes included." : "Unstaged changes in these files are lost; staged ones stay."
+            let newNote = new.isEmpty ? "" : remote ? " New files are deleted." : " New files are moved to the Trash."
+            a.informativeText = "\(names)\n\n\(what)\(newNote) Edits can't be undone."
+        }
+        a.addButton(withTitle: list.count == 1 ? "Discard" : "Discard All").hasDestructiveAction = true
+        a.addButton(withTitle: "Cancel")
+        guard a.runModal() == .alertFirstButtonReturn else { return }
+        discard(list.map(\.path), staged: staged, in: path, remote: remote)
+    }
+
+    private func discard(_ paths: [String], staged: Bool, in path: String, remote: Bool) {
+        busy = true
+        DispatchQueue.global(qos: .userInitiated).async {
+            let ok = Self.discardFiles(paths, staged: staged, in: path, remote: remote)
+            DispatchQueue.main.async {
+                self.busy = false
+                self.status = ok ? "" : "Some changes could not be discarded."
+                self.refresh()
+            }
+        }
+    }
+
+    /// The work of `discardAsking`, without the question (blocking; false when something failed).
+    static func discardFiles(_ paths: [String], staged: Bool, in path: String, remote: Bool) -> Bool {
+        var ok = true
+        if staged, GitInfo.git(["restore", "--staged", "--"] + paths, in: path) == nil { ok = false }
+        // What is left of each file: untracked ones are new files, the rest go back to the index.
+        let st = GitInfo.git(["status", "--porcelain=v1", "--untracked-files=all", "--"] + paths, in: path) ?? ""
+        var untracked: [String] = [], tracked: [String] = []
+        for line in st.split(separator: "\n") where line.count > 3 {
+            var p = String(line.dropFirst(3))
+            if let arrow = p.range(of: " -> ") { p = String(p[arrow.upperBound...]) }
+            p = p.trimmingCharacters(in: CharacterSet(charactersIn: "\""))
+            if line.hasPrefix("??") { untracked.append(p) } else if line.dropFirst().first != " " { tracked.append(p) }
+        }
+        if !tracked.isEmpty, GitInfo.git(["restore", "--worktree", "--"] + tracked, in: path) == nil { ok = false }
+        if !untracked.isEmpty {
+            if remote {
+                if GitInfo.git(["clean", "-f", "--"] + untracked, in: path) == nil { ok = false }
+            } else {
+                for u in untracked {
+                    let url = URL(fileURLWithPath: (path as NSString).appendingPathComponent(u))
+                    do { try FileManager.default.trashItem(at: url, resultingItemURL: nil) } catch { ok = false }
+                }
+            }
+        }
+        return ok
+    }
+
     func stage(_ paths: [String]) { run(["add", "--"] + paths) }
     func unstage(_ paths: [String]) { run(["restore", "--staged", "--"] + paths) }
 
@@ -277,7 +341,9 @@ struct ChangesPanel: View {
         let rem = list.reduce(0) { $0 + ((staged ? $1.stagedStat : $1.unstagedStat)?.1 ?? 0) }
         let open = !collapsed.contains(title)
         GroupHeader(title: "\(title) (\(list.count))", open: open, added: add, removed: rem,
-                    action: staged ? ("minus", "Unstage all", { changes.unstage(list.map(\.path)) }) : ("plus", "Stage all", { changes.stage(list.map(\.path)) })) {
+                    action: staged ? ("minus", "Unstage all", { changes.unstage(list.map(\.path)) }) : ("plus", "Stage all", { changes.stage(list.map(\.path)) }),
+                    discard: model.canManage ? { changes.discardAsking(list, staged: staged) } : nil,
+                    discardHelp: staged ? "Discard all staged and unstaged changes in these files" : "Discard all changes not staged") {
             if open { collapsed.insert(title) } else { collapsed.remove(title) }
         }
         if open {
@@ -293,6 +359,8 @@ private struct GroupHeader: View {
     let open: Bool
     let added: Int, removed: Int
     let action: (String, String, () -> Void)
+    var discard: (() -> Void)?
+    var discardHelp = ""
     let toggle: () -> Void
     @State private var hover = false
 
@@ -302,6 +370,10 @@ private struct GroupHeader: View {
             Text(title).font(.system(size: T.k * 11.5, weight: .semibold)).foregroundStyle(T.text2)
             Spacer()
             if hover {
+                if let discard {
+                    Button(action: discard) { Image(systemName: "arrow.uturn.backward").font(.system(size: T.k * 10, weight: .semibold)) }
+                        .buttonStyle(IconButtonStyle(size: 18)).help(discardHelp)
+                }
                 Button(action: action.2) { Image(systemName: action.0).font(.system(size: T.k * 10, weight: .semibold)) }
                     .buttonStyle(IconButtonStyle(size: 18)).help(action.1)
             }
@@ -346,6 +418,12 @@ private struct ChangeRow: View {
             if hover {
                 Button { model.openDoc(.file(c.path)) } label: { Image(systemName: "doc.text").font(.system(size: T.k * 10)) }
                     .buttonStyle(IconButtonStyle(size: 18)).help("Open file")
+                if model.canManage {
+                    Button { changes.discardAsking([c], staged: staged) } label: {
+                        Image(systemName: "arrow.uturn.backward").font(.system(size: T.k * 10, weight: .semibold))
+                    }
+                    .buttonStyle(IconButtonStyle(size: 18)).help("Discard changes")
+                }
                 Button { staged ? changes.unstage([c.path]) : changes.stage([c.path]) } label: {
                     Image(systemName: staged ? "minus" : "plus").font(.system(size: T.k * 10, weight: .semibold))
                 }
@@ -375,6 +453,8 @@ private struct ChangeRow: View {
             }
             Button(staged ? "Unstage" : "Stage") { staged ? changes.unstage([c.path]) : changes.stage([c.path]) }
             Button("Copy Path") { copy(c.path) }
+            Divider()
+            Button("Discard Changes…", role: .destructive) { changes.discardAsking([c], staged: staged) }.disabled(!model.canManage)
         }
     }
 }

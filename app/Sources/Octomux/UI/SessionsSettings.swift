@@ -48,7 +48,7 @@ struct SessionsSettings: View {
             let hours = model.settingValue("sessions.close_stopped_after_hours", scope: "global")?.number ?? 0
             SettingRow("Close stopped agent tabs", desc: hours == 0
                        ? "Stopped agents keep their tab until you close it."
-                       : "An agent tab that has been stopped or ended that long is closed; pinned tabs stay. Its conversation is still in the Sessions panel (right panel), where Resume opens it again.") {
+                       : "An agent tab that has been stopped or ended that long is closed; pinned tabs stay. The session stays in the sidebar, where Resume opens it again.") {
                 Picker("", selection: Binding(get: { Int(hours) }, set: { model.setSetting("sessions.close_stopped_after_hours", $0 == 0 ? nil : $0) })) {
                     Text("Never").tag(0)
                     Text("After 1 hour").tag(1); Text("After 8 hours").tag(8); Text("After 1 day").tag(24); Text("After 1 week").tag(168)

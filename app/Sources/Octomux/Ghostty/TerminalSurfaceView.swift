@@ -387,7 +387,7 @@ final class TerminalSurfaceView: NSView, NSTextInputClient {
         }
         add("Rename…") { m.renamingSessionId = sid }
         menu.addItem(.separator())
-        add("Close Pane", "w") { m.remove(sid) }
+        add("Close Pane", "w") { m.closePane(sid) }
         return menu
     }
 

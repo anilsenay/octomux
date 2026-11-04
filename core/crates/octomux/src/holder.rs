@@ -279,13 +279,89 @@ fn process_name(pid: libc::pid_t) -> Option<String> {
     #[cfg(not(target_os = "macos"))]
     let name = std::fs::read_to_string(format!("/proc/{pid}/comm")).ok()?.trim().to_string();
     let name = name.trim_start_matches('-').to_string();
+    if is_version(&name) {
+        // Installs that keep one binary per version (Claude Code: …/claude/versions/2.1.3): the folder
+        // above says what it is.
+        if let Some(n) = name_from_path(pid) {
+            return Some(n);
+        }
+    }
     (!name.is_empty()).then_some(name)
+}
+
+fn is_version(s: &str) -> bool {
+    !s.is_empty() && s.starts_with(|c: char| c.is_ascii_digit()) && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-')
+}
+
+fn name_from_path(pid: libc::pid_t) -> Option<String> {
+    #[cfg(target_os = "macos")]
+    let path = {
+        let mut buf = [0u8; 4096];
+        let n = unsafe { libc::proc_pidpath(pid, buf.as_mut_ptr().cast(), buf.len() as u32) };
+        if n <= 0 {
+            return None;
+        }
+        String::from_utf8_lossy(&buf[..n as usize]).into_owned()
+    };
+    #[cfg(not(target_os = "macos"))]
+    let path = std::fs::read_link(format!("/proc/{pid}/exe")).ok()?.to_string_lossy().into_owned();
+    path.split('/')
+        .rev()
+        .skip(1)
+        .find(|c| !c.is_empty() && !is_version(c) && !matches!(*c, "versions" | "bin" | "current" | "libexec"))
+        .map(str::to_string)
+}
+
+/// A program in front of a terminal that a child of `pid` sits on, when that terminal isn't ours
+/// (a wrapper like kiro-cli runs the shell on its own pty). Follows nested wrappers a few levels.
+fn program_behind_wrapper(pid: libc::pid_t, depth: u8) -> Option<String> {
+    #[cfg(target_os = "macos")]
+    {
+        if depth > 3 {
+            return None;
+        }
+        let own_tty = tty_info(pid)?.0;
+        let mut kids = [0 as libc::pid_t; 64];
+        let n = unsafe { libc::proc_listchildpids(pid, kids.as_mut_ptr().cast(), std::mem::size_of_val(&kids) as i32) };
+        if n <= 0 {
+            return None;
+        }
+        // Count of pids on current macOS; bytes on some older ones. Either way, stop at the buffer.
+        let count = (n as usize).min(kids.len());
+        for &kid in &kids[..count] {
+            if kid <= 0 {
+                continue;
+            }
+            let Some((tty, tpgid)) = tty_info(kid) else { continue };
+            if tty == own_tty || tty == u32::MAX || tty == 0 || tpgid == 0 {
+                continue;
+            }
+            let fg = tpgid as libc::pid_t;
+            let name = process_name(fg)?;
+            return if is_shell(&name) { program_behind_wrapper(fg, depth + 1) } else { Some(name) };
+        }
+        None
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (pid, depth);
+        None
+    }
+}
+
+/// A process's controlling terminal and that terminal's foreground process group.
+#[cfg(target_os = "macos")]
+fn tty_info(pid: libc::pid_t) -> Option<(u32, u32)> {
+    let mut info: libc::proc_bsdinfo = unsafe { std::mem::zeroed() };
+    let size = std::mem::size_of::<libc::proc_bsdinfo>() as i32;
+    let n = unsafe { libc::proc_pidinfo(pid, libc::PROC_PIDTBSDINFO, 0, (&mut info as *mut libc::proc_bsdinfo).cast(), size) };
+    (n == size).then_some((info.e_tdev, info.e_tpgid))
 }
 
 /// Shells started from the session's own shell (a nested `bash`) that count as "at a prompt". Only
 /// the first word counts: wrappers rename the shell, e.g. kiro-cli shows `zsh (kiro-cli-term)`.
-/// Behind such a wrapper the program it runs is not visible to us; the alternate-screen and
-/// tainted-screen checks still hold.
+/// Behind such a wrapper the resize logic can't see the program it runs (the alternate-screen and
+/// tainted-screen checks still hold); `program_behind_wrapper` looks through it for close confirmation.
 fn is_shell(name: &str) -> bool {
     let name = name.split_whitespace().next().unwrap_or("");
     matches!(name, "zsh" | "bash" | "fish" | "sh" | "dash" | "ksh" | "mksh" | "tcsh" | "csh" | "nu" | "elvish" | "xonsh" | "pwsh")
@@ -390,10 +466,12 @@ impl Shared {
     /// Name of the process group in front of the terminal when it isn't our shell or another shell.
     fn foreground_program(&self) -> Option<String> {
         let fg = self.master.lock().unwrap().process_group_leader()?;
-        if Some(fg as u32) == self.child_pid {
-            return None;
+        let name = process_name(fg)?;
+        if Some(fg as u32) != self.child_pid && !is_shell(&name) {
+            return Some(name);
         }
-        process_name(fg).filter(|n| !is_shell(n))
+        // At a shell. Wrappers like kiro-cli run the real shell on a terminal of their own: look there.
+        program_behind_wrapper(fg, 0)
     }
 
     fn broadcast_locked(inner: &mut Inner, role_filter: impl Fn(Role) -> bool, frame: &Frame) {

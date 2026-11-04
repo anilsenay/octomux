@@ -98,6 +98,7 @@ final class DocController: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             queue.removeAll()
         case "dirty":
             dirty = m["dirty"] as? Bool ?? false
+            if dirty { AppModel.shared.keepDoc(doc.id) }
         case "save":
             if let text = m["text"] as? String { save(text) }
         case "open":

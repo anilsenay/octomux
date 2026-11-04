@@ -512,7 +512,7 @@ struct DocChip: View {
             if width != nil {
                 Text(doc.title).italic(isPreviewLike).lineLimit(1).truncationMode(.middle)
             } else {
-                Text(TabChip.clip(doc.title, maxChars)).lineLimit(1).fixedSize()
+                Text(TabChip.clip(doc.title, maxChars)).italic(doc.isPreview).lineLimit(1).fixedSize()
             }
             if width != nil { Spacer(minLength: 0) }
             Button { model.closeDoc(doc.id) } label: {
@@ -532,9 +532,11 @@ struct DocChip: View {
         .onHover { hover = $0 }
         .pointerCursor()
         .onTapGesture { model.selectDoc(doc.id) }
+        .simultaneousGesture(TapGesture(count: 2).onEnded { model.keepDoc(doc.id) })
         .overlay(MiddleClick { model.closeDoc(doc.id) })
         .contextMenu {
             Button("Close Tab") { model.closeDoc(doc.id) }
+            if doc.isPreview { Button("Keep Open") { model.keepDoc(doc.id) } }
             Divider()
             Button("Close Other Tabs") { model.closeDocs(model.docs(.others, of: doc.id)) }.disabled(model.docs(.others, of: doc.id).isEmpty)
             Button("Close Tabs to the Right") { model.closeDocs(model.docs(.right, of: doc.id)) }.disabled(model.docs(.right, of: doc.id).isEmpty)
@@ -552,11 +554,11 @@ struct DocChip: View {
         .help(helpText)
     }
 
-    private var isPreviewLike: Bool { if case .commit = doc.kind { return true }; return false }
+    private var isPreviewLike: Bool { if doc.isPreview { return true }; if case .commit = doc.kind { return true }; return false }
 
     private var helpText: String {
         switch doc.kind {
-        case .file(let rel): return rel
+        case .file(let rel): return doc.isPreview ? rel + " (preview: the next file you open replaces it; double-click to keep it)" : rel
         case .changes: return "Uncommitted changes"
         case .commit(let h, let s): return "\(h.prefix(8)) \(s)"
         case .newChat: return "New chat session"
@@ -910,7 +912,7 @@ struct StatusBar: View {
             }
             if waiting > 0 {
                 Button { model.nextNeedingInput() } label: {
-                    HStack(spacing: 6) { Circle().fill(T.amber).frame(width: 6, height: 6); Text(full ? "\(waiting) waiting" : "\(waiting)") }
+                    HStack(spacing: 6) { Circle().fill(T.amber).frame(width: 6, height: 6); Text(full ? "\(waiting) waiting" : "\(waiting)") }.contentShape(Rectangle())
                 }
                 .buttonStyle(.plain).foregroundStyle(T.amber).fixedSize().hoverHighlight(radius: 5, padding: 3).help("Jump to the next session waiting for input (⌘⇧U)")
             }

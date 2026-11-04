@@ -271,6 +271,12 @@ final class AppModel: ObservableObject {
         if let tab = activeTab, focusedSessionId == nil || !tab.layout.sessions.contains(focusedSessionId!) {
             focusedSessionId = tab.activeSessionId ?? tab.layout.sessions.first
         }
+        if let id = pendingTabFor, let t = tab(containing: id) {
+            pendingTabFor = nil
+            activeTabId = t.id
+            focusedSessionId = id
+            DispatchQueue.main.async { TerminalHost.shared.focusCurrent() }
+        }
         if let p = pendingSelect, s.projects.contains(where: { $0.id == p }) {
             pendingSelect = nil
             DispatchQueue.main.async { self.selectProject(p) }
@@ -412,7 +418,9 @@ final class AppModel: ObservableObject {
         guard let tab = state.tabs.first(where: { $0.id == tabId }) else { return }
         let close = { self.client(for: tabId).call("tab.close", ["id": tabId], completion: self.report) }
         guard confirmBusy else { close(); return }
-        closeAsking(tab.layout.sessions, noun: "tab", button: "Close Tab", close: close)
+        // Agents keep running without their tab (they stay in the sidebar): only terminals are stopped.
+        let ending = tab.layout.sessions.filter { session($0)?.kind != .agent }
+        closeAsking(ending, noun: "tab", button: "Close Tab", close: close)
     }
 
     /// Starts a session and remembers the choice for the tab bar's button.
@@ -517,6 +525,10 @@ final class AppModel: ObservableObject {
         if let t = tab(containing: id) {
             activeTabId = t.id
             if t.activeSessionId != id { client(for: t.id).call("tab.update", ["id": t.id, "active_session_id": id]) }
+        } else if s.placement == .tab {
+            // Its tab was closed (agents outlive their tab): a new tab for it, selected when it arrives.
+            pendingTabFor = id
+            client(for: id).call("session.move", ["id": id, "placement": "tab"], completion: report)
         }
         focusedSessionId = id
         markRead(id)
@@ -634,6 +646,14 @@ final class AppModel: ObservableObject {
     func stop(_ id: String) { if ensureManageable() { client(for: id).call("session.stop", ["id": id], completion: report) } }
     func restart(_ id: String) { if ensureManageable() { client(for: id).call("session.restart", ["id": id], completion: report) } }
 
+    /// Closes a pane. An agent's session only leaves its tab (it stays in the sidebar, still running, until
+    /// removed there); a terminal ends.
+    func closePane(_ id: String) {
+        guard let s = session(id), s.kind == .agent, s.placement == .tab else { remove(id); return }
+        guard ensureManageable() else { return }
+        client(for: id).call("session.detach", ["id": id], completion: report)
+    }
+
     func remove(_ id: String, confirm: Bool = true) {
         guard ensureManageable() else { return }
         let close = { self.client(for: id).call("session.remove", ["id": id], completion: self.report) }
@@ -655,7 +675,7 @@ final class AppModel: ObservableObject {
 
     func closeFocusedPane() {
         if let d = activeDocId { closeDoc(d); return }
-        if let id = focusedSessionId { remove(id) }
+        if let id = focusedSessionId { closePane(id) }
     }
 
     /// Equal shares for every row and column of a split tab (⌘K "Equalize Panes", double-click a divider).
@@ -760,6 +780,8 @@ final class AppModel: ObservableObject {
 
     /// Project to select once it shows up in merged state (created on an extra host).
     private var pendingSelect: String?
+    /// A session whose tab was closed and is being opened in a new one (`selectSession`).
+    private var pendingTabFor: String?
 
     func addProject(path: String, workspaceId: String) {
         client.call("project.create", ["workspace_id": workspaceId, "path": path]) { [weak self] r in

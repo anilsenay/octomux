@@ -77,7 +77,7 @@ extension AppModel {
     /// Closes several tabs with one question when something in them still runs.
     func closeTabs(_ tabs: [Tab]) {
         guard !tabs.isEmpty else { return }
-        closeAsking(tabs.flatMap { $0.layout.sessions }, noun: "tab", many: tabs.count, button: "Close Tabs") {
+        closeAsking(tabs.flatMap { $0.layout.sessions }.filter { session($0)?.kind != .agent }, noun: "tab", many: tabs.count, button: "Close Tabs") {
             for t in tabs { self.closeTab(t.id, confirmBusy: false) }
         }
     }

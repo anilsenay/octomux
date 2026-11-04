@@ -96,8 +96,10 @@ final class SettingsSelection: ObservableObject {
     /// Where each row starts in the page (`SettingAnchor`), and the page's scroll view, to scroll to a row.
     var anchors: [String: CGFloat] = [:]
     weak var scrollView: NSScrollView?
-    /// The page's group titles, top to bottom (the sidebar lists them under the page).
-    @Published var groups: [String] = []
+    /// Each page's group titles, top to bottom (the sidebar lists them under the page). Kept per page: one
+    /// shared list showed the previous page's titles under the new item for a moment, and the sidebar jumped.
+    @Published var groupsBySection: [SettingsSection: [String]] = [:]
+    var groups: [String] { groupsBySection[section] ?? [] }
     /// Scroll position of the page, for the sidebar's current group (its own object: only the sidebar redraws).
     let scroll = SettingsScroll()
 
@@ -139,7 +141,7 @@ struct SettingsView: View {
                 .onPreferenceChange(SettingAnchor.Key.self) { [sel] in sel.anchors = $0 }
                 .onPreferenceChange(SettingAnchor.Groups.self) { [sel] g in
                     let names = g.sorted { $0.value < $1.value }.map(\.key)
-                    if names != sel.groups { sel.groups = names }
+                    if sel.query.isEmpty, names != sel.groups { sel.groupsBySection[sel.section] = names }
                 }
                 .background(ScrollOffsetKeeper(initial: sel.scrollOffsets[sel.section] ?? 0, onScrollView: { [sel] in sel.scrollView = $0 }) { [sel] y in
                     if sel.query.isEmpty { sel.scrollOffsets[sel.section] = y }
@@ -802,13 +804,13 @@ struct AgentsSettings: View {
                     if p.kind == .claude, let i = integration[p.id] { integrationButton(p, i) }
                     Button { update(p, ["pinned": !p.pinned]) } label: {
                         Image(systemName: p.pinned ? "pin.fill" : "pin").font(.system(size: T.k * 12))
-                            .foregroundStyle(p.pinned ? T.accent : T.text3).frame(width: 24, height: 24)
+                            .foregroundStyle(p.pinned ? T.accent : T.text3).frame(width: 24, height: 24).contentShape(Rectangle())
                     }
                     .buttonStyle(.plain).help(p.pinned ? "Pinned to the tab bar" : "Pin to the tab bar")
                     SettingSwitch(isOn: Binding(get: { p.enabled }, set: { update(p, ["enabled": $0]) }))
                         .help(p.enabled ? "Shown in the + menu" : "Hidden from the + menu")
                     Button { editing = p } label: {
-                        Image(systemName: "chevron.right").font(.system(size: T.k * 11, weight: .semibold)).foregroundStyle(T.text3).frame(width: 22, height: 24)
+                        Image(systemName: "chevron.right").font(.system(size: T.k * 11, weight: .semibold)).foregroundStyle(T.text3).frame(width: 22, height: 24).contentShape(Rectangle())
                     }
                     .buttonStyle(.plain).help("Edit command, arguments and environment")
                 }
