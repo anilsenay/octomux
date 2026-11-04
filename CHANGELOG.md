@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **App icon:** Settings → Appearance → App icon, Color or Monochrome (a white and grey octopus on a charcoal
+  tile). It changes the Dock icon while Octomux runs.
 - **Shells still running:** when Claude ends its turn with commands still running in the background (a build it
   waits for, a dev server it left up), the session shows a terminal mark with their count, stays under Finished,
   and the notification says "1 shell still running". When they end, Claude goes on by itself as before.

@@ -1,6 +1,8 @@
 // Draws Octomux's app icon: the purple pixel octopus (design/brand/octomux-logo.html, "Detaylı piksel")
 // on a lavender squircle. Sprite cells snap to whole device pixels so edges stay crisp at every size.
-// Output: app/Resources/AppIcon.icns (+ AppIcon-1024.png). usage: swift tools/make-icon.swift [repo-root]
+// Output: app/Resources/AppIcon.icns (+ AppIcon-1024.png). usage: swift tools/make-icon.swift [repo-root] [mono]
+// `mono`: the monochrome variant instead (white and grey octopus on a charcoal squircle), the Settings → Appearance
+// "App icon" choice: app/Resources/AppIcon-mono.png (1024 px; the app sets it as the Dock icon while it runs).
 import AppKit
 
 let sprite = [
@@ -23,10 +25,18 @@ func rgb(_ hex: UInt32) -> CGColor {
     CGColor(srgbRed: CGFloat((hex >> 16) & 0xff) / 255, green: CGFloat((hex >> 8) & 0xff) / 255,
             blue: CGFloat(hex & 0xff) / 255, alpha: 1)
 }
-let palette: [Character: CGColor] = [
+let mono = CommandLine.arguments.count > 2 && CommandLine.arguments[2] == "mono"
+let palette: [Character: CGColor] = mono ? [
+    "#": rgb(0xd8d8dc), "h": rgb(0xffffff), "s": rgb(0x9a9aa0),
+    "e": rgb(0x1c1c1e), "w": rgb(0xffffff), "c": rgb(0xb4b4ba),
+] : [
     "#": rgb(0x8b5cf6), "h": rgb(0xc4b5fd), "s": rgb(0x6d28d9),
     "e": rgb(0x1e1b4b), "w": rgb(0xffffff), "c": rgb(0xf9a8d4),
 ]
+// Squircle: base, gradient top → bottom, edge line.
+let tile: (base: CGColor, top: CGColor, bottom: CGColor, edge: CGColor) = mono
+    ? (rgb(0x1c1c1e), rgb(0x3a3a3d), rgb(0x1c1c1e), CGColor(gray: 1, alpha: 0.12))
+    : (rgb(0xd9cffd), rgb(0xefeaff), rgb(0xd9cffd), CGColor(gray: 0, alpha: 0.06))
 
 /// Renders the icon into a `px`×`px` bitmap. Coordinates are top-left based (the context is flipped).
 func render(px: Int) -> NSBitmapImageRep {
@@ -40,15 +50,15 @@ func render(px: Int) -> NSBitmapImageRep {
     let squircle = CGPath(roundedRect: body, cornerWidth: 185 * s, cornerHeight: 185 * s, transform: nil)
     ctx.saveGState()
     ctx.setShadow(offset: CGSize(width: 0, height: 10 * s), blur: 28 * s, color: CGColor(gray: 0, alpha: 0.28))
-    ctx.addPath(squircle); ctx.setFillColor(rgb(0xd9cffd)); ctx.fillPath()
+    ctx.addPath(squircle); ctx.setFillColor(tile.base); ctx.fillPath()
     ctx.restoreGState()
     ctx.saveGState()
     ctx.addPath(squircle); ctx.clip()
-    let grad = CGGradient(colorsSpace: CGColorSpace(name: CGColorSpace.sRGB), colors: [rgb(0xefeaff), rgb(0xd9cffd)] as CFArray,
+    let grad = CGGradient(colorsSpace: CGColorSpace(name: CGColorSpace.sRGB), colors: [tile.top, tile.bottom] as CFArray,
                           locations: [0, 1])!
     ctx.drawLinearGradient(grad, start: CGPoint(x: 0, y: body.minY), end: CGPoint(x: 0, y: body.maxY), options: [])
     ctx.restoreGState()
-    ctx.addPath(squircle); ctx.setStrokeColor(CGColor(gray: 0, alpha: 0.06)); ctx.setLineWidth(max(1, 4 * s)); ctx.strokePath()
+    ctx.addPath(squircle); ctx.setStrokeColor(tile.edge); ctx.setLineWidth(max(1, 4 * s)); ctx.strokePath()
 
     // Sprite: 62% of the body wide, centered slightly below the middle (as in the brand page).
     let cols = sprite[0].count, rows = sprite.count
@@ -78,6 +88,12 @@ func image(px: Int, master: NSBitmapImageRep) -> NSBitmapImageRep {
 }
 
 let root = URL(fileURLWithPath: CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : FileManager.default.currentDirectoryPath)
+if mono {
+    let out = root.appendingPathComponent("app/Resources/AppIcon-mono.png")
+    try render(px: 1024).representation(using: .png, properties: [:])!.write(to: out)
+    print(out.path)
+    exit(0)
+}
 let iconset = FileManager.default.temporaryDirectory.appendingPathComponent("Octomux.iconset")
 try? FileManager.default.removeItem(at: iconset)
 try FileManager.default.createDirectory(at: iconset, withIntermediateDirectories: true)

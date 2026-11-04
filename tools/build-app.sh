@@ -45,7 +45,8 @@ mkdir -p "$APP/Contents/Frameworks"
 ditto "$(dirname "$BIN")/Sparkle.framework" "$APP/Contents/Frameworks/Sparkle.framework"
 cp "$CLI" "$APP/Contents/Resources/bin/octomux"
 if [ "$VARIANT" = dev ]; then swift "$ROOT/tools/dev-icon.swift" "$ROOT/app/Resources/AppIcon-1024.png" "$APP/Contents/Resources/AppIcon.icns"
-else cp "$ROOT/app/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"; fi
+else cp "$ROOT/app/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
+     cp "$ROOT/app/Resources/AppIcon-mono.png" "$APP/Contents/Resources/AppIcon-mono.png"; fi   # Appearance → App icon
 cp -R "$ROOT/app/Resources/editor" "$APP/Contents/Resources/editor"   # code viewer (CodeMirror bundle; rebuild: cd app/editor-web && bun run build)
 # Ghostty terminal color schemes, for scenes' "terminal" field (from the vendored Ghostty build).
 THEMES="$ROOT/vendor/ghostty/zig-out/share/ghostty/themes"

@@ -567,6 +567,7 @@ struct ThemePicker: View {
     @EnvironmentObject var model: AppModel
     @ObservedObject var store = ThemeStore.shared
     @AppStorage("octomux.sidebarStackedTabs") private var stackedTabs = true
+    @AppStorage(AppIconStyle.key) private var appIcon = "color"
 
     var body: some View {
         SettingsCard {
@@ -606,6 +607,19 @@ struct ThemePicker: View {
                 .pickerStyle(.segmented).labelsHidden().frame(width: 260)
             }
             Text("The octopus bounces while an agent is working.").font(.caption).foregroundStyle(T.text3)
+            if !Paths.isDevVariant {
+                HStack {
+                    Text("App icon")
+                    Spacer()
+                    Picker("", selection: $appIcon) {
+                        Text("Color").tag("color"); Text("Monochrome").tag("mono")
+                    }
+                    .pickerStyle(.segmented).labelsHidden().frame(width: 174)
+                    .onChange(of: appIcon) { _, v in AppIconStyle.set(v) }
+                }
+                Text("In the Dock while Octomux runs. Finder, and the Dock while Octomux is quit, keep the color icon.")
+                    .font(.caption).foregroundStyle(T.text3)
+            }
             if let sc = store.scene {
                 Text("The current workspace's scene (\(sc.name)) is \(sc.dark ? "dark" : "light"), so it decides while it is shown.")
                     .font(.caption).foregroundStyle(T.text3)

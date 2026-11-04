@@ -167,6 +167,7 @@ final class ThemeStore: ObservableObject {
             UserScenes.startWatching()
             // Dark from the first frame, before the daemon's settings arrive (no light flash on a fresh install).
             self?.applyAppearance()
+            AppIconStyle.apply()
         }
     }
 
@@ -345,4 +346,25 @@ struct SectionLabel: View {
             .tracking(T.m.monoLabels ? 0.8 : 0)
             .foregroundStyle(T.text3)
     }
+}
+
+/// The Dock icon, Settings → Appearance → App icon: colorful (the bundle's) or monochrome (AppIcon-mono.png).
+/// A preference of this Mac (UserDefaults), applied at launch. Only the running app's icon changes: Finder and a
+/// Dock icon kept for a quit Octomux show the bundle's, since changing those means writing into the signed bundle.
+enum AppIconStyle {
+    static let key = "octomux.appIcon"
+    static var current: String { UserDefaults.standard.string(forKey: key) ?? "color" }
+
+    static func set(_ style: String) {
+        UserDefaults.standard.set(style, forKey: key)
+        apply()
+    }
+
+    static func apply() {
+        // Octomux Dev keeps its DEV-banded icon, so the two apps stay apart in the Dock.
+        guard !Paths.isDevVariant else { return }
+        NSApp.applicationIconImage = current == "mono" ? monoImage : nil
+    }
+
+    static var monoImage: NSImage? { Bundle.main.url(forResource: "AppIcon-mono", withExtension: "png").flatMap(NSImage.init(contentsOf:)) }
 }
