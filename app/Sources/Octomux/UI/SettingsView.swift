@@ -541,6 +541,7 @@ enum SettingsIndex {
             e(.terminal, "Ask before stopping a running program", "confirm close stop remove session pane warn"),
             e(.terminal, "Config file", "ghostty terminal.conf import"),
             e(.appearance, "Icons", "dock menu bar"),
+            e(.appearance, "Other workspaces that want you", "workspace switcher attention waiting badge dot glow bar mark"),
             e(.appearance, "Diff colors", "color blind colorblind green red blue orange added removed accessibility"),
             e(.appearance, "Workspace color", "tint"),
             e(.notifications, "Notifications", "banners alerts mute"),
@@ -1134,7 +1135,6 @@ struct AppearanceSettings: View {
 
     var body: some View {
         if sel.scope == "global" {
-            AttentionLabSettings()
             ThemePicker()
         }
         if sel.scope.hasPrefix("workspace:"), let w = model.state.workspaces.first(where: { "workspace:\($0.id)" == sel.scope }) {
@@ -1155,7 +1155,7 @@ struct AppearanceSettings: View {
             }
         }
         SceneSettingsCard(scope: sel.scope)
-        if sel.scope == "global" { DiffColorSettings() }
+        if sel.scope == "global" { DiffColorSettings(); WorkspaceMarkSettings() }
         if sel.scope == "global" { IconSettings() }
     }
 }

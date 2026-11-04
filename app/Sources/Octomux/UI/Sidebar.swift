@@ -242,14 +242,13 @@ struct WorkspaceButton: View {
     let selected: Bool
     var index = 0
     @State private var hover = false
-    @ObservedObject private var lab = AttentionLab.shared
 
     var body: some View {
         let a = model.attention(workspace: workspace.id)
         let note = attentionText(a)
         // Another workspace that wants you (something waits for input, or finished and not looked at yet).
-        AttentionDecorated(workspace: workspace, attention: a, wants: !selected && (!note.isEmpty || lab.force),
-                           dimmed: !selected && !hover, width: selected ? 40 : 28)
+        MarkedWorkspaceIcon(workspace: workspace, mark: WorkspaceMark.current(model), attention: !selected && !note.isEmpty ? a : nil,
+                            dimmed: !selected && !hover, width: selected ? 40 : 28)
             .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(selected ? T.raised : hover ? T.hover : .clear))
             .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(selected ? T.border : .clear))
             .contentShape(Rectangle())
@@ -871,35 +870,6 @@ func attentionText(_ a: (waiting: Int, unread: Int)) -> String {
 }
 
 /// Amber when something waits for input, else green (something new to look at).
-/// A soft wave behind a workspace that wants you, in the workspace's color: a blurred glow grows from the
-/// middle of its button to about its size and fades, then a pause. Not clipped to the button, so no edge shows.
-/// A faint still glow with Reduce Motion.
-struct AttentionWave: View {
-    let color: Color
-    /// The wave's life, then the pause before the next one.
-    var wave: Double = 1.4, pause: Double = 1.0
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    private let shape = RoundedRectangle(cornerRadius: 7, style: .continuous)
-
-    var body: some View {
-        if reduceMotion {
-            shape.fill(color.opacity(0.14)).padding(3).blur(radius: 4)
-        } else {
-            TimelineView(.animation(minimumInterval: 1 / 30)) { ctx in
-                let t = ctx.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: wave + pause)
-                let p = min(1, t / wave)
-                let grow = 1 - pow(1 - p, 3)                         // ease out
-                let alpha = p >= 1 ? 0 : 0.42 * min(1, p * 4) * (1 - p)  // quick fade in, slow fade out
-                shape.fill(color.opacity(alpha))
-                    .padding(3)
-                    .scaleEffect(0.35 + 0.65 * grow)
-                    .blur(radius: 4)
-            }
-            .allowsHitTesting(false)
-        }
-    }
-}
-
 struct AttentionDot: View {
     let attention: (waiting: Int, unread: Int)
     var body: some View {

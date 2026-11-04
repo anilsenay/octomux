@@ -517,19 +517,17 @@ struct WorkspaceIcon: View {
     let workspace: Workspace
     var size: CGFloat = 13
     var dimmed = false
-    /// Drawn in this color instead (TEMPORARY, attention lab).
-    var tint: Color? = nil
 
     var body: some View {
         if let icon = workspace.icon, !icon.isEmpty {
             if NSImage(systemSymbolName: icon, accessibilityDescription: nil) != nil {
                 Image(systemName: icon).font(.system(size: T.k * size, weight: .medium))
-                    .foregroundStyle(tint ?? (dimmed ? T.text3 : Color(hex: workspace.color)))
+                    .foregroundStyle(dimmed ? T.text3 : Color(hex: workspace.color))
             } else {
-                Text(icon).font(.system(size: T.k * size)).opacity(dimmed && tint == nil ? 0.55 : 1)
+                Text(icon).font(.system(size: T.k * size)).opacity(dimmed ? 0.55 : 1)
             }
         } else {
-            Circle().fill(tint ?? (dimmed ? T.text3.opacity(0.6) : Color(hex: workspace.color))).frame(width: size * 0.55, height: size * 0.55)
+            Circle().fill(dimmed ? T.text3.opacity(0.6) : Color(hex: workspace.color)).frame(width: size * 0.55, height: size * 0.55)
         }
     }
 
