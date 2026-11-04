@@ -1,6 +1,20 @@
 # Changelog
 
-## Unreleased
+## 0.2.0
+
+Highlights:
+- **Sessions outlive their tab.** Closing a tab or pane leaves its sessions running in the sidebar; Stop and
+  Remove there end them (Stop asks first when something is still running). Settings → Sessions can make
+  terminals end with their tab again.
+- **Create Pull Request** from the Changes panel, ✨ commit messages and PR text written by your own agent CLI,
+  Discard changes, and Ask Agent about a change.
+- **Quick composer** over any app, **Prompts** you save once, an **MCP** page to see, check, add and remove servers.
+- **Worktrees** with setup and teardown scripts, branch name patterns and a custom root.
+- A rebuilt **Settings** with search, and pages for Terminal, Sessions (CPU and memory per session), Projects,
+  MCP, Prompts and more; interface size 90–120%.
+- **Codex** at the same level as Claude Code; Intel Macs; Homebrew.
+
+All changes:
 
 - **Workspaces that want you** in the sidebar's switcher: a mark in amber (something waits for your input there)
   or green (finished while you were away), as a bar under the workspace, a glow behind it (each still or slowly
@@ -8,7 +22,6 @@
 - **Add MCP servers** from Settings → MCP (Add Server… on each agent's group): a command or an HTTP/SSE URL,
   environment variables or headers, and for Claude Code where it applies (all projects, one project, or the
   project's shared .mcp.json). Runs the agent's own `mcp add`.
-- **Tab titles from your first message** now work for Codex too (read from its conversation file).
 - **Sessions outlive their tab:** closing a tab or pane (×, ⌘W) leaves its sessions, agents and terminals alike, in
   the sidebar and still running; clicking one opens it in a tab again. A session ends with Stop and Remove in the
   sidebar, and Stop now asks first when a program (a dev server, `sleep`) or a busy agent would be stopped
@@ -42,7 +55,7 @@
 - **Worktree branch names:** a pattern fills the name in (`{user}/{date}-{n}`, Settings → Projects), and ✨ in the
   New Worktree window names the branch from the task you give the agent (the task is its first message).
 - **Tab titles from your first message:** Settings → Sessions can name agent tabs after the first message you
-  sent instead of the agent's own conversation title.
+  sent instead of the agent's own conversation title. Works for Claude Code and Codex.
 - **Diff colors:** blue and orange instead of green and red (Settings → Appearance → Diffs), everywhere added and
   removed lines or counts show.
 - **Status bar limits:** show all, only the 5-hour or only the weekly limit (Settings → Agents → Usage limits).
@@ -88,13 +101,8 @@
 - **Settings → Terminal:** font (installed monospaced fonts or the built-in JetBrains Mono), size, line height,
   cursor style and blink, and scrollback lines, with a preview; terminals change as you pick. The terminal.conf
   editor moved here from Appearance and keeps working for everything else.
-- **Ask before closing a running program:** closing a tab or pane asks first when an agent in it is working or
-  waiting for you, or a terminal runs a program other than its shell (a dev server, vim, a build). The tab's ×
-  button asks too now. It can be turned off in Settings → Terminal or with "Don't ask again".
 - **Settings → Keyboard:** Find by Keys (press a combination to see what it does), an "Acts on" column (focused
   pane, current project, …) and Reset All Shortcuts. Shortcuts with Return show ↩.
-- **Other workspaces:** the workspace menu and the workspace buttons show a dot when another workspace has an
-  agent waiting for input (amber) or something new (green); the menu lists the counts.
 - **Agents panel filter:** its menu can show only the current workspace's agents.
 - **Settings, rearranged:** pages in groups (App, Work, Advanced), a search field that jumps to the setting,
   every setting with a line on what it does and its control on the right, and the Global / Workspace switch at
