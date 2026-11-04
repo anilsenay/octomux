@@ -74,9 +74,13 @@ extension AppModel {
         return picked.filter { !isPinned($0) }
     }
 
-    /// Closes several tabs (their sessions stay in the sidebar).
+    /// Closes several tabs (their sessions stay in the sidebar), with one question when terminals end with them.
     func closeTabs(_ tabs: [Tab]) {
-        for t in tabs { closeTab(t.id) }
+        guard !tabs.isEmpty else { return }
+        let ending = closingEndsTerminals ? tabs.flatMap { $0.layout.sessions }.filter { session($0)?.kind == .terminal } : []
+        closeAsking(ending, noun: "tab", many: tabs.count, button: "Close Tabs") {
+            for t in tabs { self.closeTab(t.id, confirm: false) }
+        }
     }
 
     func docs(_ scope: CloseScope, of docId: String) -> [DocTab] {

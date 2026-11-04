@@ -60,6 +60,9 @@ final class AppModel: ObservableObject {
         didSet { UserDefaults.standard.set(rightPanelVisible, forKey: "octomux.rightPanel") }
     }
     @Published var lastError: String?
+    /// A one-time tip shown above the status bar (`HintToast`).
+    @Published var hint: Hint?
+    enum Hint: Equatable { case closedTabKeepsSessions(String) }
     @Published var renamingSessionId: String?
     @Published var paletteVisible = false
     @Published var paletteQuery = ""
@@ -413,11 +416,32 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Settings → Sessions → "Closing a terminal tab": ends the terminal (as in other terminal apps) instead of
+    /// leaving it in the sidebar.
+    var closingEndsTerminals: Bool { setting("sessions.close_tab_ends_terminals")?.bool ?? false }
+
     /// Closes a tab. Its sessions stay in the sidebar, still running (a tab is a view): they end with Stop
-    /// and Remove there, so nothing is asked here.
-    func closeTab(_ tabId: String) {
-        guard state.tabs.contains(where: { $0.id == tabId }) else { return }
-        client(for: tabId).call("tab.close", ["id": tabId], completion: report)
+    /// and Remove there. With "Closing a terminal tab: ends it", its terminals end, after asking when a program
+    /// runs in one.
+    func closeTab(_ tabId: String, confirm: Bool = true) {
+        guard let tab = state.tabs.first(where: { $0.id == tabId }) else { return }
+        let ending = closingEndsTerminals ? tab.layout.sessions.filter { session($0)?.kind == .terminal } : []
+        let kept = tab.layout.sessions.filter { !ending.contains($0) }
+        let close = {
+            self.client(for: tabId).call("tab.close", ["id": tabId], completion: self.report)
+            self.hintStillRunning(kept)
+        }
+        guard confirm else { close(); return }
+        closeAsking(ending, noun: "tab", button: "Close Tab", close: close)
+    }
+
+    /// Once ever: closing a tab left something running in the sidebar, so say where it went.
+    func hintStillRunning(_ ids: [String]) {
+        let key = "octomux.hint.closedTabKeepsSessions"
+        guard !UserDefaults.standard.bool(forKey: key),
+              let s = ids.compactMap({ session($0) }).first(where: { !$0.isDormant && $0.state == .running }) else { return }
+        UserDefaults.standard.set(true, forKey: key)
+        withAnimation(.easeOut(duration: 0.2)) { hint = .closedTabKeepsSessions(s.displayTitle) }
     }
 
     /// Starts a session and remembers the choice for the tab bar's button.
@@ -652,9 +676,10 @@ final class AppModel: ObservableObject {
     /// Closes a pane. Its session only leaves the tab: it stays in the sidebar, still running, until it is
     /// stopped and removed there.
     func closePane(_ id: String) {
-        guard let s = session(id), s.placement == .tab else { remove(id); return }
+        guard let s = session(id), s.placement == .tab, !(s.kind == .terminal && closingEndsTerminals) else { remove(id); return }
         guard ensureManageable() else { return }
         client(for: id).call("session.detach", ["id": id], completion: report)
+        hintStillRunning([id])
     }
 
     func remove(_ id: String, confirm: Bool = true) {

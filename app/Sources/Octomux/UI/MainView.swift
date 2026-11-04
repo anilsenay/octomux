@@ -52,6 +52,7 @@ struct MainView: View {
         .overlay { if !model.loaded && model.lastError == nil { LaunchCover().transition(.opacity) } }
         // App update offer / download progress / "Relaunch Now", above the status bar.
         .overlay(alignment: .bottomTrailing) { UpdateToast().padding(.trailing, 14).padding(.bottom, 34) }
+        .overlay(alignment: .bottom) { HintToast().padding(.bottom, 34) }
         .onChange(of: model.power) { _, p in if p == .running { TerminalHost.shared.render(force: true); TerminalHost.shared.renderDock(force: true) } }
         .background(rootBackground)
         .overlay(alignment: .topLeading) { peekStrip }
@@ -320,6 +321,42 @@ struct DisconnectBanner: View {
             }
         }
     }
+}
+
+/// A one-time tip above the status bar (`AppModel.hint`).
+struct HintToast: View {
+    @EnvironmentObject var model: AppModel
+
+    var body: some View {
+        if case .closedTabKeepsSessions(let title) = model.hint {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "sidebar.left").font(.system(size: T.k * 13)).foregroundStyle(T.accent).padding(.top, 1)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("“\(TabChip.clip(title, 32))” is still running").font(T.headline).foregroundStyle(T.text)
+                    Text("Closing a tab keeps its sessions in the sidebar. Click one to open it again; Stop and Remove there end it.")
+                        .font(T.caption).foregroundStyle(T.text2).fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 8) {
+                        Button("Got It") { dismiss() }.buttonStyle(PrimaryButtonStyle())
+                        Button("Change in Settings…") {
+                            dismiss()
+                            SettingsWindow.show(section: .sessions)
+                            SettingsWindow.selection.open(.sessions, row: "Closing a terminal tab")
+                        }
+                        .buttonStyle(SecondaryButtonStyle())
+                    }
+                    .padding(.top, 2)
+                }
+            }
+            .padding(12)
+            .frame(width: 360, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 10).fill(T.raised))
+            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(T.border))
+            .shadow(color: .black.opacity(0.18), radius: 14, y: 4)
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+        }
+    }
+
+    private func dismiss() { withAnimation(.easeOut(duration: 0.2)) { model.hint = nil } }
 }
 
 struct ErrorBanner: View {

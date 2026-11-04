@@ -175,18 +175,29 @@ pub fn open_files(pid: i32) -> Vec<String> {
 mod tests {
     #[test]
     fn open_files_of_own_process() {
-        let path = std::env::temp_dir().join(format!("octomux-open-{}", std::process::id()));
-        let later = path.with_extension("later");
-        let f = std::fs::File::create(&path).unwrap();
-        let g = std::fs::File::create(&later).unwrap();
+        // Opened later, listed later (what picks Codex's current conversation after /new). The order is the fd
+        // number's: another test closing a lower fd between the two opens hands it to the second file, so a few
+        // tries are allowed.
         let canon = |p: &std::path::Path| p.canonicalize().unwrap().to_string_lossy().into_owned();
-        let open = super::open_files(std::process::id() as i32);
-        let at = |p: &std::path::Path| open.iter().position(|x| *x == canon(p));
-        // Opened later, listed later (what picks Codex's current conversation after /new).
-        assert!(at(&path).unwrap() < at(&later).unwrap(), "{open:?}");
-        drop((f, g));
-        let _ = std::fs::remove_file(path);
-        let _ = std::fs::remove_file(later);
+        let mut last = Vec::new();
+        for i in 0..20 {
+            let path = std::env::temp_dir().join(format!("octomux-open-{}-{i}", std::process::id()));
+            let later = path.with_extension("later");
+            let f = std::fs::File::create(&path).unwrap();
+            let g = std::fs::File::create(&later).unwrap();
+            let open = super::open_files(std::process::id() as i32);
+            let at = |p: &std::path::Path| open.iter().position(|x| *x == canon(p));
+            let (a, b) = (at(&path), at(&later));
+            drop((f, g));
+            let _ = std::fs::remove_file(&path);
+            let _ = std::fs::remove_file(&later);
+            assert!(a.is_some() && b.is_some(), "both files are listed: {open:?}");
+            if a < b {
+                return;
+            }
+            last = open;
+        }
+        panic!("the later file never came later: {last:?}");
     }
 
     #[test]

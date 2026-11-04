@@ -2055,7 +2055,17 @@ impl Daemon {
             "tab.close" => {
                 let id = req("id")?;
                 // A tab is a view: its sessions outlive it (they stay in the sidebar, running or stopped, until
-                // removed there).
+                // removed there). Settings → Sessions can make terminals end with their tab instead.
+                if self.setting("sessions.close_tab_ends_terminals", None).and_then(|v| v.as_bool()).unwrap_or(false) {
+                    let terminals: Vec<String> = {
+                        let st = self.state.lock().unwrap();
+                        let in_tab = st.tabs.iter().find(|t| t.id == id).map(|t| t.layout.sessions()).unwrap_or_default();
+                        st.sessions.iter().filter(|s| s.kind == SessionKind::Terminal && in_tab.contains(&s.id)).map(|s| s.id.clone()).collect()
+                    };
+                    for sid in terminals {
+                        self.remove_session(&sid)?;
+                    }
+                }
                 self.state.lock().unwrap().tabs.retain(|t| t.id != id);
                 self.store.lock().unwrap().delete("tab", &id)?;
                 self.changed();

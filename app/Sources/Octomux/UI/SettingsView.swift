@@ -581,6 +581,7 @@ enum SettingsIndex {
             e(.projects, "Commit message style", "conventional commits instructions commit ai"),
             e(.sessions, "Running", "cpu memory ram processes activity monitor stop"),
             e(.sessions, "Agent tabs are named after", "tab title name first message prompt agent title"),
+            e(.sessions, "Closing a terminal tab", "close tab ends kill shell keep sidebar background"),
             e(.sessions, "Close stopped agent tabs", "cleanup old stopped exited tabs archive history"),
             e(.sessions, "Stop idle agents", "auto stop idle timeout sleep memory"),
             e(.hosts, "Hosts", "remote ssh server daemon connect"),

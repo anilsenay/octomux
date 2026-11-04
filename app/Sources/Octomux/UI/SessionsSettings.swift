@@ -34,6 +34,18 @@ struct SessionsSettings: View {
                 .labelsHidden().fixedSize()
             }
         }
+        let ends = model.settingValue("sessions.close_tab_ends_terminals", scope: "global")?.bool ?? false
+        SettingsGroup("Tabs") {
+            SettingRow("Closing a terminal tab", desc: ends
+                       ? "Ends the terminal, as in other terminal apps (it asks first when a program runs in it). Agents still stay in the sidebar."
+                       : "Leaves the terminal in the sidebar, still running, like an agent; click it to open it again. Stop and Remove there end it.") {
+                Picker("", selection: Binding(get: { ends }, set: { model.setSetting("sessions.close_tab_ends_terminals", $0 ? true : nil) })) {
+                    Text("Keeps it in the sidebar").tag(false)
+                    Text("Ends the terminal").tag(true)
+                }
+                .labelsHidden().fixedSize()
+            }
+        }
         let mins = Int(model.settingValue("sessions.auto_stop_idle_mins", scope: "global")?.number ?? 0)
         SettingsGroup("Idle agents") {
             SettingRow("Stop idle agents", desc: mins == 0

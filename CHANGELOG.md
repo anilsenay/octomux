@@ -5,7 +5,9 @@
 - **Sessions outlive their tab:** closing a tab or pane (×, ⌘W) leaves its sessions, agents and terminals alike, in
   the sidebar and still running; clicking one opens it in a tab again. A session ends with Stop and Remove in the
   sidebar, and Stop now asks first when a program (a dev server, `sleep`) or a busy agent would be stopped
-  (Settings → Terminal → Ask before stopping a running program).
+  (Settings → Terminal → Ask before stopping a running program). The first time a closed tab leaves something
+  running, a note says where it went. Settings → Sessions → Closing a terminal tab can make terminals end with
+  their tab instead, as in other terminal apps (asking first when a program runs).
 - **Discard changes** in the Changes panel: per file (hover, or right-click) and for a whole group, after a
   confirmation. New files go to the Trash.
 - **Preview tabs:** a click in the Files panel opens the file in a preview tab (italic) that the next file

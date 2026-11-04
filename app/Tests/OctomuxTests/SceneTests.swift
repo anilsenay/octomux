@@ -119,7 +119,11 @@ final class UserSceneTests: XCTestCase {
     }
 
     func testTemplateParses() throws {
-        // The example Octomux writes for "New from Template" must always load.
+        // The example Octomux writes for "New from Template" must always load. It names a terminal theme, which
+        // the app bundles; a bare checkout (CI) has none.
+        guard TerminalThemes.load("Catppuccin Mocha", relativeTo: URL(fileURLWithPath: "/tmp/scenes/x.json")) != nil else {
+            throw XCTSkip("no Ghostty themes on this machine")
+        }
         let s = try parse(UserScenes.template(name: "Lanterns", id: "lanterns"))
         XCTAssertEqual(s.id, "user.lanterns")
         XCTAssertEqual(s.spec?.sprites?.isEmpty, false)
