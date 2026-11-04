@@ -22,8 +22,8 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     /// One line under the page title.
     var subtitle: String {
         switch self {
-        case .general: return "The version you run, updates, and the icons Octomux shows in the Dock and the menu bar."
-        case .appearance: return "Theme, scene and how terminals look."
+        case .general: return "The version you run and how Octomux updates itself."
+        case .appearance: return "Theme, scene, how terminals look, and the icons in the Dock and the menu bar."
         case .notifications: return "When Octomux tells you an agent finished or needs you."
         case .keyboard: return "Every shortcut Octomux handles. Keys not bound here go straight to the terminal program."
         case .agents: return "The agents in the + menu, how they start, and how Octomux follows their state."
@@ -82,12 +82,20 @@ final class SettingsSelection: ObservableObject {
     /// Where each row starts in the page (`SettingAnchor`), and the page's scroll view, to scroll to a row.
     var anchors: [String: CGFloat] = [:]
     weak var scrollView: NSScrollView?
+    /// The page's group titles, top to bottom (the sidebar lists them under the page).
+    @Published var groups: [String] = []
+    /// Scroll position of the page, for the sidebar's current group (its own object: only the sidebar redraws).
+    let scroll = SettingsScroll()
 
     func open(_ s: SettingsSection, row: String?) {
         query = ""
         section = s
         target = row
     }
+}
+
+final class SettingsScroll: ObservableObject {
+    @Published var y: CGFloat = 0
 }
 
 struct SettingsView: View {
@@ -115,8 +123,13 @@ struct SettingsView: View {
                 .frame(maxWidth: .infinity)
                 .coordinateSpace(name: SettingAnchor.space)
                 .onPreferenceChange(SettingAnchor.Key.self) { [sel] in sel.anchors = $0 }
+                .onPreferenceChange(SettingAnchor.Groups.self) { [sel] g in
+                    let names = g.sorted { $0.value < $1.value }.map(\.key)
+                    if names != sel.groups { sel.groups = names }
+                }
                 .background(ScrollOffsetKeeper(initial: sel.scrollOffsets[sel.section] ?? 0, onScrollView: { [sel] in sel.scrollView = $0 }) { [sel] y in
                     if sel.query.isEmpty { sel.scrollOffsets[sel.section] = y }
+                    sel.scroll.y = y
                 })
                 .id(sel.query.isEmpty ? sel.section.rawValue : "search")
             }
@@ -196,7 +209,10 @@ struct SettingsSidebar: View {
                     ForEach(SettingsSection.groups, id: \.title) { g in
                         Text(g.title).font(.system(size: 11, weight: .semibold)).foregroundStyle(T.text3)
                             .padding(.horizontal, 10).padding(.top, g.title == SettingsSection.groups.first?.title ? 0 : 14).padding(.bottom, 4)
-                        ForEach(g.items) { s in item(s) }
+                        ForEach(g.items) { s in
+                            item(s)
+                            if sel.section == s, sel.query.isEmpty, sel.groups.count > 1 { SettingsSubItems() }
+                        }
                     }
                 }
             }
@@ -224,6 +240,32 @@ struct SettingsSidebar: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// The current page's groups under its sidebar item; the one in view is marked, a click scrolls to it.
+struct SettingsSubItems: View {
+    @EnvironmentObject var sel: SettingsSelection
+    @ObservedObject private var scroll = SettingsWindow.selection.scroll
+
+    var body: some View {
+        let current = sel.groups.last { (sel.anchors[$0] ?? 0) <= scroll.y + 90 } ?? sel.groups.first
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(sel.groups, id: \.self) { g in
+                Button { sel.target = g } label: {
+                    Text(g).font(.system(size: 12, weight: g == current ? .medium : .regular))
+                        .foregroundStyle(g == current ? T.text : T.text3)
+                        .lineLimit(1)
+                        .padding(.leading, 12).frame(height: 22).frame(maxWidth: .infinity, alignment: .leading)
+                        .overlay(alignment: .leading) {
+                            Rectangle().fill(g == current ? T.accent : T.border).frame(width: g == current ? 2 : 1)
+                        }
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.leading, 28).padding(.top, 2).padding(.bottom, 6)
     }
 }
 
@@ -308,7 +350,7 @@ struct SettingsGroup<Content: View, Trailing: View>: View {
                     trailing()
                 }
                 .padding(.horizontal, 2)
-                .settingAnchor(title ?? "")
+                .settingAnchor(title ?? "", group: true)
             }
             SettingsCard { _VariadicView.Tree(DividedRows()) { content() } }
         }
@@ -390,12 +432,22 @@ enum SettingAnchor {
             value.merge(nextValue()) { a, _ in a }
         }
     }
+    /// Only the group titles (the sidebar's sub-items).
+    struct Groups: PreferenceKey {
+        static var defaultValue: [String: CGFloat] = [:]
+        static func reduce(value: inout [String: CGFloat], nextValue: () -> [String: CGFloat]) {
+            value.merge(nextValue()) { a, _ in a }
+        }
+    }
 }
 
 extension View {
-    func settingAnchor(_ name: String) -> some View {
+    func settingAnchor(_ name: String, group: Bool = false) -> some View {
         background(GeometryReader { g in
-            Color.clear.preference(key: SettingAnchor.Key.self, value: name.isEmpty ? [:] : [name: g.frame(in: .named(SettingAnchor.space)).minY])
+            let y = g.frame(in: .named(SettingAnchor.space)).minY
+            Color.clear
+                .preference(key: SettingAnchor.Key.self, value: name.isEmpty ? [:] : [name: y])
+                .preference(key: SettingAnchor.Groups.self, value: name.isEmpty || !group ? [:] : [name: y])
         })
     }
 }
@@ -442,8 +494,8 @@ enum SettingsIndex {
         return [
             e(.general, "Version", "about update release check"),
             e(.general, "Check automatically", "updates sparkle background"),
-            e(.general, "Menu bar icon", "status item octopus hidden monochrome"),
-            e(.general, "App icon", "dock icon monochrome color"),
+            e(.appearance, "Menu bar icon", "status item octopus hidden monochrome"),
+            e(.appearance, "App icon", "dock icon monochrome color"),
             e(.appearance, "Theme", "ink grid glass look style"),
             e(.appearance, "Appearance", "dark light system mode"),
             e(.appearance, "Use theme colors in the terminal", "terminal colors palette"),
@@ -453,6 +505,7 @@ enum SettingsIndex {
             e(.appearance, "React to agents", "scene glow working"),
             e(.appearance, "Your scenes", "custom import template"),
             e(.appearance, "Terminal config", "ghostty font size cursor family"),
+            e(.appearance, "Icons", "dock menu bar"),
             e(.appearance, "Workspace color", "tint"),
             e(.notifications, "Notifications", "banners alerts mute"),
             e(.notifications, "Agent finished", "done turn"),
@@ -528,7 +581,6 @@ struct SettingsSearchResults: View {
 struct GeneralSettings: View {
     @EnvironmentObject var model: AppModel
     @ObservedObject var updater = Updater.shared
-    @AppStorage(AppIconStyle.key) private var appIcon = "color"
 
     var body: some View {
         SettingsGroup("About") {
@@ -541,24 +593,6 @@ struct GeneralSettings: View {
             if updater.isEnabled {
                 SettingRow("Check automatically", desc: "Looks for a new version in the background once a day and offers it when it's ready.") {
                     SettingSwitch(isOn: Binding(get: { updater.automaticChecks }, set: { updater.automaticChecks = $0 }))
-                }
-            }
-        }
-        SettingsGroup("Dock and menu bar") {
-            SettingRow("Menu bar icon", desc: "The octopus in the menu bar, which bounces while an agent is working.") {
-                Picker("", selection: Binding(get: { model.settingValue("menubar.style", scope: "global")?.string ?? "color" },
-                                              set: { model.setSetting("menubar.style", $0, scope: "global") })) {
-                    Text("Color").tag("color"); Text("Monochrome").tag("mono"); Text("Hidden").tag("hidden")
-                }
-                .pickerStyle(.segmented).labelsHidden().fixedSize()
-            }
-            if !Paths.isDevVariant {
-                SettingRow("App icon", desc: "In the Dock while Octomux runs. Finder, and the Dock while Octomux is quit, keep the color icon.") {
-                    Picker("", selection: $appIcon) {
-                        Text("Color").tag("color"); Text("Monochrome").tag("mono")
-                    }
-                    .pickerStyle(.segmented).labelsHidden().fixedSize()
-                    .onChange(of: appIcon) { _, v in AppIconStyle.set(v) }
                 }
             }
         }
@@ -981,15 +1015,27 @@ struct AppearanceSettings: View {
         }
         if sel.scope.hasPrefix("workspace:"), let w = model.state.workspaces.first(where: { "workspace:\($0.id)" == sel.scope }) {
             SettingsGroup("Workspace") {
-                SettingRow("Workspace color", desc: "Its dot in the sidebar, and the tint of the window while it is shown.") {
-                    ColorDots(selected: w.color) { model.updateWorkspace(w.id, ["color": $0]) }
+                VisualSettingRow("Workspace color", desc: "Its dot in the sidebar, and the tint of the window while it is shown.", scrolls: false) {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 84, maximum: 84), spacing: 10, alignment: .leading)], alignment: .leading, spacing: 10) {
+                        // A color set elsewhere (not one of the palette's) shows first, as the picked one.
+                        let colors = (Palette.colors.contains { $0.caseInsensitiveCompare(w.color) == .orderedSame } ? [] : [w.color]) + Palette.colors
+                        ForEach(colors, id: \.self) { c in
+                            ChoiceTile(title: Palette.colors.contains(c) ? Palette.name(c) : "Current", selected: w.color.caseInsensitiveCompare(c) == .orderedSame, width: 84, height: 52,
+                                       action: { model.updateWorkspace(w.id, ["color": c]) }) {
+                                MiniWindow(colors: ThemeStore.shared.preset.dark, metrics: ThemeStore.shared.preset.metrics, tint: Color(hex: c))
+                                    .overlay(alignment: .topTrailing) { Circle().fill(Color(hex: c)).frame(width: 7, height: 7).padding(5) }
+                            }
+                        }
+                    }
                 }
             }
         }
         SceneSettingsCard(scope: sel.scope)
+        if sel.scope == "global" { IconSettings() }
         if sel.scope == "global" {
             SettingsGroup("Terminal config", desc: "Ghostty's config syntax (font-family, font-size, cursor-style, …). The theme's colors go on top unless “Use theme colors in the terminal” is off.") {
                 SettingBlock {
+                    FontPreview(config: config)
                     TextEditor(text: $config).font(T.mono(12)).frame(height: 200)
                         .scrollContentBackground(.hidden).padding(6)
                         .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(T.surface))
@@ -1069,21 +1115,63 @@ struct ThemePicker: View {
                 }
             }
             .settingAnchor("Theme")
-            SettingRow("Appearance", desc: store.scene.map { "The current workspace's scene (\($0.name)) is \($0.dark ? "dark" : "light"), so it decides while it is shown." }
-                       ?? "System follows the macOS appearance.") {
-                Picker("", selection: Binding(get: { store.mode }, set: { store.set(mode: $0) })) {
-                    Text("System").tag("system"); Text("Dark").tag("dark"); Text("Light").tag("light")
+            VisualSettingRow("Appearance", desc: store.scene.map { "The current workspace's scene (\($0.name)) is \($0.dark ? "dark" : "light"), so it decides while it is shown." }
+                             ?? "System follows the macOS appearance.") {
+                HStack(spacing: 12) {
+                    ForEach([("system", "System"), ("light", "Light"), ("dark", "Dark")], id: \.0) { m in
+                        ChoiceTile(title: m.1, selected: store.mode == m.0, action: { store.set(mode: m.0) }) { ModePreview(mode: m.0) }
+                    }
                 }
-                .pickerStyle(.segmented).labelsHidden().fixedSize()
             }
-            SettingRow("Use theme colors in the terminal", desc: "Terminal background, text and palette follow the theme. Off uses the colors of your terminal config.") {
-                SettingSwitch(isOn: Binding(
-                    get: { model.settingValue("appearance.terminal_colors", scope: "global")?.bool ?? true },
-                    set: { model.setSetting("appearance.terminal_colors", $0 ? nil : false) }))
+            let themeColors = model.settingValue("appearance.terminal_colors", scope: "global")?.bool ?? true
+            VisualSettingRow("Use theme colors in the terminal", desc: "Terminal background, text and palette follow the theme, or come from your terminal config (below).") {
+                HStack(spacing: 12) {
+                    ChoiceTile(title: "Theme colors", selected: themeColors, action: { model.setSetting("appearance.terminal_colors", nil) }) {
+                        TerminalColorsPreview(themeColors: true)
+                    }
+                    ChoiceTile(title: "My terminal config", selected: !themeColors, action: { model.setSetting("appearance.terminal_colors", false) }) {
+                        TerminalColorsPreview(themeColors: false)
+                    }
+                }
             }
-            SettingRow("Split tabs as one row", desc: stackedTabs ? "A tab with several panes is one sidebar row with a stack of its panes' icons."
-                                                                 : "Each pane of a split tab is its own sidebar row, grouped in a frame.") {
-                SettingSwitch(isOn: $stackedTabs)
+            VisualSettingRow("Split tabs as one row", desc: "How a tab with several panes shows in the sidebar.") {
+                HStack(spacing: 12) {
+                    ChoiceTile(title: "One row", selected: stackedTabs, action: { stackedTabs = true }) { SplitTabsPreview(stacked: true) }
+                    ChoiceTile(title: "A row per pane", selected: !stackedTabs, action: { stackedTabs = false }) { SplitTabsPreview(stacked: false) }
+                }
+            }
+        }
+    }
+}
+
+/// Appearance › Icons: the Dock icon and the menu bar icon, each picked from what it looks like.
+struct IconSettings: View {
+    @EnvironmentObject var model: AppModel
+    @AppStorage(AppIconStyle.key) private var appIcon = "color"
+
+    var body: some View {
+        let menubar = model.settingValue("menubar.style", scope: "global")?.string ?? "color"
+        SettingsGroup("Icons", desc: "How Octomux looks in the Dock and in the menu bar.") {
+            if !Paths.isDevVariant {
+                VisualSettingRow("App icon", desc: "In the Dock while Octomux runs. Finder, and the Dock while Octomux is quit, keep the color icon.") {
+                    HStack(spacing: 12) {
+                        ForEach([("color", "Color"), ("mono", "Monochrome")], id: \.0) { o in
+                            ChoiceTile(title: o.1, selected: appIcon == o.0, width: 100, height: 76, action: { appIcon = o.0; AppIconStyle.set(o.0) }) {
+                                AppIconPreview(style: o.0)
+                            }
+                        }
+                    }
+                }
+            }
+            VisualSettingRow("Menu bar icon", desc: "It bounces while an agent works and shows a dot for unread notifications; a click opens recent activity.") {
+                HStack(spacing: 12) {
+                    ForEach([(StatusItemController.Style.color, "Color"), (.mono, "Monochrome"), (.hidden, "Hidden")], id: \.0.rawValue) { o in
+                        ChoiceTile(title: o.1, selected: menubar == o.0.rawValue, width: 128, height: 40,
+                                   action: { model.setSetting("menubar.style", o.0.rawValue, scope: "global") }) {
+                            MenuBarPreview(style: o.0)
+                        }
+                    }
+                }
             }
         }
     }

@@ -268,7 +268,7 @@ final class NotificationTextTests: XCTestCase {
 
 final class SettingsSearchTests: XCTestCase {
     func testMatchesTitlesAndWords() {
-        XCTAssertEqual(Set(SettingsIndex.search("dock").map(\.title)), ["App icon", "Dock badge"])
+        XCTAssertEqual(Set(SettingsIndex.search("dock").map(\.title)), ["App icon", "Dock badge", "Icons"])
         XCTAssertEqual(SettingsIndex.search("ssh remote").first?.section, .hosts)
         XCTAssertTrue(SettingsIndex.search("  ").isEmpty)
         XCTAssertTrue(SettingsIndex.search("nothing-like-this").isEmpty)

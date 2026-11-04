@@ -13,6 +13,10 @@ extension Color {
 
 enum Palette {
     static let colors = ["#459CF7", "#F4BF25", "#39C363", "#E45A9F", "#B168D4", "#37BEB4", "#EF8C39", "#EA603E", "#8B949C"]
+    static func name(_ hex: String) -> String {
+        let names = ["Blue", "Yellow", "Green", "Pink", "Purple", "Teal", "Orange", "Red", "Gray"]
+        return colors.firstIndex { $0.caseInsensitiveCompare(hex) == .orderedSame }.map { names[$0] } ?? hex
+    }
     static var sidebarBG: Color { T.frame }
     static var chromeBG: Color { T.frame }
     static var selection: Color { T.selection }

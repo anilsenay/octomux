@@ -367,4 +367,14 @@ enum AppIconStyle {
     }
 
     static var monoImage: NSImage? { Bundle.main.url(forResource: "AppIcon-mono", withExtension: "png").flatMap(NSImage.init(contentsOf:)) }
+
+    /// Both icons for Settings' preview: from the bundle, or from app/Resources in a development run.
+    static func previewImage(_ style: String) -> NSImage? {
+        let name = style == "mono" ? "AppIcon-mono" : "AppIcon-1024"
+        if style == "mono", let i = monoImage { return i }
+        if style != "mono", let u = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"), let i = NSImage(contentsOf: u) { return i }
+        let repo = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+        return NSImage(contentsOf: repo.appendingPathComponent("Resources/\(name).png"))
+    }
 }

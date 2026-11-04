@@ -223,7 +223,7 @@ enum DebugActions {
             // Types into Settings' search field; "row" with "value" opens a page at a row, like picking a result.
             case "settings_search": SettingsWindow.selection.query = p["value"] as? String ?? ""
             case "settings_jump":
-                if let s = SettingsSection(rawValue: p["value"] as? String ?? "") { SettingsWindow.selection.open(s, row: p["row"] as? String) }
+                if let s = SettingsSection(rawValue: p["value"] as? String ?? "") { SettingsWindow.show(section: s); SettingsWindow.selection.open(s, row: p["row"] as? String) }
             case "next_waiting": m.nextNeedingInput()
             case "focus": if let dir = p["value"] as? String {
                 TerminalHost.shared.focusNeighbor(["left": .minX, "right": .maxX, "up": .maxY, "down": .minY][dir] ?? .maxX)

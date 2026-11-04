@@ -95,6 +95,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private static let colorDotted = dotted(colorFrames[0], color: .systemBlue, template: false)
     private static let monoDotted = dotted(monoFrames[0], color: .black, template: true)
     private static let fps: Double = 5
+    /// The still icon for Settings' preview of each style (the mono one is a template: tint it like the menu bar).
+    static func preview(_ style: Style) -> NSImage? {
+        switch style { case .color: return colorFrames[0]; case .mono: return monoFrames[0]; case .hidden: return nil }
+    }
 
     private var item: NSStatusItem?
     private var style: Style = .color

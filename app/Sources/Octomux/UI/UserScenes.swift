@@ -449,18 +449,31 @@ struct TerminalSceneControls: View {
         let stored = TerminalSceneMode.resolveOpacity(workspace: wsId, settings: model.state.settings)
         let opacity = dragging ?? stored
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Behind terminals")
-                Spacer()
-                Picker("", selection: Binding<String>(
-                    get: { isWorkspace && own == nil ? "global" : effective.rawValue },
-                    set: { v in model.setSetting("appearance.scene_terminals", v == "global" ? nil : (v == "off" && !isWorkspace ? nil : v), scope: scope) })) {
-                    if isWorkspace { Text("Global").tag("global") }
-                    ForEach(TerminalSceneMode.allCases, id: \.rawValue) { Text($0.title).tag($0.rawValue) }
+            Text("Behind terminals").font(.system(size: 13, weight: .medium))
+            Text(effective.help + (isWorkspace && own == nil ? " (from Global)" : "")).font(.system(size: 11.5)).foregroundStyle(T.text2)
+            let picked = isWorkspace && own == nil ? "global" : effective.rawValue
+            // The preview shows the current scene; with none picked, the first one, so the choices still differ.
+            let scene = ThemeStore.shared.scene ?? Scenes.all.first { $0.dark }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    if isWorkspace {
+                        ChoiceTile(title: "Global", selected: picked == "global", width: 116, height: 70,
+                                   action: { model.setSetting("appearance.scene_terminals", nil, scope: scope) }) {
+                            BehindTerminalPreview(mode: TerminalSceneMode.resolve(workspace: nil, settings: model.state.settings), scene: scene, opacity: opacity)
+                                .overlay(alignment: .bottomLeading) {
+                                    Image(systemName: "globe").font(.system(size: 10)).foregroundStyle(.white).padding(5)
+                                }
+                        }
+                    }
+                    ForEach(TerminalSceneMode.allCases, id: \.rawValue) { m in
+                        ChoiceTile(title: m.title, selected: picked == m.rawValue, width: 116, height: 70,
+                                   action: { model.setSetting("appearance.scene_terminals", m == .off && !isWorkspace ? nil : m.rawValue, scope: scope) }) {
+                            BehindTerminalPreview(mode: m, scene: scene, opacity: opacity)
+                        }
+                    }
                 }
-                .pickerStyle(.segmented).labelsHidden().fixedSize()
+                .padding(2)
             }
-            Text(effective.help + (isWorkspace && own == nil ? " (from Global)" : "")).font(.caption).foregroundStyle(T.text3)
             if effective != .off {
                 HStack(spacing: 10) {
                     Text("Terminal opacity")
