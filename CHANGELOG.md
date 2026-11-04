@@ -1,9 +1,14 @@
 # Changelog
 
-## Unreleased
+## 0.1.2
 
 - While Octomux connects to its background service at launch (a few seconds right after an update), the window
   shows "Starting Octomux…" instead of an empty sidebar.
+- The Claude Code integration's hook only answers in its own app's tabs, so Octomux and Octomux Dev can both
+  have it on.
+- For contributors: **Octomux Dev** (`tools/build-app.sh release dev`), a separate app with its own data and
+  background service that runs next to an installed Octomux.
+- Updated SQLite bindings (rusqlite 0.41) and signal-hook 0.4.
 
 ## 0.1.1
 
