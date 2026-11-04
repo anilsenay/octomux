@@ -404,20 +404,12 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// Closes a tab. With `confirmBusy` (middle click), asks first when an agent in it is working or waiting.
+    /// Closes a tab. With `confirmBusy`, asks first when something in it still runs (see `closeAsking`).
     func closeTab(_ tabId: String, confirmBusy: Bool) {
         guard let tab = state.tabs.first(where: { $0.id == tabId }) else { return }
-        let busy = tab.layout.sessions.compactMap { session($0) }
-            .filter { $0.isAgent && !$0.isDormant && ($0.activity == .working || $0.activity == .needsInput) }
-        if confirmBusy, let s = busy.first {
-            let a = NSAlert()
-            a.messageText = "Close “\(s.displayTitle)”?"
-            a.informativeText = s.activity == .working ? "The agent is still working. Closing the tab stops it." : "The agent is waiting for your input. Closing the tab stops it."
-            a.addButton(withTitle: "Close Tab")
-            a.addButton(withTitle: "Cancel")
-            guard a.runModal() == .alertFirstButtonReturn else { return }
-        }
-        client(for: tabId).call("tab.close", ["id": tabId], completion: report)
+        let close = { self.client(for: tabId).call("tab.close", ["id": tabId], completion: self.report) }
+        guard confirmBusy else { close(); return }
+        closeAsking(tab.layout.sessions, noun: "tab", button: "Close Tab", close: close)
     }
 
     /// Starts a session and remembers the choice for the tab bar's button.
@@ -641,15 +633,19 @@ final class AppModel: ObservableObject {
 
     func remove(_ id: String, confirm: Bool = true) {
         guard ensureManageable() else { return }
-        if confirm, let s = session(id), s.state == .running, s.kind == .agent {
+        let close = { self.client(for: id).call("session.remove", ["id": id], completion: self.report) }
+        guard confirm, confirmsClose, let s = session(id) else { close(); return }
+        if s.state == .running, s.kind == .agent, s.activity != .working, s.activity != .needsInput {
+            // An idle agent: its process still ends with the pane.
             let a = NSAlert()
             a.messageText = "Close “\(s.displayTitle)”?"
             a.informativeText = "The agent process will be stopped and the session removed. The conversation stays in the agent's history."
             a.addButton(withTitle: "Close")
             a.addButton(withTitle: "Cancel")
-            if a.runModal() != .alertFirstButtonReturn { return }
+            if a.runModal() == .alertFirstButtonReturn { close() }
+            return
         }
-        client(for: id).call("session.remove", ["id": id], completion: report)
+        closeAsking([id], noun: "pane", button: "Close", close: close)
     }
 
     func rename(_ id: String, to title: String) { client(for: id).call("session.rename", ["id": id, "title": title], completion: report) }

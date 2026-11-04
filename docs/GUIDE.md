@@ -83,7 +83,17 @@ Settings → Appearance (or ⌘K "Theme"): theme presets (**Ink**, **Grid**, **G
 **scenes**: animated pixel-art backdrops (Octo Deep, Kraken, Tide Pool and more) that can show through
 translucent terminals. You can make your own scene from a JSON file. Terminal colors follow the theme
 (`theme.conf`, loaded after your `terminal.conf`); turn off "Use theme colors in the terminal" to use your own.
-*Import from Ghostty* copies your Ghostty font and colors.
+
+## Terminal
+
+Settings → Terminal sets the font (any installed monospaced font, or the built-in JetBrains Mono), its size, line
+height, the cursor style and blink, and how many lines of scrollback a terminal keeps. Terminals change as you
+pick. These controls write single lines of `terminal.conf`; the editor under them shows the whole file, for
+anything else Ghostty's config syntax offers. *Import from Ghostty* copies your Ghostty font and colors.
+
+Closing a tab or pane asks first when something in it is still running: an agent that is working or waiting for
+you, or a program other than the shell in a terminal (a dev server, vim, a build). Turn this off with "Ask before
+closing a running program" or "Don't ask again" in the question.
 
 ![The Kraken scene behind translucent terminals](assets/scene-kraken.png)
 
@@ -104,6 +114,8 @@ translucent terminals. You can make your own scene from a JSON file. Terminal co
 | ⌘J, ⌘⌥B, ⌘⇧C | Dock, right panel, chat view |
 
 Every menu shortcut can be changed in Settings → Keyboard (click a shortcut, press the new keys; Delete unbinds).
+*Find by Keys* shows what a key combination does, the "Acts on" column says what each command works on, and
+*Reset All Shortcuts* goes back to the defaults.
 
 ## Command line
 

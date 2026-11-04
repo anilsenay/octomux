@@ -383,7 +383,17 @@ impl Shared {
             started_at: self.started_at,
             boot_time: self.boot_time,
             exited: inner.exited.as_ref().and_then(|e| e.code),
+            foreground: if inner.exited.is_none() && self.interactive_shell { self.foreground_program() } else { None },
         }
+    }
+
+    /// Name of the process group in front of the terminal when it isn't our shell or another shell.
+    fn foreground_program(&self) -> Option<String> {
+        let fg = self.master.lock().unwrap().process_group_leader()?;
+        if Some(fg as u32) == self.child_pid {
+            return None;
+        }
+        process_name(fg).filter(|n| !is_shell(n))
     }
 
     fn broadcast_locked(inner: &mut Inner, role_filter: impl Fn(Role) -> bool, frame: &Frame) {

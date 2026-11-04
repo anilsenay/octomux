@@ -51,6 +51,8 @@ struct Shortcut: Equatable {
         if mods.contains(.command) { s += "⌘" }
         let arrows = [NSLeftArrowFunctionKey: "←", NSRightArrowFunctionKey: "→", NSUpArrowFunctionKey: "↑", NSDownArrowFunctionKey: "↓"]
         if let u = key.unicodeScalars.first, let a = arrows[Int(u.value)] { return s + a }
+        let named = ["\r": "↩", "\t": "⇥", " ": "Space", "\u{1b}": "⎋", "\u{8}": "⌫", "\u{7f}": "⌫"]
+        if let n = named[key] { return s + n }
         return s + key.uppercased()
     }
 
@@ -133,6 +135,29 @@ final class KeyBindings: ObservableObject {
         if let sc { o[id] = sc.string } else { o[id] = "" }
         if let def = commands.first(where: { $0.id == id })?.defaultShortcut, def == sc { o.removeValue(forKey: id) }
         model.setSetting("keybindings", o.isEmpty ? nil : o)
+    }
+
+    var hasOverrides: Bool { !lastApplied.isEmpty }
+
+    func resetAll(model: AppModel = .shared) { model.setSetting("keybindings", nil) }
+
+    /// What a command acts on, for the "Acts on" column (all of them work while Octomux is in front).
+    static func target(_ id: String) -> String {
+        let c = id.hasPrefix("cmd.") ? String(id.dropFirst(4)) : id
+        switch c {
+        case "split-right", "split-down", "zoom-pane", "close-pane", "stop-session", "rename-session", "toggle-chat-view":
+            return "Focused pane"
+        case _ where c.hasPrefix("focus-"): return "Split tab"
+        case "new-terminal-tab", "new-agent-tab", "new-chat", "open-project-in-default-app", "toggle-dock", "previous-tab", "next-tab":
+            return "Current project"
+        case _ where c.hasPrefix("tab-"): return "Current project"
+        case "add-project": return "Current workspace"
+        case "next-waiting-for-input": return "All workspaces"
+        case "previous-workspace", "next-workspace": return "Workspaces"
+        case _ where c.hasPrefix("workspace-"): return "Workspaces"
+        case "settings", "check-for-updates": return "App"
+        default: return "Window"
+        }
     }
 
     func reset(_ id: String, model: AppModel = .shared) {

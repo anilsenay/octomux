@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **Settings → Terminal:** font (installed monospaced fonts or the built-in JetBrains Mono), size, line height,
+  cursor style and blink, and scrollback lines, with a preview; terminals change as you pick. The terminal.conf
+  editor moved here from Appearance and keeps working for everything else.
+- **Ask before closing a running program:** closing a tab or pane asks first when an agent in it is working or
+  waiting for you, or a terminal runs a program other than its shell (a dev server, vim, a build). The tab's ×
+  button asks too now. It can be turned off in Settings → Terminal or with "Don't ask again".
+- **Settings → Keyboard:** Find by Keys (press a combination to see what it does), an "Acts on" column (focused
+  pane, current project, …) and Reset All Shortcuts. Shortcuts with Return show ↩.
 - **Other workspaces:** the workspace menu and the workspace buttons show a dot when another workspace has an
   agent waiting for input (amber) or something new (green); the menu lists the counts.
 - **Agents panel filter:** its menu can show only the current workspace's agents.

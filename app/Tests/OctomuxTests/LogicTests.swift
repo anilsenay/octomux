@@ -278,3 +278,57 @@ final class SettingsSearchTests: XCTestCase {
         for s in SettingsSection.allCases { XCTAssertFalse(SettingsIndex.search(s.rawValue).isEmpty, s.rawValue) }
     }
 }
+
+final class TerminalConfigTests: XCTestCase {
+    func testReadsLastValueAndDefaults() {
+        let c = TerminalConfig(text: "# font-size = 99\nfont-size = 12\nfont-family = \"Fira Code\"\nfont-size = 15\nadjust-cell-height = 20%\n")
+        XCTAssertEqual(c.fontSize, 15)
+        XCTAssertEqual(c.fontFamily, "Fira Code")
+        XCTAssertEqual(c.lineHeightPercent, 20)
+        let empty = TerminalConfig(text: "")
+        XCTAssertEqual(empty.fontSize, TerminalConfig.defaultFontSize)
+        XCTAssertNil(empty.fontFamily)
+        XCTAssertEqual(empty.cursorStyle, "block")
+        XCTAssertNil(empty.cursorBlink)
+        XCTAssertNil(empty.scrollbackLines)
+        XCTAssertEqual(TerminalConfig(text: "adjust-cell-height = 2").lineHeightPercent, 0, "pixels are not a percentage")
+        XCTAssertNil(TerminalConfig(text: "scrollback-limit-lines = unlimited").scrollbackLines)
+    }
+
+    func testSetKeepsTheRestOfTheFile() {
+        var c = TerminalConfig(text: "# mine\nfont-size = 12\ncursor-style = bar\nfont-size = 14\n")
+        c.set("font-size", "16")
+        XCTAssertEqual(c.text, "# mine\ncursor-style = bar\nfont-size = 16\n", "last line rewritten, earlier duplicates dropped")
+        c.set("cursor-style", nil)
+        XCTAssertEqual(c.text, "# mine\nfont-size = 16\n")
+        c.set("font-family", "JetBrains Mono")
+        XCTAssertEqual(c.text, "# mine\nfont-size = 16\nfont-family = JetBrains Mono\n")
+        var e = TerminalConfig(text: "")
+        e.set("font-size", "13")
+        XCTAssertEqual(e.text, "font-size = 13\n")
+        e.set("font-size", nil)
+        XCTAssertEqual(e.value("font-size"), nil)
+    }
+
+    func testFontMenuListsFixedPitchFamilies() {
+        let f = TerminalConfig.monospacedFamilies()
+        XCTAssertTrue(f.contains("Menlo"))
+        XCTAssertFalse(f.contains("Helvetica"))
+    }
+
+    func testScrollbackChoicesKeepAnUnlistedValue() {
+        XCTAssertEqual(TerminalSettings.scrollbackChoices(current: nil), [1_000, 10_000, 100_000, 0])
+        XCTAssertEqual(TerminalSettings.scrollbackChoices(current: 5_000), [1_000, 5_000, 10_000, 100_000, 0])
+    }
+}
+
+final class ShortcutTargetTests: XCTestCase {
+    func testTargets() {
+        XCTAssertEqual(KeyBindings.target("cmd.close-pane"), "Focused pane")
+        XCTAssertEqual(KeyBindings.target("cmd.focus-left"), "Split tab")
+        XCTAssertEqual(KeyBindings.target("cmd.tab-3"), "Current project")
+        XCTAssertEqual(KeyBindings.target("cmd.workspace-2"), "Workspaces")
+        XCTAssertEqual(KeyBindings.target("cmd.toggle-sidebar"), "Window")
+        XCTAssertEqual(KeyBindings.target("cmd.settings"), "App")
+    }
+}

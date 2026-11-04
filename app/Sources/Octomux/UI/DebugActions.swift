@@ -56,6 +56,16 @@ enum DebugActions {
             case "restart": if let id { m.restart(id) }
             case "remove": if let id { m.remove(id, confirm: false) }
             case "close_pane": if let id = m.focusedSessionId { m.remove(id, confirm: false) }
+            case "running_work":   // what "Ask before closing a running program" would list for a tab (to the app log)
+                let ids = id.flatMap { t in m.state.tabs.first { $0.id == t }?.layout.sessions } ?? [id].compactMap { $0 }
+                m.runningWork(ids) { w in
+                    NSLog("running_work: %@", w.map { "\($0.session.id) \($0.short)" }.joined(separator: "; "))
+                    // The question it would ask, as text (showing it would block this server).
+                    if !w.isEmpty {
+                        let a = AppModel.closeAlert(w, noun: "tab", many: (p["many"] as? Int) ?? 1, button: "Close Tab")
+                        NSLog("running_work alert: %@ | %@", a.messageText, a.informativeText.replacingOccurrences(of: "\n", with: " / "))
+                    }
+                }
             case "toggle_sidebar": m.toggleSidebar()
             case "toggle_dock": m.toggleDock()
             case "toggle_right_panel": m.toggleRightPanel()

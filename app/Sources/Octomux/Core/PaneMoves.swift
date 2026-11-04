@@ -74,20 +74,12 @@ extension AppModel {
         return picked.filter { !isPinned($0) }
     }
 
-    /// Closes several tabs with one confirmation when agents in them are busy.
+    /// Closes several tabs with one question when something in them still runs.
     func closeTabs(_ tabs: [Tab]) {
         guard !tabs.isEmpty else { return }
-        let busy = tabs.flatMap { $0.layout.sessions }.compactMap { session($0) }
-            .filter { $0.isAgent && !$0.isDormant && ($0.activity == .working || $0.activity == .needsInput) }
-        if !busy.isEmpty {
-            let a = NSAlert()
-            a.messageText = "Close \(tabs.count) tabs?"
-            a.informativeText = "\(busy.count) agent\(busy.count == 1 ? " is" : "s are") still working or waiting for input (\(busy.map(\.displayTitle).prefix(3).joined(separator: ", "))). Closing stops them."
-            a.addButton(withTitle: "Close Tabs")
-            a.addButton(withTitle: "Cancel")
-            guard a.runModal() == .alertFirstButtonReturn else { return }
+        closeAsking(tabs.flatMap { $0.layout.sessions }, noun: "tab", many: tabs.count, button: "Close Tabs") {
+            for t in tabs { self.closeTab(t.id, confirmBusy: false) }
         }
-        for t in tabs { closeTab(t.id, confirmBusy: false) }
     }
 
     func docs(_ scope: CloseScope, of docId: String) -> [DocTab] {

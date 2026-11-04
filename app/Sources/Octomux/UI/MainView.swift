@@ -608,7 +608,7 @@ struct TabChip: View {
                 }
                 .help("\(s.displayTitle): \(activityHelp(s))")
             }
-            Button { model.closeTab(tab.id, confirmBusy: false) } label: {
+            Button { model.closeTab(tab.id, confirmBusy: true) } label: {
                 Image(systemName: "xmark").font(.system(size: 8, weight: .bold))
             }
             .buttonStyle(IconButtonStyle(size: 16)).opacity(hover ? 1 : 0)

@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 enum SettingsSection: String, CaseIterable, Identifiable {
-    case general = "General", appearance = "Appearance", notifications = "Notifications", keyboard = "Keyboard"
+    case general = "General", appearance = "Appearance", terminal = "Terminal", notifications = "Notifications", keyboard = "Keyboard"
     case agents = "Agents", workspaces = "Workspaces", hosts = "Hosts"
     case features = "Features", advanced = "Advanced"
     var id: String { rawValue }
@@ -12,6 +12,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .workspaces: return "square.stack"
         case .agents: return "sparkles"
         case .appearance: return "paintbrush"
+        case .terminal: return "terminal"
         case .notifications: return "bell"
         case .hosts: return "network"
         case .features: return "flask"
@@ -23,7 +24,8 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     var subtitle: String {
         switch self {
         case .general: return "The version you run and how Octomux updates itself."
-        case .appearance: return "Theme, scene, how terminals look, and the icons in the Dock and the menu bar."
+        case .appearance: return "Theme, scene, and the icons in the Dock and the menu bar."
+        case .terminal: return "Font, cursor and scrollback of every terminal, and what happens when you close one."
         case .notifications: return "When Octomux tells you an agent finished or needs you."
         case .keyboard: return "Every shortcut Octomux handles. Keys not bound here go straight to the terminal program."
         case .agents: return "The agents in the + menu, how they start, and how Octomux follows their state."
@@ -38,7 +40,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
 
     /// Sidebar groups, in order.
     static let groups: [(title: String, items: [SettingsSection])] = [
-        ("App", [.general, .appearance, .notifications, .keyboard]),
+        ("App", [.general, .appearance, .terminal, .notifications, .keyboard]),
         ("Work", [.agents, .workspaces, .hosts]),
         ("Advanced", [.features, .advanced]),
     ]
@@ -150,6 +152,7 @@ struct SettingsView: View {
         case .workspaces: WorkspacesSettings()
         case .agents: AgentsSettings()
         case .appearance: AppearanceSettings()
+        case .terminal: TerminalSettings()
         case .notifications: NotificationSettings()
         case .hosts: HostsSettings()
         case .features: FeatureSettings()
@@ -504,7 +507,14 @@ enum SettingsIndex {
             e(.appearance, "Behind terminals", "scene transparent translucent opacity"),
             e(.appearance, "React to agents", "scene glow working"),
             e(.appearance, "Your scenes", "custom import template"),
-            e(.appearance, "Terminal config", "ghostty font size cursor family"),
+            e(.terminal, "Font", "family typeface mono jetbrains"),
+            e(.terminal, "Size", "font size points bigger smaller zoom"),
+            e(.terminal, "Line height", "spacing cell height leading"),
+            e(.terminal, "Cursor style", "block bar underline caret"),
+            e(.terminal, "Blink", "cursor blinking"),
+            e(.terminal, "Lines to keep", "scrollback history buffer limit"),
+            e(.terminal, "Ask before closing a running program", "confirm close tab pane quit warn"),
+            e(.terminal, "Config file", "ghostty terminal.conf import"),
             e(.appearance, "Icons", "dock menu bar"),
             e(.appearance, "Workspace color", "tint"),
             e(.notifications, "Notifications", "banners alerts mute"),
@@ -516,7 +526,8 @@ enum SettingsIndex {
             e(.notifications, "Command threshold", "seconds long running"),
             e(.notifications, "Sound", "audio"),
             e(.notifications, "Dock badge", "count"),
-            e(.keyboard, "Shortcuts", "keys bindings hotkeys"),
+            e(.keyboard, "Shortcuts", "keys bindings hotkeys find by keys acts on"),
+            e(.keyboard, "Reset all shortcuts", "defaults restore keybindings"),
             e(.agents, "Your agents", "claude codex profiles pin command arguments environment hooks"),
             e(.agents, "Detected on this Mac", "installed path"),
             e(.workspaces, "Workspaces", "rename color reorder default agent new chat"),
@@ -1006,8 +1017,6 @@ enum ShellWords {
 struct AppearanceSettings: View {
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var sel: SettingsSelection
-    @State private var config = ""
-    @State private var status = ""
 
     var body: some View {
         if sel.scope == "global" {
@@ -1032,56 +1041,6 @@ struct AppearanceSettings: View {
         }
         SceneSettingsCard(scope: sel.scope)
         if sel.scope == "global" { IconSettings() }
-        if sel.scope == "global" {
-            SettingsGroup("Terminal config", desc: "Ghostty's config syntax (font-family, font-size, cursor-style, …). The theme's colors go on top unless “Use theme colors in the terminal” is off.") {
-                SettingBlock {
-                    FontPreview(config: config)
-                    TextEditor(text: $config).font(T.mono(12)).frame(height: 200)
-                        .scrollContentBackground(.hidden).padding(6)
-                        .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(T.surface))
-                        .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(T.border))
-                    HStack(spacing: 8) {
-                        Button("Import from Ghostty") { importGhostty() }.buttonStyle(SecondaryButtonStyle())
-                        Button("Insert Example") { config += (config.isEmpty ? "" : "\n") + "font-family = JetBrains Mono\nfont-size = 13\ncursor-style = bar\n" }
-                            .buttonStyle(SecondaryButtonStyle())
-                        Spacer()
-                        Text(status).font(.caption).foregroundStyle(T.text2)
-                        Button("Apply") { save() }.buttonStyle(PrimaryButtonStyle()).keyboardShortcut("s")
-                    }
-                }
-                .settingAnchor("Terminal config")
-            }
-            SettingsFootnote("Saved to \(Paths.terminalConfig.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")).")
-                .onAppear { config = (try? String(contentsOf: Paths.terminalConfig, encoding: .utf8)) ?? "" }
-        }
-    }
-
-    func save() {
-        try? FileManager.default.createDirectory(at: Paths.terminalConfig.deletingLastPathComponent(), withIntermediateDirectories: true)
-        do {
-            try config.write(to: Paths.terminalConfig, atomically: true, encoding: .utf8)
-            GhosttyRuntime.shared.reloadConfig()
-            status = "Applied"
-        } catch { status = "\(error)" }
-    }
-
-    func importGhostty() {
-        let home = NSHomeDirectory()
-        let candidates = ["\(home)/.config/ghostty/config", "\(home)/.config/ghostty/config.ghostty",
-                          "\(home)/Library/Application Support/com.mitchellh.ghostty/config"]
-        for c in candidates {
-            if let s = try? String(contentsOfFile: c, encoding: .utf8) {
-                // Keybinds and window options belong to Ghostty.app, not to us.
-                let kept = s.split(separator: "\n", omittingEmptySubsequences: false).filter { line in
-                    let t = line.trimmingCharacters(in: .whitespaces)
-                    return !(t.hasPrefix("keybind") || t.hasPrefix("window-") && !t.hasPrefix("window-padding") || t.hasPrefix("quick-terminal") || t.hasPrefix("macos-"))
-                }
-                config = "# Imported from \(c)\n" + kept.joined(separator: "\n")
-                status = "Imported — press Apply"
-                return
-            }
-        }
-        status = "No Ghostty config found"
     }
 }
 
@@ -1356,9 +1315,16 @@ struct KeyboardSettings: View {
     @State private var recording: String?
     @State private var monitor: Any?
     @State private var filter = ""
+    /// "Find by keys": the keys pressed, or `findingKeys` while waiting for them.
+    @State private var keyFilter: Shortcut?
+    @State private var findingKeys = false
 
     var body: some View {
-        let shown = kb.commands.filter { filter.isEmpty || $0.title.localizedCaseInsensitiveContains(filter) || (kb.current($0.id)?.display ?? "").contains(filter) }
+        let shown = kb.commands.filter { c in
+            if let k = keyFilter { return kb.current(c.id) == k }
+            return filter.isEmpty || c.title.localizedCaseInsensitiveContains(filter) || (kb.current(c.id)?.display ?? "").contains(filter)
+                || KeyBindings.target(c.id).localizedCaseInsensitiveContains(filter)
+        }
         let groups = Dictionary(grouping: shown, by: \.group)
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 3) {
@@ -1368,13 +1334,31 @@ struct KeyboardSettings: View {
             .settingAnchor("Shortcuts")
             Spacer()
             Text("\(shown.count) of \(kb.commands.count)").font(.system(size: 11.5)).foregroundStyle(T.text3).monospacedDigit()
-            HStack(spacing: 5) {
-                Image(systemName: "line.3.horizontal.decrease").font(.system(size: 10)).foregroundStyle(T.text3)
-                TextField("Filter", text: $filter).textFieldStyle(.plain).font(.system(size: 12))
+            if let k = keyFilter {
+                Button { keyFilter = nil } label: {
+                    HStack(spacing: 5) {
+                        Text(k.display).font(T.mono(12, .medium))
+                        Image(systemName: "xmark").font(.system(size: 8, weight: .bold)).foregroundStyle(T.text3)
+                    }
+                    .padding(.horizontal, 8).frame(height: 26)
+                    .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(T.selection))
+                    .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(T.accent))
+                }
+                .buttonStyle(.plain).help("Show every shortcut again")
+            } else {
+                HStack(spacing: 5) {
+                    Image(systemName: "line.3.horizontal.decrease").font(.system(size: 10)).foregroundStyle(T.text3)
+                    TextField("Filter", text: $filter).textFieldStyle(.plain).font(.system(size: 12))
+                }
+                .padding(.horizontal, 8).frame(width: 160, height: 26)
+                .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(T.frame.opacity(0.55)))
+                .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(T.border))
             }
-            .padding(.horizontal, 8).frame(width: 180, height: 26)
-            .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(T.frame.opacity(0.55)))
-            .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(T.border))
+            Button { findingKeys ? stopRecording() : startFinding() } label: {
+                Label(findingKeys ? "Press keys…" : "Find by Keys", systemImage: "keyboard")
+            }
+            .buttonStyle(SecondaryButtonStyle())
+            .help("Press a key combination to see what it does")
         }
         .padding(.horizontal, 2)
         ForEach(["Octomux", "File", "Session", "View", "Window"].filter { groups[$0] != nil }, id: \.self) { g in
@@ -1390,6 +1374,8 @@ struct KeyboardSettings: View {
                             Label("also \(other.title)", systemImage: "exclamationmark.triangle.fill")
                                 .font(.system(size: 11)).foregroundStyle(T.amber).lineLimit(1)
                         }
+                        Text(KeyBindings.target(c.id)).font(.system(size: 11.5)).foregroundStyle(T.text3)
+                            .frame(width: 112, alignment: .leading).lineLimit(1)
                         Button { kb.reset(c.id) } label: { Image(systemName: "arrow.uturn.backward").font(.system(size: 10)) }
                             .buttonStyle(ChromeButtonStyle()).help("Reset to default")
                             .opacity(kb.isOverridden(c.id) ? 1 : 0).disabled(!kb.isOverridden(c.id))
@@ -1409,9 +1395,26 @@ struct KeyboardSettings: View {
             }
         }
         if shown.isEmpty {
-            Text("No shortcut matches “\(filter)”.").font(.system(size: 12.5)).foregroundStyle(T.text2)
+            Text(keyFilter.map { "Nothing uses \($0.display). It goes to the terminal program." } ?? "No shortcut matches “\(filter)”.")
+                .font(.system(size: 12.5)).foregroundStyle(T.text2)
+        }
+        HStack {
+            SettingsFootnote("“Acts on” is what the command works on: the focused pane, the tabs of the current project, and so on.")
+            Spacer()
+            Button("Reset All Shortcuts…") { resetAll() }
+                .buttonStyle(SecondaryButtonStyle()).disabled(!kb.hasOverrides)
+                .settingAnchor("Reset all shortcuts")
         }
         Color.clear.frame(height: 0).onDisappear { stopRecording() }
+    }
+
+    private func resetAll() {
+        let a = NSAlert()
+        a.messageText = "Reset all shortcuts?"
+        a.informativeText = "Every shortcut you changed goes back to its default."
+        a.addButton(withTitle: "Reset All")
+        a.addButton(withTitle: "Cancel")
+        if a.runModal() == .alertFirstButtonReturn { kb.resetAll() }
     }
 
     private func startRecording(_ id: String) {
@@ -1426,10 +1429,22 @@ struct KeyboardSettings: View {
         }
     }
 
+    /// The next key combination filters the list to what it does (the keys don't run the command).
+    private func startFinding() {
+        stopRecording()
+        findingKeys = true
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { e in
+            if e.keyCode == 53 { stopRecording(); return nil }
+            if let sc = Shortcut(event: e) { keyFilter = sc; stopRecording() }
+            return nil
+        }
+    }
+
     private func stopRecording() {
         if let m = monitor { NSEvent.removeMonitor(m) }
         monitor = nil
         recording = nil
+        findingKeys = false
     }
 }
 

@@ -204,6 +204,10 @@ pub struct HolderInfo {
     pub started_at: u64,
     pub boot_time: u64,
     pub exited: Option<i32>,
+    /// The program in front of the session's shell (`npm`, `vim`), when it isn't the shell itself.
+    /// None at a prompt, for sessions that run a program directly, and from older holders.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub foreground: Option<String>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]

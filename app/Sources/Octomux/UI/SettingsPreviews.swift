@@ -191,39 +191,6 @@ enum OwnTerminalColors {
     }
 }
 
-/// The terminal font set in terminal.conf (font-family, font-size), on a sample line.
-struct FontPreview: View {
-    let config: String
-
-    var body: some View {
-        let (family, size) = Self.font(in: config)
-        let font = family.flatMap { NSFont(name: $0, size: CGFloat(size)) } ?? NSFont.monospacedSystemFont(ofSize: CGFloat(size), weight: .regular)
-        HStack(spacing: 12) {
-            Text("~/octomux ❯ cargo test  →  ok 214 passed")
-                .font(Font(font)).foregroundStyle(T.text).lineLimit(1)
-            Spacer(minLength: 0)
-            Text("\(family ?? "System monospace") · \(Int(size)) pt").font(.system(size: 11)).foregroundStyle(T.text3)
-        }
-        .padding(.horizontal, 10).frame(height: 34)
-        .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(T.surface))
-        .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(T.border))
-    }
-
-    static func font(in config: String) -> (String?, Double) {
-        var family: String?
-        var size = 13.0
-        for raw in config.split(whereSeparator: \.isNewline) {
-            let line = raw.trimmingCharacters(in: .whitespaces)
-            guard !line.hasPrefix("#"), let eq = line.firstIndex(of: "=") else { continue }
-            let key = line[..<eq].trimmingCharacters(in: .whitespaces)
-            let value = line[line.index(after: eq)...].trimmingCharacters(in: .whitespaces).trimmingCharacters(in: CharacterSet(charactersIn: "\""))
-            if key == "font-family", family == nil, !value.isEmpty { family = value }
-            if key == "font-size", let v = Double(value) { size = v }
-        }
-        return (family, size)
-    }
-}
-
 // MARK: Sidebar
 
 /// The sidebar with a split tab: one row with its panes' icons stacked, or a framed group with a row per pane.
