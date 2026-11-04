@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Settings → MCP:** the MCP servers Claude Code and Codex start with, per agent config (agents that share a
+  config share a list): all projects or only one, shared `.mcp.json` servers and whether they are approved,
+  servers turned off, and the command or URL. Read only; values of environment variables and headers are not
+  shown.
 - **Settings → Projects:** a project's name, folder, color and icon in one place (also from its right-click
   menu, Project Settings…), where its worktrees go, and setup / teardown scripts for its worktrees (setup runs in
   the dock after a worktree is created, teardown before it is removed; both get the project, worktree and

@@ -27,6 +27,11 @@ Resume continues the conversation. Terminals are never stopped for being idle.
 Settings → Advanced → Save diagnostics writes a zip for bug reports: versions, the daemon's state, settings,
 terminal.conf and the end of the logs, with tokens, keys, passwords and email addresses removed.
 
+Settings → MCP lists the MCP servers your agents start with, read from their own config files (Claude Code's
+`.claude.json` and each project's `.mcp.json`, Codex's `config.toml`), per agent config: for all projects or
+one, whether a shared `.mcp.json` server is approved, and which are turned off. It is read only; change them
+with `claude mcp` or `codex mcp`. Values of environment variables and headers are not shown.
+
 Settings → General → Open in picks the apps in every Open in menu, their order, the default one (⌘O and the top
 bar's button), and any other app you add.
 

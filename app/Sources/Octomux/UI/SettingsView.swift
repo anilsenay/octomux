@@ -3,7 +3,7 @@ import SwiftUI
 
 enum SettingsSection: String, CaseIterable, Identifiable {
     case general = "General", appearance = "Appearance", terminal = "Terminal", notifications = "Notifications", keyboard = "Keyboard"
-    case agents = "Agents", workspaces = "Workspaces", projects = "Projects", sessions = "Sessions", hosts = "Hosts"
+    case agents = "Agents", mcp = "MCP", workspaces = "Workspaces", projects = "Projects", sessions = "Sessions", hosts = "Hosts"
     case features = "Features", advanced = "Advanced"
     var id: String { rawValue }
     var icon: String {
@@ -12,6 +12,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .workspaces: return "square.stack"
         case .agents: return "sparkles"
         case .sessions: return "cpu"
+        case .mcp: return "point.3.connected.trianglepath.dotted"
         case .projects: return "folder"
         case .appearance: return "paintbrush"
         case .terminal: return "terminal"
@@ -32,6 +33,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .keyboard: return "Every shortcut Octomux handles. Keys not bound here go straight to the terminal program."
         case .agents: return "The agents in the + menu, how they start, and how Octomux follows their state."
         case .workspaces: return "Workspaces group projects. Switch with the dots under the sidebar, a two-finger swipe on it, or ⌃1…⌃9."
+        case .mcp: return "The MCP servers your agents start with, as their own config files set them up."
         case .projects: return "A project's name, folder, color and icon, where its worktrees go, and the scripts they run."
         case .sessions: return "What runs in your tabs right now, what it costs, and when idle agents stop."
         case .hosts: return "Machines that run their own Octomux daemon, reached over SSH."
@@ -45,7 +47,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     /// Sidebar groups, in order.
     static let groups: [(title: String, items: [SettingsSection])] = [
         ("App", [.general, .appearance, .terminal, .notifications, .keyboard]),
-        ("Work", [.agents, .workspaces, .projects, .sessions, .hosts]),
+        ("Work", [.agents, .mcp, .workspaces, .projects, .sessions, .hosts]),
         ("Advanced", [.features, .advanced]),
     ]
 }
@@ -160,6 +162,7 @@ struct SettingsView: View {
         case .appearance: AppearanceSettings()
         case .terminal: TerminalSettings()
         case .notifications: NotificationSettings()
+        case .mcp: MCPSettings()
         case .projects: ProjectSettings()
         case .sessions: SessionsSettings()
         case .hosts: HostsSettings()
@@ -548,6 +551,7 @@ enum SettingsIndex {
             e(.agents, "Meters show", "usage limits used left remaining quota plan"),
             e(.workspaces, "Workspaces", "rename color reorder default agent new chat"),
             e(.workspaces, "Archived projects", "unarchive"),
+            e(.mcp, "MCP servers", "model context protocol tools servers claude codex mcp.json config"),
             e(.projects, "Project", "rename name folder path color icon emoji mascot image"),
             e(.projects, "Worktree folder", "worktrees root location directory"),
             e(.projects, "Delete the branch with its worktree", "remove worktree branch cleanup"),

@@ -430,3 +430,58 @@ final class WorktreePathTests: XCTestCase {
         XCTAssertEqual(Worktrees.defaultPath(project: "/p/app", branch: "feat/x", root: "/w"), "/w/app/feat-x")
     }
 }
+
+final class MCPConfigTests: XCTestCase {
+    func testClaudeScopes() {
+        let json: [String: Any] = [
+            "mcpServers": ["fs": ["type": "stdio", "command": "npx", "args": ["-y", "server-fs"], "env": ["TOKEN": "secret"]]],
+            "projects": ["/p/a": ["mcpServers": ["docs": ["type": "http", "url": "https://x/mcp"]],
+                                  "enabledMcpjsonServers": ["shared"], "disabledMcpjsonServers": ["old"]]],
+        ]
+        let mcp: [String: Any] = ["mcpServers": ["shared": ["command": "s"], "old": ["command": "o"], "new": ["command": "n"]]]
+        let s = MCPConfig.claude(json: json, file: "/h/.claude.json", projects: ["/p/a", "/p/b"]) { $0 == "/p/a" ? mcp : nil }
+        XCTAssertEqual(s.map(\.name), ["fs", "docs", "new", "old", "shared"])
+        XCTAssertEqual(s[0].command, "npx -y server-fs")
+        XCTAssertEqual(s[0].envNames, ["TOKEN"])
+        XCTAssertEqual(s[1].scope, .local("/p/a"))
+        XCTAssertEqual(s[1].url, "https://x/mcp")
+        XCTAssertEqual(s.first { $0.name == "shared" }?.enabled, true)
+        XCTAssertEqual(s.first { $0.name == "old" }?.enabled, false)
+        XCTAssertNil(s.first { $0.name == "new" }?.enabled, "not approved yet")
+        XCTAssertFalse("\(s)".contains("secret"), "env values are never kept")
+    }
+
+    func testCodexToml() {
+        let toml = """
+        model = "x"
+        [mcp_servers.github]
+        command = "npx"
+        args = ["-y", "@modelcontextprotocol/server-github"]
+        env = { GITHUB_TOKEN = "ghp_secret" }
+
+        [mcp_servers.github.env]
+        OTHER = "v"
+
+        [mcp_servers."docs.site"]
+        url = 'https://docs/mcp'
+        enabled = false
+
+        [profiles.fast]
+        command = "nope"
+        """
+        let s = MCPConfig.codex(toml: toml, file: "/c/config.toml")
+        XCTAssertEqual(s.map(\.name), ["github", "docs.site"])
+        XCTAssertEqual(s[0].command, "npx -y @modelcontextprotocol/server-github")
+        XCTAssertEqual(s[0].envNames, ["GITHUB_TOKEN", "OTHER"])
+        XCTAssertEqual(s[0].enabled, true)
+        XCTAssertEqual(s[1].url, "https://docs/mcp")
+        XCTAssertEqual(s[1].enabled, false)
+        XCTAssertFalse("\(s)".contains("ghp_secret"))
+    }
+
+    func testConfigFiles() {
+        XCTAssertEqual(MCPConfig.claudeFile(configDir: "/x/cfg"), "/x/cfg/.claude.json")
+        XCTAssertTrue(MCPConfig.claudeFile(configDir: nil).hasSuffix("/.claude.json"))
+        XCTAssertEqual(MCPConfig.codexFile(home: "/c"), "/c/config.toml")
+    }
+}
