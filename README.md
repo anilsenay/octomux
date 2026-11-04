@@ -37,6 +37,19 @@
 - **Make it yours.** Theme presets, light and dark, animated pixel-art scenes behind your terminals (the octopus
   ones are the house favorites), rebindable shortcuts and a ⌘K command palette.
 
+## Themes and scenes
+
+Plain dark and light, three theme presets, or one of more than twenty animated pixel-art scenes that show
+through translucent terminals. Pick them in Settings → Appearance or with ⌘K "Theme".
+
+<p align="center">
+  <img src="docs/assets/scenes.gif" alt="Switching between scenes: Octo Deep, Kraken, Midnight Coral, Aurora, Sakura Night, Tide Pool, Lavender" width="880" />
+</p>
+
+<p align="center">
+  <img src="docs/assets/dark-light.png" alt="The default theme without a scene, dark on the left and light on the right" width="880" />
+</p>
+
 ## Install
 
 1. Download **Octomux.dmg** from the [latest release](https://github.com/anilsenay/octomux/releases/latest).
