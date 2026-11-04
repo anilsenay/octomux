@@ -254,9 +254,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menu.addItem(status)
         menu.addItem(.separator())
         menu.addItem(withTitle: "Open Octomux", action: #selector(openWindow), keyEquivalent: "").target = self
+        let qc = menu.addItem(withTitle: "Quick Composer" + (GlobalHotKey.shared.registered.map { "  \($0.display)" } ?? ""), action: #selector(quickComposer), keyEquivalent: "")
+        qc.target = self
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit Octomux", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
     }
+
+    @objc private func quickComposer() { QuickComposer.shared.show() }
 
     @objc private func openWindow() {
         NSApp.activate(ignoringOtherApps: true)

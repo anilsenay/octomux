@@ -546,6 +546,7 @@ enum SettingsIndex {
             e(.notifications, "Dock badge", "count"),
             e(.keyboard, "Shortcuts", "keys bindings hotkeys find by keys acts on"),
             e(.keyboard, "Reset all shortcuts", "defaults restore keybindings"),
+            e(.keyboard, "Quick composer", "global hotkey anywhere spotlight launcher prompt"),
             e(.agents, "Your agents", "claude codex profiles pin command arguments environment hooks"),
             e(.agents, "Detected on this Mac", "installed path"),
             e(.agents, "Meters show", "usage limits used left remaining quota plan"),
@@ -1430,6 +1431,8 @@ struct KeyboardSettings: View {
     /// "Find by keys": the keys pressed, or `findingKeys` while waiting for them.
     @State private var keyFilter: Shortcut?
     @State private var findingKeys = false
+    /// Redraws the Anywhere group after its shortcut changes (it lives outside the model).
+    @State private var globalTick = 0
 
     var body: some View {
         let shown = kb.commands.filter { c in
@@ -1473,6 +1476,7 @@ struct KeyboardSettings: View {
             .help("Press a key combination to see what it does")
         }
         .padding(.horizontal, 2)
+        if keyFilter == nil && filter.isEmpty { anywhereGroup }
         ForEach(["Octomux", "File", "Session", "View", "Window"].filter { groups[$0] != nil }, id: \.self) { g in
             SettingsGroup(g) {
                 ForEach(groups[g] ?? []) { c in
@@ -1518,6 +1522,43 @@ struct KeyboardSettings: View {
                 .settingAnchor("Reset all shortcuts")
         }
         Color.clear.frame(height: 0).onDisappear { stopRecording() }
+    }
+
+    /// Shortcuts that work while another app is in front.
+    private var anywhereGroup: some View {
+        let hk = GlobalHotKey.shared
+        let combo = hk.saved
+        return SettingsGroup("Anywhere", desc: "Work while another app is in front.") {
+            SettingRow("Quick composer", desc: hk.failed ? "macOS didn't take \(combo?.display ?? "these keys"): another app uses them. Pick others."
+                       : "Opens a small window over any app: pick a project and an agent and type what to do. The session starts in Octomux.") {
+                if combo != nil, recording != "__global" {
+                    Button { hk.save(nil); globalTick += 1 } label: { Image(systemName: "xmark").font(.system(size: 9, weight: .bold)) }
+                        .buttonStyle(ChromeButtonStyle()).help("Remove the shortcut")
+                }
+                Button { startRecordingGlobal() } label: {
+                    Text(recording == "__global" ? "Press keys…" : (combo?.display ?? "Set Shortcut"))
+                        .font(combo == nil && recording != "__global" ? .system(size: 12) : T.mono(12, .medium))
+                        .foregroundStyle(recording == "__global" ? T.accent : hk.failed ? T.amber : combo == nil ? T.text2 : T.text)
+                        .frame(minWidth: 96)
+                        .padding(.horizontal, 8).frame(height: 24)
+                        .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(T.surface))
+                        .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(recording == "__global" ? T.accent : T.border))
+                }
+                .buttonStyle(.plain)
+            }
+            .id(globalTick)
+        }
+    }
+
+    private func startRecordingGlobal() {
+        stopRecording()
+        recording = "__global"
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { e in
+            if e.keyCode == 53 { stopRecording(); return nil }
+            if e.keyCode == 51 || e.keyCode == 117 { GlobalHotKey.shared.save(nil); globalTick += 1; stopRecording(); return nil }
+            if let c = GlobalHotKey.Combo(event: e) { GlobalHotKey.shared.save(c); globalTick += 1; stopRecording() }
+            return nil
+        }
     }
 
     private func resetAll() {

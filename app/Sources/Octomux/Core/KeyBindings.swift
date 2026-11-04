@@ -155,7 +155,7 @@ final class KeyBindings: ObservableObject {
         case "next-waiting-for-input": return "All workspaces"
         case "previous-workspace", "next-workspace": return "Workspaces"
         case _ where c.hasPrefix("workspace-"): return "Workspaces"
-        case "settings", "check-for-updates": return "App"
+        case "settings", "check-for-updates", "quick-composer": return "App"
         default: return "Window"
         }
     }

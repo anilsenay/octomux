@@ -124,6 +124,14 @@ closing a running program" or "Don't ask again" in the question.
 
 ![The Kraken scene behind translucent terminals](assets/scene-kraken.png)
 
+## Quick composer
+
+A small window over any app: pick a project and an agent, type what to do, and press Return; the session starts
+in Octomux while you stay where you were, and its notification tells you when it needs you. ⌘Return also brings
+Octomux forward on it, Shift-Return adds a line, Esc closes. Give it a shortcut that works everywhere in
+Settings → Keyboard → Anywhere (none by default); it is also in the File menu and the menu bar icon's
+right-click menu.
+
 ## Keyboard
 
 | | |

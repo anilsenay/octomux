@@ -166,6 +166,18 @@ enum DebugActions {
             case "close_doc": if let d = m.activeDocId { m.closeDoc(d) }
             case "right_tab": UserDefaults.standard.set(p["value"] as? String ?? "Changes", forKey: "octomux.rightTab"); m.rightPanelVisible = true
             case "sidebar_peek": m.sidebarPeek = (p["value"] as? Bool) ?? true
+            case "quick_composer":   // {"value": true|false, "text": "…"}
+                if (p["value"] as? Bool) ?? true { QuickComposer.shared.show(); if let t = p["text"] as? String { QuickComposer.shared.state.text = t } }
+                else { QuickComposer.shared.close() }
+                if let path = p["path"] as? String {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        guard let w = QuickComposer.shared.debugWindow,
+                              let cg = CGWindowListCreateImage(.null, .optionIncludingWindow, CGWindowID(w.windowNumber), [.boundsIgnoreFraming, .bestResolution]) else { return }
+                        try? NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+                    }
+                }
+            case "quick_composer_send":   // as Return (false) or ⌘Return (true)
+                QuickComposer.shared.debugSend(show: (p["value"] as? Bool) ?? false)
             case "usage_left": UserDefaults.standard.set((p["value"] as? Bool) ?? true, forKey: UsageReading.showsLeftKey)
             case "usage_popover": m.usagePopoverOpen = (p["value"] as? Bool) ?? true
             case "dock_position": UserDefaults.standard.set(p["value"] as? String ?? "bottom", forKey: "octomux.dockPosition")

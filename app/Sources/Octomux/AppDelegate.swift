@@ -28,6 +28,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if AppLocation.resolveOtherCopy() { return }
         buildMenu()
         Notifier.shared.start()
+        GlobalHotKey.shared.action = { QuickComposer.shared.toggle() }
+        GlobalHotKey.shared.apply()
         AppModel.shared.start()
         Updater.shared.start()
         openMainWindow()
@@ -123,6 +125,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         file.addItem(item("New Terminal Tab", #selector(newTerminal(_:)), "t"))
         file.addItem(item("New Agent Tab", #selector(newAgent(_:)), "T"))
         file.addItem(item("New Chat", #selector(newChat(_:)), "n"))
+        file.addItem(item("Quick Composer", #selector(quickComposer(_:)), ""))
         file.addItem(item("Split Right", #selector(splitRight(_:)), "d"))
         file.addItem(item("Split Down", #selector(splitDown(_:)), "D"))
         let zoom = item("Zoom Pane", #selector(zoomPane(_:)), "")
@@ -234,6 +237,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc func splitDown(_ s: Any?) { model.newSession(profileId: nil, split: .down) }
     @objc func zoomPane(_ s: Any?) { model.toggleZoom() }
     @objc func newChat(_ s: Any?) { model.openNewChat() }
+    @objc func quickComposer(_ s: Any?) { QuickComposer.shared.show() }
     @objc func changeScene(_ s: Any?) { ScenePickerPanel.shared.toggle() }
 
     @objc func toggleAgentsView(_ s: Any?) {

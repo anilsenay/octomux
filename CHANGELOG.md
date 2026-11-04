@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **Quick composer:** a small window over any app to start an agent: project, agent, prompt, Return. You stay
+  in the app you were in (⌘Return brings Octomux forward instead). Set a shortcut that works everywhere in
+  Settings → Keyboard → Anywhere; it is also in the File menu and the menu bar icon's menu.
 - **Settings → MCP:** the MCP servers Claude Code and Codex start with, per agent config (agents that share a
   config share a list): all projects or only one, shared `.mcp.json` servers and whether they are approved,
   servers turned off, and the command or URL. Read only; values of environment variables and headers are not

@@ -485,3 +485,17 @@ final class MCPConfigTests: XCTestCase {
         XCTAssertEqual(MCPConfig.codexFile(home: "/c"), "/c/config.toml")
     }
 }
+
+final class GlobalHotKeyTests: XCTestCase {
+    func testRegistersAndClears() {
+        let hk = GlobalHotKey.shared
+        let combo = GlobalHotKey.Combo(keyCode: 111 /* F12 */, mods: [.control, .option, .command], display: "⌃⌥⌘F12")
+        XCTAssertEqual(combo.carbonMods, UInt32(4096 | 2048 | 256))
+        XCTAssertEqual(GlobalHotKey.Combo(dict: combo.dict), combo)
+        hk.save(combo)
+        XCTAssertEqual(hk.registered, combo)
+        XCTAssertFalse(hk.failed)
+        hk.save(nil)
+        XCTAssertNil(hk.registered)
+    }
+}
