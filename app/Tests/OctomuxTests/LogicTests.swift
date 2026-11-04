@@ -568,3 +568,23 @@ final class SmallItemsTests: XCTestCase {
         XCTAssertEqual(UsageReading.shown([r[1]], "five_hour").map(\.window), ["seven_day"], "falls back to what there is")
     }
 }
+
+final class PullRequestTests: XCTestCase {
+    func testGithubRepo() {
+        XCTAssertEqual(PullRequest.githubRepo("git@github.com:anilsenay/octomux.git"), "anilsenay/octomux")
+        XCTAssertEqual(PullRequest.githubRepo("https://github.com/anilsenay/octomux"), "anilsenay/octomux")
+        XCTAssertEqual(PullRequest.githubRepo("ssh://git@github.com/a/b.git\n"), "a/b")
+        XCTAssertNil(PullRequest.githubRepo("https://gitlab.com/a/b.git"))
+        XCTAssertNil(PullRequest.githubRepo("/local/repo"))
+    }
+
+    func testCompareURLAndParse() {
+        let u = PullRequest.compareURL(repo: "a/b", base: "main", head: "feat/x", title: "Add x & y", body: "## Summary\n- one", draft: true)!.absoluteString
+        XCTAssertTrue(u.hasPrefix("https://github.com/a/b/compare/main...feat/x?expand=1&title=Add%20x%20%26%20y"), u)
+        XCTAssertTrue(u.contains("draft=1"))
+        let (t, b) = PullRequest.parse("```\nTitle: Add usage meter.\n\n## Summary\n- shows limits\n```")!
+        XCTAssertEqual(t, "Add usage meter")
+        XCTAssertEqual(b, "## Summary\n- shows limits")
+        XCTAssertNil(PullRequest.parse("   \n"))
+    }
+}

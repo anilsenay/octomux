@@ -100,7 +100,7 @@ struct SidebarView: View {
                     if !model.connected {
                         Image(systemName: "bolt.horizontal.circle").foregroundStyle(T.amber).help("Reconnecting to the Octomux daemon…")
                     }
-                    Image(systemName: "chevron.up.chevron.down").font(.system(size: 9, weight: .semibold)).foregroundStyle(T.text3)
+                    Image(systemName: "chevron.up.chevron.down").font(.system(size: T.k * 9, weight: .semibold)).foregroundStyle(T.text3)
                 }
                 .padding(.horizontal, 10).frame(height: 32)
                 .background(RoundedRectangle(cornerRadius: T.m.rowR, style: .continuous).fill(T.hover))
@@ -111,7 +111,7 @@ struct SidebarView: View {
             .help("Switch workspace (⌃⌘← →, or swipe) or host")
             if model.host.isRemote {
                 HStack(spacing: 6) {
-                    Image(systemName: "server.rack").font(.system(size: 10))
+                    Image(systemName: "server.rack").font(.system(size: T.k * 10))
                     Text(model.host.name).font(T.caption)
                     Text(model.host.subtitle).font(T.mono(10.5)).foregroundStyle(T.text3).lineLimit(1).truncationMode(.middle)
                     Spacer()
@@ -133,7 +133,7 @@ struct SidebarView: View {
             WorkspaceSwitcher()
             Spacer(minLength: 4)
             Button { NSApp.sendAction(#selector(AppDelegate.showSettings(_:)), to: nil, from: nil) } label: {
-                Image(systemName: "gearshape").font(.system(size: 13))
+                Image(systemName: "gearshape").font(.system(size: T.k * 13))
             }.buttonStyle(IconButtonStyle(size: 26)).help("Settings (⌘,)")
         }
         .padding(.horizontal, 8)
@@ -157,7 +157,7 @@ struct AddMenu: View {
             }
             Button("New Workspace…") { WorkspaceEditor.create() }
         } label: {
-            Image(systemName: "plus").font(.system(size: 13, weight: .medium)).foregroundStyle(T.text2).menuHitBox(26, 26)
+            Image(systemName: "plus").font(.system(size: T.k * 13, weight: .medium)).foregroundStyle(T.text2).menuHitBox(26, 26)
         }
         .plainMenu()
         .frame(width: 26, height: 26)
@@ -340,8 +340,8 @@ struct ProjectRow: View {
             Text(project.name).font(T.headline).foregroundStyle(T.text).lineLimit(1)
             if model.owner[project.id] != nil {
                 HStack(spacing: 3) {
-                    Image(systemName: "server.rack").font(.system(size: 8.5))
-                    Text(model.host(for: project.id).name).font(.system(size: 10, weight: .medium)).lineLimit(1)
+                    Image(systemName: "server.rack").font(.system(size: T.k * 8.5))
+                    Text(model.host(for: project.id).name).font(.system(size: T.k * 10, weight: .medium)).lineLimit(1)
                 }
                 .foregroundStyle(T.text3)
                 .padding(.horizontal, 5).padding(.vertical, 1)
@@ -390,13 +390,13 @@ struct WorktreeRow: View {
     var body: some View {
         let info = wt.info(path)
         HStack(spacing: 7) {
-            Image(systemName: "arrow.triangle.branch").font(.system(size: 10.5, weight: .medium)).foregroundStyle(T.text3).frame(width: 14)
+            Image(systemName: "arrow.triangle.branch").font(.system(size: T.k * 10.5, weight: .medium)).foregroundStyle(T.text3).frame(width: 14)
             Text(branch).font(T.mono(11.5)).foregroundStyle(T.text2).lineLimit(1).truncationMode(.middle)
             if let info, info.detached {
                 Text(info.head.isEmpty ? "detached" : "@\(info.head)").font(T.mono(10)).foregroundStyle(T.text3).fixedSize()
             }
             if info?.locked != nil {
-                Image(systemName: "lock.fill").font(.system(size: 8.5)).foregroundStyle(T.text3)
+                Image(systemName: "lock.fill").font(.system(size: T.k * 8.5)).foregroundStyle(T.text3)
             }
             Spacer(minLength: 4)
             if hover {
@@ -405,7 +405,7 @@ struct WorktreeRow: View {
                     ForEach(model.enabledProfiles) { p in
                         Button(p.name) { model.newSession(profileId: p.id, projectId: project.id, worktree: path) }
                     }
-                } label: { Image(systemName: "plus").font(.system(size: 10, weight: .semibold)).foregroundStyle(T.text2).menuHitBox(20, 20) }
+                } label: { Image(systemName: "plus").font(.system(size: T.k * 10, weight: .semibold)).foregroundStyle(T.text2).menuHitBox(20, 20) }
                     .plainMenu().frame(width: 20, height: 20).hoverHighlight(radius: 5)
             } else if sessions.isEmpty {
                 Text("empty").font(T.caption).foregroundStyle(T.text3)
@@ -607,14 +607,14 @@ struct SessionRow: View {
                     .onAppear { editTitle = session.displayTitle }
             } else {
                 Text(session.displayTitle)
-                    .font(.system(size: 13, weight: selected || session.unread ? .semibold : .regular))
+                    .font(.system(size: T.k * 13, weight: selected || session.unread ? .semibold : .regular))
                     .foregroundStyle(selected ? T.text : T.text2)
                     .lineLimit(1)
                     .truncationMode(.tail)
             }
             Spacer(minLength: 4)
             if !hover, model.isPinned(session: session.id) {
-                Image(systemName: "pin.fill").font(.system(size: 8.5, weight: .semibold)).foregroundStyle(T.text3)
+                Image(systemName: "pin.fill").font(.system(size: T.k * 8.5, weight: .semibold)).foregroundStyle(T.text3)
                     .rotationEffect(.degrees(40)).help("Pinned")
             }
             if hover {
@@ -625,13 +625,13 @@ struct SessionRow: View {
                         Button { model.remove(session.id) } label: { Image(systemName: "xmark") }
                             .help("Remove")
                     } else {
-                        Button { model.stop(session.id) } label: { Image(systemName: "stop.fill").font(.system(size: 8)) }
+                        Button { model.stop(session.id) } label: { Image(systemName: "stop.fill").font(.system(size: T.k * 8)) }
                             .help("Stop")
                     }
                 }
                 .disabled(!model.canManage)
                 .buttonStyle(IconButtonStyle(size: 18))
-                .font(.system(size: 10, weight: .semibold))
+                .font(.system(size: T.k * 10, weight: .semibold))
             } else {
                 ActivityIndicator(session: indicated)
             }
@@ -772,7 +772,7 @@ struct DockCountRow: View {
     var body: some View {
         let open = model.isDockOpen(project.id) && model.currentProject?.id == project.id
         HStack(spacing: 6) {
-            Image(systemName: open ? "chevron.down" : "rectangle.bottomthird.inset.filled").font(.system(size: 9, weight: .semibold))
+            Image(systemName: open ? "chevron.down" : "rectangle.bottomthird.inset.filled").font(.system(size: T.k * 9, weight: .semibold))
             Text("\(count) in dock")
         }
         .font(T.caption).foregroundStyle(hover ? T.text2 : T.text3)
@@ -810,15 +810,15 @@ struct SidebarEmptyState: View {
             }
             .padding(.bottom, 16)
             Text("Projects you add will show up here. You can also drop a folder below.")
-                .font(.system(size: 12.5)).foregroundStyle(T.text3)
+                .font(.system(size: T.k * 12.5)).foregroundStyle(T.text3)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 8)
                 .padding(.bottom, 12)
             let active = hover || dropTarget
             HStack(spacing: 8) {
-                Image(systemName: "folder.badge.plus").font(.system(size: 12.5))
+                Image(systemName: "folder.badge.plus").font(.system(size: T.k * 12.5))
                 Text(dropTarget ? "Drop to add" : "Add a project")
-                    .font(.system(size: 12.5, weight: .medium))
+                    .font(.system(size: T.k * 12.5, weight: .medium))
                 Spacer()
             }
             .foregroundStyle(active ? T.text : T.text2)

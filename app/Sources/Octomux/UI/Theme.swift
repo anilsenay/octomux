@@ -127,7 +127,7 @@ final class ThemeStore: ObservableObject {
 
     /// Bumped when user scene files are reloaded (same ids, new content).
     @Published private(set) var sceneGeneration = 0
-    var revision: String { "\(preset.id)-\(mode)-\(activeScene?.id ?? "")-\(sceneGeneration)-\(workspaceColor ?? "")" }
+    var revision: String { "\(preset.id)-\(scale)-\(mode)-\(activeScene?.id ?? "")-\(sceneGeneration)-\(workspaceColor ?? "")" }
 
     func scenesReloaded() {
         if let s = scene { scene = Scenes.scene(s.id) }
@@ -152,10 +152,26 @@ final class ThemeStore: ObservableObject {
     /// The current workspace's color (nil: none or gray → the preset's accent).
     @Published private(set) var workspaceColor: String?
 
+    /// Settings → Appearance → Interface size (this Mac): text and row heights of the window, not the terminal.
+    static let scaleKey = "octomux.uiScale"
+    @Published private(set) var scale: CGFloat = {
+        let v = UserDefaults.standard.double(forKey: ThemeStore.scaleKey)
+        return v >= 0.8 && v <= 1.3 ? CGFloat(v) : 1
+    }()
+    func set(scale v: CGFloat) {
+        let c = min(1.3, max(0.8, v))
+        UserDefaults.standard.set(Double(c), forKey: Self.scaleKey)
+        scale = c
+    }
+
     /// The preset's metrics; a scene draws its own backdrop, so no window glass or sidebar material.
     var metrics: ThemeMetrics {
         var m = preset.metrics
         if activeScene != nil { m.glass = false; m.sidebarMaterial = false }
+        if scale != 1 {
+            m.rowH = (m.rowH * scale).rounded(); m.tabH = (m.tabH * scale).rounded()
+            m.topH = (m.topH * scale).rounded(); m.statusH = (m.statusH * scale).rounded()
+        }
         return m
     }
 
@@ -337,16 +353,18 @@ enum T {
 
     // Typography
     static let monoName: String? = ["JetBrainsMono-Regular", "JetBrains Mono"].first { NSFont(name: $0, size: 12) != nil }
+    /// The interface size (1 = 100%); every font size in the UI is multiplied by it.
+    static var k: CGFloat { ThemeStore.shared.scale }
     static func mono(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
-        if let n = monoName { return .custom(n, size: size).weight(weight) }
-        return .system(size: size, weight: weight, design: .monospaced)
+        if let n = monoName { return .custom(n, fixedSize: size * k).weight(weight) }
+        return .system(size: size * k, weight: weight, design: .monospaced)
     }
-    static let title = Font.system(size: 20, weight: .bold)
-    static let headline = Font.system(size: 13, weight: .semibold)
-    static let body = Font.system(size: 13)
-    static let small = Font.system(size: 12, weight: .medium)
-    static let caption = Font.system(size: 11, weight: .medium)
-    static var label: Font { m.monoLabels ? mono(10.5, .semibold) : .system(size: 11, weight: .semibold) }
+    static var title: Font { .system(size: 20 * k, weight: .bold) }
+    static var headline: Font { .system(size: 13 * k, weight: .semibold) }
+    static var body: Font { .system(size: 13 * k) }
+    static var small: Font { .system(size: 12 * k, weight: .medium) }
+    static var caption: Font { .system(size: 11 * k, weight: .medium) }
+    static var label: Font { m.monoLabels ? mono(10.5, .semibold) : .system(size: 11 * k, weight: .semibold) }
 }
 
 /// Section label ("Projects", "Agents"…): uppercase mono in Grid.

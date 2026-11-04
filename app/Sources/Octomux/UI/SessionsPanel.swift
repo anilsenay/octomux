@@ -59,15 +59,15 @@ struct SessionsPanel: View {
         let pid = model.currentProject?.id
         VStack(spacing: 0) {
             HStack(spacing: 6) {
-                Image(systemName: "magnifyingglass").font(.system(size: 11)).foregroundStyle(T.text3)
-                TextField("Search sessions", text: $query).textFieldStyle(.plain).font(.system(size: 12.5))
+                Image(systemName: "magnifyingglass").font(.system(size: T.k * 11)).foregroundStyle(T.text3)
+                TextField("Search sessions", text: $query).textFieldStyle(.plain).font(.system(size: T.k * 12.5))
                 Picker("", selection: $allProjects) {
                     Text("This project").tag(false)
                     Text("All projects").tag(true)
                 }
                 .pickerStyle(.menu).labelsHidden().fixedSize().controlSize(.small)
                 Button { history.load(projectId: allProjects ? nil : pid) } label: {
-                    Image(systemName: "arrow.clockwise").font(.system(size: 11, weight: .medium))
+                    Image(systemName: "arrow.clockwise").font(.system(size: T.k * 11, weight: .medium))
                 }
                 .buttonStyle(IconButtonStyle(size: 22)).help("Refresh")
             }
@@ -76,7 +76,7 @@ struct SessionsPanel: View {
             let list = filtered
             if list.isEmpty {
                 VStack(spacing: 8) {
-                    Image(systemName: "clock.arrow.circlepath").font(.system(size: 20)).foregroundStyle(T.text3)
+                    Image(systemName: "clock.arrow.circlepath").font(.system(size: T.k * 20)).foregroundStyle(T.text3)
                     Text(history.loading ? "Loading…" : query.isEmpty ? "No agent sessions yet" : "No matches").font(T.body).foregroundStyle(T.text2)
                     if query.isEmpty && !history.loading {
                         Text("Agent sessions you start here are listed, also after you close them, so you can pick a conversation up again.")
@@ -115,7 +115,7 @@ struct SessionsPanel: View {
     }
 
     @ViewBuilder private func section(_ title: String, _ list: [SessionHistoryModel.Item]) -> some View {
-        Text(title.uppercased()).font(.system(size: 10, weight: .semibold)).foregroundStyle(T.text3)
+        Text(title.uppercased()).font(.system(size: T.k * 10, weight: .semibold)).foregroundStyle(T.text3)
             .padding(.horizontal, 8).padding(.top, 10).padding(.bottom, 3)
         ForEach(list) { i in SessionHistoryRow(item: i, showProject: allProjects) { history.forget(i) } }
     }
@@ -136,21 +136,21 @@ struct SessionHistoryRow: View {
         HStack(spacing: 9) {
             AgentIcon(icon: profile?.icon ?? "claude", size: 13).frame(width: 16).opacity(live == nil ? 0.75 : 1)
             VStack(alignment: .leading, spacing: 1) {
-                Text((live ?? s).displayTitle).font(.system(size: 12.5, weight: .medium))
+                Text((live ?? s).displayTitle).font(.system(size: T.k * 12.5, weight: .medium))
                     .foregroundStyle(live == nil ? T.text2 : T.text).lineLimit(1)
                 Text([profile?.name ?? "Agent", showProject ? model.project(s.projectId)?.name : nil,
                       NotificationRow.when(Date(timeIntervalSince1970: TimeInterval(max(s.lastActivityAt, s.createdAt))))]
                     .compactMap { $0 }.joined(separator: " · "))
-                    .font(.system(size: 10.5)).foregroundStyle(T.text3).lineLimit(1)
+                    .font(.system(size: T.k * 10.5)).foregroundStyle(T.text3).lineLimit(1)
             }
             Spacer(minLength: 4)
             if let live {
                 ActivityIndicator(session: live)
-                Text("Open").font(.system(size: 10, weight: .semibold)).foregroundStyle(T.green)
+                Text("Open").font(.system(size: T.k * 10, weight: .semibold)).foregroundStyle(T.green)
                     .padding(.horizontal, 5).frame(height: 16)
                     .background(Capsule().fill(T.green.opacity(0.14)))
             } else if hover && canResume {
-                Text("Resume").font(.system(size: 10.5, weight: .semibold)).foregroundStyle(T.accent)
+                Text("Resume").font(.system(size: T.k * 10.5, weight: .semibold)).foregroundStyle(T.accent)
             }
         }
         .padding(.horizontal, 8).padding(.vertical, 6)

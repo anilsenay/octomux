@@ -191,10 +191,10 @@ struct ChangesPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
-                Text(changes.changes.isEmpty ? "No changes" : "\(changes.changes.count) changed").font(.system(size: 12, weight: .semibold)).foregroundStyle(T.text2)
+                Text(changes.changes.isEmpty ? "No changes" : "\(changes.changes.count) changed").font(.system(size: T.k * 12, weight: .semibold)).foregroundStyle(T.text2)
                 if let wp = model.currentWorkPath, wp != model.currentProject?.path, let b = GitInfo.shared.branch(for: wp) {
                     HStack(spacing: 4) {
-                        Image(systemName: "arrow.triangle.branch").font(.system(size: 9.5))
+                        Image(systemName: "arrow.triangle.branch").font(.system(size: T.k * 9.5))
                         Text(b).font(T.mono(11)).lineLimit(1)
                     }
                     .foregroundStyle(T.text3).help("Worktree: \(wp)")
@@ -202,18 +202,18 @@ struct ChangesPanel: View {
                 Spacer()
                 if let wp = model.currentWorkPath, let pid = model.currentProject?.id {
                     AskAgentMenu(projectId: pid, folder: wp, file: nil) {
-                        Image(systemName: "sparkles.rectangle.stack").font(.system(size: 11))
+                        Image(systemName: "sparkles.rectangle.stack").font(.system(size: T.k * 11))
                     }
                     .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().tint(T.text2)
                     .help("Ask an agent about these changes")
                 }
-                Button { changes.refresh() } label: { Image(systemName: "arrow.clockwise").font(.system(size: 11)) }.buttonStyle(ChromeButtonStyle())
+                Button { changes.refresh() } label: { Image(systemName: "arrow.clockwise").font(.system(size: T.k * 11)) }.buttonStyle(ChromeButtonStyle())
             }
             .padding(.leading, 14).padding(.trailing, 8).frame(height: 32)
             Hairline()
             if !changes.isRepo {
                 VStack(spacing: 8) {
-                    Image(systemName: "arrow.triangle.branch").font(.system(size: 24, weight: .light)).foregroundStyle(T.text3)
+                    Image(systemName: "arrow.triangle.branch").font(.system(size: T.k * 24, weight: .light)).foregroundStyle(T.text3)
                     Text("Not a git repository").font(T.body).foregroundStyle(T.text2)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -227,7 +227,7 @@ struct ChangesPanel: View {
                                 Group {
                                     if changes.generating != nil { Image(systemName: "stop.circle") } else { Image(systemName: "sparkles") }
                                 }
-                                .font(.system(size: 12))
+                                .font(.system(size: T.k * 12))
                             }
                             .buttonStyle(IconButtonStyle(size: 22)).padding(3)
                             .disabled(changes.changes.isEmpty && changes.generating == nil)
@@ -298,11 +298,11 @@ private struct GroupHeader: View {
 
     var body: some View {
         HStack(spacing: 5) {
-            Image(systemName: "chevron.right").font(.system(size: 8.5, weight: .bold)).rotationEffect(.degrees(open ? 90 : 0)).foregroundStyle(T.text3).frame(width: 10)
-            Text(title).font(.system(size: 11.5, weight: .semibold)).foregroundStyle(T.text2)
+            Image(systemName: "chevron.right").font(.system(size: T.k * 8.5, weight: .bold)).rotationEffect(.degrees(open ? 90 : 0)).foregroundStyle(T.text3).frame(width: 10)
+            Text(title).font(.system(size: T.k * 11.5, weight: .semibold)).foregroundStyle(T.text2)
             Spacer()
             if hover {
-                Button(action: action.2) { Image(systemName: action.0).font(.system(size: 10, weight: .semibold)) }
+                Button(action: action.2) { Image(systemName: action.0).font(.system(size: T.k * 10, weight: .semibold)) }
                     .buttonStyle(IconButtonStyle(size: 18)).help(action.1)
             }
             DiffCount(added: added, removed: removed)
@@ -340,14 +340,14 @@ private struct ChangeRow: View {
         let selected = model.activeDoc?.kind == .changes && changes.selected == key
         HStack(spacing: 6) {
             FileIcon(name: (c.path as NSString).lastPathComponent)
-            Text((c.path as NSString).lastPathComponent).font(.system(size: 12.5)).foregroundStyle(T.text).lineLimit(1)
-            Text((c.path as NSString).deletingLastPathComponent).font(.system(size: 11)).foregroundStyle(T.text3).lineLimit(1).truncationMode(.head)
+            Text((c.path as NSString).lastPathComponent).font(.system(size: T.k * 12.5)).foregroundStyle(T.text).lineLimit(1)
+            Text((c.path as NSString).deletingLastPathComponent).font(.system(size: T.k * 11)).foregroundStyle(T.text3).lineLimit(1).truncationMode(.head)
             Spacer(minLength: 4)
             if hover {
-                Button { model.openDoc(.file(c.path)) } label: { Image(systemName: "doc.text").font(.system(size: 10)) }
+                Button { model.openDoc(.file(c.path)) } label: { Image(systemName: "doc.text").font(.system(size: T.k * 10)) }
                     .buttonStyle(IconButtonStyle(size: 18)).help("Open file")
                 Button { staged ? changes.unstage([c.path]) : changes.stage([c.path]) } label: {
-                    Image(systemName: staged ? "minus" : "plus").font(.system(size: 10, weight: .semibold))
+                    Image(systemName: staged ? "minus" : "plus").font(.system(size: T.k * 10, weight: .semibold))
                 }
                 .buttonStyle(IconButtonStyle(size: 18)).help(staged ? "Unstage" : "Stage")
             } else {
@@ -411,7 +411,7 @@ private struct CommitButton: View {
         HStack(spacing: 0) {
             Button { changes.commit(push: false) } label: {
                 HStack(spacing: 6) {
-                    Image(systemName: "checkmark").font(.system(size: 10.5, weight: .bold))
+                    Image(systemName: "checkmark").font(.system(size: T.k * 10.5, weight: .bold))
                     Text(staged > 0 ? "Commit \(staged) staged" : "Commit all")
                 }
                 .frame(maxWidth: .infinity, minHeight: 28).contentShape(Rectangle())
@@ -420,11 +420,11 @@ private struct CommitButton: View {
             .disabled(!canCommit)
             Rectangle().fill(Color.white.opacity(0.25)).frame(width: 1, height: 16)
             PopupMenuButton(menu: menu) {
-                Image(systemName: "chevron.down").font(.system(size: 9.5, weight: .bold)).frame(width: 28, height: 28)
+                Image(systemName: "chevron.down").font(.system(size: T.k * 9.5, weight: .bold)).frame(width: 28, height: 28)
             }
             .help("More commit actions")
         }
-        .font(.system(size: 12.5, weight: .semibold))
+        .font(.system(size: T.k * 12.5, weight: .semibold))
         .foregroundStyle(.white)
         .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(T.accent.opacity(hover ? 0.9 : 1)))
         .opacity(canCommit || !changes.busy ? (canCommit ? 1 : 0.55) : 0.45)
@@ -446,6 +446,8 @@ private struct CommitButton: View {
         add("Amend Last Commit" + (hasMsg ? "" : " (keep message)"), true) { changes.commit(push: false, amend: true) }
         m.addItem(.separator())
         add("Push", true) { changes.push() }
+        m.addItem(.separator())
+        add("Create Pull Request…", true) { PullRequestWindow.show(model: AppModel.shared) }
         return m
     }
 }

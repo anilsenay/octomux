@@ -118,7 +118,7 @@ struct SettingsView: View {
     var body: some View {
         HStack(spacing: 0) {
             SettingsSidebar()
-                .frame(width: 220)
+                .frame(width: (220 * T.k).rounded())
                 .background(T.frame)
             Hairline(vertical: true)
             ScrollView {
@@ -207,13 +207,13 @@ struct SettingsSidebar: View {
         VStack(alignment: .leading, spacing: 0) {
             Spacer().frame(height: 38)
             HStack(spacing: 6) {
-                Image(systemName: "magnifyingglass").font(.system(size: 11)).foregroundStyle(T.text3)
+                Image(systemName: "magnifyingglass").font(.system(size: T.k * 11)).foregroundStyle(T.text3)
                 TextField("Search settings", text: $sel.query)
-                    .textFieldStyle(.plain).font(.system(size: 12.5))
+                    .textFieldStyle(.plain).font(.system(size: T.k * 12.5))
                     .focused($searching)
                     .onExitCommand { sel.query = "" }
                 if !sel.query.isEmpty {
-                    Button { sel.query = "" } label: { Image(systemName: "xmark.circle.fill").font(.system(size: 11)).foregroundStyle(T.text3) }
+                    Button { sel.query = "" } label: { Image(systemName: "xmark.circle.fill").font(.system(size: T.k * 11)).foregroundStyle(T.text3) }
                         .buttonStyle(.plain)
                 }
             }
@@ -224,7 +224,7 @@ struct SettingsSidebar: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 1) {
                     ForEach(SettingsSection.groups, id: \.title) { g in
-                        Text(g.title).font(.system(size: 11, weight: .semibold)).foregroundStyle(T.text3)
+                        Text(g.title).font(.system(size: T.k * 11, weight: .semibold)).foregroundStyle(T.text3)
                             .padding(.horizontal, 10).padding(.top, g.title == SettingsSection.groups.first?.title ? 0 : 14).padding(.bottom, 4)
                         ForEach(g.items) { s in
                             item(s)
@@ -235,7 +235,7 @@ struct SettingsSidebar: View {
             }
             .scrollIndicators(.never)
             Spacer(minLength: 8)
-            Text(Updater.shared.isEnabled ? "Octomux \(Updater.shared.currentVersion)" : "Octomux · development build").font(.system(size: 11)).foregroundStyle(T.text3)
+            Text(Updater.shared.isEnabled ? "Octomux \(Updater.shared.currentVersion)" : "Octomux · development build").font(.system(size: T.k * 11)).foregroundStyle(T.text3)
                 .padding(.horizontal, 10).padding(.bottom, 4)
                 .textSelection(.enabled)
         }
@@ -246,9 +246,9 @@ struct SettingsSidebar: View {
         let on = sel.section == s && sel.query.isEmpty
         return Button { sel.open(s, row: nil) } label: {
             HStack(spacing: 9) {
-                Image(systemName: s.icon).font(.system(size: 12)).frame(width: 16)
+                Image(systemName: s.icon).font(.system(size: T.k * 12)).frame(width: 16)
                     .foregroundStyle(on ? T.accent : T.text3)
-                Text(s.rawValue).font(.system(size: 13, weight: on ? .semibold : .regular))
+                Text(s.rawValue).font(.system(size: T.k * 13, weight: on ? .semibold : .regular))
                     .foregroundStyle(on ? T.text : T.text2)
                 Spacer()
             }
@@ -270,7 +270,7 @@ struct SettingsSubItems: View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(sel.groups, id: \.self) { g in
                 Button { sel.target = g } label: {
-                    Text(g).font(.system(size: 12, weight: g == current ? .medium : .regular))
+                    Text(g).font(.system(size: T.k * 12, weight: g == current ? .medium : .regular))
                         .foregroundStyle(g == current ? T.text : T.text3)
                         .lineLimit(1)
                         .padding(.leading, 12).frame(height: 22).frame(maxWidth: .infinity, alignment: .leading)
@@ -292,10 +292,10 @@ struct SettingsHeader: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 9) {
-                Image(systemName: section.icon).font(.system(size: 17, weight: .medium)).foregroundStyle(T.text2)
-                Text(section.rawValue).font(.system(size: 22, weight: .bold))
+                Image(systemName: section.icon).font(.system(size: T.k * 17, weight: .medium)).foregroundStyle(T.text2)
+                Text(section.rawValue).font(.system(size: T.k * 22, weight: .bold))
             }
-            Text(section.subtitle).font(.system(size: 13)).foregroundStyle(T.text2).fixedSize(horizontal: false, vertical: true)
+            Text(section.subtitle).font(.system(size: T.k * 13)).foregroundStyle(T.text2).fixedSize(horizontal: false, vertical: true)
             if section.scoped { ScopeBar().padding(.top, 10) }
         }
     }
@@ -327,7 +327,7 @@ struct ScopeBar: View {
                 } label: {
                     HStack(spacing: 6) {
                         Circle().fill(Color(hex: current.color)).frame(width: 8, height: 8)
-                        Text(current.name).font(.system(size: 12.5, weight: .medium))
+                        Text(current.name).font(.system(size: T.k * 12.5, weight: .medium))
                     }
                 }
                 .menuStyle(.borderlessButton).fixedSize()
@@ -337,7 +337,7 @@ struct ScopeBar: View {
         Text(current == nil
              ? "These apply everywhere, unless a workspace sets its own."
              : "Only for \(current!.name). Settings marked with a dot override Global; Reset goes back to it.")
-            .font(.system(size: 12)).foregroundStyle(T.text3)
+            .font(.system(size: T.k * 12)).foregroundStyle(T.text3)
     }
 }
 
@@ -360,8 +360,8 @@ struct SettingsGroup<Content: View, Trailing: View>: View {
             if title != nil || desc != nil {
                 HStack(alignment: .bottom, spacing: 12) {
                     VStack(alignment: .leading, spacing: 3) {
-                        if let title { Text(title).font(.system(size: 13.5, weight: .semibold)) }
-                        if let desc { Text(desc).font(.system(size: 12)).foregroundStyle(T.text2).fixedSize(horizontal: false, vertical: true) }
+                        if let title { Text(title).font(.system(size: T.k * 13.5, weight: .semibold)) }
+                        if let desc { Text(desc).font(.system(size: T.k * 12)).foregroundStyle(T.text2).fixedSize(horizontal: false, vertical: true) }
                     }
                     Spacer(minLength: 0)
                     trailing()
@@ -418,17 +418,17 @@ struct SettingRow<Control: View>: View {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
                     if modified { Circle().fill(T.accent).frame(width: 6, height: 6).help("Set for this workspace") }
-                    Text(title).font(.system(size: 13, weight: .medium))
+                    Text(title).font(.system(size: T.k * 13, weight: .medium))
                 }
                 if let desc {
-                    Text(desc).font(mono ? T.mono(11) : .system(size: 11.5)).foregroundStyle(T.text2)
+                    Text(desc).font(mono ? T.mono(11) : .system(size: T.k * 11.5)).foregroundStyle(T.text2)
                         .fixedSize(horizontal: false, vertical: true)
                         .textSelection(.enabled)
                 }
             }
             Spacer(minLength: 12)
             if modified, let onReset {
-                Button("Reset", action: onReset).buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(T.accent)
+                Button("Reset", action: onReset).buttonStyle(.plain).font(.system(size: T.k * 12)).foregroundStyle(T.accent)
                     .help("Use the Global value")
             }
             control()
@@ -484,7 +484,7 @@ struct SettingsFootnote: View {
     let text: String
     init(_ text: String) { self.text = text }
     var body: some View {
-        Text(text).font(.system(size: 11.5)).foregroundStyle(T.text3).fixedSize(horizontal: false, vertical: true)
+        Text(text).font(.system(size: T.k * 11.5)).foregroundStyle(T.text3).fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, 2).padding(.top, -12)
     }
 }
@@ -518,6 +518,7 @@ enum SettingsIndex {
             e(.appearance, "App icon", "dock icon monochrome color"),
             e(.appearance, "Theme", "ink grid glass look style"),
             e(.appearance, "Appearance", "dark light system mode"),
+            e(.appearance, "Interface size", "scale zoom text size bigger smaller font ui"),
             e(.appearance, "Use theme colors in the terminal", "terminal colors palette"),
             e(.appearance, "Split tabs as one row", "sidebar panes stacked"),
             e(.appearance, "Scene", "backdrop background animation ambient"),
@@ -569,6 +570,7 @@ enum SettingsIndex {
             e(.projects, "Branch name", "worktree branch pattern naming user date auto"),
             e(.projects, "Commit message agent", "ai generate commit message sparkle claude codex"),
             e(.projects, "Commit message model", "haiku sonnet opus commit ai"),
+            e(.projects, "Pull request style", "pr description title instructions github"),
             e(.projects, "Commit message style", "conventional commits instructions commit ai"),
             e(.sessions, "Running", "cpu memory ram processes activity monitor stop"),
             e(.sessions, "Agent tabs are named after", "tab title name first message prompt agent title"),
@@ -604,9 +606,9 @@ struct SettingsSearchResults: View {
     var body: some View {
         let hits = SettingsIndex.search(sel.query)
         VStack(alignment: .leading, spacing: 6) {
-            Text("Search").font(.system(size: 22, weight: .bold))
+            Text("Search").font(.system(size: T.k * 22, weight: .bold))
             Text(hits.isEmpty ? "Nothing matches “\(sel.query)”." : "\(hits.count) \(hits.count == 1 ? "setting matches" : "settings match") “\(sel.query)”.")
-                .font(.system(size: 13)).foregroundStyle(T.text2)
+                .font(.system(size: T.k * 13)).foregroundStyle(T.text2)
         }
         let bySection = Dictionary(grouping: hits, by: \.section)
         ForEach(SettingsSection.allCases.filter { bySection[$0] != nil }) { s in
@@ -614,10 +616,10 @@ struct SettingsSearchResults: View {
                 ForEach(bySection[s] ?? []) { e in
                     Button { sel.open(e.section, row: e.title) } label: {
                         HStack(spacing: 10) {
-                            Image(systemName: s.icon).font(.system(size: 12)).foregroundStyle(T.text3).frame(width: 16)
-                            Text(e.title).font(.system(size: 13, weight: .medium))
+                            Image(systemName: s.icon).font(.system(size: T.k * 12)).foregroundStyle(T.text3).frame(width: 16)
+                            Text(e.title).font(.system(size: T.k * 13, weight: .medium))
                             Spacer()
-                            Text("\(s.rawValue)  ›").font(.system(size: 12)).foregroundStyle(T.text3)
+                            Text("\(s.rawValue)  ›").font(.system(size: T.k * 12)).foregroundStyle(T.text3)
                         }
                         .padding(.horizontal, 14).frame(height: 38)
                         .contentShape(Rectangle())
@@ -689,9 +691,9 @@ struct WorkspacesSettings: View {
                     }
                     VStack(alignment: .leading, spacing: 2) {
                         TextField("Name", text: Binding(get: { w.name }, set: { model.updateWorkspace(w.id, ["name": $0]) }))
-                            .textFieldStyle(.plain).font(.system(size: 13, weight: .medium))
+                            .textFieldStyle(.plain).font(.system(size: T.k * 13, weight: .medium))
                         let n = model.state.projects.filter { $0.workspaceId == w.id }.count
-                        Text("\(n) \(n == 1 ? "project" : "projects")").font(.system(size: 11.5)).foregroundStyle(T.text2)
+                        Text("\(n) \(n == 1 ? "project" : "projects")").font(.system(size: T.k * 11.5)).foregroundStyle(T.text2)
                     }
                     Spacer()
                     let def = model.defaultChatProfile(workspace: w.id)
@@ -702,7 +704,7 @@ struct WorkspacesSettings: View {
                             Button((def?.id == p.id ? "✓ " : "") + p.name) { model.setDefaultChatProfile(p.id, workspace: w.id) }
                         }
                     } label: {
-                        Text("New chat: \(def?.name ?? "last used agent")").font(.system(size: 12))
+                        Text("New chat: \(def?.name ?? "last used agent")").font(.system(size: T.k * 12))
                     }
                     .menuStyle(.borderlessButton).fixedSize().tint(T.text2)
                     .help("Agent the New Chat screen starts with in this workspace")
@@ -711,13 +713,13 @@ struct WorkspacesSettings: View {
                         Button("Move Down") { model.updateWorkspace(w.id, ["sort": w.sort + 2]) }.disabled(i == ws.count - 1)
                         Divider()
                         Button("Delete Workspace", role: .destructive) { model.deleteWorkspace(w.id) }.disabled(ws.count <= 1)
-                    } label: { Image(systemName: "ellipsis").font(.system(size: 13)).foregroundStyle(T.text2) }
+                    } label: { Image(systemName: "ellipsis").font(.system(size: T.k * 13)).foregroundStyle(T.text2) }
                         .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().tint(T.text2)
                 }
                 .padding(.horizontal, 14).frame(minHeight: 52)
             }
             HStack(spacing: 10) {
-                Image(systemName: "plus").font(.system(size: 12)).foregroundStyle(T.text3).frame(width: 22)
+                Image(systemName: "plus").font(.system(size: T.k * 12)).foregroundStyle(T.text3).frame(width: 22)
                 TextField("New workspace", text: $newName).textFieldStyle(.plain).onSubmit(add)
                 Button("Add", action: add).buttonStyle(SecondaryButtonStyle()).disabled(newName.isEmpty)
             }
@@ -726,7 +728,7 @@ struct WorkspacesSettings: View {
         let archived = model.state.projects.filter { $0.archived }
         SettingsGroup("Archived projects", desc: "Archive a project from its right-click menu to hide it from the sidebar; its sessions are kept.") {
             if archived.isEmpty {
-                Text("No archived projects.").font(.system(size: 12.5)).foregroundStyle(T.text2).padding(14)
+                Text("No archived projects.").font(.system(size: T.k * 12.5)).foregroundStyle(T.text2).padding(14)
             }
             ForEach(archived) { p in
                 SettingRow(p.name, desc: (p.path as NSString).abbreviatingWithTildeInPath, mono: true) {
@@ -785,7 +787,7 @@ struct AgentsSettings: View {
                 HStack(spacing: 12) {
                     AgentIcon(icon: p.icon, size: 15).frame(width: 22)
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(p.name).font(.system(size: 13, weight: .medium))
+                        Text(p.name).font(.system(size: T.k * 13, weight: .medium))
                         Text(([p.command] + p.args).joined(separator: " ") + (p.env.isEmpty ? "" : "  ·  " + p.env.map { "\($0)=\($1)" }.joined(separator: " ")))
                             .font(T.mono(11)).foregroundStyle(T.text3).lineLimit(1).truncationMode(.middle)
                         if p.kind == .claude, let i = integration[p.id] { integrationLine(i) }
@@ -795,14 +797,14 @@ struct AgentsSettings: View {
                     Spacer(minLength: 8)
                     if p.kind == .claude, let i = integration[p.id] { integrationButton(p, i) }
                     Button { update(p, ["pinned": !p.pinned]) } label: {
-                        Image(systemName: p.pinned ? "pin.fill" : "pin").font(.system(size: 12))
+                        Image(systemName: p.pinned ? "pin.fill" : "pin").font(.system(size: T.k * 12))
                             .foregroundStyle(p.pinned ? T.accent : T.text3).frame(width: 24, height: 24)
                     }
                     .buttonStyle(.plain).help(p.pinned ? "Pinned to the tab bar" : "Pin to the tab bar")
                     SettingSwitch(isOn: Binding(get: { p.enabled }, set: { update(p, ["enabled": $0]) }))
                         .help(p.enabled ? "Shown in the + menu" : "Hidden from the + menu")
                     Button { editing = p } label: {
-                        Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundStyle(T.text3).frame(width: 22, height: 24)
+                        Image(systemName: "chevron.right").font(.system(size: T.k * 11, weight: .semibold)).foregroundStyle(T.text3).frame(width: 22, height: 24)
                     }
                     .buttonStyle(.plain).help("Edit command, arguments and environment")
                 }
@@ -820,7 +822,7 @@ struct AgentsSettings: View {
                     HStack(spacing: 12) {
                         AgentIcon(icon: d["icon"] as? String ?? "agent", size: 15).frame(width: 22)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(d["command"] as? String ?? "").font(.system(size: 13, weight: .medium))
+                            Text(d["command"] as? String ?? "").font(.system(size: T.k * 13, weight: .medium))
                             Text(d["path"] as? String ?? "").font(T.mono(11)).foregroundStyle(T.text3).lineLimit(1).truncationMode(.middle)
                         }
                         Spacer()
@@ -873,7 +875,7 @@ struct AgentsSettings: View {
                  : i.status == "outdated" ? "Terminal tabs: hooks in \(dir) are out of date"
                  : "Terminal tabs: hooks not installed (\(dir))")
         }
-        .font(.system(size: 11.5)).foregroundStyle(T.text2).lineLimit(1)
+        .font(.system(size: T.k * 11.5)).foregroundStyle(T.text2).lineLimit(1)
         .help("With hooks, a claude you type in a terminal tab shows in Agents with its state and notifications, and \"done\" shows the moment a turn ends.")
     }
 
@@ -885,7 +887,7 @@ struct AgentsSettings: View {
                  : c.status == "old" ? "Codex \(c.version ?? "") shows working and done only: update to 0.164 or later"
                  : "Codex version unknown")
         }
-        .font(.system(size: 11.5)).foregroundStyle(T.text2).lineLimit(1)
+        .font(.system(size: T.k * 11.5)).foregroundStyle(T.text2).lineLimit(1)
         .help("Codex 0.164 and later tell Octomux when they work, wait for your approval or finish, also when you type codex in a terminal tab. Older versions only show working and done.")
     }
 
@@ -1162,10 +1164,10 @@ struct ThemePicker: View {
                             VStack(alignment: .leading, spacing: 8) {
                                 ThemeSwatch(preset: p)
                                 HStack(spacing: 6) {
-                                    Text(p.name).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(T.text)
-                                    if on { Image(systemName: "checkmark.circle.fill").font(.system(size: 11)).foregroundStyle(T.accent) }
+                                    Text(p.name).font(.system(size: T.k * 12.5, weight: .semibold)).foregroundStyle(T.text)
+                                    if on { Image(systemName: "checkmark.circle.fill").font(.system(size: T.k * 11)).foregroundStyle(T.accent) }
                                 }
-                                Text(p.summary).font(.system(size: 11)).foregroundStyle(T.text2).lineLimit(2, reservesSpace: true)
+                                Text(p.summary).font(.system(size: T.k * 11)).foregroundStyle(T.text2).lineLimit(2, reservesSpace: true)
                             }
                             .padding(10)
                             .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(on ? T.selection : .clear))
@@ -1186,6 +1188,12 @@ struct ThemePicker: View {
                 }
             }
             let themeColors = model.settingValue("appearance.terminal_colors", scope: "global")?.bool ?? true
+            SettingRow("Interface size", desc: "Text and rows of the sidebar, tabs, panels and Settings on this Mac. Terminal text has its own size (Settings → Terminal).") {
+                Picker("", selection: Binding(get: { Int((store.scale * 100).rounded()) }, set: { store.set(scale: CGFloat($0) / 100) })) {
+                    ForEach([90, 100, 110, 120], id: \.self) { Text("\($0)%").tag($0) }
+                }
+                .pickerStyle(.segmented).labelsHidden().fixedSize()
+            }
             VisualSettingRow("Use theme colors in the terminal", desc: "Terminal background, text and palette follow the theme, or come from your terminal config (below).") {
                 HStack(spacing: 12) {
                     ChoiceTile(title: "Theme colors", selected: themeColors, action: { model.setSetting("appearance.terminal_colors", nil) }) {
@@ -1292,7 +1300,7 @@ struct SystemNotificationStatus: View {
             HStack(spacing: 8) {
                 Image(systemName: "checkmark.circle.fill").foregroundStyle(T.green)
                 Text(permission.soundOff && soundWanted ? "Allowed in System Settings, but sounds are off there." : "Allowed in System Settings.")
-                    .font(.system(size: 12)).foregroundStyle(T.text2)
+                    .font(.system(size: T.k * 12)).foregroundStyle(T.text2)
                 Spacer()
                 if permission.soundOff && soundWanted { settingsButton(prominent: false) }
             }
@@ -1325,10 +1333,10 @@ struct SystemNotificationStatus: View {
 
     private func warning(_ title: String, _ text: String, icon: String, color: Color, button: AnyView?) -> some View {
         HStack(alignment: .top, spacing: 12) {
-            Image(systemName: icon).font(.system(size: 18)).foregroundStyle(color).frame(width: 22)
+            Image(systemName: icon).font(.system(size: T.k * 18)).foregroundStyle(color).frame(width: 22)
             VStack(alignment: .leading, spacing: 4) {
-                Text(title).font(.system(size: 13, weight: .semibold)).foregroundStyle(T.text)
-                Text(text).font(.system(size: 12)).foregroundStyle(T.text2).fixedSize(horizontal: false, vertical: true)
+                Text(title).font(.system(size: T.k * 13, weight: .semibold)).foregroundStyle(T.text)
+                Text(text).font(.system(size: T.k * 12)).foregroundStyle(T.text2).fixedSize(horizontal: false, vertical: true)
                 if let button { button.padding(.top, 6) }
             }
             Spacer(minLength: 0)
@@ -1396,7 +1404,7 @@ struct NotificationSettings: View {
                     ForEach(Notifier.systemSounds, id: \.self) { Text($0).tag($0) }
                 }
                 .labelsHidden().fixedSize()
-                Button { Notifier.shared.sendTest(kind: kind) } label: { Image(systemName: "speaker.wave.2").font(.system(size: 11)) }
+                Button { Notifier.shared.sendTest(kind: kind) } label: { Image(systemName: "speaker.wave.2").font(.system(size: T.k * 11)) }
                     .buttonStyle(ChromeButtonStyle()).help("Send a test notification with this sound")
             }
         }
@@ -1430,7 +1438,7 @@ struct FeatureSettings: View {
     func feature(_ title: String, key: String, desc: String, available: Bool, defaultOn: Bool = false) -> some View {
         SettingRow(title, desc: desc) {
             if !available {
-                Text("Later").font(.system(size: 10.5, weight: .semibold)).foregroundStyle(T.text3)
+                Text("Later").font(.system(size: T.k * 10.5, weight: .semibold)).foregroundStyle(T.text3)
                     .padding(.horizontal, 6).padding(.vertical, 2).background(Capsule().fill(T.hover))
             }
             SettingSwitch(isOn: Binding(get: { model.setting(key)?.bool ?? defaultOn }, set: { model.setSetting(key, $0) }))
@@ -1461,17 +1469,17 @@ struct KeyboardSettings: View {
         let groups = Dictionary(grouping: shown, by: \.group)
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 3) {
-                Text("Shortcuts").font(.system(size: 13.5, weight: .semibold))
-                Text("Click a shortcut to record new keys. Esc cancels, Delete removes it.").font(.system(size: 12)).foregroundStyle(T.text2)
+                Text("Shortcuts").font(.system(size: T.k * 13.5, weight: .semibold))
+                Text("Click a shortcut to record new keys. Esc cancels, Delete removes it.").font(.system(size: T.k * 12)).foregroundStyle(T.text2)
             }
             .settingAnchor("Shortcuts")
             Spacer()
-            Text("\(shown.count) of \(kb.commands.count)").font(.system(size: 11.5)).foregroundStyle(T.text3).monospacedDigit()
+            Text("\(shown.count) of \(kb.commands.count)").font(.system(size: T.k * 11.5)).foregroundStyle(T.text3).monospacedDigit()
             if let k = keyFilter {
                 Button { keyFilter = nil } label: {
                     HStack(spacing: 5) {
                         Text(k.display).font(T.mono(12, .medium))
-                        Image(systemName: "xmark").font(.system(size: 8, weight: .bold)).foregroundStyle(T.text3)
+                        Image(systemName: "xmark").font(.system(size: T.k * 8, weight: .bold)).foregroundStyle(T.text3)
                     }
                     .padding(.horizontal, 8).frame(height: 26)
                     .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(T.selection))
@@ -1480,8 +1488,8 @@ struct KeyboardSettings: View {
                 .buttonStyle(.plain).help("Show every shortcut again")
             } else {
                 HStack(spacing: 5) {
-                    Image(systemName: "line.3.horizontal.decrease").font(.system(size: 10)).foregroundStyle(T.text3)
-                    TextField("Filter", text: $filter).textFieldStyle(.plain).font(.system(size: 12))
+                    Image(systemName: "line.3.horizontal.decrease").font(.system(size: T.k * 10)).foregroundStyle(T.text3)
+                    TextField("Filter", text: $filter).textFieldStyle(.plain).font(.system(size: T.k * 12))
                 }
                 .padding(.horizontal, 8).frame(width: 160, height: 26)
                 .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(T.frame.opacity(0.55)))
@@ -1499,18 +1507,18 @@ struct KeyboardSettings: View {
             SettingsGroup(g) {
                 ForEach(groups[g] ?? []) { c in
                     HStack(spacing: 10) {
-                        Text(c.title).font(.system(size: 13))
+                        Text(c.title).font(.system(size: T.k * 13))
                         if kb.isOverridden(c.id) {
                             Circle().fill(T.accent).frame(width: 6, height: 6).help("Changed from the default")
                         }
                         Spacer()
                         if let sc = kb.current(c.id), recording != c.id, let other = kb.conflict(sc, except: c.id) {
                             Label("also \(other.title)", systemImage: "exclamationmark.triangle.fill")
-                                .font(.system(size: 11)).foregroundStyle(T.amber).lineLimit(1)
+                                .font(.system(size: T.k * 11)).foregroundStyle(T.amber).lineLimit(1)
                         }
-                        Text(KeyBindings.target(c.id)).font(.system(size: 11.5)).foregroundStyle(T.text3)
+                        Text(KeyBindings.target(c.id)).font(.system(size: T.k * 11.5)).foregroundStyle(T.text3)
                             .frame(width: 112, alignment: .leading).lineLimit(1)
-                        Button { kb.reset(c.id) } label: { Image(systemName: "arrow.uturn.backward").font(.system(size: 10)) }
+                        Button { kb.reset(c.id) } label: { Image(systemName: "arrow.uturn.backward").font(.system(size: T.k * 10)) }
                             .buttonStyle(ChromeButtonStyle()).help("Reset to default")
                             .opacity(kb.isOverridden(c.id) ? 1 : 0).disabled(!kb.isOverridden(c.id))
                         Button { startRecording(c.id) } label: {
@@ -1530,7 +1538,7 @@ struct KeyboardSettings: View {
         }
         if shown.isEmpty {
             Text(keyFilter.map { "Nothing uses \($0.display). It goes to the terminal program." } ?? "No shortcut matches “\(filter)”.")
-                .font(.system(size: 12.5)).foregroundStyle(T.text2)
+                .font(.system(size: T.k * 12.5)).foregroundStyle(T.text2)
         }
         HStack {
             SettingsFootnote("“Acts on” is what the command works on: the focused pane, the tabs of the current project, and so on.")
@@ -1550,12 +1558,12 @@ struct KeyboardSettings: View {
             SettingRow("Quick composer", desc: hk.failed ? "macOS didn't take \(combo?.display ?? "these keys"): another app uses them. Pick others."
                        : "Opens a small window over any app: pick a project and an agent and type what to do. The session starts in Octomux.") {
                 if combo != nil, recording != "__global" {
-                    Button { hk.save(nil); globalTick += 1 } label: { Image(systemName: "xmark").font(.system(size: 9, weight: .bold)) }
+                    Button { hk.save(nil); globalTick += 1 } label: { Image(systemName: "xmark").font(.system(size: T.k * 9, weight: .bold)) }
                         .buttonStyle(ChromeButtonStyle()).help("Remove the shortcut")
                 }
                 Button { startRecordingGlobal() } label: {
                     Text(recording == "__global" ? "Press keys…" : (combo?.display ?? "Set Shortcut"))
-                        .font(combo == nil && recording != "__global" ? .system(size: 12) : T.mono(12, .medium))
+                        .font(combo == nil && recording != "__global" ? .system(size: T.k * 12) : T.mono(12, .medium))
                         .foregroundStyle(recording == "__global" ? T.accent : hk.failed ? T.amber : combo == nil ? T.text2 : T.text)
                         .frame(minWidth: 96)
                         .padding(.horizontal, 8).frame(height: 24)
@@ -1636,24 +1644,24 @@ struct HostsSettings: View {
         }) {
             ForEach(HostStore.withLocal) { h in
                 HStack(spacing: 12) {
-                    Image(systemName: h.isRemote ? "server.rack" : "laptopcomputer").font(.system(size: 14)).foregroundStyle(T.text3).frame(width: 22)
+                    Image(systemName: h.isRemote ? "server.rack" : "laptopcomputer").font(.system(size: T.k * 14)).foregroundStyle(T.text3).frame(width: 22)
                     VStack(alignment: .leading, spacing: 2) {
                         HStack(spacing: 6) {
-                            Text(h.name).font(.system(size: 13, weight: .medium))
+                            Text(h.name).font(.system(size: T.k * 13, weight: .medium))
                             if model.hostId == h.id {
-                                Text("Connected").font(.system(size: 10.5, weight: .semibold)).foregroundStyle(T.green)
+                                Text("Connected").font(.system(size: T.k * 10.5, weight: .semibold)).foregroundStyle(T.green)
                                     .padding(.horizontal, 6).padding(.vertical, 1).background(Capsule().fill(T.green.opacity(0.14)))
                             }
                         }
                         Text(h.subtitle).font(T.mono(11)).foregroundStyle(T.text3).lineLimit(1)
                         if let st = status[h.id] {
-                            Text(st).font(.system(size: 11.5)).foregroundStyle(st.hasPrefix("OK") ? T.green : st.hasPrefix("Testing") ? T.text2 : T.red).lineLimit(1)
+                            Text(st).font(.system(size: T.k * 11.5)).foregroundStyle(st.hasPrefix("OK") ? T.green : st.hasPrefix("Testing") ? T.text2 : T.red).lineLimit(1)
                         }
                     }
                     Spacer()
                     if h.isRemote, model.multiHost, model.hostId != h.id {
                         Toggle("Show here", isOn: Binding(get: { HostStore.attached.contains(h.id) }, set: { model.setAttached(h.id, $0); hosts = HostStore.all }))
-                            .toggleStyle(.checkbox).font(.system(size: 12))
+                            .toggleStyle(.checkbox).font(.system(size: T.k * 12))
                     }
                     if h.isRemote {
                         Button("Test") { test(h) }.buttonStyle(SecondaryButtonStyle())
@@ -1669,7 +1677,7 @@ struct HostsSettings: View {
                                 HostStore.all.removeAll { $0.id == h.id }; hosts = HostStore.all
                                 if model.hostId == h.id { model.switchHost("local") }
                             }
-                        } label: { Image(systemName: "ellipsis").font(.system(size: 13)).foregroundStyle(T.text2) }
+                        } label: { Image(systemName: "ellipsis").font(.system(size: T.k * 13)).foregroundStyle(T.text2) }
                             .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().tint(T.text2)
                     }
                 }

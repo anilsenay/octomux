@@ -43,12 +43,12 @@ struct NewChatView: View {
             // where the chat's composer will be once it starts (no jump when the first message is sent).
             VStack(spacing: 14) {
                 AgentIcon(icon: profile?.icon ?? "claude", size: 46)
-                Text(Self.greeting).font(.system(size: 28, weight: .regular, design: .serif)).foregroundStyle(T.text)
+                Text(Self.greeting).font(.system(size: T.k * 28, weight: .regular, design: .serif)).foregroundStyle(T.text)
                 HStack(spacing: 6) {
                     Text(project?.name ?? "")
                     if let b = git.branch(for: path) { Text("·"); Text(b).font(T.mono(12)) }
                 }
-                .font(.system(size: 12.5)).foregroundStyle(T.text3)
+                .font(.system(size: T.k * 12.5)).foregroundStyle(T.text3)
             }
             Spacer(minLength: 24)
             composer
@@ -97,7 +97,7 @@ struct NewChatView: View {
             TextField("Type a message… (↩ to send, ⌥↩ for a new line)", text: Binding(
                 get: { draft },
                 set: { draft = $0; if NewChatDraft.pending[docId] != nil { NewChatDraft.pending[docId] = $0 } }), axis: .vertical)
-                .textFieldStyle(.plain).font(.system(size: 14)).lineLimit(3...12)
+                .textFieldStyle(.plain).font(.system(size: T.k * 14)).lineLimit(3...12)
                 .frame(minHeight: 58, alignment: .topLeading)
                 .focused($focused)
                 .onSubmit(send)
@@ -133,13 +133,13 @@ struct NewChatView: View {
                     if NewChatDraft.pending[docId] != nil { NewChatDraft.pending[docId] = draft }
                     focused = true
                 }) {
-                    Image(systemName: "text.bubble").font(.system(size: 12.5)).foregroundStyle(T.text2)
+                    Image(systemName: "text.bubble").font(.system(size: T.k * 12.5)).foregroundStyle(T.text2)
                 }
                 .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().frame(width: 26, height: 26)
                 .tint(T.text2)
                 .help("Saved prompts")
                 Button { files += AttachmentChips.pick() } label: {
-                    Image(systemName: "paperclip").font(.system(size: 12.5)).foregroundStyle(T.text2).frame(width: 26, height: 26)
+                    Image(systemName: "paperclip").font(.system(size: T.k * 12.5)).foregroundStyle(T.text2).frame(width: 26, height: 26)
                 }
                 .buttonStyle(IconButtonStyle(size: 26)).help("Attach files (or drop them here, or paste a screenshot)")
                 SendButton(enabled: canSend, help: "Start \(profile?.name ?? "the agent") with this message (↩)", action: send)
@@ -167,9 +167,9 @@ struct NewChatView: View {
             HStack(spacing: 5) {
                 if let profile { AgentIcon(icon: profile.icon, size: 11) }
                 Text(flags && options.model != nil ? options.modelTitle(kind) : (profile?.name ?? "No agent"))
-                    .font(.system(size: 12, weight: .medium)).foregroundStyle(T.text)
-                if flags, let effort { Text(effort).font(.system(size: 12)).foregroundStyle(T.text3) }
-                Image(systemName: "chevron.down").font(.system(size: 7.5, weight: .bold)).foregroundStyle(T.text3)
+                    .font(.system(size: T.k * 12, weight: .medium)).foregroundStyle(T.text)
+                if flags, let effort { Text(effort).font(.system(size: T.k * 12)).foregroundStyle(T.text3) }
+                Image(systemName: "chevron.down").font(.system(size: T.k * 7.5, weight: .bold)).foregroundStyle(T.text3)
             }
             .padding(.horizontal, 8).frame(height: 24)
             .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(pickingModel ? T.border : .clear))
@@ -226,8 +226,8 @@ struct ContextChip: View {
     var body: some View {
         Button { open.toggle() } label: {
             HStack(spacing: 5) {
-                Image(systemName: icon).font(.system(size: 10.5))
-                Text(text).font(mono ? T.mono(11.5) : .system(size: 11.5, weight: .medium)).lineLimit(1)
+                Image(systemName: icon).font(.system(size: T.k * 10.5))
+                Text(text).font(mono ? T.mono(11.5) : .system(size: T.k * 11.5, weight: .medium)).lineLimit(1)
             }
             .foregroundStyle(tint ?? (open || hover ? T.text : T.text2))
             .padding(.horizontal, 8).frame(height: 24)
@@ -255,13 +255,13 @@ struct WorkspaceChoice: View {
     var body: some View {
         let linked = project.map { wt.linked($0.path) } ?? []
         VStack(alignment: .leading, spacing: 1) {
-            Text("Workspace").font(.system(size: 11, weight: .semibold)).foregroundStyle(T.text3)
+            Text("Workspace").font(.system(size: T.k * 11, weight: .semibold)).foregroundStyle(T.text3)
                 .padding(.horizontal, 10).padding(.top, 8).padding(.bottom, 4)
             row("folder", "Current checkout", checked: selected == nil) { pick(nil) }
             if naming {
                 HStack(spacing: 8) {
-                    Image(systemName: "arrow.triangle.branch").font(.system(size: 11)).foregroundStyle(T.text2).frame(width: 16)
-                    TextField("New branch name", text: $branch).textFieldStyle(.plain).font(.system(size: 12.5))
+                    Image(systemName: "arrow.triangle.branch").font(.system(size: T.k * 11)).foregroundStyle(T.text2).frame(width: 16)
+                    TextField("New branch name", text: $branch).textFieldStyle(.plain).font(.system(size: T.k * 12.5))
                         .focused($nameFocused).onSubmit(create).disabled(busy)
                     if busy { WorkingRing() }
                 }
@@ -294,11 +294,11 @@ struct WorkspaceChoice: View {
     private func row(_ icon: String, _ title: String, checked: Bool, trailing: String? = nil, indent: CGFloat = 0, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 8) {
-                Image(systemName: icon).font(.system(size: 11)).foregroundStyle(T.text2).frame(width: 16)
-                Text(title).font(.system(size: 12.5)).foregroundStyle(T.text).lineLimit(1).truncationMode(.middle)
+                Image(systemName: icon).font(.system(size: T.k * 11)).foregroundStyle(T.text2).frame(width: 16)
+                Text(title).font(.system(size: T.k * 12.5)).foregroundStyle(T.text).lineLimit(1).truncationMode(.middle)
                 Spacer(minLength: 6)
-                if checked { Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundStyle(T.text) }
-                if let trailing { Image(systemName: trailing).font(.system(size: 9, weight: .semibold)).foregroundStyle(T.text3) }
+                if checked { Image(systemName: "checkmark").font(.system(size: T.k * 10, weight: .bold)).foregroundStyle(T.text) }
+                if let trailing { Image(systemName: trailing).font(.system(size: T.k * 9, weight: .semibold)).foregroundStyle(T.text3) }
             }
             .padding(.leading, 10 + indent).padding(.trailing, 10).frame(height: 30)
             .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(checked ? T.hover : .clear))
@@ -344,7 +344,7 @@ struct SendButton: View {
     let action: () -> Void
     var body: some View {
         Button(action: action) {
-            Image(systemName: "arrow.up").font(.system(size: 11.5, weight: .bold)).frame(width: 26, height: 26)
+            Image(systemName: "arrow.up").font(.system(size: T.k * 11.5, weight: .bold)).frame(width: 26, height: 26)
         }
         .buttonStyle(.plain)
         .foregroundStyle(enabled ? Color.white : T.text3)

@@ -100,13 +100,13 @@ struct NotificationBell: View {
         let count = center.unreadCount
         Button { open.toggle() } label: {
             // Plain bell: `bell.badge` drew its own dot under our count badge.
-            Image(systemName: "bell").font(.system(size: 12.5)).foregroundStyle(T.text2)
+            Image(systemName: "bell").font(.system(size: T.k * 12.5)).foregroundStyle(T.text2)
         }
         .buttonStyle(IconButtonStyle(size: 26))
         .overlay(alignment: .topTrailing) {
             if count > 0 {
                 Text(count > 99 ? "99+" : "\(count)")
-                    .font(.system(size: 8.5, weight: .bold)).monospacedDigit()
+                    .font(.system(size: T.k * 8.5, weight: .bold)).monospacedDigit()
                     .foregroundStyle(Self.badgeInk(model.workspace?.color))
                     .padding(.horizontal, 3.5).frame(minWidth: 13, minHeight: 13)
                     .background(Capsule().fill(Self.badgeFill(model.workspace?.color)))
@@ -165,7 +165,7 @@ struct MenuBarPanel: View {
         VStack(alignment: .leading, spacing: 0) {
             let list = rows
             if list.isEmpty {
-                Text("No new notifications").font(.system(size: 12.5)).foregroundStyle(T.text2)
+                Text("No new notifications").font(.system(size: T.k * 12.5)).foregroundStyle(T.text2)
                     .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 14).padding(.vertical, 12)
             } else {
                 VStack(spacing: 2) {
@@ -176,9 +176,9 @@ struct MenuBarPanel: View {
             Hairline().padding(.horizontal, 12)
             Button { show { NotificationCenter.default.post(name: .octomuxShowNotifications, object: nil) } } label: {
                 HStack {
-                    Text("All recent").font(.system(size: 12.5)).foregroundStyle(T.text2)
+                    Text("All recent").font(.system(size: T.k * 12.5)).foregroundStyle(T.text2)
                     Spacer()
-                    Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(T.text3)
+                    Image(systemName: "chevron.right").font(.system(size: T.k * 10, weight: .semibold)).foregroundStyle(T.text3)
                 }
                 .padding(.horizontal, 10).frame(height: 30).contentShape(Rectangle())
             }
@@ -200,20 +200,20 @@ struct MenuBarPanel: View {
                 Circle().fill(r.dot ?? .clear).frame(width: 7, height: 7)
                     .help(r.session.map(activityHelp) ?? "")
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(r.title).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(T.text).lineLimit(1)
+                    Text(r.title).font(.system(size: T.k * 12.5, weight: .semibold)).foregroundStyle(T.text).lineLimit(1)
                     HStack(spacing: 4) {
                         if let ws {
                             Circle().fill(Color(hex: ws.color)).frame(width: 6, height: 6)
                             Text(ws.name)
-                            if project != nil { Image(systemName: "chevron.right").font(.system(size: 7, weight: .bold)) }
+                            if project != nil { Image(systemName: "chevron.right").font(.system(size: T.k * 7, weight: .bold)) }
                         }
                         if let project { Text(project.name) }
                     }
-                    .font(.system(size: 11)).foregroundStyle(T.text3).lineLimit(1)
+                    .font(.system(size: T.k * 11)).foregroundStyle(T.text3).lineLimit(1)
                 }
                 Spacer(minLength: 8)
                 if r.session?.activity == .working && r.session?.state == .running { WorkingRing(size: 12) }
-                else if let d = r.date { Text(NotificationRow.when(d)).font(.system(size: 10.5)).foregroundStyle(T.text3).monospacedDigit() }
+                else if let d = r.date { Text(NotificationRow.when(d)).font(.system(size: T.k * 10.5)).foregroundStyle(T.text3).monospacedDigit() }
             }
             .padding(.horizontal, 8).padding(.vertical, 6).contentShape(Rectangle())
         }
@@ -251,7 +251,7 @@ struct NotificationList: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
-                Text("Notifications").font(.system(size: 13, weight: .semibold)).foregroundStyle(T.text)
+                Text("Notifications").font(.system(size: T.k * 13, weight: .semibold)).foregroundStyle(T.text)
                 Spacer(minLength: 12)
                 toolbarButton("Next unread", "chevron.right", disabled: center.unreadCount == 0) {
                     center.openNextUnread(); close()
@@ -263,7 +263,7 @@ struct NotificationList: View {
             Hairline()
             if center.items.isEmpty {
                 VStack(spacing: 8) {
-                    Image(systemName: "bell.slash").font(.system(size: 20)).foregroundStyle(T.text3)
+                    Image(systemName: "bell.slash").font(.system(size: T.k * 20)).foregroundStyle(T.text3)
                     Text("No notifications").font(T.body).foregroundStyle(T.text2)
                     Text("Agents finishing, asking for input or failing show up here.")
                         .font(T.caption).foregroundStyle(T.text3).multilineTextAlignment(.center)
@@ -287,8 +287,8 @@ struct NotificationList: View {
     private func toolbarButton(_ title: String, _ icon: String, disabled: Bool, _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 4) {
-                Image(systemName: icon).font(.system(size: 9, weight: .bold))
-                Text(title).font(.system(size: 11.5, weight: .medium)).fixedSize()
+                Image(systemName: icon).font(.system(size: T.k * 9, weight: .bold))
+                Text(title).font(.system(size: T.k * 11.5, weight: .medium)).fixedSize()
             }
             .foregroundStyle(disabled ? T.text3.opacity(0.6) : T.text2)
             .padding(.horizontal, 7).frame(height: 24).contentShape(Rectangle())
@@ -298,7 +298,7 @@ struct NotificationList: View {
     }
 
     @ViewBuilder private func section(_ title: String, _ list: [NotificationCenterModel.Item]) -> some View {
-        Text(title.uppercased()).font(.system(size: 10, weight: .semibold)).foregroundStyle(T.text3)
+        Text(title.uppercased()).font(.system(size: T.k * 10, weight: .semibold)).foregroundStyle(T.text3)
             .padding(.horizontal, 6).padding(.top, 6).padding(.bottom, 2)
         ForEach(list) { item in
             NotificationRow(item: item) { center.open(item); close() }
@@ -319,20 +319,20 @@ struct NotificationRow: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 7, style: .continuous).fill(T.hover)
                 if let session { AgentIcon(icon: iconName(for: session, model: model), size: 14) }
-                else { Image(systemName: "bell").font(.system(size: 12)).foregroundStyle(T.text3) }
+                else { Image(systemName: "bell").font(.system(size: T.k * 12)).foregroundStyle(T.text3) }
             }
             .frame(width: 28, height: 28)
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
                     if !item.read { Circle().fill(Self.color(n.kind)).frame(width: 6, height: 6).help("Unread · \(Self.status(n.kind))") }
-                    Text(session?.displayTitle ?? n.title).font(.system(size: 12.5, weight: .semibold))
+                    Text(session?.displayTitle ?? n.title).font(.system(size: T.k * 12.5, weight: .semibold))
                         .foregroundStyle(item.read ? T.text2 : T.text).lineLimit(1)
                     Spacer(minLength: 6)
-                    Text(Self.when(item.date)).font(.system(size: 10.5)).foregroundStyle(T.text3).monospacedDigit()
+                    Text(Self.when(item.date)).font(.system(size: T.k * 10.5)).foregroundStyle(T.text3).monospacedDigit()
                 }
-                Text(Self.message(n, hasSession: session != nil)).font(.system(size: 12)).foregroundStyle(T.text2).lineLimit(2)
+                Text(Self.message(n, hasSession: session != nil)).font(.system(size: T.k * 12)).foregroundStyle(T.text2).lineLimit(2)
                 Text([model.project(n.projectId)?.name, Self.status(n.kind), session == nil ? "closed" : nil].compactMap { $0 }.joined(separator: " · "))
-                    .font(.system(size: 10.5)).foregroundStyle(T.text3).lineLimit(1)
+                    .font(.system(size: T.k * 10.5)).foregroundStyle(T.text3).lineLimit(1)
             }
         }
         .padding(.horizontal, 8).padding(.vertical, 8)

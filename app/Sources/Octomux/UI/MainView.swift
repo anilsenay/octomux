@@ -184,11 +184,11 @@ struct TopLeftControls: View {
     var body: some View {
         HStack(spacing: 2) {
             Button { withAnimation(.easeOut(duration: 0.18)) { model.toggleSidebar() } } label: {
-                Image(systemName: "sidebar.left").font(.system(size: 13))
+                Image(systemName: "sidebar.left").font(.system(size: T.k * 13))
             }
             .buttonStyle(IconButtonStyle(size: 26)).help("Toggle Sidebar (⌘B)")
             Button { model.paletteVisible = true } label: {
-                Image(systemName: "magnifyingglass").font(.system(size: 12.5))
+                Image(systemName: "magnifyingglass").font(.system(size: T.k * 12.5))
             }
             .buttonStyle(IconButtonStyle(size: 26)).help("Search (\(KeyBindings.shared.current("cmd.command-palette")?.display ?? "⌘K"))")
             NotificationBell()
@@ -245,14 +245,14 @@ struct StoppedOverlay: View {
                 switch model.power {
                 case .stopping, .starting:
                     ProgressView().controlSize(.small)
-                    Text(model.power == .stopping ? "Stopping Octomux…" : "Starting Octomux…").font(.system(size: 14, weight: .semibold))
+                    Text(model.power == .stopping ? "Stopping Octomux…" : "Starting Octomux…").font(.system(size: T.k * 14, weight: .semibold))
                     Text(model.power == .stopping ? "Ending the programs in your tabs." : "Bringing your tabs back.")
-                        .font(.system(size: 12)).foregroundStyle(T.text2)
+                        .font(.system(size: T.k * 12)).foregroundStyle(T.text2)
                 default:
-                    Image(systemName: "stop.circle").font(.system(size: 30, weight: .light)).foregroundStyle(T.text2)
-                    Text("Octomux is stopped").font(.system(size: 15, weight: .semibold))
+                    Image(systemName: "stop.circle").font(.system(size: T.k * 30, weight: .light)).foregroundStyle(T.text2)
+                    Text("Octomux is stopped").font(.system(size: T.k * 15, weight: .semibold))
                     Text("Start it to bring your tabs back. Agents pick up their conversations.")
-                        .font(.system(size: 12)).foregroundStyle(T.text2).multilineTextAlignment(.center)
+                        .font(.system(size: T.k * 12)).foregroundStyle(T.text2).multilineTextAlignment(.center)
                     HStack(spacing: 8) {
                         Button("Start Octomux") { model.startOctomux() }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
                         Button("Open Logs") { NSWorkspace.shared.open(Paths.home.appendingPathComponent("logs")) }
@@ -308,7 +308,7 @@ struct DisconnectBanner: View {
                     ProgressView().controlSize(.mini)
                     Text(model.host.isRemote ? "Connection to \(model.host.name) lost. Reconnecting…"
                          : "Can't reach the Octomux daemon. Open terminals still work; new tabs and agent states don't.")
-                        .font(.system(size: 12)).lineLimit(2)
+                        .font(.system(size: T.k * 12)).lineLimit(2)
                     if !model.host.isRemote {
                         Button("Retry") { DispatchQueue.global().async { _ = DaemonClient.ensureDaemon() } }.controlSize(.small)
                         Button("Open Logs") { NSWorkspace.shared.open(Paths.home.appendingPathComponent("logs")) }.controlSize(.small)
@@ -328,7 +328,7 @@ struct ErrorBanner: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(T.amber)
-            Text(text).font(.system(size: 12)).lineLimit(3)
+            Text(text).font(.system(size: T.k * 12)).lineLimit(3)
             Button { dismiss() } label: { Image(systemName: "xmark") }.buttonStyle(IconButtonStyle())
         }
         .padding(10)
@@ -411,7 +411,7 @@ struct TopBar: View {
                         if !hidden.isEmpty && !hiddenDocs.isEmpty { Divider() }
                         ForEach(hiddenDocs) { d in Button(d.title) { model.selectDoc(d.id) } }
                     } label: {
-                        Text("+\(hidden.count + hiddenDocs.count)").font(.system(size: 11.5, weight: .semibold)).foregroundStyle(T.text2)
+                        Text("+\(hidden.count + hiddenDocs.count)").font(.system(size: T.k * 11.5, weight: .semibold)).foregroundStyle(T.text2)
                             .padding(.horizontal, 6).frame(height: m.tabH).contentShape(Rectangle())
                     }
                     .plainMenu().fixedSize()
@@ -457,7 +457,7 @@ struct TopBar: View {
             }
             .fixedSize()
         }
-        .font(.system(size: 12.5))
+        .font(.system(size: T.k * 12.5))
         .foregroundStyle(T.text2)
         .padding(.leading, model.sidebarVisible ? 8 : 0)
         .padding(.trailing, 10)
@@ -505,7 +505,7 @@ struct DocChip: View {
                 if case .file(let rel) = doc.kind {
                     FileIcon(name: (rel as NSString).lastPathComponent, size: 10.5)
                 } else {
-                    Image(systemName: doc.icon).font(.system(size: 10.5, weight: .medium)).foregroundStyle(selected ? T.text2 : T.text3)
+                    Image(systemName: doc.icon).font(.system(size: T.k * 10.5, weight: .medium)).foregroundStyle(selected ? T.text2 : T.text3)
                 }
             }
             .opacity(selected ? 1 : 0.6)
@@ -516,11 +516,11 @@ struct DocChip: View {
             }
             if width != nil { Spacer(minLength: 0) }
             Button { model.closeDoc(doc.id) } label: {
-                Image(systemName: "xmark").font(.system(size: 8, weight: .bold))
+                Image(systemName: "xmark").font(.system(size: T.k * 8, weight: .bold))
             }
             .buttonStyle(IconButtonStyle(size: 16)).opacity(hover ? 1 : 0)
         }
-        .font(.system(size: 12.5, weight: selected ? .semibold : .medium))
+        .font(.system(size: T.k * 12.5, weight: selected ? .semibold : .medium))
         .foregroundStyle(selected ? T.text : hover ? T.text2 : T.text3.opacity(0.85))
         .padding(.leading, 11).padding(.trailing, 6)
         .frame(width: width, height: m.tabStyle == .underline ? m.topH : m.tabH)
@@ -609,11 +609,11 @@ struct TabChip: View {
                 .help("\(s.displayTitle): \(activityHelp(s))")
             }
             Button { model.closeTab(tab.id, confirmBusy: true) } label: {
-                Image(systemName: "xmark").font(.system(size: 8, weight: .bold))
+                Image(systemName: "xmark").font(.system(size: T.k * 8, weight: .bold))
             }
             .buttonStyle(IconButtonStyle(size: 16)).opacity(hover ? 1 : 0)
         }
-        .font(.system(size: 12.5, weight: selected ? .semibold : .medium))
+        .font(.system(size: T.k * 12.5, weight: selected ? .semibold : .medium))
         .foregroundStyle(selected ? T.text : hover ? T.text2 : T.text3.opacity(0.85))
         .padding(.leading, 11).padding(.trailing, 6)
         .frame(width: width, height: m.tabStyle == .underline ? m.topH : m.tabH)
@@ -731,7 +731,7 @@ struct NewSessionButton: View {
         HStack(spacing: 1) {
             ZStack(alignment: .topTrailing) {
                 AgentIcon(icon: last?.icon ?? "terminal", size: 13).frame(width: 15, height: 15)
-                Image(systemName: "plus").font(.system(size: 7, weight: .black)).foregroundStyle(hoverMain ? T.text : T.text2)
+                Image(systemName: "plus").font(.system(size: T.k * 7, weight: .black)).foregroundStyle(hoverMain ? T.text : T.text2)
                     .offset(x: 5, y: -4)
             }
             .frame(width: 30, height: 26)
@@ -742,7 +742,7 @@ struct NewSessionButton: View {
             .onTapGesture { model.newSession(profileId: last?.id) }
             .help("New \(last?.name ?? "Terminal") tab  \(last == nil ? "⌘T" : "⌘⇧T")")
             PopupMenuButton(menu: { newSessionMenu(model: model, projectId: model.currentProject?.id, remember: true) }) {
-                Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold)).foregroundStyle(hoverMenu ? T.text : T.text3)
+                Image(systemName: "chevron.down").font(.system(size: T.k * 8, weight: .bold)).foregroundStyle(hoverMenu ? T.text : T.text3)
                     .frame(width: 16, height: 26)
             }
             .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(hoverMenu ? T.hover : .clear))
@@ -778,7 +778,7 @@ struct ProjectQuickActions: View {
             }
             Menu {
                 NewSessionItems(projectId: project.id)
-            } label: { Image(systemName: "plus").font(.system(size: 10, weight: .semibold)).foregroundStyle(T.text2).menuHitBox(20, 20) }
+            } label: { Image(systemName: "plus").font(.system(size: T.k * 10, weight: .semibold)).foregroundStyle(T.text2).menuHitBox(20, 20) }
                 .plainMenu()
                 .frame(width: 20, height: 20).hoverHighlight(radius: 5)
                 .help("New session")
@@ -827,7 +827,7 @@ struct DormantPaneView: View {
         VStack(spacing: 10) {
             if let s {
                 AgentIcon(icon: iconName(for: s, model: model), size: 26).opacity(0.7).padding(.bottom, 4)
-                Text(s.displayTitle).font(.system(size: 15, weight: .semibold)).foregroundStyle(T.text)
+                Text(s.displayTitle).font(.system(size: T.k * 15, weight: .semibold)).foregroundStyle(T.text)
                 Text(s.state == .stopped ? "Stopped" : "Exited\(s.exitCode.map { " with code \($0)" } ?? "")")
                     .font(T.body).foregroundStyle(T.text2)
                 HStack(spacing: 8) {
@@ -853,7 +853,7 @@ struct EmptyStateView: View {
         VStack(spacing: 12) {
             if let p = model.currentProject {
                 ProjectIconView(project: p, size: 44).padding(.bottom, 6)
-                Text(p.name).font(.system(size: 20, weight: .bold)).foregroundStyle(T.text)
+                Text(p.name).font(.system(size: T.k * 20, weight: .bold)).foregroundStyle(T.text)
                 Text(p.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")).font(T.mono(12)).foregroundStyle(T.text3)
                 HStack(spacing: 8) {
                     ForEach(model.enabledProfiles.prefix(4)) { prof in
@@ -870,8 +870,8 @@ struct EmptyStateView: View {
                 .padding(.top, 10)
                 Text("⌘T terminal · ⌘⇧T first pinned agent").font(T.caption).foregroundStyle(T.text3).padding(.top, 4)
             } else {
-                Image(systemName: "folder.badge.plus").font(.system(size: 36, weight: .light)).foregroundStyle(T.text3)
-                Text("Add a project to get started").font(.system(size: 17, weight: .semibold)).foregroundStyle(T.text)
+                Image(systemName: "folder.badge.plus").font(.system(size: T.k * 36, weight: .light)).foregroundStyle(T.text3)
+                Text("Add a project to get started").font(.system(size: T.k * 17, weight: .semibold)).foregroundStyle(T.text)
                 Text("A project is any folder. Sessions, tabs and actions live under it.").font(T.body).foregroundStyle(T.text2)
                 Button("Add Project…") { model.addProject() }.buttonStyle(PrimaryButtonStyle()).padding(.top, 6)
             }
@@ -925,7 +925,7 @@ struct StatusBar: View {
             UsageStatus(compact: !full)
             ActionsControl().fixedSize()
             Button { model.toggleDock() } label: {
-                HStack(spacing: 5) { Image(systemName: "terminal").font(.system(size: 10.5)); if full { Text("Terminal") } }
+                HStack(spacing: 5) { Image(systemName: "terminal").font(.system(size: T.k * 10.5)); if full { Text("Terminal") } }
             }
             .buttonStyle(ChromeButtonStyle(active: model.isDockOpen(model.currentProject?.id)))
             .fixedSize()
@@ -1007,7 +1007,7 @@ struct UsagePopover: View {
                 Button {
                     // The profiles the status bar shows, like the automatic refresh.
                     for id in model.usageProfileIds { model.client(for: id).call("usage.refresh", ["profile_ids": [id]]) }
-                } label: { Image(systemName: "arrow.clockwise").font(.system(size: 11, weight: .medium)) }
+                } label: { Image(systemName: "arrow.clockwise").font(.system(size: T.k * 11, weight: .medium)) }
                     .buttonStyle(ChromeButtonStyle())
                     .help("Refresh the agents shown in the status bar now")
             }
@@ -1034,7 +1034,7 @@ struct UsagePopover: View {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 7) {
                         AgentIcon(icon: p.icon, size: 12)
-                        Text(p.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(T.text)
+                        Text(p.name).font(.system(size: T.k * 13, weight: .semibold)).foregroundStyle(T.text)
                         Spacer()
                         Toggle("Always show", isOn: Binding(get: { model.usageAlwaysShown(p.id) }, set: { model.setUsageAlwaysShown(p.id, $0) }))
                             .toggleStyle(.checkbox).font(T.caption).foregroundStyle(T.text2)
@@ -1173,9 +1173,9 @@ struct GitStatusControls: View {
         HStack(spacing: 6) {
             Button { picking = true } label: {
                 HStack(spacing: 5) {
-                    Image(systemName: "arrow.triangle.branch").font(.system(size: 10, weight: .semibold))
+                    Image(systemName: "arrow.triangle.branch").font(.system(size: T.k * 10, weight: .semibold))
                     Text(branch).font(T.mono(11, .medium)).lineLimit(1)
-                    Image(systemName: "chevron.up.chevron.down").font(.system(size: 7.5, weight: .bold)).foregroundStyle(T.text3)
+                    Image(systemName: "chevron.up.chevron.down").font(.system(size: T.k * 7.5, weight: .bold)).foregroundStyle(T.text3)
                 }
                 .padding(.horizontal, 7).frame(height: 20)
                 .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(T.hover))
@@ -1204,9 +1204,9 @@ struct GitStatusControls: View {
             if full {
                 Button { pickingBase = true } label: {
                     HStack(spacing: 4) {
-                        Image(systemName: "arrow.right").font(.system(size: 8.5, weight: .bold)).foregroundStyle(T.text3)
+                        Image(systemName: "arrow.right").font(.system(size: T.k * 8.5, weight: .bold)).foregroundStyle(T.text3)
                         Text(base ?? branch).font(T.mono(11)).foregroundStyle(base == nil ? T.text3 : T.text2).lineLimit(1)
-                        Image(systemName: "chevron.up.chevron.down").font(.system(size: 7.5, weight: .bold)).foregroundStyle(T.text3)
+                        Image(systemName: "chevron.up.chevron.down").font(.system(size: T.k * 7.5, weight: .bold)).foregroundStyle(T.text3)
                     }
                     .padding(.horizontal, 6).frame(height: 20).contentShape(Rectangle())
                 }
@@ -1244,9 +1244,9 @@ struct BranchPicker: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 7) {
-                Image(systemName: "magnifyingglass").font(.system(size: 11)).foregroundStyle(T.text3)
+                Image(systemName: "magnifyingglass").font(.system(size: T.k * 11)).foregroundStyle(T.text3)
                 TextField(mode == .checkout ? "Search or create branch" : "Search branches", text: $query)
-                    .textFieldStyle(.plain).font(.system(size: 13))
+                    .textFieldStyle(.plain).font(.system(size: T.k * 13))
                     .onSubmit { if let first = filtered.first { pick(first) } else if mode == .checkout, !query.isEmpty { create(query) } }
             }
             .padding(.horizontal, 12).frame(height: 36)
@@ -1293,9 +1293,9 @@ struct BranchPicker: View {
     private func row(_ text: String, selected: Bool, mono: Bool = true, icon: String? = nil, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 8) {
-                Image(systemName: icon ?? "checkmark").font(.system(size: 10, weight: .bold)).foregroundStyle(icon != nil ? T.text2 : T.accent)
+                Image(systemName: icon ?? "checkmark").font(.system(size: T.k * 10, weight: .bold)).foregroundStyle(icon != nil ? T.text2 : T.accent)
                     .opacity(icon != nil || selected ? 1 : 0).frame(width: 12)
-                Text(text).font(mono ? T.mono(12) : .system(size: 12.5)).foregroundStyle(T.text).lineLimit(1).truncationMode(.middle)
+                Text(text).font(mono ? T.mono(12) : .system(size: T.k * 12.5)).foregroundStyle(T.text).lineLimit(1).truncationMode(.middle)
                 Spacer()
             }
             .padding(.horizontal, 8).frame(height: 28)

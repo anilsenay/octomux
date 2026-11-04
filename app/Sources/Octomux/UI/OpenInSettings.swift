@@ -32,18 +32,18 @@ struct OpenInSettings: View {
                     if let u = a.url ?? (a.id == "com.apple.finder" ? URL(fileURLWithPath: "/System/Library/CoreServices/Finder.app") : nil) {
                         Image(nsImage: NSWorkspace.shared.icon(forFile: u.path)).resizable().frame(width: 20, height: 20)
                     }
-                    Text(a.name).font(.system(size: 13)).foregroundStyle(hidden.contains(a.id) ? T.text3 : T.text)
+                    Text(a.name).font(.system(size: T.k * 13)).foregroundStyle(hidden.contains(a.id) ? T.text3 : T.text)
                     if a.id == OpenIn.defaultAppId {
-                        Text("Default").font(.system(size: 10.5, weight: .semibold)).foregroundStyle(T.accent)
+                        Text("Default").font(.system(size: T.k * 10.5, weight: .semibold)).foregroundStyle(T.accent)
                             .padding(.horizontal, 6).padding(.vertical, 1).background(Capsule().fill(T.accent.opacity(0.14)))
                     }
                     Spacer()
-                    Button { move(a.id, by: -1, in: apps) } label: { Image(systemName: "chevron.up").font(.system(size: 10, weight: .semibold)) }
+                    Button { move(a.id, by: -1, in: apps) } label: { Image(systemName: "chevron.up").font(.system(size: T.k * 10, weight: .semibold)) }
                         .buttonStyle(ChromeButtonStyle()).disabled(i == 0).help("Move up")
-                    Button { move(a.id, by: 1, in: apps) } label: { Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold)) }
+                    Button { move(a.id, by: 1, in: apps) } label: { Image(systemName: "chevron.down").font(.system(size: T.k * 10, weight: .semibold)) }
                         .buttonStyle(ChromeButtonStyle()).disabled(i == apps.count - 1).help("Move down")
                     if OpenIn.customIds.contains(a.id) {
-                        Button { remove(a.id) } label: { Image(systemName: "trash").font(.system(size: 10)) }
+                        Button { remove(a.id) } label: { Image(systemName: "trash").font(.system(size: T.k * 10)) }
                             .buttonStyle(ChromeButtonStyle()).help("Remove from the list")
                     }
                     SettingSwitch(isOn: Binding(get: { !hidden.contains(a.id) }, set: { setHidden(a.id, !$0) }))

@@ -8,7 +8,7 @@ struct FileIcon: View {
     var body: some View {
         let s = Self.style(for: name)
         Image(systemName: s.symbol)
-            .font(.system(size: size, weight: .medium))
+            .font(.system(size: T.k * size, weight: .medium))
             .foregroundStyle(s.color)
             .frame(width: size + 4)
     }
@@ -71,7 +71,7 @@ struct FolderIcon: View {
     var tint: Color? = nil
     var body: some View {
         Image(systemName: open ? "folder.fill" : "folder.fill")
-            .font(.system(size: 11)).foregroundStyle(tint ?? T.text3.opacity(0.9))
+            .font(.system(size: T.k * 11)).foregroundStyle(tint ?? T.text3.opacity(0.9))
             .frame(width: 15)
     }
 }

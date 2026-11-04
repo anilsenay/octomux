@@ -110,6 +110,9 @@ command hosts take any prefix that reaches the other side, e.g. `docker exec -i 
 
 ## Appearance
 
+Settings → Appearance → Interface size makes the window's text and rows 90–120% (this Mac; terminal text has
+its own size).
+
 Settings → Appearance (or ⌘K "Theme"): theme presets (**Ink**, **Grid**, **Glass**), Dark / Light / System, and
 **scenes**: animated pixel-art backdrops (Octo Deep, Kraken, Tide Pool and more) that can show through
 translucent terminals. You can make your own scene from a JSON file. Terminal colors follow the theme
@@ -146,6 +149,11 @@ tools, nothing saved, hooks and MCP servers off) with the diff and the repositor
 puts the answer in the box for you to edit. Settings → Projects picks the agent and model (Claude: Haiku by
 default) and a style ("Conventional Commits", …) for all projects or one. The diff goes to that agent's provider
 like any prompt, and each message uses a little of your plan (Codex more than Claude Haiku).
+
+**Pull requests.** Changes panel ▾ → Create Pull Request… (or ⌘K) asks for the base branch, a title and a
+description; ✨ writes both from the branch's commits and diff with the same agent as commit messages
+(Settings → Projects → Pull request style adds instructions). Create pushes the branch and runs
+`gh pr create`; without `gh` (or on another host) GitHub's compare page opens with both filled in.
 
 ## Quick composer
 

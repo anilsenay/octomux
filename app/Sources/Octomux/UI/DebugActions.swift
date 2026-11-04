@@ -187,6 +187,17 @@ enum DebugActions {
                         }
                     }
                 }
+            case "ui_scale": ThemeStore.shared.set(scale: CGFloat((p["value"] as? Double) ?? 1))
+            case "pull_request": PullRequestWindow.show(model: m)
+            case "pr_text":   // ✨ for the PR of the current folder against {"value": base}; result to the app log
+                if let path = m.currentWorkPath {
+                    _ = PullRequest.generate(path: path, base: p["value"] as? String ?? "main", project: m.currentProject?.id, model: m) { r in
+                        switch r {
+                        case .success(let (t, b)): NSLog("pr_text ok: %@ || %@", t, b.replacingOccurrences(of: "\n", with: " / "))
+                        case .failure(let e): NSLog("pr_text failed: %@", e.localizedDescription)
+                        }
+                    }
+                }
             case "usage_left": UserDefaults.standard.set((p["value"] as? Bool) ?? true, forKey: UsageReading.showsLeftKey)
             case "usage_popover": m.usagePopoverOpen = (p["value"] as? Bool) ?? true
             case "dock_position": UserDefaults.standard.set(p["value"] as? String ?? "bottom", forKey: "octomux.dockPosition")

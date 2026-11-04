@@ -118,7 +118,7 @@ struct QuickComposerView: View {
             HStack(spacing: 10) {
                 AgentIcon(icon: profile?.icon ?? "claude", size: 18)
                 TextField("Ask \(profile?.name ?? "an agent") to…", text: $state.text, axis: .vertical)
-                    .textFieldStyle(.plain).font(.system(size: 17)).lineLimit(1...8)
+                    .textFieldStyle(.plain).font(.system(size: T.k * 17)).lineLimit(1...8)
                     .focused($focused)
             }
             HStack(spacing: 8) {
@@ -146,7 +146,7 @@ struct QuickComposerView: View {
                 .fixedSize()
                 Spacer()
                 Text("↩ start · ⌘↩ and show · esc")
-                    .font(.system(size: 11)).foregroundStyle(T.text3)
+                    .font(.system(size: T.k * 11)).foregroundStyle(T.text3)
             }
         }
         .padding(16)

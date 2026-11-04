@@ -11,6 +11,7 @@ struct ProjectSettings: View {
     @State private var styleGlobal = ""
     @State private var styleProject = ""
     @State private var branchPattern = ""
+    @State private var prStyle = ""
     @State private var loadedFor: String?
 
     var body: some View {
@@ -23,11 +24,11 @@ struct ProjectSettings: View {
             commitGroup(p)
             defaultsGroup
             Color.clear.frame(height: 0)
-                .onDisappear { saveStyle(styleGlobal, scope: "global"); savePattern() }
+                .onDisappear { saveStyle(styleGlobal, scope: "global"); savePattern(); savePR() }
                 .onAppear { load(p) }
                 .onChange(of: p.id) { _, _ in load(p) }
         } else {
-            Text("Add a project first (⌘⇧O).").font(.system(size: 13)).foregroundStyle(T.text2)
+            Text("Add a project first (⌘⇧O).").font(.system(size: T.k * 13)).foregroundStyle(T.text2)
             defaultsGroup
         }
     }
@@ -36,7 +37,7 @@ struct ProjectSettings: View {
 
     private func picker(_ p: Project, _ projects: [Project]) -> some View {
         HStack(spacing: 10) {
-            Text("Project").font(.system(size: 12.5)).foregroundStyle(T.text2)
+            Text("Project").font(.system(size: T.k * 12.5)).foregroundStyle(T.text2)
             Menu {
                 ForEach(model.state.workspaces.sorted { $0.sort < $1.sort }) { w in
                     let ps = projects.filter { $0.workspaceId == w.id }.sorted { $0.sort < $1.sort }
@@ -47,7 +48,7 @@ struct ProjectSettings: View {
                     }
                 }
             } label: {
-                Text(p.name).font(.system(size: 13, weight: .medium))
+                Text(p.name).font(.system(size: T.k * 13, weight: .medium))
             }
             .menuStyle(.button).fixedSize()
             ProjectIconView(project: p, size: 18)
@@ -141,6 +142,11 @@ struct ProjectSettings: View {
         .onDisappear { saveStyle(styleProject, scope: "project:\(p.id)") }
     }
 
+    private func savePR() {
+        let t = prStyle.trimmingCharacters(in: .whitespacesAndNewlines)
+        if t != (model.settingValue("pr.instructions", scope: "global")?.string ?? "") { model.setSetting("pr.instructions", t.isEmpty ? nil : t) }
+    }
+
     private func savePattern() {
         let t = branchPattern.trimmingCharacters(in: .whitespaces)
         if t != (model.settingValue("worktrees.branch_pattern", scope: "global")?.string ?? "") { model.setSetting("worktrees.branch_pattern", t.isEmpty ? nil : t) }
@@ -190,6 +196,11 @@ struct ProjectSettings: View {
                     .labelsHidden().fixedSize()
                 }
             }
+            SettingRow("Pull request style", desc: "Extra instructions for ✨ in Create Pull Request, e.g. “link the Jira issue from the branch name”.") {
+                TextField("Summary and Testing sections", text: $prStyle, axis: .vertical)
+                    .textFieldStyle(.roundedBorder).lineLimit(1...3).frame(width: 280)
+                    .onSubmit { savePR() }
+            }
             SettingRow("Commit message style", desc: "Extra instructions, e.g. “Conventional Commits”, “one line only”. Without any, it follows the repository's recent commits.") {
                 TextField("Follow the repository's style", text: $styleGlobal, axis: .vertical)
                     .textFieldStyle(.roundedBorder).lineLimit(1...3).frame(width: 280)
@@ -202,7 +213,7 @@ struct ProjectSettings: View {
         let saved = model.settingValue("worktrees.\(key)", scope: "project:\(p.id)")?.string ?? ""
         return SettingBlock {
             HStack {
-                Text(title).font(.system(size: 13, weight: .medium))
+                Text(title).font(.system(size: T.k * 13, weight: .medium))
                 Spacer()
                 if text.wrappedValue != saved {
                     Button("Revert") { text.wrappedValue = saved }.buttonStyle(SecondaryButtonStyle())
@@ -213,7 +224,7 @@ struct ProjectSettings: View {
                     .buttonStyle(PrimaryButtonStyle())
                 }
             }
-            Text(desc).font(.system(size: 11.5)).foregroundStyle(T.text2).fixedSize(horizontal: false, vertical: true)
+            Text(desc).font(.system(size: T.k * 11.5)).foregroundStyle(T.text2).fixedSize(horizontal: false, vertical: true)
             TextEditor(text: text).font(T.mono(12)).frame(height: 64)
                 .scrollContentBackground(.hidden).padding(6)
                 .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(T.surface))
@@ -237,6 +248,7 @@ struct ProjectSettings: View {
         styleProject = model.settingValue("commit_message.instructions", scope: "project:\(p.id)")?.string ?? ""
         styleGlobal = model.settingValue("commit_message.instructions", scope: "global")?.string ?? ""
         branchPattern = model.settingValue("worktrees.branch_pattern", scope: "global")?.string ?? ""
+        prStyle = model.settingValue("pr.instructions", scope: "global")?.string ?? ""
         setup = model.settingValue("worktrees.setup", scope: "project:\(p.id)")?.string ?? ""
         teardown = model.settingValue("worktrees.teardown", scope: "project:\(p.id)")?.string ?? ""
     }

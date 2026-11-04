@@ -280,11 +280,11 @@ struct HistoryPanel: View {
     private var header: some View {
         HStack(spacing: 6) {
             HStack(spacing: 5) {
-                Image(systemName: "chevron.right").font(.system(size: 8.5, weight: .bold)).foregroundStyle(T.text3)
+                Image(systemName: "chevron.right").font(.system(size: T.k * 8.5, weight: .bold)).foregroundStyle(T.text3)
                     .rotationEffect(.degrees(open ? 90 : 0)).frame(width: 10)
-                Text("HISTORY").font(.system(size: 11, weight: .semibold)).foregroundStyle(T.text2)
+                Text("HISTORY").font(.system(size: T.k * 11, weight: .semibold)).foregroundStyle(T.text2)
                 if open && h.isRepo && !h.branch.isEmpty {
-                    Text(h.branch).font(.system(size: 11)).foregroundStyle(T.text3).lineLimit(1)
+                    Text(h.branch).font(.system(size: T.k * 11)).foregroundStyle(T.text3).lineLimit(1)
                 }
                 Spacer(minLength: 4)
             }
@@ -292,11 +292,11 @@ struct HistoryPanel: View {
             .onTapGesture { withAnimation(.easeOut(duration: 0.18)) { open.toggle() } }
             .pointerCursor()
             if open && h.isRepo {
-                Image(systemName: "magnifyingglass").font(.system(size: 10.5)).foregroundStyle(T.text3)
-                TextField("Filter", text: $query).textFieldStyle(.plain).font(.system(size: 12)).frame(width: 70)
-                Button { h.all.toggle() } label: { Text(h.all ? "All" : "Current").font(.system(size: 11, weight: .medium)) }
+                Image(systemName: "magnifyingglass").font(.system(size: T.k * 10.5)).foregroundStyle(T.text3)
+                TextField("Filter", text: $query).textFieldStyle(.plain).font(.system(size: T.k * 12)).frame(width: 70)
+                Button { h.all.toggle() } label: { Text(h.all ? "All" : "Current").font(.system(size: T.k * 11, weight: .medium)) }
                     .buttonStyle(ChromeButtonStyle(active: h.all)).help(h.all ? "Showing all branches" : "Showing the current branch")
-                Button { h.refresh() } label: { Image(systemName: "arrow.clockwise").font(.system(size: 11)) }.buttonStyle(ChromeButtonStyle())
+                Button { h.refresh() } label: { Image(systemName: "arrow.clockwise").font(.system(size: T.k * 11)) }.buttonStyle(ChromeButtonStyle())
             }
         }
         .padding(.leading, 12).padding(.trailing, 8).frame(height: 30)
@@ -316,10 +316,10 @@ private struct CommitRow: View {
             if graph { GraphCell(row: c.graph, head: head || c.refs.hasPrefix("HEAD")).frame(maxHeight: .infinity) }
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    Text(c.subject).font(.system(size: 12.5, weight: .medium)).foregroundStyle(T.text).lineLimit(1)
+                    Text(c.subject).font(.system(size: T.k * 12.5, weight: .medium)).foregroundStyle(T.text).lineLimit(1)
                     Spacer(minLength: 4)
                     ForEach(Array(c.labels.prefix(2).enumerated()), id: \.offset) { _, l in RefLabel(text: l.text, kind: l.kind) }
-                    if c.labels.count > 2 { Text("+\(c.labels.count - 2)").font(.system(size: 10)).foregroundStyle(T.text3) }
+                    if c.labels.count > 2 { Text("+\(c.labels.count - 2)").font(.system(size: T.k * 10)).foregroundStyle(T.text3) }
                 }
                 HStack(spacing: 6) {
                     Text(c.author).lineLimit(1)
@@ -327,7 +327,7 @@ private struct CommitRow: View {
                     Text(c.when).help(c.relative)
                     Text(c.short).font(T.mono(10.5))
                 }
-                .font(.system(size: 11)).foregroundStyle(T.text3)
+                .font(.system(size: T.k * 11)).foregroundStyle(T.text3)
             }
             .padding(.vertical, 5)
         }
@@ -347,8 +347,8 @@ private struct RefLabel: View {
     var body: some View {
         let color: Color = kind == 2 ? T.amber : kind == 3 ? T.text3 : T.accent
         HStack(spacing: 3) {
-            Image(systemName: kind == 2 ? "tag.fill" : kind == 3 ? "cloud" : "arrow.triangle.branch").font(.system(size: 8, weight: .semibold))
-            Text(text).font(.system(size: 10, weight: .semibold)).lineLimit(1)
+            Image(systemName: kind == 2 ? "tag.fill" : kind == 3 ? "cloud" : "arrow.triangle.branch").font(.system(size: T.k * 8, weight: .semibold))
+            Text(text).font(.system(size: T.k * 10, weight: .semibold)).lineLimit(1)
         }
         .foregroundStyle(kind == 0 ? Color.white : color)
         .padding(.horizontal, 5).frame(height: 16)
@@ -496,9 +496,9 @@ struct FilesPanel: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 6) {
-                Image(systemName: "magnifyingglass").font(.system(size: 11)).foregroundStyle(T.text3)
+                Image(systemName: "magnifyingglass").font(.system(size: T.k * 11)).foregroundStyle(T.text3)
                 TextField("Filter \(f.count) files", text: $query).textFieldStyle(.plain).font(T.body)
-                Button { f.load() } label: { Image(systemName: "arrow.clockwise").font(.system(size: 11)) }.buttonStyle(ChromeButtonStyle())
+                Button { f.load() } label: { Image(systemName: "arrow.clockwise").font(.system(size: T.k * 11)) }.buttonStyle(ChromeButtonStyle())
             }
             .padding(.horizontal, 10).frame(height: 34)
             Hairline()
@@ -540,11 +540,11 @@ struct FilesPanel: View {
         if n.children != nil {
             let open = f.expanded.contains(n.id)
             HStack(spacing: 5) {
-                Image(systemName: "chevron.right").font(.system(size: 8.5, weight: .bold)).foregroundStyle(T.text3)
+                Image(systemName: "chevron.right").font(.system(size: T.k * 8.5, weight: .bold)).foregroundStyle(T.text3)
                     .rotationEffect(.degrees(open ? 90 : 0)).frame(width: 10)
                 let dirty = f.dirtyDirs.contains(n.id)
                 FolderIcon(open: open, tint: dirty ? T.amber.opacity(0.85) : nil)
-                Text(n.name).font(.system(size: 12.5)).foregroundStyle(dirty ? T.amber : T.text).lineLimit(1)
+                Text(n.name).font(.system(size: T.k * 12.5)).foregroundStyle(dirty ? T.amber : T.text).lineLimit(1)
                 Spacer()
                 if dirty { Circle().fill(T.amber.opacity(0.7)).frame(width: 5, height: 5).padding(.trailing, 6).help("Has changed files") }
             }
@@ -564,7 +564,7 @@ struct FilesPanel: View {
         return HStack(spacing: 5) {
             Spacer().frame(width: 10)
             FileIcon(name: (rel as NSString).lastPathComponent)
-            Text(label).font(.system(size: 12.5)).foregroundStyle(st.map { GitChange.color($0) } ?? T.text).lineLimit(1).truncationMode(.middle)
+            Text(label).font(.system(size: T.k * 12.5)).foregroundStyle(st.map { GitChange.color($0) } ?? T.text).lineLimit(1).truncationMode(.middle)
             Spacer()
             if let st { Text(st).font(T.mono(10.5, .bold)).foregroundStyle(GitChange.color(st)).padding(.trailing, 6) }
         }
@@ -590,7 +590,7 @@ struct PanelEmpty: View {
     let text: String
     var body: some View {
         VStack(spacing: 8) {
-            Image(systemName: icon).font(.system(size: 24, weight: .light)).foregroundStyle(T.text3)
+            Image(systemName: icon).font(.system(size: T.k * 24, weight: .light)).foregroundStyle(T.text3)
             Text(text).font(T.body).foregroundStyle(T.text2)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

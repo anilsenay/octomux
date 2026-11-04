@@ -349,7 +349,7 @@ struct ChatView: View {
             Text("chat view").font(T.caption).foregroundStyle(T.text3)
             Spacer()
             Button { model.toggleChat(sessionId) } label: {
-                HStack(spacing: 5) { Image(systemName: "terminal").font(.system(size: 10.5)); Text("Terminal") }
+                HStack(spacing: 5) { Image(systemName: "terminal").font(.system(size: T.k * 10.5)); Text("Terminal") }
             }
             .buttonStyle(ChromeButtonStyle()).help("Back to the terminal (⌘⇧C)")
         }
@@ -366,10 +366,10 @@ struct ChatView: View {
                     .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(T.selection))
             }
         case .assistant:
-            Text(markdown(item.text)).font(.system(size: 13.5)).foregroundStyle(T.text).textSelection(.enabled)
+            Text(markdown(item.text)).font(.system(size: T.k * 13.5)).foregroundStyle(T.text).textSelection(.enabled)
                 .lineSpacing(3).frame(maxWidth: .infinity, alignment: .leading)
         case .thinking:
-            Text(item.text).font(.system(size: 12).italic()).foregroundStyle(T.text3).lineLimit(expanded.contains(item.id) ? nil : 2)
+            Text(item.text).font(.system(size: T.k * 12).italic()).foregroundStyle(T.text3).lineLimit(expanded.contains(item.id) ? nil : 2)
                 .onTapGesture { toggle(item.id) }
         case .note:
             Text(item.text).font(T.mono(11)).foregroundStyle(T.text3)
@@ -377,11 +377,11 @@ struct ChatView: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 8) {
                     Circle().fill(item.result == nil ? T.accent : item.failed ? T.red : T.green).frame(width: 7, height: 7)
-                    Text(item.tool).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(T.text)
+                    Text(item.tool).font(.system(size: T.k * 12.5, weight: .semibold)).foregroundStyle(T.text)
                     Text(relative(item.detail)).font(T.mono(11.5)).foregroundStyle(T.text2).lineLimit(1).truncationMode(.middle)
                     Spacer(minLength: 4)
                     if item.result != nil {
-                        Image(systemName: expanded.contains(item.id) ? "chevron.up" : "chevron.down").font(.system(size: 9, weight: .semibold)).foregroundStyle(T.text3)
+                        Image(systemName: expanded.contains(item.id) ? "chevron.up" : "chevron.down").font(.system(size: T.k * 9, weight: .semibold)).foregroundStyle(T.text3)
                     }
                 }
                 if let r = item.result, expanded.contains(item.id) {
@@ -401,15 +401,15 @@ struct ChatView: View {
         let p = model.profile(s?.profileId)
         return VStack(alignment: .leading, spacing: 12) {
             TextField("Message \(p?.name ?? "the agent") — goes to the same session", text: $draft, axis: .vertical)
-                .textFieldStyle(.plain).font(.system(size: 14)).lineLimit(2...10)
+                .textFieldStyle(.plain).font(.system(size: T.k * 14)).lineLimit(2...10)
                 .frame(minHeight: 40, alignment: .topLeading)
                 .focused($composerFocused)
                 .onSubmit(send)
             HStack(spacing: 6) {
                 if let p { AgentIcon(icon: p.icon, size: 11) }
-                Text(p?.name ?? "Agent").font(.system(size: 12, weight: .medium)).foregroundStyle(T.text2)
+                Text(p?.name ?? "Agent").font(.system(size: T.k * 12, weight: .medium)).foregroundStyle(T.text2)
                 if let b = s.flatMap({ GitInfo.shared.branch(for: $0.worktree ?? model.project($0.projectId)?.path ?? $0.cwd) }) {
-                    Image(systemName: "arrow.triangle.branch").font(.system(size: 10)).foregroundStyle(T.text3).padding(.leading, 6)
+                    Image(systemName: "arrow.triangle.branch").font(.system(size: T.k * 10)).foregroundStyle(T.text3).padding(.leading, 6)
                     Text(b).font(T.mono(11.5)).foregroundStyle(T.text3)
                 }
                 Spacer()
@@ -417,7 +417,7 @@ struct ChatView: View {
                     let kind = model.profile(s?.profileId)?.kind ?? .claude
                     let refs = AttachmentChips.pick().map { kind == .claude ? "@" + $0.path : $0.path }
                     if !refs.isEmpty { draft += (draft.isEmpty || draft.hasSuffix(" ") ? "" : " ") + refs.joined(separator: " ") + " " }
-                } label: { Image(systemName: "paperclip").font(.system(size: 12.5)).foregroundStyle(T.text2) }
+                } label: { Image(systemName: "paperclip").font(.system(size: T.k * 12.5)).foregroundStyle(T.text2) }
                 .buttonStyle(IconButtonStyle(size: 26)).help("Attach files (added to the message as paths)")
                 SendButton(enabled: !draft.isEmpty && s?.state == .running, action: send)
             }

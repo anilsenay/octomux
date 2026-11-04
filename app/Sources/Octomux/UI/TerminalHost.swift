@@ -693,12 +693,12 @@ struct PaneHeader: View {
             // Narrow panes keep their title: the split buttons stay in the … and right-click menus.
             let roomy = g.size.width >= 300
             HStack(spacing: 7) {
-                Image(systemName: "circle.grid.2x3.fill").font(.system(size: 7.5)).foregroundStyle(T.text3.opacity(hover ? 0.9 : 0.45))
+                Image(systemName: "circle.grid.2x3.fill").font(.system(size: T.k * 7.5)).foregroundStyle(T.text3.opacity(hover ? 0.9 : 0.45))
                     .frame(width: 8).help("Drag to move this pane")
                 AgentIcon(icon: iconName(for: s, model: model), size: 11).opacity(focused ? 1 : 0.6)
                 Text(s.displayTitle)
                     .layoutPriority(1)
-                    .font(.system(size: 12, weight: focused ? .semibold : .medium))
+                    .font(.system(size: T.k * 12, weight: focused ? .semibold : .medium))
                     .foregroundStyle(focused ? T.text : T.text3)
                     .lineLimit(1).truncationMode(.tail)
                 ActivityIndicator(session: s)
@@ -723,11 +723,11 @@ struct PaneHeader: View {
                     Menu { SessionMenu(session: s) } label: { Image(systemName: "ellipsis").menuHitBox(20, 20) }
                         .plainMenu().frame(width: 20, height: 20)
                         .hoverHighlight(radius: 5).help("Session")
-                    Button { model.remove(s.id) } label: { Image(systemName: "xmark").font(.system(size: 9, weight: .bold)) }
+                    Button { model.remove(s.id) } label: { Image(systemName: "xmark").font(.system(size: T.k * 9, weight: .bold)) }
                         .help("Close pane (⌘W)").disabled(!model.canManage)
                 }
                 .buttonStyle(IconButtonStyle(size: 20))
-                .font(.system(size: 10.5, weight: .medium))
+                .font(.system(size: T.k * 10.5, weight: .medium))
                 .foregroundStyle(T.text3)
                 .opacity(hover || focused || zoomed ? 1 : 0)
             }
@@ -761,7 +761,7 @@ struct PaneDragPreview: View {
     var body: some View {
         HStack(spacing: 6) {
             AgentIcon(icon: iconName(for: session, model: AppModel.shared), size: 11)
-            Text(session.displayTitle).font(.system(size: 12, weight: .medium)).lineLimit(1)
+            Text(session.displayTitle).font(.system(size: T.k * 12, weight: .medium)).lineLimit(1)
         }
         .padding(.horizontal, 10).frame(height: 26)
         .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(T.raised))

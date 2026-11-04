@@ -113,8 +113,8 @@ struct ModelEffortPicker: View {
             if let workspace, selected != nil {
                 Button(action: makeDefault) {
                     HStack(spacing: 6) {
-                        Image(systemName: isDefault ? "star.fill" : "star").font(.system(size: 10))
-                        Text(isDefault ? "Default in \(workspace.name)" : "Make default in \(workspace.name)").font(.system(size: 11.5))
+                        Image(systemName: isDefault ? "star.fill" : "star").font(.system(size: T.k * 10))
+                        Text(isDefault ? "Default in \(workspace.name)" : "Make default in \(workspace.name)").font(.system(size: T.k * 11.5))
                     }
                     .foregroundStyle(isDefault ? T.amber : T.text2)
                     .padding(.horizontal, 10).frame(height: 24).contentShape(Rectangle())
@@ -132,7 +132,7 @@ struct ModelEffortPicker: View {
                     .onSubmit { let v = custom.trimmingCharacters(in: .whitespaces); if !v.isEmpty { options.model = v } }
                 if let m = options.model, !ChatLaunchOptions.models(kind).contains(where: { $0.id == m }) {
                     Text(m).font(T.mono(10.5)).foregroundStyle(T.text3).lineLimit(1)
-                    Image(systemName: "checkmark").font(.system(size: 10, weight: .bold))
+                    Image(systemName: "checkmark").font(.system(size: T.k * 10, weight: .bold))
                 }
             }
             .padding(.horizontal, 10).frame(height: 28)
@@ -140,13 +140,13 @@ struct ModelEffortPicker: View {
             if !efforts.isEmpty {
                 Hairline().padding(.vertical, 4)
                 HStack(spacing: 8) {
-                    Text("Effort").font(.system(size: 11, weight: .semibold)).foregroundStyle(T.text3)
+                    Text("Effort").font(.system(size: T.k * 11, weight: .semibold)).foregroundStyle(T.text3)
                     Spacer(minLength: 4)
                     HStack(spacing: 2) {
                         ForEach(efforts) { c in
                             let on = options.effort == c.id
                             Button { options.effort = c.id } label: {
-                                Text(c.title).font(.system(size: 11, weight: on ? .semibold : .regular))
+                                Text(c.title).font(.system(size: T.k * 11, weight: on ? .semibold : .regular))
                                     .foregroundStyle(on ? T.text : T.text2)
                                     .padding(.horizontal, 7).frame(height: 22)
                                     .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(on ? T.border : .clear))
@@ -165,7 +165,7 @@ struct ModelEffortPicker: View {
     }
 
     private func header(_ t: String) -> some View {
-        Text(t).font(.system(size: 11, weight: .semibold)).foregroundStyle(T.text3).padding(.horizontal, 10).padding(.top, 6).padding(.bottom, 3)
+        Text(t).font(.system(size: T.k * 11, weight: .semibold)).foregroundStyle(T.text3).padding(.horizontal, 10).padding(.top, 6).padding(.bottom, 3)
     }
 }
 
@@ -177,7 +177,7 @@ struct PermissionPicker: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
-            Text("Permissions").font(.system(size: 11, weight: .semibold)).foregroundStyle(T.text3)
+            Text("Permissions").font(.system(size: T.k * 11, weight: .semibold)).foregroundStyle(T.text3)
                 .padding(.horizontal, 10).padding(.top, 6).padding(.bottom, 3)
             ForEach(Array(ChatLaunchOptions.permissions(kind).enumerated()), id: \.offset) { i, c in
                 OptionRow(number: i + 1, title: c.title, detail: c.detail, checked: options.permission == c.id, warn: c.warn, info: true) {
@@ -202,16 +202,16 @@ struct OptionRow: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 8) {
-                if let number { Text("\(number)").font(.system(size: 10.5).monospacedDigit()).foregroundStyle(T.text3).frame(width: 12) }
+                if let number { Text("\(number)").font(.system(size: T.k * 10.5).monospacedDigit()).foregroundStyle(T.text3).frame(width: 12) }
                 if let icon { AgentIcon(icon: icon, size: 12) }
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(title).font(.system(size: 12.5, weight: checked ? .semibold : .regular)).foregroundStyle(warn ? T.amber : T.text)
-                    if !detail.isEmpty && !info { Text(detail).font(.system(size: 10.5)).foregroundStyle(T.text3).lineLimit(1) }
+                    Text(title).font(.system(size: T.k * 12.5, weight: checked ? .semibold : .regular)).foregroundStyle(warn ? T.amber : T.text)
+                    if !detail.isEmpty && !info { Text(detail).font(.system(size: T.k * 10.5)).foregroundStyle(T.text3).lineLimit(1) }
                 }
                 Spacer(minLength: 6)
-                if checked { Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundStyle(T.text) }
+                if checked { Image(systemName: "checkmark").font(.system(size: T.k * 10, weight: .bold)).foregroundStyle(T.text) }
                 if info, !detail.isEmpty {
-                    Image(systemName: "info.circle").font(.system(size: 10.5)).foregroundStyle(T.text3).help(detail)
+                    Image(systemName: "info.circle").font(.system(size: T.k * 10.5)).foregroundStyle(T.text3).help(detail)
                 }
             }
             .padding(.horizontal, 10).frame(minHeight: 30)
@@ -238,9 +238,9 @@ struct AttachmentChips: View {
                             } else {
                                 FileIcon(name: u.lastPathComponent)
                             }
-                            Text(u.lastPathComponent).font(.system(size: 11.5)).foregroundStyle(T.text).lineLimit(1)
+                            Text(u.lastPathComponent).font(.system(size: T.k * 11.5)).foregroundStyle(T.text).lineLimit(1)
                             Button { files.removeAll { $0 == u } } label: {
-                                Image(systemName: "xmark").font(.system(size: 8, weight: .bold)).foregroundStyle(T.text3)
+                                Image(systemName: "xmark").font(.system(size: T.k * 8, weight: .bold)).foregroundStyle(T.text3)
                             }
                             .buttonStyle(.plain).pointerCursor().help("Remove")
                         }

@@ -16,7 +16,7 @@ struct PaletteItem: Identifiable {
 enum PaletteSource {
     static func items(model: AppModel) -> [PaletteItem] {
         var out: [PaletteItem] = []
-        let sym = { (n: String) in AnyView(Image(systemName: n).font(.system(size: 12)).foregroundStyle(T.text3).frame(width: 18)) }
+        let sym = { (n: String) in AnyView(Image(systemName: n).font(.system(size: T.k * 12)).foregroundStyle(T.text3).frame(width: 18)) }
         for s in model.state.sessions where s.placement == .tab {
             let proj = model.project(s.projectId)
             out.append(PaletteItem(id: "s:" + s.id, title: s.displayTitle, subtitle: proj?.name ?? "", kind: "Session",
@@ -39,6 +39,11 @@ enum PaletteSource {
         for p in model.enabledProfiles {
             out.append(PaletteItem(id: "n:" + p.id, title: "New \(p.name)", subtitle: model.currentProject?.name ?? "", kind: "Agent",
                                    icon: AnyView(AgentIcon(icon: p.icon, size: 12).frame(width: 18))) { model.newSession(profileId: p.id) })
+        }
+        if model.currentWorkPath != nil {
+            out.append(PaletteItem(id: "pr:create", title: "Create Pull Request", subtitle: model.currentProject?.name ?? "", kind: "Command", icon: sym("arrow.triangle.pull")) {
+                DispatchQueue.main.async { PullRequestWindow.show(model: model) }
+            })
         }
         let here = model.currentProject
         for t in model.templates(project: here?.id) {
@@ -126,7 +131,7 @@ struct CommandPalette: View {
                 HStack(spacing: 10) {
                     Image(systemName: "magnifyingglass").foregroundStyle(T.text3)
                     TextField("Search sessions, projects, commands…", text: $model.paletteQuery)
-                        .textFieldStyle(.plain).font(.system(size: 15))
+                        .textFieldStyle(.plain).font(.system(size: T.k * 15))
                         .focused($focused)
                         .onSubmit { run(results) }
                         .onKeyPress(.downArrow) { selected = min(selected + 1, max(0, results.count - 1)); return .handled }
@@ -169,8 +174,8 @@ struct CommandPalette: View {
     private func row(_ r: PaletteItem, selected: Bool) -> some View {
         HStack(spacing: 10) {
             r.icon
-            Text(r.title).font(.system(size: 13, weight: .medium)).foregroundStyle(T.text).lineLimit(1)
-            if !r.subtitle.isEmpty { Text(r.subtitle).font(.system(size: 12)).foregroundStyle(T.text3).lineLimit(1).truncationMode(.middle) }
+            Text(r.title).font(.system(size: T.k * 13, weight: .medium)).foregroundStyle(T.text).lineLimit(1)
+            if !r.subtitle.isEmpty { Text(r.subtitle).font(.system(size: T.k * 12)).foregroundStyle(T.text3).lineLimit(1).truncationMode(.middle) }
             Spacer(minLength: 8)
             if !r.shortcut.isEmpty { Text(r.shortcut).font(T.mono(11)).foregroundStyle(T.text3) }
             Text(r.kind).font(T.caption).foregroundStyle(T.text3).frame(width: 74, alignment: .trailing)

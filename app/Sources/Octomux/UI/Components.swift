@@ -208,11 +208,11 @@ struct PaneTile: View {
                             .foregroundStyle(.white).frame(width: size * 0.62, height: size * 0.62)
                     }
                 case "terminal":
-                    Text(">_").font(.system(size: size * 0.42, weight: .heavy, design: .monospaced)).foregroundStyle(.white)
+                    Text(">_").font(.system(size: T.k * size * 0.42, weight: .heavy, design: .monospaced)).foregroundStyle(.white)
                 case "action":
-                    Image(systemName: "play.fill").font(.system(size: size * 0.42)).foregroundStyle(.white)
+                    Image(systemName: "play.fill").font(.system(size: T.k * size * 0.42)).foregroundStyle(.white)
                 default:
-                    Image(systemName: "chevron.left.forwardslash.chevron.right").font(.system(size: size * 0.4, weight: .semibold)).foregroundStyle(.white)
+                    Image(systemName: "chevron.left.forwardslash.chevron.right").font(.system(size: T.k * size * 0.4, weight: .semibold)).foregroundStyle(.white)
                 }
             }
             .overlay(RoundedRectangle(cornerRadius: size * 0.28, style: .continuous).stroke(Color.black.opacity(scheme == .dark ? 0.35 : 0.12), lineWidth: 0.75))
@@ -241,12 +241,12 @@ struct AgentIcon: View {
             brand("gemini", AnyShapeStyle(LinearGradient(colors: [Color(hex: "#4796E3"), Color(hex: "#9177C7"), Color(hex: "#CA6673")],
                                                          startPoint: .topLeading, endPoint: .bottomTrailing)))
         case "terminal":
-            Image(systemName: "apple.terminal").font(.system(size: size * 0.92, weight: .regular)).foregroundStyle(T.text2)
+            Image(systemName: "apple.terminal").font(.system(size: T.k * size * 0.92, weight: .regular)).foregroundStyle(T.text2)
                 .frame(width: size + 2, height: size)
         case "action":
-            Image(systemName: "play.fill").font(.system(size: size - 2)).foregroundStyle(T.text3)
+            Image(systemName: "play.fill").font(.system(size: T.k * size - 2)).foregroundStyle(T.text3)
         default:
-            Image(systemName: "chevron.left.forwardslash.chevron.right").font(.system(size: size - 1)).foregroundStyle(T.text3)
+            Image(systemName: "chevron.left.forwardslash.chevron.right").font(.system(size: T.k * size - 1)).foregroundStyle(T.text3)
         }
     }
 
@@ -297,7 +297,7 @@ struct Badge: View {
     let text: String
     var color: Color = T.amber
     var body: some View {
-        Text(text).font(.system(size: 10, weight: .bold))
+        Text(text).font(.system(size: T.k * 10, weight: .bold))
             .foregroundStyle(color)
             .padding(.horizontal, 6).padding(.vertical, 1)
             .background(Capsule().fill(color.opacity(0.16)))
@@ -311,7 +311,7 @@ struct ActivityIndicator: View {
     var body: some View {
         Group {
             if session.state == .interrupted {
-                Image(systemName: "arrow.clockwise").font(.system(size: 9, weight: .bold)).foregroundStyle(T.amber)
+                Image(systemName: "arrow.clockwise").font(.system(size: T.k * 9, weight: .bold)).foregroundStyle(T.amber)
                     .help("Restoring…")
             } else if session.isDormant {
                 EmptyView()
@@ -349,8 +349,8 @@ struct BackgroundShells: View {
     var body: some View {
         HStack(spacing: 3) {
             if unread { Circle().fill(T.green).frame(width: 7, height: 7) }
-            Image(systemName: "apple.terminal").font(.system(size: 9, weight: .semibold))
-            Text("\(count)").font(.system(size: 9.5, weight: .semibold)).monospacedDigit()
+            Image(systemName: "apple.terminal").font(.system(size: T.k * 9, weight: .semibold))
+            Text("\(count)").font(.system(size: T.k * 9.5, weight: .semibold)).monospacedDigit()
         }
         .foregroundStyle(T.text2)
         .fixedSize()
@@ -383,7 +383,7 @@ struct ProjectIconView: View {
         let tile = RoundedRectangle(cornerRadius: min(T.m.tileR, size / 2), style: .continuous)
         switch project.icon.kind {
         case "emoji":
-            Text(project.icon.value ?? "📁").font(.system(size: size - 3)).frame(width: size, height: size)
+            Text(project.icon.value ?? "📁").font(.system(size: T.k * size - 3)).frame(width: size, height: size)
         case "image":
             if let p = project.icon.value, let img = NSImage(contentsOfFile: p) {
                 Image(nsImage: img).resizable().scaledToFill().frame(width: size, height: size).clipShape(tile)
@@ -392,7 +392,7 @@ struct ProjectIconView: View {
             }
         case "symbol":
             tile.fill(color).frame(width: size, height: size)
-                .overlay(Image(systemName: project.icon.value ?? "folder.fill").font(.system(size: size * 0.52, weight: .semibold)).foregroundStyle(.white))
+                .overlay(Image(systemName: project.icon.value ?? "folder.fill").font(.system(size: T.k * size * 0.52, weight: .semibold)).foregroundStyle(.white))
         case "mascot":
             tile.fill(color).frame(width: size, height: size)
                 .overlay(Mascot(name: project.icon.value ?? "invader", color: .white).frame(width: size * 0.62, height: size * 0.62))
@@ -404,7 +404,7 @@ struct ProjectIconView: View {
     private func initialTile(_ color: Color, _ tile: RoundedRectangle) -> some View {
         tile.fill(color).frame(width: size, height: size)
             .overlay(Text(String(project.name.first.map { String($0).uppercased() } ?? "?"))
-                .font(.system(size: size * 0.58, weight: .bold)).foregroundStyle(.white))
+                .font(.system(size: T.k * size * 0.58, weight: .bold)).foregroundStyle(.white))
     }
 }
 
@@ -521,10 +521,10 @@ struct WorkspaceIcon: View {
     var body: some View {
         if let icon = workspace.icon, !icon.isEmpty {
             if NSImage(systemSymbolName: icon, accessibilityDescription: nil) != nil {
-                Image(systemName: icon).font(.system(size: size, weight: .medium))
+                Image(systemName: icon).font(.system(size: T.k * size, weight: .medium))
                     .foregroundStyle(dimmed ? T.text3 : Color(hex: workspace.color))
             } else {
-                Text(icon).font(.system(size: size)).opacity(dimmed ? 0.55 : 1)
+                Text(icon).font(.system(size: T.k * size)).opacity(dimmed ? 0.55 : 1)
             }
         } else {
             Circle().fill(dimmed ? T.text3.opacity(0.6) : Color(hex: workspace.color)).frame(width: size * 0.55, height: size * 0.55)
@@ -539,7 +539,7 @@ struct PrimaryButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var enabled
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 12.5, weight: .semibold))
+            .font(.system(size: T.k * 12.5, weight: .semibold))
             .foregroundStyle(.white)
             .padding(.horizontal, 12).frame(height: 28)
             .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(T.accent.opacity(configuration.isPressed ? 0.8 : 1)))
@@ -553,7 +553,7 @@ struct SecondaryButtonStyle: ButtonStyle {
     @State private var hover = false
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 12.5, weight: .medium))
+            .font(.system(size: T.k * 12.5, weight: .medium))
             .foregroundStyle(T.text)
             .padding(.horizontal, 12).frame(height: 28)
             .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(configuration.isPressed ? T.border : hover ? T.hover : .clear))
@@ -572,7 +572,7 @@ struct Chip<Label: View>: View {
     @State private var hover = false
     var body: some View {
         HStack(spacing: 6) { label() }
-            .font(.system(size: 11.5, weight: selected ? .semibold : .medium))
+            .font(.system(size: T.k * 11.5, weight: selected ? .semibold : .medium))
             .foregroundStyle(selected ? T.text : T.text2)
             .padding(.horizontal, 9).frame(height: 22)
             .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(selected ? T.raised : hover ? T.hover : .clear))

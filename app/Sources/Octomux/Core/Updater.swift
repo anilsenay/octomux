@@ -200,7 +200,7 @@ struct UpdateToast: View {
                 }
                 Spacer(minLength: 0)
                 Button { updater.dismiss() } label: {
-                    Image(systemName: "xmark").font(.system(size: 10, weight: .bold)).foregroundStyle(T.text3)
+                    Image(systemName: "xmark").font(.system(size: T.k * 10, weight: .bold)).foregroundStyle(T.text3)
                         .frame(width: 18, height: 18).contentShape(Rectangle())
                 }
                 .buttonStyle(.plain).help(closeHelp)

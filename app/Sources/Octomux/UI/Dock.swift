@@ -139,8 +139,8 @@ struct DockView: View {
                                 Circle().fill(s.isDormant ? T.text3 : s.kind == .action ? T.green : T.text3.opacity(0.7)).frame(width: 6, height: 6)
                                     .help(s.isDormant ? "Exited" : s.kind == .action ? "Action running" : "Running")
                                 Text(s.displayTitle).lineLimit(1)
-                                if s.isDormant { Text("exited").font(.system(size: 10)).foregroundStyle(T.text3) }
-                                Button { model.remove(s.id, confirm: false) } label: { Image(systemName: "xmark").font(.system(size: 7.5, weight: .bold)) }
+                                if s.isDormant { Text("exited").font(.system(size: T.k * 10)).foregroundStyle(T.text3) }
+                                Button { model.remove(s.id, confirm: false) } label: { Image(systemName: "xmark").font(.system(size: T.k * 7.5, weight: .bold)) }
                                     .buttonStyle(IconButtonStyle(size: 14))
                             }
                             .contextMenu {
@@ -161,7 +161,7 @@ struct DockView: View {
                         }
                     }
                 } label: {
-                    Image(systemName: Self.positionIcon(position)).font(.system(size: 11.5)).foregroundStyle(T.text2).menuHitBox(22, 22)
+                    Image(systemName: Self.positionIcon(position)).font(.system(size: T.k * 11.5)).foregroundStyle(T.text2).menuHitBox(22, 22)
                 }
                 .plainMenu()
                 .frame(width: 22, height: 22).hoverHighlight()
@@ -169,7 +169,7 @@ struct DockView: View {
                 Button { model.toggleDock() } label: { Image(systemName: Self.hideIcon(position)) }
                     .buttonStyle(ChromeButtonStyle(size: 22)).help("Hide dock (⌘J)")
             }
-            .font(.system(size: 11.5))
+            .font(.system(size: T.k * 11.5))
             .padding(.leading, T.m.inset == 0 ? 8 : 2)
             .frame(height: 26)
             DockArea()
@@ -267,7 +267,7 @@ struct ActionsControl: View {
         HStack(spacing: 2) {
             if let last = model.lastAction(pid) {
                 Button { model.runAction(last) } label: {
-                    HStack(spacing: 5) { Image(systemName: last.icon).font(.system(size: 10)); Text(last.name) }
+                    HStack(spacing: 5) { Image(systemName: last.icon).font(.system(size: T.k * 10)); Text(last.name) }
                 }
                     .buttonStyle(ChromeButtonStyle()).help("Run “\(last.command)” in the dock")
             }
@@ -285,8 +285,8 @@ struct ActionsControl: View {
             } label: {
                 Group {
                     if list.isEmpty {
-                        HStack(spacing: 5) { Image(systemName: "play.fill").font(.system(size: 9)); Text("Actions") }.foregroundStyle(T.text2)
-                    } else { Image(systemName: "chevron.down").font(.system(size: 8, weight: .semibold)).foregroundStyle(T.text2) }
+                        HStack(spacing: 5) { Image(systemName: "play.fill").font(.system(size: T.k * 9)); Text("Actions") }.foregroundStyle(T.text2)
+                    } else { Image(systemName: "chevron.down").font(.system(size: T.k * 8, weight: .semibold)).foregroundStyle(T.text2) }
                 }
                 .padding(4).contentShape(Rectangle())
             }

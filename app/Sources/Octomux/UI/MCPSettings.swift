@@ -18,7 +18,7 @@ struct MCPSettings: View {
     var body: some View {
         if model.host.isRemote {
             Text("This window shows \(model.host.name). The MCP servers listed are this Mac's agents'.")
-                .font(.system(size: 12)).foregroundStyle(T.text2)
+                .font(.system(size: T.k * 12)).foregroundStyle(T.text2)
         }
         ForEach(groups) { g in
             SettingsGroup("\(g.kind == .codex ? "Codex" : "Claude Code") · \(g.agents.joined(separator: ", "))",
@@ -30,7 +30,7 @@ struct MCPSettings: View {
                 }
             }) {
                 if g.servers.isEmpty {
-                    Text("No MCP servers.").font(.system(size: 12.5)).foregroundStyle(T.text2).padding(14)
+                    Text("No MCP servers.").font(.system(size: T.k * 12.5)).foregroundStyle(T.text2).padding(14)
                 }
                 ForEach(g.servers) { s in row(s) }
             }
@@ -45,10 +45,10 @@ struct MCPSettings: View {
 
     private func row(_ s: MCPServer) -> some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: s.url != nil ? "globe" : "terminal").font(.system(size: 12)).foregroundStyle(T.text3).frame(width: 18).padding(.top, 2)
+            Image(systemName: s.url != nil ? "globe" : "terminal").font(.system(size: T.k * 12)).foregroundStyle(T.text3).frame(width: 18).padding(.top, 2)
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
-                    Text(s.name).font(.system(size: 13, weight: .medium))
+                    Text(s.name).font(.system(size: T.k * 13, weight: .medium))
                     pill(scopeLabel(s.scope), color: T.text2)
                     if s.enabled == false { pill("Off", color: T.text3) }
                     if s.enabled == nil, case .project = s.scope { pill("Not approved yet", color: T.amber) }
@@ -56,11 +56,11 @@ struct MCPSettings: View {
                 Text("\(s.transport) · \(s.target)").font(T.mono(11)).foregroundStyle(T.text2)
                     .lineLimit(1).truncationMode(.middle).textSelection(.enabled)
                 if !s.envNames.isEmpty {
-                    Text("Uses " + s.envNames.joined(separator: ", ")).font(.system(size: 11)).foregroundStyle(T.text3).lineLimit(1)
+                    Text("Uses " + s.envNames.joined(separator: ", ")).font(.system(size: T.k * 11)).foregroundStyle(T.text3).lineLimit(1)
                 }
             }
             .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-            Button { copy(s.target) } label: { Image(systemName: "doc.on.doc").font(.system(size: 11)) }
+            Button { copy(s.target) } label: { Image(systemName: "doc.on.doc").font(.system(size: T.k * 11)) }
                 .buttonStyle(ChromeButtonStyle()).help(s.url != nil ? "Copy URL" : "Copy command")
         }
         .padding(.horizontal, 14).padding(.vertical, 10)
@@ -68,7 +68,7 @@ struct MCPSettings: View {
     }
 
     private func pill(_ t: String, color: Color) -> some View {
-        Text(t).font(.system(size: 10.5, weight: .semibold)).foregroundStyle(color)
+        Text(t).font(.system(size: T.k * 10.5, weight: .semibold)).foregroundStyle(color)
             .padding(.horizontal, 6).padding(.vertical, 1).background(Capsule().fill(T.hover))
     }
 

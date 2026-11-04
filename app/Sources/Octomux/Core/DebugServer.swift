@@ -97,7 +97,9 @@ final class DebugServer {
         // back to drawing the view hierarchy (terminal Metal content may then be blank).
         register("screenshot") { p in
             guard let path = p["path"] as? String else { throw DebugError.bad("missing path") }
-            let win = NSApp.windows.first { $0.isVisible && $0.isMainWindow } ?? NSApp.windows.first { $0.isVisible }
+            let front = NSApp.windows.first { $0.isVisible && $0.isMainWindow } ?? NSApp.windows.first { $0.isVisible }
+            // "sheet": the sheet attached to the window (Create Pull Request).
+            let win = (p["sheet"] as? Bool) == true ? front?.attachedSheet : front
             guard let win, let view = win.contentView?.superview ?? win.contentView else { throw DebugError.bad("no window") }
             var image: CGImage?
             if (p["children"] as? Bool) == true {

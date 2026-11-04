@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **Create Pull Request** (Changes panel ▾, ⌘K): base branch, title, description and Draft; ✨ writes the title and
+  description from the branch's commits and diff. Pushes the branch and runs `gh pr create`, or opens GitHub's
+  compare page filled in when `gh` isn't available.
+- **Interface size:** 90–120% for the window's text and rows (Settings → Appearance), separate from the terminal
+  font size.
 - **Worktree branch names:** a pattern fills the name in (`{user}/{date}-{n}`, Settings → Projects), and ✨ in the
   New Worktree window names the branch from the task you give the agent (the task is its first message).
 - **Tab titles from your first message:** Settings → Sessions can name agent tabs after the first message you

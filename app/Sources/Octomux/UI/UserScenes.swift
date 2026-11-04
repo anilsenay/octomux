@@ -342,7 +342,7 @@ struct UserScenesRow: View {
         let _ = store.sceneGeneration
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
-                Text("Your scenes").font(.system(size: 12.5, weight: .semibold))
+                Text("Your scenes").font(.system(size: T.k * 12.5, weight: .semibold))
                 Text(UserScenes.loaded.isEmpty ? "none yet" : "\(UserScenes.loaded.count) loaded").font(.caption).foregroundStyle(T.text3)
                 Spacer()
             }
@@ -449,8 +449,8 @@ struct TerminalSceneControls: View {
         let stored = TerminalSceneMode.resolveOpacity(workspace: wsId, settings: model.state.settings)
         let opacity = dragging ?? stored
         VStack(alignment: .leading, spacing: 8) {
-            Text("Behind terminals").font(.system(size: 13, weight: .medium))
-            Text(effective.help + (isWorkspace && own == nil ? " (from Global)" : "")).font(.system(size: 11.5)).foregroundStyle(T.text2)
+            Text("Behind terminals").font(.system(size: T.k * 13, weight: .medium))
+            Text(effective.help + (isWorkspace && own == nil ? " (from Global)" : "")).font(.system(size: T.k * 11.5)).foregroundStyle(T.text2)
             let picked = isWorkspace && own == nil ? "global" : effective.rawValue
             // The preview shows the current scene; with none picked, the first one, so the choices still differ.
             let scene = ThemeStore.shared.scene ?? Scenes.all.first { $0.dark }
@@ -461,7 +461,7 @@ struct TerminalSceneControls: View {
                                    action: { model.setSetting("appearance.scene_terminals", nil, scope: scope) }) {
                             BehindTerminalPreview(mode: TerminalSceneMode.resolve(workspace: nil, settings: model.state.settings), scene: scene, opacity: opacity)
                                 .overlay(alignment: .bottomLeading) {
-                                    Image(systemName: "globe").font(.system(size: 10)).foregroundStyle(.white).padding(5)
+                                    Image(systemName: "globe").font(.system(size: T.k * 10)).foregroundStyle(.white).padding(5)
                                 }
                         }
                     }

@@ -130,7 +130,7 @@ struct OpenInButton: View {
                     }
                 }
                 Button("Edit This List…") { SettingsWindow.show(section: .general); SettingsWindow.selection.open(.general, row: "Open in") }
-            } label: { Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold)).foregroundStyle(T.text3).frame(width: 14, height: 26) }
+            } label: { Image(systemName: "chevron.down").font(.system(size: T.k * 8, weight: .bold)).foregroundStyle(T.text3).frame(width: 14, height: 26) }
                 .plainMenu().pointerCursor()
         }
     }

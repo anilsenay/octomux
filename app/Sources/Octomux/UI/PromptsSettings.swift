@@ -51,7 +51,7 @@ struct PromptsSettings: View {
         let filled = scopes.filter { $0 == "global" || !model.templates(scope: $0).isEmpty }
         HStack {
             Text("Pick one from the prompt menu (the text-bubble button) in a new chat or the quick composer, or type its name in ⌘K. It goes into the message box, where you can still change it.")
-                .font(.system(size: 12)).foregroundStyle(T.text2).fixedSize(horizontal: false, vertical: true)
+                .font(.system(size: T.k * 12)).foregroundStyle(T.text2).fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 12)
             Button { editing = PromptTemplate(id: UUID().uuidString, name: "", text: "", scope: "global") } label: {
                 Label("New Prompt", systemImage: "plus")
@@ -64,20 +64,20 @@ struct PromptsSettings: View {
             SettingsGroup(TemplateMenu<EmptyView>.scopeTitle(scope, model: model),
                           desc: scope == "global" ? "Every project." : scope.hasPrefix("workspace:") ? "The projects of this workspace." : "Only this project.") {
                 if list.isEmpty {
-                    Text("None yet.").font(.system(size: 12.5)).foregroundStyle(T.text2).padding(14)
+                    Text("None yet.").font(.system(size: T.k * 12.5)).foregroundStyle(T.text2).padding(14)
                 }
                 ForEach(list) { t in
                     HStack(alignment: .top, spacing: 10) {
-                        Image(systemName: "text.bubble").font(.system(size: 12)).foregroundStyle(T.text3).frame(width: 18).padding(.top, 2)
+                        Image(systemName: "text.bubble").font(.system(size: T.k * 12)).foregroundStyle(T.text3).frame(width: 18).padding(.top, 2)
                         VStack(alignment: .leading, spacing: 3) {
                             HStack(spacing: 6) {
-                                Text(t.name).font(.system(size: 13, weight: .medium))
+                                Text(t.name).font(.system(size: T.k * 13, weight: .medium))
                                 if t.changes {
-                                    Text("Changes").font(.system(size: 10.5, weight: .semibold)).foregroundStyle(T.text2)
+                                    Text("Changes").font(.system(size: T.k * 10.5, weight: .semibold)).foregroundStyle(T.text2)
                                         .padding(.horizontal, 6).padding(.vertical, 1).background(Capsule().fill(T.hover))
                                 }
                             }
-                            Text(t.text).font(.system(size: 11.5)).foregroundStyle(T.text2).lineLimit(2)
+                            Text(t.text).font(.system(size: T.k * 11.5)).foregroundStyle(T.text2).lineLimit(2)
                         }
                         .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
                         Button("Edit") { editing = t }.buttonStyle(SecondaryButtonStyle())
@@ -117,7 +117,7 @@ struct PromptEditor: View {
                 }
             }
             Toggle("Also in the Changes panel's Ask Agent menu (sends it to the focused agent, or a new one)", isOn: $template.changes)
-                .font(.system(size: 12))
+                .font(.system(size: T.k * 12))
             TextEditor(text: $template.text).font(T.mono(12.5)).frame(height: 160)
                 .scrollContentBackground(.hidden).padding(6)
                 .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(T.surface))

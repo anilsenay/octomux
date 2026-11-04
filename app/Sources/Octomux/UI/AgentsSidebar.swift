@@ -44,17 +44,17 @@ struct AgentsPanel: View {
 
     private func headerBar(open: Bool, total: Int, counts: Counts) -> some View {
         HStack(spacing: 6) {
-            Image(systemName: "chevron.up").font(.system(size: 9, weight: .semibold)).foregroundStyle(T.text3)
+            Image(systemName: "chevron.up").font(.system(size: T.k * 9, weight: .semibold)).foregroundStyle(T.text3)
                 .rotationEffect(.degrees(open ? 180 : 0)).frame(width: 12)
             SectionLabel("Agents")
             if onlyHere && model.state.workspaces.count > 1 {
-                Text("this workspace").font(.system(size: 10.5)).foregroundStyle(T.text3).lineLimit(1)
+                Text("this workspace").font(.system(size: T.k * 10.5)).foregroundStyle(T.text3).lineLimit(1)
                     .help("Showing only \(model.workspace?.name ?? "this workspace")'s agents. Change it in the panel's menu.")
             }
             Spacer(minLength: 4)
             indicators(counts)
             if counts.isEmpty && !open && total > 0 {
-                Text("\(total)").font(.system(size: 11, weight: .medium)).monospacedDigit().foregroundStyle(T.text3)
+                Text("\(total)").font(.system(size: T.k * 11, weight: .medium)).monospacedDigit().foregroundStyle(T.text3)
                     .help("\(total) agents, none busy")
             }
             if open {
@@ -74,12 +74,12 @@ struct AgentsPanel: View {
         HStack(spacing: 9) {
             if c.waiting > 0 {
                 mark(c.waiting, T.amber, "\(c.waiting) need\(c.waiting == 1 ? "s" : "") your input") {
-                    Image(systemName: "hand.raised.fill").font(.system(size: 9.5)).foregroundStyle(T.amber)
+                    Image(systemName: "hand.raised.fill").font(.system(size: T.k * 9.5)).foregroundStyle(T.amber)
                 }
             }
             if c.failed > 0 {
                 mark(c.failed, T.red, "\(c.failed) failed") {
-                    Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 9.5)).foregroundStyle(T.red)
+                    Image(systemName: "exclamationmark.triangle.fill").font(.system(size: T.k * 9.5)).foregroundStyle(T.red)
                 }
             }
             if c.working > 0 {
@@ -96,7 +96,7 @@ struct AgentsPanel: View {
     private func mark(_ n: Int, _ color: Color, _ help: String, @ViewBuilder _ icon: () -> some View) -> some View {
         HStack(spacing: 3) {
             icon().frame(width: 12, height: 12)
-            Text("\(n)").font(.system(size: 10.5, weight: .semibold)).monospacedDigit().foregroundStyle(color)
+            Text("\(n)").font(.system(size: T.k * 10.5, weight: .semibold)).monospacedDigit().foregroundStyle(color)
         }
         .help(help)
     }
@@ -228,7 +228,7 @@ struct AgentsList: View {
     @ViewBuilder private var empty: some View {
         let filtered = onlyHere && model.state.workspaces.count > 1
         VStack(spacing: 8) {
-            Image(systemName: "sparkles").font(.system(size: 18)).foregroundStyle(T.text3)
+            Image(systemName: "sparkles").font(.system(size: T.k * 18)).foregroundStyle(T.text3)
             Text(filtered ? "No agents in this workspace" : "No agents yet").font(T.body).foregroundStyle(T.text2)
             if filtered {
                 Button("Show all workspaces") { onlyHere = false }.buttonStyle(.link).font(T.caption)
@@ -271,10 +271,10 @@ private struct GroupHeaderRow: View {
     var body: some View {
         let empty = count == 0
         HStack(spacing: 6) {
-            Text(title).font(.system(size: 12, weight: .medium)).foregroundStyle(color ?? (empty ? T.text3 : T.text2))
+            Text(title).font(.system(size: T.k * 12, weight: .medium)).foregroundStyle(color ?? (empty ? T.text3 : T.text2))
             Spacer(minLength: 4)
-            Text("\(count)").font(.system(size: 11, weight: .medium)).monospacedDigit().foregroundStyle(empty ? T.text3.opacity(0.7) : T.text3)
-            Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold))
+            Text("\(count)").font(.system(size: T.k * 11, weight: .medium)).monospacedDigit().foregroundStyle(empty ? T.text3.opacity(0.7) : T.text3)
+            Image(systemName: "chevron.right").font(.system(size: T.k * 9, weight: .semibold))
                 .foregroundStyle(T.text3.opacity(empty ? 0.5 : 1))
                 .rotationEffect(.degrees(open ? 90 : 0))
                 .frame(width: 12)
@@ -307,24 +307,24 @@ struct AgentRow: View {
             AgentIcon(icon: iconName(for: s, model: model), size: 13).frame(width: 16)
             VStack(alignment: .leading, spacing: 1) {
                 Text(s.displayTitle)
-                    .font(.system(size: 12.5, weight: selected || s.unread ? .semibold : .medium))
+                    .font(.system(size: T.k * 12.5, weight: selected || s.unread ? .semibold : .medium))
                     .foregroundStyle(selected ? T.text : T.text2).lineLimit(1)
                 HStack(spacing: 4) {
                     if showProject {
                         if multiWs, let ws {
                             Text(ws.name).lineLimit(1)
-                            Image(systemName: "chevron.right").font(.system(size: 7, weight: .bold))
+                            Image(systemName: "chevron.right").font(.system(size: T.k * 7, weight: .bold))
                         }
                         Text(project?.name ?? "").lineLimit(1)
                     } else {
                         Text(AgentsList.Group.of(s).title)
                     }
                 }
-                .font(.system(size: 10.5)).foregroundStyle(T.text3)
+                .font(.system(size: T.k * 10.5)).foregroundStyle(T.text3)
             }
             Spacer(minLength: 4)
             TimelineView(.everyMinute) { _ in
-                Text(Self.elapsed(since: s.lastActivityAt)).font(.system(size: 10.5)).foregroundStyle(T.text3).monospacedDigit()
+                Text(Self.elapsed(since: s.lastActivityAt)).font(.system(size: T.k * 10.5)).foregroundStyle(T.text3).monospacedDigit()
             }
             ActivityIndicator(session: s)
         }
@@ -373,7 +373,7 @@ struct AgentsMenu: View {
             }
         } label: {
             Image(systemName: byProject ? "square.stack.3d.up" : "line.3.horizontal.decrease")
-                .font(.system(size: 11, weight: .medium)).foregroundStyle(several && onlyHere ? T.accent : T.text3).menuHitBox(22, 20)
+                .font(.system(size: T.k * 11, weight: .medium)).foregroundStyle(several && onlyHere ? T.accent : T.text3).menuHitBox(22, 20)
         }
         .plainMenu().fixedSize().hoverHighlight(radius: 5).help(several ? "Sort and filter agents" : "Sort agents")
     }

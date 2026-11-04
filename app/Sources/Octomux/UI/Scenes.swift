@@ -1391,7 +1391,7 @@ struct SceneTile: View {
                 if let scene { SceneBackdrop(scene: scene, still: true) }
                 else {
                     LinearGradient(colors: [T.surface, T.frame], startPoint: .top, endPoint: .bottom)
-                    Image(systemName: choice == .global ? "globe" : "circle.slash").font(.system(size: 15)).foregroundStyle(T.text3)
+                    Image(systemName: choice == .global ? "globe" : "circle.slash").font(.system(size: T.k * 15)).foregroundStyle(T.text3)
                 }
             }
             .frame(width: width, height: width * 0.56)
@@ -1399,8 +1399,8 @@ struct SceneTile: View {
             .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous)
                 .stroke(highlighted || selected ? T.accent : T.border, lineWidth: highlighted || selected ? 2 : 1))
             HStack(spacing: 3) {
-                Text(title).font(.system(size: 11, weight: selected ? .semibold : .medium)).lineLimit(1)
-                if selected { Image(systemName: "checkmark").font(.system(size: 8.5, weight: .bold)).foregroundStyle(T.accent) }
+                Text(title).font(.system(size: T.k * 11, weight: selected ? .semibold : .medium)).lineLimit(1)
+                if selected { Image(systemName: "checkmark").font(.system(size: T.k * 8.5, weight: .bold)).foregroundStyle(T.accent) }
             }
             .foregroundStyle(selected ? T.text : T.text2)
             .frame(width: width, alignment: .leading)
@@ -1492,7 +1492,7 @@ struct SceneStrip: View {
             if wrapRows {
                 VStack(alignment: .leading, spacing: 10) {
                     ForEach(sections) { sec in
-                        if let t = sec.title { Text(t).font(.system(size: 11, weight: .semibold)).foregroundStyle(T.text3).padding(.top, 4) }
+                        if let t = sec.title { Text(t).font(.system(size: T.k * 11, weight: .semibold)).foregroundStyle(T.text3).padding(.top, 4) }
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: tileWidth, maximum: tileWidth), spacing: 12)], alignment: .leading, spacing: 12) {
                             tiles(sec.items, cur)
                         }
@@ -1611,7 +1611,7 @@ struct ScenePickerView: View {
         let scope = state.allWorkspaces || ws == nil ? "global" : "workspace:\(ws!.id)"
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
-                Text("Scenes").font(.system(size: 13, weight: .semibold))
+                Text("Scenes").font(.system(size: T.k * 13, weight: .semibold))
                 if let ws {
                     Picker("", selection: $state.allWorkspaces) {
                         Text(ws.name).tag(false)
@@ -1621,7 +1621,7 @@ struct ScenePickerView: View {
                 }
                 Spacer(minLength: 12)
                 Button { ScenePickerPanel.shared.close() } label: {
-                    Image(systemName: "xmark").font(.system(size: 10, weight: .semibold))
+                    Image(systemName: "xmark").font(.system(size: T.k * 10, weight: .semibold))
                 }
                 .buttonStyle(IconButtonStyle(size: 22)).help("Close (Esc)")
             }
@@ -1632,10 +1632,10 @@ struct ScenePickerView: View {
             }
             .frame(width: 104 * 5 + 12 * 4 + 14, height: state.gridHeight)
             Text("Point at a scene to try it on the whole window. Click to keep it; Esc puts the old one back.")
-                .font(.system(size: 11)).foregroundStyle(T.text3)
+                .font(.system(size: T.k * 11)).foregroundStyle(T.text3)
             if scope == "global", let ws, model.workspaceSceneOverride(ws.id) != nil {
                 Text("\(ws.name) has its own scene, so this changes the other workspaces.")
-                    .font(.system(size: 11)).foregroundStyle(T.text3)
+                    .font(.system(size: T.k * 11)).foregroundStyle(T.text3)
             }
         }
         .padding(16)
