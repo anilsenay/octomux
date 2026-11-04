@@ -6,6 +6,7 @@
 pub mod agents;
 pub mod integration;
 pub mod resources;
+pub mod events;
 pub mod store;
 
 use crate::holder::HolderClient;
@@ -38,6 +39,8 @@ pub struct Daemon {
     usage_poke: Mutex<Option<(Instant, Vec<String>)>>,
     /// CPU time per pid at the last `sessions.resources` (for CPU since then).
     resource_prev: Mutex<HashMap<i32, (f64, Instant)>>,
+    /// Recent hooks, status reports and activity changes (Settings → Advanced → Agent events).
+    pub events: events::EventLog,
     cmd_started: Mutex<HashMap<String, Instant>>,
     dirty: Sender<()>,
     login_path: Mutex<Option<String>>,
@@ -217,6 +220,7 @@ pub fn run(paths: Paths) -> Result<()> {
         claude_usage_running: std::sync::atomic::AtomicBool::new(false),
         usage_poke: Mutex::new(None),
         resource_prev: Mutex::new(HashMap::new()),
+        events: events::EventLog::default(),
         cmd_started: Mutex::new(HashMap::new()),
         dirty: dirty_tx,
         login_path: Mutex::new(None),
@@ -298,6 +302,7 @@ pub fn run(paths: Paths) -> Result<()> {
         std::thread::spawn(move || loop {
             std::thread::sleep(Duration::from_secs(30));
             d.stop_idle_agents();
+            d.close_stopped_agents();
         });
     }
 
@@ -924,6 +929,46 @@ impl Daemon {
         }
     }
 
+    /// Settings → Sessions → "Close stopped agent tabs": an agent tab that has been stopped or ended for that many
+    /// hours is closed. Its conversation stays in the history (Sessions panel → Resume). Pinned tabs stay.
+    fn close_stopped_agents(&self) {
+        let hours = self.setting("sessions.close_stopped_after_hours", None).and_then(|v| v.as_f64()).unwrap_or(0.0);
+        if hours <= 0.0 {
+            return;
+        }
+        let now = util::now_secs();
+        let old: Vec<(String, String)> = {
+            let st = self.state.lock().unwrap();
+            st.sessions
+                .iter()
+                .filter(|s| {
+                    s.kind == SessionKind::Agent
+                        && matches!(s.state, SessionState::Stopped | SessionState::Exited)
+                        && now.saturating_sub(s.last_activity_at) as f64 >= hours * 3600.0
+                })
+                .map(|s| (s.id.clone(), s.project_id.clone()))
+                .collect()
+        };
+        let mut closed = false;
+        for (id, project) in old {
+            let pinned: Vec<String> = self
+                .setting("tabs.pinned", Some(&project))
+                .and_then(|v| serde_json::from_value::<Vec<String>>(v).ok())
+                .unwrap_or_default();
+            let in_pinned = self.state.lock().unwrap().tabs.iter().any(|t| pinned.contains(&t.id) && t.layout.sessions().contains(&id));
+            if in_pinned {
+                continue;
+            }
+            eprintln!("[sessions] closing {id}: stopped for {hours} h");
+            if self.remove_session(&id).is_ok() {
+                closed = true;
+            }
+        }
+        if closed {
+            self.changed();
+        }
+    }
+
     /// The reporting program among the session's processes: the shallowest descendant of its shell named
     /// like the app (`claude` for claude-code; Claude's binary lives in `…/claude/versions/<v>`).
     /// None: can't tell (unknown app, no holder info, ps failed); Some(None): a known app that is not running.
@@ -1157,6 +1202,8 @@ impl Daemon {
             if s.activity == new {
                 return;
             }
+            let name = |a: Activity| serde_json::to_value(a).ok().and_then(|v| v.as_str().map(String::from)).unwrap_or_default();
+            self.events.push(util::now_millis(), id, "state", &format!("{} → {}", name(s.activity), name(new)), "");
             s.activity = new;
             s.last_activity_at = util::now_secs();
             self.activity_at.lock().unwrap().insert(id.to_string(), util::now_millis());
@@ -1229,6 +1276,7 @@ impl Daemon {
             // OSC 7501 from the program itself (Claude Code 2.1.296+ once we answer its probe): the most exact
             // source, so it takes over from hooks/transcript/Enter. `clear` = the program exited.
             HolderEvent::ProgramStatus { state, app, kind } => {
+                self.events.push(util::now_millis(), id, "program", &state, &[app.as_str(), kind.as_str()].iter().filter(|x| !x.is_empty()).copied().collect::<Vec<_>>().join(" "));
                 if std::env::var_os("OCTOMUX_TRACE_STATUS").is_some() {
                     eprintln!("[status] {} {id} {state} {app} {kind}", util::now_millis());
                 }
@@ -1340,6 +1388,7 @@ impl Daemon {
     }
 
     fn on_hook(self: &Arc<Self>, id: &str, event: &str, payload: &Value) {
+        self.events.push(util::now_millis(), id, "hook", event, &events::hook_detail(event, payload));
         if std::env::var_os("OCTOMUX_TRACE_STATUS").is_some() {
             eprintln!("[hook] {} {id} {event} {}", util::now_millis(), payload.get("session_id").and_then(|v| v.as_str()).unwrap_or(""));
         }
@@ -1913,6 +1962,10 @@ impl Daemon {
             "session.info" => {
                 let id = req("id")?;
                 Ok(HolderClient::request(&self.paths, &id, &HolderRequest::Info)?)
+            }
+            "events.list" => {
+                let session = p.get("session_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty());
+                Ok(json!({ "events": self.events.list(session) }))
             }
             "sessions.resources" => {
                 let table = resources::process_table();

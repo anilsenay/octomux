@@ -180,3 +180,57 @@ enum MCPConfig {
         return t
     }
 }
+
+// MARK: Checking and removing (through the agents' own `mcp` commands)
+
+extension MCPConfig {
+    /// `claude mcp list` lines: "name: target - ✔ Connected". Name → status text.
+    static func parseClaudeList(_ out: String) -> [String: String] {
+        var d: [String: String] = [:]
+        for line in out.split(separator: "\n") {
+            // The status starts at " - " followed by its mark; error texts after it may hold " - " themselves.
+            guard let colon = line.range(of: ": "),
+                  let dash = ["✔", "✓", "✘", "✗", "!", "⚠"].compactMap({ line.range(of: " - " + $0) }).min(by: { $0.lowerBound < $1.lowerBound }),
+                  dash.lowerBound > colon.lowerBound else { continue }
+            let name = String(line[..<colon.lowerBound]).trimmingCharacters(in: .whitespaces)
+            let status = String(line[line.index(dash.lowerBound, offsetBy: 3)...]).trimmingCharacters(in: .whitespaces)
+            if !name.isEmpty, !status.isEmpty { d[name] = status }
+        }
+        return d
+    }
+
+    /// Runs `<command> <args>` through the login shell with the profile's environment. (status, stdout, stderr)
+    static func runCLI(_ profile: Profile, _ args: [String], cwd: String?, timeout: TimeInterval = 60) -> (Int32, String, String) {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh")
+        p.arguments = ["-lc", "exec " + ([profile.command] + args.map(\.shellQuoted)).joined(separator: " ")]
+        var env = ProcessInfo.processInfo.environment
+        for (k, v) in profile.env { env[k] = (v as NSString).expandingTildeInPath }
+        p.environment = env
+        if let cwd { p.currentDirectoryURL = URL(fileURLWithPath: cwd) }
+        let dir = FileManager.default.temporaryDirectory
+        let out = dir.appendingPathComponent("octomux-mcp-\(UUID().uuidString).out"), err = out.appendingPathExtension("err")
+        FileManager.default.createFile(atPath: out.path, contents: nil)
+        FileManager.default.createFile(atPath: err.path, contents: nil)
+        defer { try? FileManager.default.removeItem(at: out); try? FileManager.default.removeItem(at: err) }
+        guard let oh = try? FileHandle(forWritingTo: out), let eh = try? FileHandle(forWritingTo: err) else { return (-1, "", "no temp file") }
+        p.standardOutput = oh; p.standardError = eh; p.standardInput = FileHandle.nullDevice
+        do { try p.run() } catch { return (-1, "", error.localizedDescription) }
+        let deadline = Date().addingTimeInterval(timeout)
+        while p.isRunning && Date() < deadline { Thread.sleep(forTimeInterval: 0.1) }
+        if p.isRunning { p.terminate(); return (-1, "", "timed out after \(Int(timeout)) s") }
+        try? oh.close(); try? eh.close()
+        let read = { (u: URL) in String(decoding: (try? Data(contentsOf: u)) ?? Data(), as: UTF8.self) }
+        return (p.terminationStatus, read(out), read(err))
+    }
+
+    /// The arguments that remove this server with the agent's CLI, and the folder to run them in.
+    static func removeCommand(_ s: MCPServer, kind: AgentKind) -> (args: [String], cwd: String?) {
+        if kind == .codex { return (["mcp", "remove", s.name], nil) }
+        switch s.scope {
+        case .user: return (["mcp", "remove", "-s", "user", s.name], nil)
+        case .local(let p): return (["mcp", "remove", "-s", "local", s.name], p)
+        case .project(let p): return (["mcp", "remove", "-s", "project", s.name], p)
+        }
+    }
+}

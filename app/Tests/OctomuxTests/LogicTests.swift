@@ -588,3 +588,27 @@ final class PullRequestTests: XCTestCase {
         XCTAssertNil(PullRequest.parse("   \n"))
     }
 }
+
+final class MCPCommandTests: XCTestCase {
+    func testParseClaudeList() {
+        let out = """
+        Checking MCP server health…
+
+        filesystem: /usr/bin/false  - ✘ Failed to connect — CONNECTION_CLOSED: a - b
+        docs: http://127.0.0.1:9/mcp (HTTP) - ✔ Connected
+        claude.ai Figma: https://x/mcp - ! Needs authentication
+        """
+        let d = MCPConfig.parseClaudeList(out)
+        XCTAssertEqual(d["filesystem"], "✘ Failed to connect — CONNECTION_CLOSED: a - b")
+        XCTAssertEqual(d["docs"], "✔ Connected")
+        XCTAssertEqual(d["claude.ai Figma"], "! Needs authentication")
+        XCTAssertEqual(d.count, 3)
+    }
+
+    func testRemoveCommands() {
+        let s = MCPServer(name: "db", scope: .project("/p"), command: "x", url: nil, transport: "stdio", file: "/p/.mcp.json")
+        XCTAssertEqual(MCPConfig.removeCommand(s, kind: .claude).args, ["mcp", "remove", "-s", "project", "db"])
+        XCTAssertEqual(MCPConfig.removeCommand(s, kind: .claude).cwd, "/p")
+        XCTAssertEqual(MCPConfig.removeCommand(s, kind: .codex).args, ["mcp", "remove", "db"])
+    }
+}

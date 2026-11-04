@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **Agent events** (Settings → Advanced, or a tab's right-click → Show Agent Events): the last 500 hooks,
+  agents' own status reports and state changes, with time and session; also in the diagnostics zip.
+- **Close stopped agent tabs** after 1 hour to 1 week (Settings → Sessions, off by default); pinned tabs stay and
+  the conversation can be resumed from the Sessions panel.
+- **MCP page:** Check shows whether each Claude Code server connects (`claude mcp list`), and Remove takes a
+  server out with the agent's own `mcp remove`.
 - **Create Pull Request** (Changes panel ▾, ⌘K): base branch, title, description and Draft; ✨ writes the title and
   description from the branch's commits and diff. Pushes the branch and runs `gh pr create`, or opens GitHub's
   compare page filled in when `gh` isn't available.

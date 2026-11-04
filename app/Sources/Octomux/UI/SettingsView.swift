@@ -59,7 +59,7 @@ final class SettingsWindow {
     static let selection = SettingsSelection()
 
     static func show(section: SettingsSection? = nil) {
-        if let section { selection.section = section; selection.query = ""; selection.project = nil }
+        if let section { selection.section = section; selection.query = ""; selection.project = nil; selection.eventsSession = nil }
         if window == nil {
             let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 940, height: 660),
                              styleMask: [.titled, .closable, .resizable, .miniaturizable], backing: .buffered, defer: false)
@@ -88,6 +88,8 @@ final class SettingsSelection: ObservableObject {
     @Published var flash: String?
     /// The project Settings → Projects shows (nil: the current one).
     @Published var project: String?
+    /// Agent events filtered to one session (a tab's "Show Agent Events").
+    @Published var eventsSession: String?
     /// Scroll position per section. The view is rebuilt when the theme or scene changes (`.id(revision)`),
     /// which would otherwise jump back to the top after every pick.
     var scrollOffsets: [SettingsSection: CGFloat] = [:]
@@ -574,6 +576,7 @@ enum SettingsIndex {
             e(.projects, "Commit message style", "conventional commits instructions commit ai"),
             e(.sessions, "Running", "cpu memory ram processes activity monitor stop"),
             e(.sessions, "Agent tabs are named after", "tab title name first message prompt agent title"),
+            e(.sessions, "Close stopped agent tabs", "cleanup old stopped exited tabs archive history"),
             e(.sessions, "Stop idle agents", "auto stop idle timeout sleep memory"),
             e(.hosts, "Hosts", "remote ssh server daemon connect"),
             e(.features, "Git worktrees", "branch"),
@@ -585,6 +588,7 @@ enum SettingsIndex {
             e(.advanced, "Data folder", "home files"),
             e(.advanced, "Logs", "diagnostics"),
             e(.advanced, "Save diagnostics", "bug report zip logs support"),
+            e(.advanced, "Agent events", "hooks trace log status debug wrong state working done"),
             e(.advanced, "Restart daemon", ""),
             e(.advanced, "Stop Octomux", "quit end sessions start"),
         ]
@@ -1803,6 +1807,7 @@ struct AdvancedSettings: View {
                 .buttonStyle(SecondaryButtonStyle())
             }
         }
+        AgentEventsView()
         if !model.host.isRemote {
             SettingsGroup("Danger zone") {
                 SettingRow("Stop Octomux", desc: "Ends the programs in every tab (shells, agents) and the daemon, like quitting a terminal app. The window waits with a Start button; starting brings the tabs back and agents pick up their conversations.") {

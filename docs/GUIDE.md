@@ -24,13 +24,19 @@ or agent and everything it started), with Open and Stop. "Stop idle agents" (off
 that finished its turn, has nothing running in the background and showed no output for the chosen time;
 Resume continues the conversation. Terminals are never stopped for being idle.
 
-Settings → Advanced → Save diagnostics writes a zip for bug reports: versions, the daemon's state, settings,
+"Close stopped agent tabs" (off by default) closes an agent tab that has been stopped that long; pinned tabs stay
+and the conversation is still in the Sessions panel to resume.
+
+Settings → Advanced → Agent events lists the last hooks, agents' own status reports and state changes (no
+prompt text), for when an agent shows the wrong state; a tab's right-click → Show Agent Events filters it to
+that tab. Settings → Advanced → Save diagnostics writes a zip for bug reports: versions, the daemon's state, settings,
 terminal.conf and the end of the logs, with tokens, keys, passwords and email addresses removed.
 
 Settings → MCP lists the MCP servers your agents start with, read from their own config files (Claude Code's
 `.claude.json` and each project's `.mcp.json`, Codex's `config.toml`), per agent config: for all projects or
-one, whether a shared `.mcp.json` server is approved, and which are turned off. It is read only; change them
-with `claude mcp` or `codex mcp`. Values of environment variables and headers are not shown.
+one, whether a shared `.mcp.json` server is approved, and which are turned off. Check runs `claude mcp list` to
+see which servers connect; Remove runs the agent's own `mcp remove`. Add servers with `claude mcp add` or
+`codex mcp add`. Values of environment variables and headers are not shown.
 
 Settings → General → Open in picks the apps in every Open in menu, their order, the default one (⌘O and the top
 bar's button), and any other app you add.

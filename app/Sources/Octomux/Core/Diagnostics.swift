@@ -61,15 +61,18 @@ enum Diagnostics {
             let state = (try? r.get()) ?? [:]
             model.client.call("hello") { h in
                 let hello = (try? h.get()) as? [String: Any] ?? [:]
+                model.client.call("events.list") { ev in
+                let events = ((try? ev.get()) as? [String: Any])?["events"] as? [[String: Any]] ?? []
                 DispatchQueue.global(qos: .userInitiated).async {
-                    let result = Result { try write(to: dest, state: state, hello: hello) }
+                    let result = Result { try write(to: dest, state: state, hello: hello, events: events) }
                     DispatchQueue.main.async { done(result.map { dest }) }
+                }
                 }
             }
         }
     }
 
-    static func write(to dest: URL, state: Any, hello: [String: Any]) throws {
+    static func write(to dest: URL, state: Any, hello: [String: Any], events: [[String: Any]] = []) throws {
         let fm = FileManager.default
         let dir = fm.temporaryDirectory.appendingPathComponent("octomux-diag-\(UUID().uuidString)/Octomux diagnostics")
         try fm.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -91,6 +94,11 @@ enum Diagnostics {
         if let conf = try? String(contentsOf: Paths.terminalConfig, encoding: .utf8) {
             try scrub(conf).write(to: dir.appendingPathComponent("terminal.conf"), atomically: true, encoding: .utf8)
         }
+        let evText = events.map { e in
+            [AgentEventsView.time(e["ts"] as? Double ?? 0), e["session"] as? String ?? "", e["source"] as? String ?? "",
+             e["name"] as? String ?? "", e["detail"] as? String ?? ""].joined(separator: "  ")
+        }.joined(separator: "\n")
+        try scrub(evText).write(to: dir.appendingPathComponent("events.log"), atomically: true, encoding: .utf8)
         let logs = dir.appendingPathComponent("logs")
         try fm.createDirectory(at: logs, withIntermediateDirectories: true)
         let src = Paths.home.appendingPathComponent("logs")

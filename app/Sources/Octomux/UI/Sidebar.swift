@@ -683,6 +683,13 @@ struct SessionMenu: View {
             Button("Stop") { model.stop(session.id) }
             Button("Restart") { model.restart(session.id) }
         }
+        if session.isAgent || session.reportsStatus == true {
+            Button("Show Agent Events") {
+                SettingsWindow.show(section: .advanced)
+                SettingsWindow.selection.eventsSession = session.id
+                SettingsWindow.selection.open(.advanced, row: "Agent events")
+            }
+        }
         if session.placement == .tab {
             Button("Move to Dock") { model.client(for: session.id).call("session.move", ["id": session.id, "placement": "dock"]) }
         }
