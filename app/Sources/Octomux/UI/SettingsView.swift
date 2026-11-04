@@ -1134,6 +1134,7 @@ struct AppearanceSettings: View {
 
     var body: some View {
         if sel.scope == "global" {
+            AttentionLabSettings()
             ThemePicker()
         }
         if sel.scope.hasPrefix("workspace:"), let w = model.state.workspaces.first(where: { "workspace:\($0.id)" == sel.scope }) {

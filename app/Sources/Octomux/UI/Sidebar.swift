@@ -242,14 +242,14 @@ struct WorkspaceButton: View {
     let selected: Bool
     var index = 0
     @State private var hover = false
+    @ObservedObject private var lab = AttentionLab.shared
 
     var body: some View {
         let a = model.attention(workspace: workspace.id)
         let note = attentionText(a)
-        WorkspaceIcon(workspace: workspace, size: 13, dimmed: !selected && !hover)
-            .frame(width: selected ? 40 : 28, height: 24)
-            // Another workspace that wants you (something waits for input, or finished and not looked at yet).
-            .background { if !selected && !note.isEmpty { AttentionWave(color: Color(hex: workspace.color)) } }
+        // Another workspace that wants you (something waits for input, or finished and not looked at yet).
+        AttentionDecorated(workspace: workspace, attention: a, wants: !selected && (!note.isEmpty || lab.force),
+                           dimmed: !selected && !hover, width: selected ? 40 : 28)
             .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(selected ? T.raised : hover ? T.hover : .clear))
             .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(selected ? T.border : .clear))
             .contentShape(Rectangle())
