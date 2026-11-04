@@ -7,6 +7,8 @@ struct MCPSettings: View {
     @State private var groups: [Group] = []
     /// `claude mcp list` results per config file: server name → status.
     @State private var status: [String: [String: String]] = [:]
+    /// Servers the check found that the config files don't list (claude.ai connectors, plugins), per file.
+    @State private var others: [String: [(name: String, target: String, status: String)]] = [:]
     @State private var checking: Set<String> = []
     @State private var message = ""
 
@@ -43,6 +45,12 @@ struct MCPSettings: View {
                     Text("No MCP servers.").font(.system(size: T.k * 12.5)).foregroundStyle(T.text2).padding(14)
                 }
                 ForEach(g.servers) { s in row(s, g) }
+                if let extra = others[g.file], !extra.isEmpty {
+                    Text("Also available to Claude Code (your claude.ai connectors and plugins; manage them there)")
+                        .font(.system(size: T.k * 11.5, weight: .medium)).foregroundStyle(T.text2)
+                        .padding(.horizontal, 14).padding(.top, 10).padding(.bottom, 2)
+                    ForEach(extra, id: \.name) { e in otherRow(e) }
+                }
             }
         }
         if !message.isEmpty { Text(message).font(.system(size: T.k * 12)).foregroundStyle(T.amber).fixedSize(horizontal: false, vertical: true) }
@@ -87,6 +95,25 @@ struct MCPSettings: View {
         .opacity(s.enabled == false ? 0.6 : 1)
     }
 
+    private func otherRow(_ e: (name: String, target: String, status: String)) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: e.name.hasPrefix("claude.ai") ? "person.crop.circle" : "puzzlepiece.extension")
+                .font(.system(size: T.k * 12)).foregroundStyle(T.text3).frame(width: 18).padding(.top, 2)
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(e.name.hasPrefix("claude.ai ") ? String(e.name.dropFirst(10)) : e.name).font(.system(size: T.k * 13, weight: .medium))
+                    pill(e.name.hasPrefix("claude.ai") ? "claude.ai" : "Not in a config file", color: T.text2)
+                    let short = e.status.components(separatedBy: " — ").first ?? e.status
+                    pill(short, color: e.status.hasPrefix("✔") || e.status.hasPrefix("✓") ? T.green : e.status.hasPrefix("!") || e.status.hasPrefix("⚠") ? T.amber : T.red)
+                        .help(e.status)
+                }
+                Text(e.target).font(T.mono(11)).foregroundStyle(T.text2).lineLimit(1).truncationMode(.middle).textSelection(.enabled)
+            }
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 14).padding(.vertical, 10)
+    }
+
     private func pill(_ t: String, color: Color) -> some View {
         Text(t).font(.system(size: T.k * 10.5, weight: .semibold)).foregroundStyle(color)
             .padding(.horizontal, 6).padding(.vertical, 1).background(Capsule().fill(T.hover))
@@ -109,7 +136,13 @@ struct MCPSettings: View {
             let (code, out, err) = MCPConfig.runCLI(profile, ["mcp", "list"], cwd: cwd, timeout: 90)
             DispatchQueue.main.async {
                 checking.remove(g.file)
-                if code == 0 { status[g.file] = MCPConfig.parseClaudeList(out); message = "" }
+                if code == 0 {
+                    let entries = MCPConfig.parseClaudeListEntries(out)
+                    status[g.file] = MCPConfig.parseClaudeList(out)
+                    let known = Set(g.servers.map(\.name))
+                    others[g.file] = entries.filter { !known.contains($0.name) }
+                    message = ""
+                }
                 else { message = "claude mcp list failed: " + (err.isEmpty ? "exit \(code)" : String(err.suffix(300))) }
             }
         }

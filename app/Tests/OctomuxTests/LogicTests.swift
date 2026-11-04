@@ -612,3 +612,18 @@ final class MCPCommandTests: XCTestCase {
         XCTAssertEqual(MCPConfig.removeCommand(s, kind: .codex).args, ["mcp", "remove", "db"])
     }
 }
+
+final class LeftoverTests: XCTestCase {
+    func testClaudeListEntriesKeepTargets() {
+        let e = MCPConfig.parseClaudeListEntries("claude.ai Figma: https://mcp.figma.com/mcp - ! Needs authentication\nfs: npx -y fs  - ✔ Connected")
+        XCTAssertEqual(e.map(\.name), ["claude.ai Figma", "fs"])
+        XCTAssertEqual(e[0].target, "https://mcp.figma.com/mcp")
+        XCTAssertEqual(e[1].target, "npx -y fs")
+    }
+
+    func testCodexModels() {
+        let json = #"{"models":[{"slug":"b","display_name":"B","visibility":"list","priority":3},{"slug":"hidden","visibility":"hide","priority":1},{"slug":"a","display_name":"A","visibility":"list","priority":2}]}"#
+        XCTAssertEqual(CommitMessageGen.parseCodexModels(json).map(\.id), ["a", "b"])
+        XCTAssertTrue(CommitMessageGen.parseCodexModels("not json").isEmpty)
+    }
+}

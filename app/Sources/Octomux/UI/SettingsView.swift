@@ -1582,6 +1582,7 @@ struct KeyboardSettings: View {
 
     private func startRecordingGlobal() {
         stopRecording()
+        GlobalHotKey.shared.suspend()
         recording = "__global"
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { e in
             if e.keyCode == 53 { stopRecording(); return nil }
@@ -1626,6 +1627,7 @@ struct KeyboardSettings: View {
     private func stopRecording() {
         if let m = monitor { NSEvent.removeMonitor(m) }
         monitor = nil
+        if recording == "__global" { GlobalHotKey.shared.apply() }   // back on (save() applies too; harmless twice)
         recording = nil
         findingKeys = false
     }

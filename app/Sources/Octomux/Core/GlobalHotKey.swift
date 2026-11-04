@@ -81,6 +81,12 @@ final class GlobalHotKey {
         if status == noErr, let r { ref = r; registered = c } else { failed = true }
     }
 
+    /// While Settings records a new combination: off, so pressing the current one records it instead of
+    /// opening the composer. `apply()` turns it back on.
+    func suspend() {
+        if let ref { UnregisterEventHotKey(ref); self.ref = nil }
+    }
+
     private func installHandler() {
         guard handler == nil else { return }
         var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))

@@ -12,6 +12,9 @@ struct ProjectSettings: View {
     @State private var styleProject = ""
     @State private var branchPattern = ""
     @State private var prStyle = ""
+    /// Models of the commit-message agent when it is Codex (nil: not asked yet).
+    @State private var codexList: [(id: String, name: String)]?
+    @State private var codexListFor: String?
     @State private var loadedFor: String?
 
     var body: some View {
@@ -142,6 +145,15 @@ struct ProjectSettings: View {
         .onDisappear { saveStyle(styleProject, scope: "project:\(p.id)") }
     }
 
+    private func loadCodexModels(_ p: Profile?) {
+        guard let p, codexListFor != p.id else { return }
+        codexListFor = p.id
+        DispatchQueue.global(qos: .userInitiated).async {
+            let list = CommitMessageGen.codexModels(p)
+            DispatchQueue.main.async { codexList = list }
+        }
+    }
+
     private func savePR() {
         let t = prStyle.trimmingCharacters(in: .whitespacesAndNewlines)
         if t != (model.settingValue("pr.instructions", scope: "global")?.string ?? "") { model.setSetting("pr.instructions", t.isEmpty ? nil : t) }
@@ -185,10 +197,19 @@ struct ProjectSettings: View {
                 }
                 .labelsHidden().fixedSize()
             }
-            SettingRow("Commit message model", desc: agent?.kind == .codex ? "Empty: Codex's own default." : "Haiku is fast and enough for a commit message.") {
-                if agent?.kind == .codex {
-                    TextField("default", text: Binding(get: { storedModel ?? "" }, set: { model.setSetting("commit_message.model", $0.isEmpty ? nil : $0) }))
+            SettingRow("Commit message model", desc: agent?.kind == .codex ? "The models your Codex offers; Codex default is the one in its config." : "Haiku is fast and enough for a commit message.") {
+                if agent?.kind == .codex, let codexList, !codexList.isEmpty {
+                    Picker("", selection: Binding(get: { storedModel ?? "" }, set: { model.setSetting("commit_message.model", $0.isEmpty ? nil : $0) })) {
+                        Text("Codex default").tag("")
+                        Divider()
+                        ForEach(codexList, id: \.id) { m in Text(m.name).tag(m.id) }
+                        if let cur = storedModel, !cur.isEmpty, !codexList.contains(where: { $0.id == cur }) { Text(cur).tag(cur) }
+                    }
+                    .labelsHidden().fixedSize()
+                } else if agent?.kind == .codex {
+                    TextField(codexList == nil ? "Loading models…" : "default", text: Binding(get: { storedModel ?? "" }, set: { model.setSetting("commit_message.model", $0.isEmpty ? nil : $0) }))
                         .textFieldStyle(.roundedBorder).frame(width: 160)
+                        .onAppear { loadCodexModels(agent) }
                 } else {
                     Picker("", selection: Binding(get: { storedModel ?? "haiku" }, set: { model.setSetting("commit_message.model", $0 == "haiku" ? nil : $0) })) {
                         Text("Haiku").tag("haiku"); Text("Sonnet").tag("sonnet"); Text("Opus").tag("opus"); Text("CLI default").tag("default")

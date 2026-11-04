@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- MCP Check also lists the servers Claude Code gets from your claude.ai account and plugins, with their status.
+- With Codex as the commit-message agent, its model is picked from the models your Codex offers.
+- Recording the quick composer shortcut no longer opens the composer when you press the current one.
 - **Agent events** (Settings → Advanced, or a tab's right-click → Show Agent Events): the last 500 hooks,
   agents' own status reports and state changes, with time and session; also in the diagnostics zip.
 - **Close stopped agent tabs** after 1 hour to 1 week (Settings → Sessions, off by default); pinned tabs stay and

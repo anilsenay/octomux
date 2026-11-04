@@ -186,7 +186,13 @@ enum MCPConfig {
 extension MCPConfig {
     /// `claude mcp list` lines: "name: target - ✔ Connected". Name → status text.
     static func parseClaudeList(_ out: String) -> [String: String] {
-        var d: [String: String] = [:]
+        Dictionary(parseClaudeListEntries(out).map { ($0.name, $0.status) }, uniquingKeysWith: { a, _ in a })
+    }
+
+    /// Every server `claude mcp list` reports, in its order: also the ones not in the config files (claude.ai
+    /// connectors of the account, plugins).
+    static func parseClaudeListEntries(_ out: String) -> [(name: String, target: String, status: String)] {
+        var d: [(name: String, target: String, status: String)] = []
         for line in out.split(separator: "\n") {
             // The status starts at " - " followed by its mark; error texts after it may hold " - " themselves.
             guard let colon = line.range(of: ": "),
@@ -194,7 +200,8 @@ extension MCPConfig {
                   dash.lowerBound > colon.lowerBound else { continue }
             let name = String(line[..<colon.lowerBound]).trimmingCharacters(in: .whitespaces)
             let status = String(line[line.index(dash.lowerBound, offsetBy: 3)...]).trimmingCharacters(in: .whitespaces)
-            if !name.isEmpty, !status.isEmpty { d[name] = status }
+            let target = String(line[colon.upperBound..<dash.lowerBound]).trimmingCharacters(in: .whitespaces)
+            if !name.isEmpty, !status.isEmpty { d.append((name, target, status)) }
         }
         return d
     }

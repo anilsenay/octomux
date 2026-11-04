@@ -20,6 +20,23 @@ enum CommitMessageGen {
         return kind == .claude ? "haiku" : nil
     }
 
+    /// The models a Codex install offers (`codex debug models`), listed ones only, in its order. Empty when it
+    /// can't tell (older Codex, not signed in). Blocks.
+    static func codexModels(_ profile: Profile) -> [(id: String, name: String)] {
+        let (code, out, _) = MCPConfig.runCLI(profile, ["debug", "models"], cwd: nil, timeout: 30)
+        guard code == 0 else { return [] }
+        return parseCodexModels(out)
+    }
+
+    static func parseCodexModels(_ json: String) -> [(id: String, name: String)] {
+        guard let d = try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any],
+              let models = d["models"] as? [[String: Any]] else { return [] }
+        return models
+            .filter { ($0["visibility"] as? String) != "hide" }
+            .sorted { (($0["priority"] as? Int) ?? 99) < (($1["priority"] as? Int) ?? 99) }
+            .compactMap { m in (m["slug"] as? String).map { ($0, (m["display_name"] as? String) ?? $0) } }
+    }
+
     static func instructions(model: AppModel, project: String?) -> String {
         model.setting("commit_message.instructions", project: project)?.string ?? ""
     }
