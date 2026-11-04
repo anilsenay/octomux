@@ -1350,11 +1350,22 @@ impl Daemon {
             let tp = tp.to_string();
             if self.with_session(id, |s| {
                 let changed = s.transcript_path.as_deref() != Some(&tp);
+                // Another conversation in the same tab (/clear, /resume): its first message is not ours.
+                if changed && s.transcript_path.is_some() {
+                    s.first_prompt = None;
+                }
                 s.transcript_path = Some(tp.clone());
                 changed
             }) == Some(true)
             {
                 self.changed();
+            }
+        }
+        if event == "UserPromptSubmit" {
+            if let Some(p) = payload.get("prompt").and_then(|v| v.as_str()).map(first_prompt_line).filter(|p| !p.is_empty()) {
+                if self.with_session(id, |s| s.first_prompt.is_none().then(|| s.first_prompt = Some(p.clone())).is_some()) == Some(true) {
+                    self.changed();
+                }
             }
         }
         // A claude typed in a terminal tab (hooks installed globally): the tab shows as an agent until it exits.
@@ -2143,6 +2154,7 @@ impl Daemon {
             worktree,
             transcript_path: None,
             agent_title: String::new(),
+            first_prompt: p.get("prompt").and_then(|v| v.as_str()).map(first_prompt_line).filter(|t| !t.is_empty()),
             extra_args: p.get("extra_args").and_then(|v| serde_json::from_value::<Vec<String>>(v.clone()).ok()).unwrap_or_default(),
             agent_app: None,
             reports_status: false,
@@ -2336,6 +2348,12 @@ mod turn_tests {
         let chunk = rec("user", r#""why did I see [Request interrupted by user] earlier?""#, "2026-11-03T10:00:02.000Z");
         assert_eq!(last_turn_record(&chunk).map(|r| r.0), Some(false));
     }
+}
+
+/// A prompt as a title: its first non-empty line, at most 200 characters.
+fn first_prompt_line(t: &str) -> String {
+    let line = t.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("");
+    if line.chars().count() > 200 { format!("{}…", line.chars().take(199).collect::<String>()) } else { line.to_string() }
 }
 
 /// `(pid, ppid)` of every process.

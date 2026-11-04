@@ -62,6 +62,23 @@ enum OpenIn {
         return a.compactMap(\.string)
     }
 
+    /// Settings → General → Open in → Default for files; "" is the app macOS opens that kind of file with.
+    static var defaultFileAppId: String {
+        let v = AppModel.shared.setting("open_in.default_file")?.string ?? ""
+        return installed.contains { $0.id == v } && v != "com.apple.finder" ? v : ""
+    }
+
+    static var defaultFileAppName: String {
+        let id = defaultFileAppId
+        return id.isEmpty ? "Default App" : installed.first { $0.id == id }?.name ?? "Default App"
+    }
+
+    /// Opens a file in the files default (its macOS default app when none is set).
+    static func openFile(_ path: String) {
+        let id = defaultFileAppId
+        if id.isEmpty { NSWorkspace.shared.open(URL(fileURLWithPath: path)) } else { open(path, appId: id) }
+    }
+
     static func open(_ path: String, appId: String) {
         let url = URL(fileURLWithPath: path)
         if appId == "com.apple.finder" {
@@ -76,6 +93,9 @@ enum OpenIn {
 struct OpenInMenu: View {
     let path: String
     var body: some View {
+        var isDir: ObjCBool = false
+        let isFile = FileManager.default.fileExists(atPath: path, isDirectory: &isDir) && !isDir.boolValue
+        if isFile { Button("Open in \(OpenIn.defaultFileAppName)") { OpenIn.openFile(path) } }
         Menu("Open in") {
             ForEach(OpenIn.shown) { app in
                 Button(app.name) { OpenIn.open(path, appId: app.id) }

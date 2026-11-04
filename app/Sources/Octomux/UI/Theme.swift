@@ -320,6 +320,19 @@ enum T {
     static var red: Color { dyn(\.red) }
     static var blue: Color { dyn(\.blue) }
 
+    /// Settings → Appearance → Diff colors: blue and orange (told apart with red–green color blindness) instead
+    /// of green and red, for added and removed lines and counts.
+    static var colorblindDiff = false
+    static var diffAddNS: NSColor { colorblindDiff ? ns(\.blue) : ns(\.green) }
+    static var diffDelNS: NSColor {
+        colorblindDiff ? NSColor(name: nil) { a in
+            a.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(srgbRed: 0.94, green: 0.56, blue: 0.16, alpha: 1)
+                                                               : NSColor(srgbRed: 0.80, green: 0.40, blue: 0.04, alpha: 1)
+        } : ns(\.red)
+    }
+    static var diffAdd: Color { Color(nsColor: diffAddNS) }
+    static var diffDel: Color { Color(nsColor: diffDelNS) }
+
     static var m: ThemeMetrics { ThemeStore.shared.metrics }
 
     // Typography

@@ -541,3 +541,30 @@ final class CommitMessageGenTests: XCTestCase {
         XCTAssertEqual(cx, "codex exec --ephemeral --skip-git-repo-check -s read-only --color never -o /tmp/l -")
     }
 }
+
+final class SmallItemsTests: XCTestCase {
+    private let project = Project(id: "p", workspaceId: "w", name: "Storefront", path: "/src/storefront", color: "#fff", icon: ProjectIcon(kind: "folder"), sort: 0, archived: false)
+
+    func testBranchPattern() {
+        var c = DateComponents(); c.year = 2026; c.month = 11; c.day = 4
+        let d = Calendar(identifier: .gregorian).date(from: c)!
+        let taken: Set<String> = ["anil/2026-11-04-1", "anil/2026-11-04-2"]
+        XCTAssertEqual(BranchNames.fromPattern("{user}/{date}-{n}", project: project, exists: { taken.contains($0) }, date: d, user: "Anil"), "anil/2026-11-04-3")
+        XCTAssertEqual(BranchNames.fromPattern("{project}/wip", project: project, exists: { _ in false }, date: d), "storefront/wip")
+        XCTAssertNil(BranchNames.fromPattern("  ", project: project, exists: { _ in false }))
+    }
+
+    func testSanitizeBranch() {
+        XCTAssertEqual(BranchNames.sanitize("`Fix/Flaky Resize Test`\nmore"), "fix/flaky-resize-test")
+        XCTAssertEqual(BranchNames.sanitize("feat//a..b--c.lock"), "feat/a.b-c")
+        XCTAssertEqual(BranchNames.sanitize("/çok güzel/"), "ok-gzel")
+    }
+
+    func testUsageWindowsAndTitles() {
+        let r = [UsageReading(profileId: "p", window: "five_hour", usedPercent: 1, resetsAt: nil, observedAt: 0),
+                 UsageReading(profileId: "p", window: "seven_day", usedPercent: 2, resetsAt: nil, observedAt: 0)]
+        XCTAssertEqual(UsageReading.shown(r, "weekly").map(\.window), ["seven_day"])
+        XCTAssertEqual(UsageReading.shown(r, "all").count, 2)
+        XCTAssertEqual(UsageReading.shown([r[1]], "five_hour").map(\.window), ["seven_day"], "falls back to what there is")
+    }
+}

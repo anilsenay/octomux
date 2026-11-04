@@ -13,9 +13,17 @@ struct OpenInSettings: View {
         SettingsGroup("Open in", desc: "The apps in every Open in menu (sidebar, file previews, the top bar's button). Apps that aren't on this Mac are left out.", trailing: {
             Button { addApp() } label: { Label("Add App…", systemImage: "plus") }.buttonStyle(SecondaryButtonStyle())
         }) {
-            SettingRow("Default app", desc: "The top bar's button and ⌘O open the project here.") {
+            SettingRow("Default app", desc: "The top bar's button and ⌘O open the project folder here.") {
                 Picker("", selection: Binding(get: { OpenIn.defaultAppId }, set: { model.setSetting("open_in.default", $0) })) {
                     ForEach(apps.filter { !hidden.contains($0.id) }) { a in Text(a.name).tag(a.id) }
+                }
+                .labelsHidden().fixedSize()
+            }
+            SettingRow("Default for files", desc: "“Open in …” on a file (Files panel, Changes) opens it here. macOS default: the app that kind of file opens with in Finder.") {
+                Picker("", selection: Binding(get: { OpenIn.defaultFileAppId }, set: { model.setSetting("open_in.default_file", $0.isEmpty ? nil : $0) })) {
+                    Text("macOS default").tag("")
+                    Divider()
+                    ForEach(apps.filter { !hidden.contains($0.id) && $0.id != "com.apple.finder" }) { a in Text(a.name).tag(a.id) }
                 }
                 .labelsHidden().fixedSize()
             }

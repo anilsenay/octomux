@@ -150,7 +150,7 @@ enum CommitMessageGen {
             let branch = GitInfo.git(["rev-parse", "--abbrev-ref", "HEAD"], in: path)?.trimmingCharacters(in: .whitespacesAndNewlines)
             let recent = (GitInfo.git(["log", "-8", "--format=%s"], in: path) ?? "").split(separator: "\n").map(String.init)
             let text = prompt(diff: diff, untracked: untracked, branch: branch, recent: recent, instructions: instructions)
-            let r = Result { try execute(profile: profile, model: modelName, prompt: text, run: run) }
+            let r = Result { try runText(profile: profile, model: modelName, prompt: text, run: run) }
             DispatchQueue.main.async { if !run.cancelled { done(r) } }
         }
         return run
@@ -162,7 +162,8 @@ enum CommitMessageGen {
         var errorDescription: String? { message }
     }
 
-    private static func execute(profile: Profile, model: String?, prompt: String, run: Run) throws -> String {
+    /// One background answer from the profile's CLI (also used for branch names). Blocks; call off the main queue.
+    static func runText(profile: Profile, model: String?, prompt: String, run: Run) throws -> String {
         let p = run.process
         p.executableURL = URL(fileURLWithPath: profile.viaLoginShell ? (ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh") : "/bin/sh")
         let last = FileManager.default.temporaryDirectory.appendingPathComponent("octomux-commit-\(UUID().uuidString).last")
@@ -201,5 +202,70 @@ enum CommitMessageGen {
             throw GenError("\(profile.name) failed" + (e.isEmpty ? " (exit \(p.terminationStatus))." : ": \(e)"))
         }
         return text
+    }
+}
+
+/// Branch names for new worktrees: a pattern from Settings, or a short name an agent derives from the task.
+enum BranchNames {
+    /// `{user}`, `{date}`, `{project}`, `{n}` (the first number not taken). Nil when no pattern is set.
+    static func fromPattern(_ pattern: String, project: Project, exists: (String) -> Bool, date: Date = Date(), user: String = NSUserName()) -> String? {
+        let p = pattern.trimmingCharacters(in: .whitespaces)
+        guard !p.isEmpty else { return nil }
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        func fill(_ n: Int) -> String {
+            sanitize(p.replacingOccurrences(of: "{user}", with: user.lowercased())
+                .replacingOccurrences(of: "{date}", with: f.string(from: date))
+                .replacingOccurrences(of: "{project}", with: project.name.lowercased())
+                .replacingOccurrences(of: "{n}", with: String(n)))
+        }
+        guard p.contains("{n}") else { return fill(1) }
+        for n in 1...999 where !exists(fill(n)) { return fill(n) }
+        return fill(1000)
+    }
+
+    /// Something git accepts as a branch name: lower case, dashes for spaces, no `..`, no leading or trailing `/`.
+    static func sanitize(_ raw: String) -> String {
+        var s = raw.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        s = s.split(separator: "\n").first.map(String.init) ?? ""
+        s = s.trimmingCharacters(in: CharacterSet(charactersIn: "`'\" "))
+        s = String(s.map { $0 == " " || $0 == "_" ? "-" : $0 }.filter { $0.isASCII && ($0.isLetter || $0.isNumber || "-/.".contains($0)) })
+        while s.contains("..") { s = s.replacingOccurrences(of: "..", with: ".") }
+        while s.contains("--") { s = s.replacingOccurrences(of: "--", with: "-") }
+        while s.contains("//") { s = s.replacingOccurrences(of: "//", with: "/") }
+        s = s.trimmingCharacters(in: CharacterSet(charactersIn: "/.-"))
+        if s.hasSuffix(".lock") { s = String(s.dropLast(5)) }
+        return String(s.prefix(60)).trimmingCharacters(in: CharacterSet(charactersIn: "/.-"))
+    }
+
+    static func prompt(task: String, recent: [String]) -> String {
+        var p = """
+        Suggest one short git branch name for the task below.
+        Rules: lower-case ASCII, words joined by dashes, at most 40 characters, starting with a type prefix such as
+        feat/, fix/, chore/, docs/ or refactor/. Output ONLY the branch name, nothing else.
+
+        """
+        if !recent.isEmpty { p += "Existing branches in this repository (follow their style if they have one):\n" + recent.prefix(15).map { "- " + $0 }.joined(separator: "\n") + "\n\n" }
+        return p + "Task:\n\(task)\n"
+    }
+
+    /// Asks the commit-message agent for a branch name; calls back on the main queue.
+    static func suggest(task: String, project: Project, model: AppModel, done: @escaping (Result<String, Error>) -> Void) -> CommitMessageGen.Run? {
+        guard let profile = CommitMessageGen.profile(model: model, project: project.id) else {
+            done(.failure(CommitMessageGen.GenError("No Claude Code or Codex agent is set up (Settings → Agents).")))
+            return nil
+        }
+        let m = CommitMessageGen.modelName(model: model, project: project.id, kind: profile.kind)
+        let run = CommitMessageGen.Run()
+        DispatchQueue.global(qos: .userInitiated).async {
+            let recent = GitInfo.branches(in: project.path, remotes: false)
+            let r = Result { () -> String in
+                let name = sanitize(try CommitMessageGen.runText(profile: profile, model: m, prompt: prompt(task: task, recent: recent), run: run))
+                if name.isEmpty { throw CommitMessageGen.GenError("\(profile.name) gave no usable name.") }
+                return name
+            }
+            DispatchQueue.main.async { if !run.cancelled { done(r) } }
+        }
+        return run
     }
 }

@@ -142,7 +142,7 @@ final class DocController: NSObject, WKScriptMessageHandler, WKNavigationDelegat
                 return String(format: "rgba(%d,%d,%d,%.3f)", Int(round(x.redComponent * 255)), Int(round(x.greenComponent * 255)),
                               Int(round(x.blueComponent * 255)), alpha ?? x.alphaComponent)
             }
-            let green = T.ns(\.green), red = T.ns(\.red), blue = T.ns(\.blue)
+            let green = T.diffAddNS, red = T.diffDelNS, blue = T.ns(\.blue)
             vars = [
                 "bg": css(WorkspaceTint.canvas(dark: dark)),
                 "raised": css(T.ns(\.raised)),
@@ -153,7 +153,7 @@ final class DocController: NSObject, WKScriptMessageHandler, WKNavigationDelegat
                 "accent": css(T.ns(\.accent)), "green": css(green), "red": css(red), "blue": css(blue), "amber": css(T.ns(\.amber)),
                 "add-bg": css(green, dark ? 0.12 : 0.13), "add-word": css(green, dark ? 0.22 : 0.20),
                 "del-bg": css(red, dark ? 0.12 : 0.11), "del-word": css(red, dark ? 0.24 : 0.20),
-                "hunk-bg": css(blue, dark ? 0.08 : 0.07),
+                "hunk-bg": T.colorblindDiff ? css(T.ns(\.text3), 0.10) : css(blue, dark ? 0.08 : 0.07),
                 "mono": "\"\(T.monoName ?? "SF Mono")\", \"SF Mono\", ui-monospace, Menlo, monospace",
             ]
         }

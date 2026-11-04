@@ -60,6 +60,10 @@ Workspace at the top of those pages.
 Project right-click → **New Worktree…** creates a branch in `<parent>/<repo>.worktrees/<branch>` and opens it
 with an agent or a terminal. Worktrees show under their project (right-click to open, reveal or remove).
 
+The New Worktree window takes an optional task for the agent it opens. Its branch name can come from a pattern
+(Settings → Projects → Branch name: `{user}`, `{date}`, `{project}`, `{n}`), or ✨ names it from the task with
+the commit-message agent.
+
 Settings → Projects (or a project's right-click → Project Settings…) holds a project's name, color and icon,
 where its worktrees go (any folder, as `<folder>/<repo>/<branch>`, for one project or all), and two scripts: a
 setup script that runs in the dock right after a worktree is created (install dependencies, copy `.env`) and a

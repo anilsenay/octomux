@@ -124,8 +124,9 @@ const baseTheme = EditorView.theme({
   "&.cm-merge-a .cm-changedText, .cm-deletedChunk .cm-deletedText": { background: "var(--del-word) !important" },
   ".cm-deletedChunk del": { textDecoration: "none" },
   ".cm-changeGutter": { width: "3px", paddingLeft: "0" },
-  ".cm-changedLineGutter": { background: "var(--green)" },
-  "&.cm-merge-a .cm-changedLineGutter, .cm-deletedLineGutter": { background: "var(--red)" },
+  // .cm-gutterElement: more specific than the merge package's own dark/light colors, so ours always win.
+  ".cm-changedLineGutter.cm-gutterElement": { background: "var(--green)" },
+  "&.cm-merge-a .cm-changedLineGutter.cm-gutterElement, .cm-deletedLineGutter.cm-gutterElement": { background: "var(--red)" },
   ".cm-collapsedLines": {
     background: "var(--hunk-bg)", color: "var(--blue)", fontFamily: "var(--ui)", fontSize: "11.5px",
     padding: "4px 14px", cursor: "pointer", borderTop: "1px solid var(--border)", borderBottom: "1px solid var(--border)",

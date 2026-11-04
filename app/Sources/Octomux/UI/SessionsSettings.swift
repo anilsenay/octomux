@@ -22,6 +22,18 @@ struct SessionsSettings: View {
             }
             ForEach(running) { s in row(s) }
         }
+        let fromPrompt = model.settingValue("sessions.title_source", scope: "global")?.string == "prompt"
+        SettingsGroup("Tab titles") {
+            SettingRow("Agent tabs are named after", desc: fromPrompt
+                       ? "Your first message to the agent. A name you give a tab yourself always wins."
+                       : "The title the agent gives its conversation (Claude names it after a few turns), else your first message. A name you give a tab yourself always wins.") {
+                Picker("", selection: Binding(get: { fromPrompt ? "prompt" : "agent" }, set: { model.setSetting("sessions.title_source", $0 == "prompt" ? "prompt" : nil) })) {
+                    Text("The agent's title").tag("agent")
+                    Text("Your first message").tag("prompt")
+                }
+                .labelsHidden().fixedSize()
+            }
+        }
         let mins = Int(model.settingValue("sessions.auto_stop_idle_mins", scope: "global")?.number ?? 0)
         SettingsGroup("Idle agents") {
             SettingRow("Stop idle agents", desc: mins == 0

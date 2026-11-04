@@ -275,6 +275,9 @@ final class AppModel: ObservableObject {
             pendingSelect = nil
             DispatchQueue.main.async { self.selectProject(p) }
         }
+        Session.titleFromPrompt = s.settings.first { $0.scope == "global" && $0.key == "sessions.title_source" }?.value.string == "prompt"
+        let cb = s.settings.first { $0.scope == "global" && $0.key == "appearance.diff_colors" }?.value.string == "blue_orange"
+        if cb != T.colorblindDiff { T.colorblindDiff = cb; DocHost.shared.refreshTheme() }
         Notifier.shared.updateBadge(state: s)
         StatusItemController.shared.sync(state: s)
         ThemeStore.shared.sync(from: self)

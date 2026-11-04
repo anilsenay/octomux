@@ -513,6 +513,7 @@ enum SettingsIndex {
             e(.general, "Check automatically", "updates sparkle background"),
             e(.general, "Open in", "editor finder apps vscode cursor zed order hide default external"),
             e(.general, "Default app", "open in editor ⌘O project"),
+            e(.general, "Default for files", "open in editor file default app"),
             e(.appearance, "Menu bar icon", "status item octopus hidden monochrome"),
             e(.appearance, "App icon", "dock icon monochrome color"),
             e(.appearance, "Theme", "ink grid glass look style"),
@@ -532,6 +533,7 @@ enum SettingsIndex {
             e(.terminal, "Ask before closing a running program", "confirm close tab pane quit warn"),
             e(.terminal, "Config file", "ghostty terminal.conf import"),
             e(.appearance, "Icons", "dock menu bar"),
+            e(.appearance, "Diff colors", "color blind colorblind green red blue orange added removed accessibility"),
             e(.appearance, "Workspace color", "tint"),
             e(.notifications, "Notifications", "banners alerts mute"),
             e(.notifications, "Agent finished", "done turn"),
@@ -553,6 +555,7 @@ enum SettingsIndex {
             e(.agents, "Your agents", "claude codex profiles pin command arguments environment hooks"),
             e(.agents, "Detected on this Mac", "installed path"),
             e(.agents, "Meters show", "usage limits used left remaining quota plan"),
+            e(.agents, "Limits in the status bar", "usage 5 hour weekly window meter"),
             e(.workspaces, "Workspaces", "rename color reorder default agent new chat"),
             e(.workspaces, "Archived projects", "unarchive"),
             e(.prompts, "Prompts", "templates snippets saved prompts commands placeholders"),
@@ -563,10 +566,12 @@ enum SettingsIndex {
             e(.projects, "Setup", "script worktree install dependencies env bootstrap"),
             e(.projects, "Teardown", "script worktree cleanup stop remove"),
             e(.projects, "All projects", "worktree defaults"),
+            e(.projects, "Branch name", "worktree branch pattern naming user date auto"),
             e(.projects, "Commit message agent", "ai generate commit message sparkle claude codex"),
             e(.projects, "Commit message model", "haiku sonnet opus commit ai"),
             e(.projects, "Commit message style", "conventional commits instructions commit ai"),
             e(.sessions, "Running", "cpu memory ram processes activity monitor stop"),
+            e(.sessions, "Agent tabs are named after", "tab title name first message prompt agent title"),
             e(.sessions, "Stop idle agents", "auto stop idle timeout sleep memory"),
             e(.hosts, "Hosts", "remote ssh server daemon connect"),
             e(.features, "Git worktrees", "branch"),
@@ -760,6 +765,7 @@ struct ColorDots: View {
 struct AgentsSettings: View {
     @EnvironmentObject var model: AppModel
     @AppStorage(UsageReading.showsLeftKey) private var showsLeft = false
+    @AppStorage(UsageReading.windowsKey) private var usageWindows = "all"
     @State private var editing: Profile?
     @State private var detected: [[String: Any]] = []
     /// Claude integration per profile id: config_dir, status (installed / outdated / missing).
@@ -831,6 +837,10 @@ struct AgentsSettings: View {
         SettingsGroup("Usage limits", desc: "The Claude and Codex plan limits in the status bar. Click them there to pick which agents show.") {
             SettingRow("Meters show", desc: showsLeft ? "How much of each limit is left: the bar empties as you use it." : "How much of each limit is used: the bar fills as you use it.") {
                 Picker("", selection: $showsLeft) { Text("Used").tag(false); Text("Left").tag(true) }
+                    .pickerStyle(.segmented).labelsHidden().fixedSize()
+            }
+            SettingRow("Limits in the status bar", desc: "The popover always lists every limit.") {
+                Picker("", selection: $usageWindows) { Text("All").tag("all"); Text("5-hour").tag("five_hour"); Text("Weekly").tag("weekly") }
                     .pickerStyle(.segmented).labelsHidden().fixedSize()
             }
         }
@@ -1132,6 +1142,7 @@ struct AppearanceSettings: View {
             }
         }
         SceneSettingsCard(scope: sel.scope)
+        if sel.scope == "global" { DiffColorSettings() }
         if sel.scope == "global" { IconSettings() }
     }
 }

@@ -10,6 +10,7 @@ struct ProjectSettings: View {
     @State private var teardown = ""
     @State private var styleGlobal = ""
     @State private var styleProject = ""
+    @State private var branchPattern = ""
     @State private var loadedFor: String?
 
     var body: some View {
@@ -22,7 +23,7 @@ struct ProjectSettings: View {
             commitGroup(p)
             defaultsGroup
             Color.clear.frame(height: 0)
-                .onDisappear { saveStyle(styleGlobal, scope: "global") }
+                .onDisappear { saveStyle(styleGlobal, scope: "global"); savePattern() }
                 .onAppear { load(p) }
                 .onChange(of: p.id) { _, _ in load(p) }
         } else {
@@ -140,6 +141,11 @@ struct ProjectSettings: View {
         .onDisappear { saveStyle(styleProject, scope: "project:\(p.id)") }
     }
 
+    private func savePattern() {
+        let t = branchPattern.trimmingCharacters(in: .whitespaces)
+        if t != (model.settingValue("worktrees.branch_pattern", scope: "global")?.string ?? "") { model.setSetting("worktrees.branch_pattern", t.isEmpty ? nil : t) }
+    }
+
     private func saveStyle(_ v: String, scope: String) {
         let t = v.trimmingCharacters(in: .whitespacesAndNewlines)
         let cur = model.settingValue("commit_message.instructions", scope: scope)?.string ?? ""
@@ -158,6 +164,10 @@ struct ProjectSettings: View {
                     Button("Next to Project") { model.setSetting("worktrees.root", nil) }.buttonStyle(SecondaryButtonStyle())
                 }
                 Button("Choose…") { if let f = chooseFolder() { model.setSetting("worktrees.root", f) } }.buttonStyle(SecondaryButtonStyle())
+            }
+            SettingRow("Branch name", desc: "Filled in when you make a worktree: {user}, {date}, {project}, {n} (the first number not taken). Empty: you type it, or ✨ names it from the task.") {
+                TextField("e.g. {user}/{date}-{n}", text: $branchPattern).textFieldStyle(.roundedBorder).frame(width: 200)
+                    .onSubmit { savePattern() }
             }
             SettingRow("Delete the branch with its worktree", desc: "The default for the checkbox when you remove a worktree.") {
                 SettingSwitch(isOn: Binding(get: { model.settingValue("worktrees.delete_branch", scope: "global")?.bool ?? false },
@@ -226,6 +236,7 @@ struct ProjectSettings: View {
         name = p.name
         styleProject = model.settingValue("commit_message.instructions", scope: "project:\(p.id)")?.string ?? ""
         styleGlobal = model.settingValue("commit_message.instructions", scope: "global")?.string ?? ""
+        branchPattern = model.settingValue("worktrees.branch_pattern", scope: "global")?.string ?? ""
         setup = model.settingValue("worktrees.setup", scope: "project:\(p.id)")?.string ?? ""
         teardown = model.settingValue("worktrees.teardown", scope: "project:\(p.id)")?.string ?? ""
     }

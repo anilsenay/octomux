@@ -156,7 +156,7 @@ final class Worktrees: ObservableObject {
 }
 
 extension AppModel {
-    func newWorktree(project: Project, branch: String, open profileId: String?) {
+    func newWorktree(project: Project, branch: String, open profileId: String?, prompt: String? = nil) {
         let b = branch.trimmingCharacters(in: .whitespaces)
         guard !b.isEmpty else { return }
         DispatchQueue.global(qos: .userInitiated).async {
@@ -165,7 +165,13 @@ extension AppModel {
                 switch r {
                 case .success(let path):
                     self.runWorktreeSetup(project: project, path: path, branch: b)
-                    self.newSession(profileId: profileId, projectId: project.id, worktree: path)
+                    let task = prompt?.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if let profileId, let task, !task.isEmpty, let kind = self.profile(profileId)?.kind {
+                        self.newSession(profileId: profileId, projectId: project.id, worktree: path, prompt: task, chat: true,
+                                        extraArgs: ChatLaunchOptions.load(kind).args(kind)) { ChatFirstMessage.set($0, task) }
+                    } else {
+                        self.newSession(profileId: profileId, projectId: project.id, worktree: path)
+                    }
                 case .failure(let e): self.lastError = "git worktree add failed: \(e)"
                 }
             }
@@ -303,6 +309,9 @@ struct NewWorktreeSheet: View {
     let done: () -> Void
     @State private var branch = ""
     @State private var openWith = "__pinned"
+    @State private var task = ""
+    @State private var naming: CommitMessageGen.Run?
+    @State private var nameError = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -310,7 +319,17 @@ struct NewWorktreeSheet: View {
             Text("Creates a branch in its own folder, so an agent can work there without touching your checkout."
                  + (model.worktreeScript("setup", project: project) != nil ? " The project's setup script then runs in the dock." : ""))
                 .font(T.body).foregroundStyle(T.text2).fixedSize(horizontal: false, vertical: true)
-            TextField("Branch name (e.g. feat/usage-limits)", text: $branch).textFieldStyle(.roundedBorder).onSubmit(create)
+            TextField("Task for the agent (optional)", text: $task, axis: .vertical).textFieldStyle(.roundedBorder).lineLimit(1...4)
+            HStack(spacing: 6) {
+                TextField("Branch name (e.g. feat/usage-limits)", text: $branch).textFieldStyle(.roundedBorder).onSubmit(create)
+                Button { suggestName() } label: {
+                    if naming != nil { ProgressView().controlSize(.small).frame(width: 14, height: 14) } else { Image(systemName: "sparkles") }
+                }
+                .buttonStyle(SecondaryButtonStyle())
+                .disabled(task.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && naming == nil)
+                .help(naming != nil ? "Stop" : "Name the branch from the task (asks \(CommitMessageGen.profile(model: model, project: project.id)?.name ?? "an agent"))")
+            }
+            if !nameError.isEmpty { Text(nameError).font(T.caption).foregroundStyle(T.amber) }
             if !branch.isEmpty {
                 Text(Worktrees.defaultPath(project: project.path, branch: branch).replacingOccurrences(of: NSHomeDirectory(), with: "~"))
                     .font(T.mono(11)).foregroundStyle(T.text3)
@@ -329,7 +348,26 @@ struct NewWorktreeSheet: View {
         .padding(22)
         .frame(width: 460)
         .background(T.surface)
-        .onAppear { openWith = (model.pinnedProfiles.first ?? model.enabledProfiles.first)?.id ?? "__terminal" }
+        .onAppear {
+            openWith = (model.pinnedProfiles.first ?? model.enabledProfiles.first)?.id ?? "__terminal"
+            if branch.isEmpty, let pattern = model.setting("worktrees.branch_pattern", project: project.id)?.string {
+                let taken = Set(GitInfo.branches(in: project.path, remotes: false))
+                branch = BranchNames.fromPattern(pattern, project: project) { taken.contains($0) } ?? ""
+            }
+        }
+        .onDisappear { naming?.cancel() }
+    }
+
+    private func suggestName() {
+        if let n = naming { n.cancel(); naming = nil; return }
+        nameError = ""
+        naming = BranchNames.suggest(task: task, project: project, model: model) { r in
+            naming = nil
+            switch r {
+            case .success(let b): branch = b
+            case .failure(let e): nameError = e.localizedDescription
+            }
+        }
     }
 
     private func create() {
@@ -341,7 +379,7 @@ struct NewWorktreeSheet: View {
                 if case .failure(let e) = r { DispatchQueue.main.async { model.lastError = "git worktree add failed: \(e)" } }
             }
         case "__terminal": model.newWorktree(project: project, branch: branch, open: nil)
-        default: model.newWorktree(project: project, branch: branch, open: openWith)
+        default: model.newWorktree(project: project, branch: branch, open: openWith, prompt: task)
         }
         done()
     }

@@ -21,8 +21,8 @@ struct GitChange: Identifiable, Equatable {
     static func badge(_ c: Character) -> String { c == "?" ? "U" : String(c) }
     static func color(_ b: String) -> Color {
         switch b {
-        case "A", "U": return T.green
-        case "D": return T.red
+        case "A", "U": return T.diffAdd
+        case "D": return T.diffDel
         case "R": return T.blue
         default: return T.amber
         }
@@ -36,8 +36,8 @@ struct GitChange: Identifiable, Equatable {
 
     var color: Color {
         switch badge {
-        case "A", "U": return T.green
-        case "D": return T.red
+        case "A", "U": return T.diffAdd
+        case "D": return T.diffDel
         case "R": return T.blue
         default: return T.amber
         }
@@ -318,8 +318,8 @@ struct DiffCount: View {
     let added: Int, removed: Int
     var body: some View {
         HStack(spacing: 4) {
-            if added > 0 { Text("+\(added)").foregroundStyle(T.green) }
-            if removed > 0 { Text("−\(removed)").foregroundStyle(T.red) }
+            if added > 0 { Text("+\(added)").foregroundStyle(T.diffAdd) }
+            if removed > 0 { Text("−\(removed)").foregroundStyle(T.diffDel) }
         }
         .font(T.mono(10.5, .medium))
     }
@@ -367,6 +367,9 @@ private struct ChangeRow: View {
         }
         .contextMenu {
             Button("Open File") { model.openDoc(.file(c.path)) }
+            if let wp = changes.workPath, !model.host(forPath: wp).0.isRemote {
+                Button("Open in \(OpenIn.defaultFileAppName)") { OpenIn.openFile((wp as NSString).appendingPathComponent(c.path)) }
+            }
             if let wp = changes.workPath, let pid = model.currentProject?.id {
                 AskAgentMenu(projectId: pid, folder: wp, file: c.path) { Text("Ask Agent") }
             }
@@ -386,9 +389,9 @@ struct DiffView: View {
                     Text(s.isEmpty ? " " : s)
                         .fixedSize(horizontal: true, vertical: false)
                         .font(T.mono(11.5))
-                        .foregroundStyle(s.hasPrefix("@@") ? T.blue : s.hasPrefix("+") && !s.hasPrefix("+++") ? T.green : s.hasPrefix("-") && !s.hasPrefix("---") ? T.red : T.text2)
+                        .foregroundStyle(s.hasPrefix("@@") ? (T.colorblindDiff ? T.text3 : T.blue) : s.hasPrefix("+") && !s.hasPrefix("+++") ? T.diffAdd : s.hasPrefix("-") && !s.hasPrefix("---") ? T.diffDel : T.text2)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(s.hasPrefix("+") && !s.hasPrefix("+++") ? T.green.opacity(0.10) : s.hasPrefix("-") && !s.hasPrefix("---") ? T.red.opacity(0.10) : .clear)
+                        .background(s.hasPrefix("+") && !s.hasPrefix("+++") ? T.diffAdd.opacity(0.10) : s.hasPrefix("-") && !s.hasPrefix("---") ? T.diffDel.opacity(0.10) : .clear)
                 }
             }
             .padding(6)

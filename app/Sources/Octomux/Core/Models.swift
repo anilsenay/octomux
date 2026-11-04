@@ -112,6 +112,11 @@ struct Session: Codable, Identifiable, Equatable {
     var reportsStatus: Bool?
     /// Shells the agent left running in the background (Claude's "N shells still running").
     var backgroundShells: Int?
+    /// The first message sent to the agent (start screen, or the first one typed in its terminal).
+    var firstPrompt: String?
+
+    /// Settings → Sessions → Tab titles: the first message instead of the agent's own title.
+    static var titleFromPrompt = false
 
     /// Launched as an agent, or a terminal where one runs now.
     var isAgent: Bool { kind == .agent || agentApp != nil }
@@ -121,6 +126,7 @@ struct Session: Codable, Identifiable, Equatable {
         case agentApp = "agent_app"
         case reportsStatus = "reports_status"
         case backgroundShells = "background_shells"
+        case firstPrompt = "first_prompt"
         case transcriptPath = "transcript_path"
         case agentTitle = "agent_title"
         case projectId = "project_id"
@@ -134,6 +140,9 @@ struct Session: Codable, Identifiable, Equatable {
 
     var displayTitle: String {
         if !customTitle.isEmpty { return customTitle }
+        if Self.titleFromPrompt, isAgent, let p = firstPrompt, !p.isEmpty {
+            return p.count > 60 ? String(p.prefix(59)) + "…" : p
+        }
         if let a = agentTitle, !a.isEmpty { return a }
         if kind == .terminal, let app = agentApp {
             // The agent's own title (Claude: "✳ Fix the test", with a spinner glyph in front while working).
@@ -281,6 +290,17 @@ struct UsageReading: Codable, Equatable, Identifiable {
     var isReset: Bool { resetsAt.map { Date().timeIntervalSince1970 >= $0 } ?? false }
     var effectivePercent: Double { isReset ? 0 : usedPercent }
     static let showsLeftKey = "octomux.usageShowsLeft"
+    /// Which limits the status bar shows: "all", "five_hour" or "weekly" (the popover always lists all).
+    static let windowsKey = "octomux.usageWindows"
+    static func shown(_ readings: [UsageReading], _ which: String) -> [UsageReading] {
+        let f: [UsageReading]
+        switch which {
+        case "five_hour": f = readings.filter { $0.window == "five_hour" }
+        case "weekly": f = readings.filter { $0.window.hasPrefix("seven_day") }
+        default: return readings
+        }
+        return f.isEmpty ? readings : f   // a profile without that limit still shows what it has
+    }
     /// "34%" used, or "66%" left.
     func label(left: Bool) -> String { "\(Int((left ? max(0, 100 - usedPercent) : usedPercent).rounded()))%" }
     var shortName: String {

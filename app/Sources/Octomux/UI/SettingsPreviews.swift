@@ -333,3 +333,59 @@ struct MenuBarPreview: View {
         }
     }
 }
+
+// MARK: Diff colors
+
+struct DiffColorSettings: View {
+    @EnvironmentObject var model: AppModel
+
+    var body: some View {
+        let cb = model.settingValue("appearance.diff_colors", scope: "global")?.string == "blue_orange"
+        SettingsGroup("Diffs") {
+            VisualSettingRow("Diff colors", desc: "Added and removed lines and counts. Blue and orange stay apart with red–green color blindness.") {
+                HStack(spacing: 12) {
+                    ChoiceTile(title: "Green and red", selected: !cb, width: 150, height: 76, action: { model.setSetting("appearance.diff_colors", nil) }) {
+                        DiffPreview(add: T.ns(\.green), del: T.ns(\.red))
+                    }
+                    ChoiceTile(title: "Blue and orange", selected: cb, width: 150, height: 76, action: { model.setSetting("appearance.diff_colors", "blue_orange") }) {
+                        DiffPreview(add: T.ns(\.blue), del: NSColor(srgbRed: 0.94, green: 0.56, blue: 0.16, alpha: 1))
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Three diff lines and a +/− count in the given colors.
+struct DiffPreview: View {
+    let add: NSColor
+    let del: NSColor
+
+    var body: some View {
+        let a = Color(nsColor: add), d = Color(nsColor: del)
+        VStack(alignment: .leading, spacing: 3) {
+            line("−", "old line", d)
+            line("+", "new line", a)
+            line("+", "added", a)
+            HStack(spacing: 4) {
+                Text("+12").foregroundStyle(a)
+                Text("−3").foregroundStyle(d)
+            }
+            .font(T.mono(8, .medium)).padding(.top, 1)
+        }
+        .padding(7)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(T.surface)
+    }
+
+    private func line(_ sign: String, _ text: String, _ c: Color) -> some View {
+        HStack(spacing: 4) {
+            Text(sign).foregroundStyle(c)
+            Text(text).foregroundStyle(T.text2)
+            Spacer(minLength: 0)
+        }
+        .font(T.mono(8.5))
+        .padding(.horizontal, 3).frame(height: 11)
+        .background(c.opacity(0.14))
+    }
+}

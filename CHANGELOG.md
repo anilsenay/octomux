@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **Worktree branch names:** a pattern fills the name in (`{user}/{date}-{n}`, Settings → Projects), and ✨ in the
+  New Worktree window names the branch from the task you give the agent (the task is its first message).
+- **Tab titles from your first message:** Settings → Sessions can name agent tabs after the first message you
+  sent instead of the agent's own conversation title.
+- **Diff colors:** blue and orange instead of green and red (Settings → Appearance → Diffs), everywhere added and
+  removed lines or counts show.
+- **Status bar limits:** show all, only the 5-hour or only the weekly limit (Settings → Agents → Usage limits).
+- **Default app for files:** files open in their macOS default app or an editor you pick (Settings → General →
+  Open in); "Open in …" on files in the Files panel and Changes.
+- The added-line marker in diffs now takes the theme's color (it was always the default green).
 - **✨ Commit messages:** the sparkles in the Changes panel's message box ask an agent for a commit message from
   the staged changes (or all of them) and the repository's recent commit style. Your own `claude` or `codex` CLI
   runs once in the background (no tools, nothing saved, hooks and MCP off); the agent, model (Claude: Haiku) and

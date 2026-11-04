@@ -433,8 +433,8 @@ struct TopBar: View {
                     if let wp = model.currentWorkPath, let stat = git.diffStat(for: wp), stat.files > 0 {
                         Button { model.toggleChangesPanel() } label: {
                             HStack(spacing: 4) {
-                                Text("+\(stat.added)").foregroundStyle(T.green)
-                                Text("−\(stat.removed)").foregroundStyle(T.red)
+                                Text("+\(stat.added)").foregroundStyle(T.diffAdd)
+                                Text("−\(stat.removed)").foregroundStyle(T.diffDel)
                             }
                             .font(T.mono(11.5, .medium))
                         }
@@ -939,6 +939,7 @@ struct StatusBar: View {
 struct UsageStatus: View {
     @EnvironmentObject var model: AppModel
     @AppStorage(UsageReading.showsLeftKey) private var showsLeft = false
+    @AppStorage(UsageReading.windowsKey) private var windows = "all"
     var compact = false
 
     var body: some View {
@@ -950,7 +951,7 @@ struct UsageStatus: View {
                     ForEach(shown, id: \.0.id) { prof, readings in
                         HStack(spacing: 6) {
                             AgentIcon(icon: prof.icon, size: 10)
-                            ForEach(compact ? Array(readings.prefix(1)) : readings) { r in
+                            ForEach(compact ? Array(UsageReading.shown(readings, windows).prefix(1)) : UsageReading.shown(readings, windows)) { r in
                                 if !compact { Text(r.shortName).foregroundStyle(T.text3) }
                                 UsageMeter(used: r.effectivePercent, left: showsLeft, primary: r.window == "five_hour").frame(width: compact ? 30 : 44)
                                 // After the window resets the old reading says nothing: "—" until a new one arrives.
@@ -1189,8 +1190,8 @@ struct GitStatusControls: View {
                     HStack(spacing: 5) {
                         Text(full ? "\(stat.files) changed" : "\(stat.files)").foregroundStyle(T.amber)
                         if full {
-                            Text("+\(stat.added)").foregroundStyle(T.green)
-                            Text("−\(stat.removed)").foregroundStyle(T.red)
+                            Text("+\(stat.added)").foregroundStyle(T.diffAdd)
+                            Text("−\(stat.removed)").foregroundStyle(T.diffDel)
                         }
                     }
                     .font(T.mono(11, .medium))
