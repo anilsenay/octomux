@@ -19,7 +19,7 @@ portable-pty = "0.9"
 rusqlite = { version = "0.37", features = ["bundled"] }
 uuid = { version = "1", features = ["v4"] }
 clap = { version = "4", features = ["derive"] }
-signal-hook = "0.3"
+signal-hook = "0.4"
 
 [dev-dependencies]
 vt100 = "0.16"
