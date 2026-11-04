@@ -14,11 +14,12 @@ tools/build-app.sh release
 tools/sign-app.sh build/Octomux.app --no-timestamp
 
 # Quit the running copy (sessions keep running in the daemon) and wait for it to go.
-if pgrep -xq Octomux; then
+running() { pgrep -f "$DEST/Contents/MacOS/Octomux" >/dev/null; }   # not the Dev variant
+if running; then
     osascript -e 'tell application id "dev.octomux.app" to quit' >/dev/null 2>&1 || true
-    for _ in $(seq 1 50); do pgrep -xq Octomux || break; sleep 0.1; done
+    for _ in $(seq 1 50); do running || break; sleep 0.1; done
 fi
-pgrep -xq Octomux && { echo "Octomux is still running; quit it and run again" >&2; exit 1; }
+running && { echo "Octomux is still running; quit it and run again" >&2; exit 1; }
 
 STAGE="$(dirname "$DEST")/.Octomux-installing.app"
 rm -rf "$STAGE"

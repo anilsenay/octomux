@@ -20,6 +20,8 @@ agent. Questions and open-ended ideas fit better in [Discussions](https://github
 
 - For anything beyond a small fix, open an issue first so we can agree on the approach before you spend time on it.
 - Keep a PR to one change, and describe how you tested it. UI changes: include a screenshot.
+- To use your build day to day, build **Octomux Dev** (`tools/build-app.sh release dev`): it runs next to your
+  installed Octomux with its own data, so a bug in your branch can't touch your real sessions.
 - `cd core && cargo test` and `cd app && swift test` should pass. [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)
   explains the build, the debug harness and the UI fixture (fake agents, so you never test against your real
   sessions).

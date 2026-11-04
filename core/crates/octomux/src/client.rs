@@ -16,6 +16,12 @@ pub struct Control {
 }
 
 pub const LAUNCH_LABEL: &str = "dev.octomux.daemon";
+/// The Dev variant's agent (see `octomux_proto::is_dev_variant`).
+pub const DEV_LAUNCH_LABEL: &str = "dev.octomux.daemon.dev";
+
+pub fn launch_label() -> &'static str {
+    if octomux_proto::is_dev_variant() { DEV_LAUNCH_LABEL } else { LAUNCH_LABEL }
+}
 /// The launchd label used before the rename; `install-agent` replaces it.
 pub const LEGACY_LAUNCH_LABEL: &str = "dev.ade-dev.daemon";
 
@@ -95,7 +101,7 @@ impl Control {
 }
 
 pub fn launch_agent_plist_path() -> std::path::PathBuf {
-    crate::util::home_dir().join(format!("Library/LaunchAgents/{LAUNCH_LABEL}.plist"))
+    crate::util::home_dir().join(format!("Library/LaunchAgents/{}.plist", launch_label()))
 }
 
 pub fn legacy_launch_agent_plist_path() -> std::path::PathBuf {
@@ -107,7 +113,7 @@ pub fn start_daemon(paths: &Paths) -> Result<()> {
     if octomux_proto::env_var_os("HOME").is_none() && launch_agent_plist_path().exists() {
         let uid = unsafe { libc::getuid() };
         let status = std::process::Command::new("launchctl")
-            .args(["kickstart", &format!("gui/{uid}/{LAUNCH_LABEL}")])
+            .args(["kickstart", &format!("gui/{uid}/{}", launch_label())])
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .status();

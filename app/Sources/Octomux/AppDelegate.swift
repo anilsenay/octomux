@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var swipeAccum: CGFloat = 0
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        Paths.exportVariant()
         guard GhosttyRuntime.shared.start() else {
             let alert = NSAlert()
             alert.messageText = "Terminal engine failed to start"
@@ -52,7 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                          backing: .buffered, defer: false)
         w.titlebarAppearsTransparent = true
         w.titleVisibility = .hidden
-        w.title = "Octomux"
+        w.title = Paths.appName
         w.isReleasedWhenClosed = false
         // With a full-size content view the title-bar strip moves the window on any mouse-down, even over
         // our tabs, so tabs could never be dragged. Only `WindowDragArea` (empty top-bar space) moves it.
@@ -108,13 +109,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         let appItem = NSMenuItem()
         let appMenu = NSMenu()
-        appMenu.addItem(withTitle: "About Octomux", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        appMenu.addItem(withTitle: "About \(Paths.appName)", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         if Updater.shared.feedURL != nil { appMenu.addItem(item("Check for Updates…", #selector(checkForUpdates(_:)), "")) }
         appMenu.addItem(.separator())
         appMenu.addItem(item("Settings…", #selector(showSettings(_:)), ","))
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "Hide Octomux", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
-        appMenu.addItem(withTitle: "Quit Octomux", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenu.addItem(withTitle: "Hide \(Paths.appName)", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        appMenu.addItem(withTitle: "Quit \(Paths.appName)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appItem.submenu = appMenu
         main.addItem(appItem)
 

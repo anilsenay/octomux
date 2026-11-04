@@ -12,8 +12,9 @@ Octomux manages live terminals and agents. The installed app's daemon (`dev.octo
 - `tools/dbg` reads `OCTOMUX_HOME`; without it, it talks to the real app.
 - Never stop processes by a broad pattern (`pkill octomux`, `killall Octomux`). Stop exactly what you started:
   by PID, or with `OCTOMUX_HOME=<yours> octomux ctl daemon.stop_all`.
-- `tools/build-app.sh` replaces `build/Octomux.app`, which a developer's installed daemon may run from. Prefer
-  `swift build` + `app/.build/debug/Octomux` (as `tools/ui-restart.sh` does) for UI work.
+- For UI work prefer `swift build` + `app/.build/debug/Octomux` against a throwaway `OCTOMUX_HOME` (as
+  `tools/ui-restart.sh` does). `tools/build-app.sh release dev` builds Octomux Dev, which has its own data and
+  launchd agent; never install over `/Applications/Octomux.app`.
 - Don't edit the user's agent configuration (`~/.claude/settings.json`, `~/.codex/…`). Octomux passes its hooks
   with `--settings` for a reason.
 

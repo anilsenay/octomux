@@ -26,7 +26,7 @@ enum AppLocation {
         alert.addButton(withTitle: "Move to Applications")
         alert.addButton(withTitle: "Quit")
         guard alert.runModal() == .alertFirstButtonReturn else { NSApp.terminate(nil); return true }
-        let dest = URL(fileURLWithPath: "/Applications/Octomux.app")
+        let dest = URL(fileURLWithPath: "/Applications").appendingPathComponent(URL(fileURLWithPath: bundlePath).lastPathComponent)
         do {
             try move(to: dest)
         } catch {

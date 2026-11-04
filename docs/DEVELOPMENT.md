@@ -29,6 +29,23 @@ tools/build-app.sh debug        # faster
 `Contents/Resources/bin`, Sparkle in `Contents/Frameworks`, the editor bundle and Ghostty's terminal themes.
 Local builds are ad-hoc signed and don't check for updates.
 
+## Octomux Dev: use your build every day
+
+```sh
+tools/build-app.sh release dev     # → build/Octomux Dev.app
+open "build/Octomux Dev.app"
+```
+
+**Octomux Dev** is a separate app: its own bundle id (`dev.octomux.app.dev`), data folder
+(`~/Library/Application Support/Octomux Dev`), launchd agent (`dev.octomux.daemon.dev`) and a DEV icon, and it
+never checks for updates. It runs next to an installed Octomux without touching its workspaces or sessions, so
+you can live in your own build with your real projects. Rebuild and reopen it to try a change; its sessions
+survive that like in the release app. Remove it with
+`OCTOMUX_VARIANT=dev "build/Octomux Dev.app/Contents/Resources/bin/octomux" uninstall-agent` and
+`rm -rf ~/Library/Application\ Support/Octomux\ Dev`.
+
+Leave Settings → Agents → the Claude Code integration (hooks in your Claude settings) to one of the two apps.
+
 ## Test
 
 ```sh
@@ -68,7 +85,7 @@ OCTOMUX_HOME=/tmp/octomuxU tools/dbg update_toast '{"show":"available"}'
 
 `tools/install-local.sh` builds, signs with the Developer ID (no notarization), replaces
 `/Applications/Octomux.app` and reopens it; the daemon restarts into the new binary and sessions survive.
-Only for a Mac with the maintainer's certificate; everyone else uses the Dev variant below.
+Only for a Mac with the maintainer's certificate; everyone else uses Octomux Dev (above).
 
 ## Release
 

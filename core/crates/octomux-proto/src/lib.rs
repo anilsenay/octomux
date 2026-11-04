@@ -223,6 +223,14 @@ const LEGACY_DB: &str = "ade.sqlite3";
 /// Name of the data-directory variable set on child processes.
 pub const HOME_VAR: &str = "OCTOMUX_HOME";
 
+/// `OCTOMUX_VARIANT=dev`: the "Octomux Dev" build for contributors. It keeps its own data folder and launchd
+/// agent, so it runs next to an installed Octomux without touching its sessions.
+pub const VARIANT_VAR: &str = "OCTOMUX_VARIANT";
+
+pub fn is_dev_variant() -> bool {
+    std::env::var(VARIANT_VAR).map(|v| v == "dev").unwrap_or(false)
+}
+
 /// Filesystem layout. Everything lives under `OCTOMUX_HOME` (or the legacy `ADE_HOME`);
 /// default `~/Library/Application Support/Octomux`, or the pre-rename `ade-dev` folder when only that exists
 /// (it holds live session sockets, so it is used in place rather than moved).
@@ -238,6 +246,10 @@ impl Paths {
         }
         let base = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/tmp"));
         let has_data = |p: &PathBuf| p.join("octomux.sqlite3").exists() || p.join(LEGACY_DB).exists();
+        if is_dev_variant() {
+            let dir = if cfg!(target_os = "macos") { base.join("Library/Application Support/Octomux Dev") } else { base.join(".local/share/octomux-dev") };
+            return Paths { home: dir };
+        }
         let mac = base.join("Library/Application Support/Octomux");
         let mac_legacy = base.join("Library/Application Support/ade-dev");
         if cfg!(target_os = "macos") {

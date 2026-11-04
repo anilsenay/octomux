@@ -1,8 +1,11 @@
 #!/bin/bash
-# Builds build/Octomux.app (Swift app + bundled `octomux` CLI). Usage: tools/build-app.sh [debug|release]
+# Builds build/Octomux.app (Swift app + bundled `octomux` CLI). Usage: tools/build-app.sh [debug|release] [dev]
+# `dev`: build/Octomux Dev.app, the contributors' variant: own bundle id, data folder and launchd agent (runs next
+# to an installed Octomux), no update checks, a DEV icon.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CONF="${1:-release}"
+VARIANT="${2:-}"
 # Updates: OCTOMUX_FEED_URL (appcast) and OCTOMUX_ED_PUBLIC_KEY, set by release.sh. Empty (local builds) = no updater.
 # Version: VERSION file (marketing) and OCTOMUX_BUILD (monotonic build number; release.sh uses the commit count).
 VERSION="${OCTOMUX_VERSION:-$(cat "$ROOT/VERSION" 2>/dev/null || echo 0.1.0)}"
@@ -12,7 +15,12 @@ if [ "$CONF" = release ]; then cargo build --release -q; CLI="$ROOT/core/target/
 cd "$ROOT/app"
 if [ "$CONF" = release ]; then swift build -c release 2>&1 | grep -E "error|warning: unre" || true; BIN="$(swift build -c release --show-bin-path)/Octomux";
 else swift build 2>&1 | grep -E "error" || true; BIN="$(swift build --show-bin-path)/Octomux"; fi
-APP="${OCTOMUX_APP_OUT:-$ROOT/build/Octomux.app}"   # OCTOMUX_APP_OUT: another place (update tests)
+if [ "$VARIANT" = dev ]; then
+    NAME="Octomux Dev"; BUNDLE_ID=dev.octomux.app.dev; OCTOMUX_FEED_URL=""; OCTOMUX_ED_PUBLIC_KEY=""
+else
+    NAME="Octomux"; BUNDLE_ID=dev.octomux.app
+fi
+APP="${OCTOMUX_APP_OUT:-$ROOT/build/$NAME.app}"   # OCTOMUX_APP_OUT: another place (update tests)
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/bin"
 cp "$BIN" "$APP/Contents/MacOS/Octomux"
@@ -20,7 +28,8 @@ cp "$BIN" "$APP/Contents/MacOS/Octomux"
 mkdir -p "$APP/Contents/Frameworks"
 ditto "$(dirname "$BIN")/Sparkle.framework" "$APP/Contents/Frameworks/Sparkle.framework"
 cp "$CLI" "$APP/Contents/Resources/bin/octomux"
-cp "$ROOT/app/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
+if [ "$VARIANT" = dev ]; then swift "$ROOT/tools/dev-icon.swift" "$ROOT/app/Resources/AppIcon-1024.png" "$APP/Contents/Resources/AppIcon.icns"
+else cp "$ROOT/app/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"; fi
 cp -R "$ROOT/app/Resources/editor" "$APP/Contents/Resources/editor"   # code viewer (CodeMirror bundle; rebuild: cd app/editor-web && bun run build)
 # Ghostty terminal color schemes, for scenes' "terminal" field (from the vendored Ghostty build).
 THEMES="$ROOT/vendor/ghostty/zig-out/share/ghostty/themes"
@@ -30,9 +39,10 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>CFBundleIdentifier</key><string>dev.octomux.app</string>
-  <key>CFBundleName</key><string>Octomux</string>
-  <key>CFBundleDisplayName</key><string>Octomux</string>
+  <key>CFBundleIdentifier</key><string>$BUNDLE_ID</string>
+  <key>CFBundleName</key><string>$NAME</string>
+  <key>CFBundleDisplayName</key><string>$NAME</string>
+  <key>OctomuxVariant</key><string>${VARIANT:-release}</string>
   <key>CFBundleExecutable</key><string>Octomux</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>

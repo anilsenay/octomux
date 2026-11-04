@@ -125,7 +125,7 @@ final class DaemonClient {
     static func ensureDaemon() -> Bool {
         if held { return LineSocket(path: Paths.daemonSocket.path) != nil }
         let agents = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/LaunchAgents")
-        let plist = agents.appendingPathComponent("dev.octomux.daemon.plist")
+        let plist = agents.appendingPathComponent("\(Paths.launchLabel).plist")
         if !Paths.homeFromEnv && !agentChecked {
             agentChecked = true
             if agentProgram(plist) != Paths.cliBinary {

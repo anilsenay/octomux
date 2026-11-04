@@ -56,7 +56,8 @@ enum Cmd {
     },
     /// Print daemon status.
     Status,
-    /// Install the daemon as a launchd agent (label dev.octomux.daemon; replaces the pre-rename dev.ade-dev.daemon).
+    /// Install the daemon as a launchd agent (label dev.octomux.daemon, or dev.octomux.daemon.dev for the Dev
+    /// variant; replaces the pre-rename dev.ade-dev.daemon).
     InstallAgent,
     /// Remove the launchd agent.
     UninstallAgent,
@@ -138,7 +139,9 @@ fn run(cli: Cli, paths: Paths) -> anyhow::Result<i32> {
         }
         Cmd::UninstallAgent => {
             let uid = unsafe { libc::getuid() };
-            for plist in [client::launch_agent_plist_path(), client::legacy_launch_agent_plist_path()] {
+            let mut plists = vec![client::launch_agent_plist_path()];
+            if !octomux_proto::is_dev_variant() { plists.push(client::legacy_launch_agent_plist_path()); }
+            for plist in plists {
                 if !plist.exists() {
                     continue;
                 }
@@ -165,7 +168,7 @@ fn install_launch_agent(paths: &Paths) -> anyhow::Result<()> {
   <key>ProgramArguments</key>
   <array><string>{exe}</string><string>daemon</string></array>
   <key>EnvironmentVariables</key>
-  <dict><key>{home_var}</key><string>{home}</string></dict>
+  <dict><key>{home_var}</key><string>{home}</string>{variant}</dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
   <key>AbandonProcessGroup</key><true/>
@@ -175,7 +178,8 @@ fn install_launch_agent(paths: &Paths) -> anyhow::Result<()> {
 </dict>
 </plist>
 "#,
-        label = client::LAUNCH_LABEL,
+        label = client::launch_label(),
+        variant = if octomux_proto::is_dev_variant() { format!("<key>{}</key><string>dev</string>", octomux_proto::VARIANT_VAR) } else { String::new() },
         home_var = octomux_proto::HOME_VAR,
         exe = exe.display(),
         home = paths.home.display(),
@@ -184,7 +188,7 @@ fn install_launch_agent(paths: &Paths) -> anyhow::Result<()> {
     let uid = unsafe { libc::getuid() };
     // Pre-rename agent: stop it first so the new daemon can take the socket (sessions survive a daemon restart).
     let legacy = client::legacy_launch_agent_plist_path();
-    if legacy.exists() {
+    if legacy.exists() && !octomux_proto::is_dev_variant() {
         let _ = std::process::Command::new("launchctl").args(["bootout", &format!("gui/{uid}"), &legacy.to_string_lossy()]).output();
         let _ = std::fs::remove_file(&legacy);
     }

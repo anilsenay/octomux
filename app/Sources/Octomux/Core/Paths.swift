@@ -11,11 +11,21 @@ enum Paths {
     /// Whether the data directory was chosen by the environment (dev/fixture runs: no launchd agent).
     static var homeFromEnv: Bool { env("HOME") != nil }
 
+    /// The "Octomux Dev" build (`OctomuxVariant` = dev in Info.plist): its own data folder, launchd agent and
+    /// bundle id, so it runs next to an installed Octomux. Exported as `OCTOMUX_VARIANT=dev` at launch so the
+    /// bundled CLI (daemon, holders, attach) resolves the same folder and agent.
+    static let isDevVariant: Bool =
+        (Bundle.main.object(forInfoDictionaryKey: "OctomuxVariant") as? String) == "dev" || env("VARIANT") == "dev"
+    static func exportVariant() { if isDevVariant { setenv("OCTOMUX_VARIANT", "dev", 1) } }
+    static var appName: String { isDevVariant ? "Octomux Dev" : "Octomux" }
+    static var launchLabel: String { isDevVariant ? "dev.octomux.daemon.dev" : "dev.octomux.daemon" }
+
     /// Same resolution as the Rust side (`octomux_proto::Paths::from_env`): `OCTOMUX_HOME`/`ADE_HOME`, else
     /// ~/Library/Application Support/Octomux, or the pre-rename `ade-dev` folder when only that has data.
     static var home: URL {
         if let h = env("HOME") { return URL(fileURLWithPath: h) }
         let support = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support")
+        if isDevVariant { return support.appendingPathComponent("Octomux Dev") }
         let current = support.appendingPathComponent("Octomux"), legacy = support.appendingPathComponent("ade-dev")
         let fm = FileManager.default
         let hasData = { (dir: URL) in ["octomux.sqlite3", "ade.sqlite3"].contains { fm.fileExists(atPath: dir.appendingPathComponent($0).path) } }
