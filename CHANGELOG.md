@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **Settings → Sessions:** every running session with the CPU and memory of its processes (shell or agent plus
+  what it started), with Open and Stop. "Stop idle agents" (off by default: 15 min to 4 hours) stops agents
+  that finished and sat without output; Resume continues them. Terminals are never stopped for being idle.
+- **Save diagnostics** (Settings → Advanced): a zip with versions, state, settings, terminal.conf and the end of
+  the logs, tokens, keys, passwords and email addresses removed.
 - **Agent start options:** editing an agent in Settings → Agents sets its model, effort and permission mode
   (Claude Code) or model, effort, approvals and sandbox (Codex) from lists. They become flags in its Arguments.
 - **Open in:** Settings → General lists the apps for every Open in menu: reorder them, hide some, add any other

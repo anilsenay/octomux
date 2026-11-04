@@ -3,7 +3,7 @@ import SwiftUI
 
 enum SettingsSection: String, CaseIterable, Identifiable {
     case general = "General", appearance = "Appearance", terminal = "Terminal", notifications = "Notifications", keyboard = "Keyboard"
-    case agents = "Agents", workspaces = "Workspaces", hosts = "Hosts"
+    case agents = "Agents", workspaces = "Workspaces", sessions = "Sessions", hosts = "Hosts"
     case features = "Features", advanced = "Advanced"
     var id: String { rawValue }
     var icon: String {
@@ -11,6 +11,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .general: return "gearshape"
         case .workspaces: return "square.stack"
         case .agents: return "sparkles"
+        case .sessions: return "cpu"
         case .appearance: return "paintbrush"
         case .terminal: return "terminal"
         case .notifications: return "bell"
@@ -30,6 +31,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .keyboard: return "Every shortcut Octomux handles. Keys not bound here go straight to the terminal program."
         case .agents: return "The agents in the + menu, how they start, and how Octomux follows their state."
         case .workspaces: return "Workspaces group projects. Switch with the dots under the sidebar, a two-finger swipe on it, or ⌃1…⌃9."
+        case .sessions: return "What runs in your tabs right now, what it costs, and when idle agents stop."
         case .hosts: return "Machines that run their own Octomux daemon, reached over SSH."
         case .features: return "Optional parts of Octomux you can turn on or off."
         case .advanced: return "The daemon behind your sessions, its data and its logs."
@@ -41,7 +43,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     /// Sidebar groups, in order.
     static let groups: [(title: String, items: [SettingsSection])] = [
         ("App", [.general, .appearance, .terminal, .notifications, .keyboard]),
-        ("Work", [.agents, .workspaces, .hosts]),
+        ("Work", [.agents, .workspaces, .sessions, .hosts]),
         ("Advanced", [.features, .advanced]),
     ]
 }
@@ -154,6 +156,7 @@ struct SettingsView: View {
         case .appearance: AppearanceSettings()
         case .terminal: TerminalSettings()
         case .notifications: NotificationSettings()
+        case .sessions: SessionsSettings()
         case .hosts: HostsSettings()
         case .features: FeatureSettings()
         case .keyboard: KeyboardSettings()
@@ -540,6 +543,8 @@ enum SettingsIndex {
             e(.agents, "Meters show", "usage limits used left remaining quota plan"),
             e(.workspaces, "Workspaces", "rename color reorder default agent new chat"),
             e(.workspaces, "Archived projects", "unarchive"),
+            e(.sessions, "Running", "cpu memory ram processes activity monitor stop"),
+            e(.sessions, "Stop idle agents", "auto stop idle timeout sleep memory"),
             e(.hosts, "Hosts", "remote ssh server daemon connect"),
             e(.features, "Git worktrees", "branch"),
             e(.features, "Remote hosts", "ssh"),
@@ -549,6 +554,7 @@ enum SettingsIndex {
             e(.advanced, "Daemon", "pid protocol restart"),
             e(.advanced, "Data folder", "home files"),
             e(.advanced, "Logs", "diagnostics"),
+            e(.advanced, "Save diagnostics", "bug report zip logs support"),
             e(.advanced, "Restart daemon", ""),
             e(.advanced, "Stop Octomux", "quit end sessions start"),
         ]
@@ -1667,6 +1673,7 @@ struct HostEditor: View {
 
 struct AdvancedSettings: View {
     @EnvironmentObject var model: AppModel
+    @State private var diagStatus: String?
     @State private var info: [String: Any] = [:]
     @State private var restarting = false
     @State private var confirmStop = false
@@ -1694,6 +1701,17 @@ struct AdvancedSettings: View {
             }
             SettingRow("Logs", desc: ((home as NSString).appendingPathComponent("logs") as NSString).abbreviatingWithTildeInPath, mono: true) {
                 Button("Show in Finder") { NSWorkspace.shared.open(URL(fileURLWithPath: home).appendingPathComponent("logs")) }.buttonStyle(SecondaryButtonStyle())
+            }
+            SettingRow("Save diagnostics", desc: diagStatus ?? "A zip for a bug report: versions, state, settings and the end of the logs. Tokens, keys, passwords and email addresses are removed; project paths and tab titles stay.") {
+                Button("Save…") {
+                    Diagnostics.save(model: model) { r in
+                        switch r {
+                        case .success(let u): diagStatus = "Saved \((u.path as NSString).abbreviatingWithTildeInPath)."; NSWorkspace.shared.activateFileViewerSelecting([u])
+                        case .failure(let e): diagStatus = "Couldn't save: \(e.localizedDescription)"
+                        }
+                    }
+                }
+                .buttonStyle(SecondaryButtonStyle())
             }
             SettingRow("Command line tool", desc: (Paths.cliBinary as NSString).abbreviatingWithTildeInPath, mono: true) {
                 Button("Copy Path") {

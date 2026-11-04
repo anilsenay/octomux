@@ -391,3 +391,35 @@ final class StartOptionTests: XCTestCase {
         XCTAssertEqual(OpenIn.ordered(apps, order: []).map(\.id), ["a", "b", "c"])
     }
 }
+
+final class DiagnosticsTests: XCTestCase {
+    func testScrubRemovesSecrets() {
+        let t = """
+        ANTHROPIC_API_KEY=sk-ant-api03-abcdefghijklmnopqrstuv
+        "token": "abc123def", Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abcdefghijk
+        mail me at someone.name@example.com, gh ghp_abcdefghijklmnopqrstuvwxyz0123
+        /Users/me/projects/x is fine
+        """
+        let s = Diagnostics.scrub(t, home: "/Users/me")
+        for leaked in ["sk-ant", "abc123def", "eyJhbGci", "someone.name", "ghp_abc", "/Users/me"] {
+            XCTAssertFalse(s.contains(leaked), "\(leaked) in \(s)")
+        }
+        XCTAssertTrue(s.contains("~/projects/x is fine"))
+        XCTAssertTrue(s.contains("<email>"))
+    }
+
+    func testStateHidesAgentEnvironment() {
+        let st: [String: Any] = ["profiles": [["name": "Claude", "env": ["CLAUDE_CONFIG_DIR": "/x", "SECRET": "v"]]], "sessions": []]
+        let out = Diagnostics.scrubbedState(st)
+        XCTAssertFalse(out.contains("\"/x\""))
+        XCTAssertTrue(out.contains("CLAUDE_CONFIG_DIR"))
+    }
+
+    func testWritesAZip() throws {
+        let dest = FileManager.default.temporaryDirectory.appendingPathComponent("diag-test-\(UUID().uuidString).zip")
+        defer { try? FileManager.default.removeItem(at: dest) }
+        try Diagnostics.write(to: dest, state: ["sessions": []], hello: ["version": 1])
+        let size = (try FileManager.default.attributesOfItem(atPath: dest.path)[.size] as? Int) ?? 0
+        XCTAssertGreaterThan(size, 100)
+    }
+}

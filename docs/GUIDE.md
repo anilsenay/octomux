@@ -19,6 +19,14 @@ Editing an agent sets its start options from lists: model, effort and permission
 effort, approvals and sandbox for Codex. They are written as flags into the agent's Arguments, and a new chat's
 own choices go on top.
 
+Settings → Sessions lists what runs right now with the CPU and memory of each session's processes (the shell
+or agent and everything it started), with Open and Stop. "Stop idle agents" (off by default) stops an agent
+that finished its turn, has nothing running in the background and showed no output for the chosen time;
+Resume continues the conversation. Terminals are never stopped for being idle.
+
+Settings → Advanced → Save diagnostics writes a zip for bug reports: versions, the daemon's state, settings,
+terminal.conf and the end of the logs, with tokens, keys, passwords and email addresses removed.
+
 Settings → General → Open in picks the apps in every Open in menu, their order, the default one (⌘O and the top
 bar's button), and any other app you add.
 

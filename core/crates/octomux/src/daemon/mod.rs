@@ -5,6 +5,7 @@
 
 pub mod agents;
 pub mod integration;
+pub mod resources;
 pub mod store;
 
 use crate::holder::HolderClient;
@@ -35,6 +36,8 @@ pub struct Daemon {
     claude_usage_running: std::sync::atomic::AtomicBool,
     /// Set when a Claude session finished a turn: the usage loop probes `/usage` shortly after.
     usage_poke: Mutex<Option<(Instant, Vec<String>)>>,
+    /// CPU time per pid at the last `sessions.resources` (for CPU since then).
+    resource_prev: Mutex<HashMap<i32, (f64, Instant)>>,
     cmd_started: Mutex<HashMap<String, Instant>>,
     dirty: Sender<()>,
     login_path: Mutex<Option<String>>,
@@ -213,6 +216,7 @@ pub fn run(paths: Paths) -> Result<()> {
         prompts: Mutex::new(HashMap::new()),
         claude_usage_running: std::sync::atomic::AtomicBool::new(false),
         usage_poke: Mutex::new(None),
+        resource_prev: Mutex::new(HashMap::new()),
         cmd_started: Mutex::new(HashMap::new()),
         dirty: dirty_tx,
         login_path: Mutex::new(None),
@@ -287,6 +291,13 @@ pub fn run(paths: Paths) -> Result<()> {
             d.check_reporting_programs();
             d.track_codex();
             d.track_background_shells();
+        });
+    }
+    {
+        let d = d.clone();
+        std::thread::spawn(move || loop {
+            std::thread::sleep(Duration::from_secs(30));
+            d.stop_idle_agents();
         });
     }
 
@@ -866,6 +877,51 @@ impl Daemon {
             return Some(ResumeAgent { app: "claude-code".into(), session_id: r, config_dir: (cfg != home.join(".claude")).then(|| cfg.to_string_lossy().into_owned()), from_hook: false, args: agents::running_resume_flags("claude-code", pid).unwrap_or_default() });
         }
         None
+    }
+
+    /// Running sessions and the pid their holder started (the shell, or the agent itself).
+    fn session_roots(&self) -> Vec<(String, i32)> {
+        let ids: Vec<String> = self.state.lock().unwrap().sessions.iter().filter(|s| s.state == SessionState::Running).map(|s| s.id.clone()).collect();
+        ids.into_iter()
+            .filter_map(|id| {
+                let info: Value = serde_json::from_str(&std::fs::read_to_string(self.paths.holder_info(&id)).ok()?).ok()?;
+                let pid = info.get("child_pid")?.as_i64()? as i32;
+                Some((id, pid))
+            })
+            .collect()
+    }
+
+    /// Settings → Sessions → "Stop idle agents": a launched agent that finished (or sits idle) with nothing left
+    /// running and no output for that many minutes is stopped. Its conversation resumes with Resume.
+    fn stop_idle_agents(&self) {
+        let mins = self.setting("sessions.auto_stop_idle_mins", None).and_then(|v| v.as_f64()).unwrap_or(0.0);
+        if mins <= 0.0 {
+            return;
+        }
+        let now = util::now_secs();
+        let idle: Vec<String> = {
+            let st = self.state.lock().unwrap();
+            st.sessions
+                .iter()
+                .filter(|s| {
+                    s.state == SessionState::Running
+                        && s.kind == SessionKind::Agent
+                        && matches!(s.activity, Activity::Done | Activity::Idle)
+                        && s.background_shells == 0
+                        && now.saturating_sub(s.last_activity_at) as f64 >= mins * 60.0
+                })
+                .map(|s| s.id.clone())
+                .collect()
+        };
+        for id in idle {
+            eprintln!("[sessions] stopping {id}: idle for {mins} min");
+            self.with_session(&id, |s| {
+                s.state = SessionState::Stopped;
+                s.activity = Activity::Idle;
+            });
+            let _ = HolderClient::request(&self.paths, &id, &HolderRequest::Kill);
+            self.changed();
+        }
     }
 
     /// The reporting program among the session's processes: the shallowest descendant of its shell named
@@ -1846,6 +1902,12 @@ impl Daemon {
             "session.info" => {
                 let id = req("id")?;
                 Ok(HolderClient::request(&self.paths, &id, &HolderRequest::Info)?)
+            }
+            "sessions.resources" => {
+                let table = resources::process_table();
+                let roots = self.session_roots();
+                let usage = resources::usage(&table, &roots, &mut self.resource_prev.lock().unwrap());
+                Ok(json!({ "sessions": usage }))
             }
 
             "tab.update" => {
