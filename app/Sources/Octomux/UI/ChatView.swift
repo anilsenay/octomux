@@ -138,12 +138,18 @@ final class ChatModel: ObservableObject {
         switch p["type"] as? String {
         case "message":
             let role = p["role"] as? String ?? ""
-            let text = ((p["content"] as? [[String: Any]]) ?? []).compactMap { $0["text"] as? String }.joined(separator: "\n")
+            var parts = (p["content"] as? [[String: Any]]) ?? []
+            // Codex injects context (AGENTS.md, environment) as user messages. Newer ones say where each part
+            // came from: keep only what you typed. Older ones: their context blocks start with a tag.
+            let meta = (p["internal_chat_message_metadata_passthrough"] as? [String: Any])?["content_item_metadata"] as? [[String: Any]]
+            if role == "user", let meta, meta.count == parts.count {
+                parts = zip(parts, meta).filter { (($0.1["provenance"] as? [String: Any])?["type"] as? String) == "user" }.map(\.0)
+            }
+            let text = parts.compactMap { $0["text"] as? String }.joined(separator: "\n")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty else { return }
             if role == "user" {
-                // Codex injects context blocks as user messages; they start with a tag.
-                if text.hasPrefix("<") { return }
+                if text.hasPrefix("<") || text.hasPrefix("# AGENTS.md instructions") { return }
                 out.append(ChatItem(id: newId(), kind: .user, text: text))
             } else if role == "assistant" {
                 out.append(ChatItem(id: newId(), kind: .assistant, text: text))
@@ -164,6 +170,16 @@ final class ChatModel: ObservableObject {
                 if let d = s.data(using: .utf8), let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any], let inner = o["output"] as? String { text = inner } else { text = s }
             }
             if let i = toolIndex[id], i < out.count { out[i].result = text }
+        case "custom_tool_call":
+            // Codex's code mode: the call is a script (`await tools.exec_command({ cmd: "…" })`).
+            let script = p["input"] as? String ?? ""
+            let (name, input) = Self.codeModeCall(script, fallback: p["name"] as? String ?? "tool")
+            let item = ChatItem(id: newId(), kind: .tool, text: name, tool: name, detail: Self.summary(name, input))
+            toolIndex[p["call_id"] as? String ?? item.id] = out.count
+            out.append(item)
+        case "custom_tool_call_output":
+            let id = p["call_id"] as? String ?? ""
+            if let i = toolIndex[id], i < out.count { out[i].result = p["output"] as? String ?? Self.flatten(p["output"]) }
         case "reasoning":
             let t = ((p["summary"] as? [[String: Any]]) ?? []).compactMap { $0["text"] as? String }.joined(separator: "\n")
             if !t.isEmpty { out.append(ChatItem(id: newId(), kind: .thinking, text: t)) }
@@ -182,6 +198,28 @@ final class ChatModel: ObservableObject {
         }
         if t.hasPrefix("[Request interrupted") { out.append(ChatItem(id: newId(), kind: .note, text: "Interrupted")); return }
         out.append(ChatItem(id: newId(), kind: .user, text: t))
+    }
+
+    /// The tool a Codex code-mode script calls first and its string arguments (`cmd`, `path`, …), read from
+    /// the script text; the first line of the script when it calls none.
+    static func codeModeCall(_ script: String, fallback: String) -> (String, [String: Any]) {
+        let ns = script as NSString
+        var name = fallback
+        if let m = try? NSRegularExpression(pattern: #"tools\.([A-Za-z_][A-Za-z0-9_]*)\s*\("#).firstMatch(in: script, range: NSRange(location: 0, length: ns.length)) {
+            name = ns.substring(with: m.range(at: 1))
+        }
+        var input: [String: Any] = [:]
+        let arg = try? NSRegularExpression(pattern: #"\b(cmd|command|file_path|path|pattern|query|url)\s*:\s*"((?:[^"\\]|\\.)*)""#)
+        for m in arg?.matches(in: script, range: NSRange(location: 0, length: ns.length)) ?? [] {
+            let key = ns.substring(with: m.range(at: 1)) == "cmd" ? "command" : ns.substring(with: m.range(at: 1))
+            guard input[key] == nil else { continue }
+            let raw = "\"" + ns.substring(with: m.range(at: 2)) + "\""
+            input[key] = (try? JSONSerialization.jsonObject(with: Data(raw.utf8), options: .fragmentsAllowed) as? String) ?? ns.substring(with: m.range(at: 2))
+        }
+        if input.isEmpty, let line = script.split(separator: "\n").first(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }) {
+            input["command"] = String(line).trimmingCharacters(in: .whitespaces)
+        }
+        return (name, input)
     }
 
     static func flatten(_ v: Any?) -> String {
@@ -293,13 +331,14 @@ struct ChatView: View {
     private func resolvePath(_ s: Session?) -> String? {
         guard let s else { return nil }
         let prof = model.profile(s.profileId)
+        let remote = model.host(for: s.id).isRemote
+        // The daemon knows the running agent's transcript (Claude hooks; the rollout a Codex keeps open).
+        if let p = s.transcriptPath, remote || FileManager.default.fileExists(atPath: p) { return p }
         if prof?.kind == .codex || prof?.icon == "codex" {
             var params: [String: Any] = ["id": s.agentSessionId ?? "", "cwd": s.cwd, "since": s.createdAt]
             if let ch = prof?.env["CODEX_HOME"] { params["codex_home"] = ch }
             return (try? model.client(for: s.id).callSync("fs.find_rollout", params) as? [String: Any])?["path"] as? String
         }
-        let remote = model.host(for: s.id).isRemote
-        if let p = s.transcriptPath, remote || FileManager.default.fileExists(atPath: p) { return p }
         return remote ? nil : TranscriptLocator.path(for: s, model: model)
     }
 

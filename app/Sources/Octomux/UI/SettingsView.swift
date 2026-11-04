@@ -211,6 +211,8 @@ struct AgentsSettings: View {
     @State private var detected: [[String: Any]] = []
     /// Claude integration per profile id: config_dir, status (installed / outdated / missing).
     @State private var integration: [String: (dir: String, status: String)] = [:]
+    /// Codex per profile id: its version and whether it reports its own state (reports / old / unknown).
+    @State private var codex: [String: (version: String?, status: String)] = [:]
     @State private var confirming: (profile: Profile, install: Bool)?
 
     var body: some View {
@@ -225,6 +227,7 @@ struct AgentsSettings: View {
                         Text(([p.command] + p.args).joined(separator: " ") + (p.env.isEmpty ? "" : "  ·  " + p.env.map { "\($0)=\($1)" }.joined(separator: " ")))
                             .font(.system(size: 11, design: .monospaced)).foregroundStyle(T.text2).lineLimit(1)
                         if p.kind == .claude, let i = integration[p.id] { integrationLine(i) }
+                        if p.kind == .codex, let c = codex[p.id] { codexLine(c) }
                     }
                     Spacer()
                     if p.kind == .claude, let i = integration[p.id] { integrationButton(p, i) }
@@ -292,6 +295,18 @@ struct AgentsSettings: View {
         .help("With hooks, a claude you type in a terminal tab shows in Agents with its state and notifications, and \"done\" shows the moment a turn ends.")
     }
 
+    /// Codex needs no hooks: from 0.164 on it reports its state itself (launched sessions and terminal tabs).
+    @ViewBuilder private func codexLine(_ c: (version: String?, status: String)) -> some View {
+        HStack(spacing: 4) {
+            Circle().fill(c.status == "reports" ? T.green : c.status == "old" ? T.amber : T.text3.opacity(0.5)).frame(width: 6, height: 6)
+            Text(c.status == "reports" ? "Reports its state itself (Codex \(c.version ?? ""))"
+                 : c.status == "old" ? "Codex \(c.version ?? "") shows working and done only: update to 0.164 or later"
+                 : "Codex version unknown")
+        }
+        .font(.system(size: 11)).foregroundStyle(T.text2).lineLimit(1)
+        .help("Codex 0.164 and later tell Octomux when they work, wait for your approval or finish, also when you type codex in a terminal tab. Older versions only show working and done.")
+    }
+
     private func integrationButton(_ p: Profile, _ i: (dir: String, status: String)) -> some View {
         Group {
             switch i.status {
@@ -320,8 +335,16 @@ struct AgentsSettings: View {
         model.client.call("integration.status") { r in
             guard case .success(let v) = r, let list = (v as? [String: Any])?["profiles"] as? [[String: Any]] else { return }
             var m: [String: (dir: String, status: String)] = [:]
-            for e in list { if let id = e["profile_id"] as? String { m[id] = (e["config_dir"] as? String ?? "", e["status"] as? String ?? "missing") } }
-            DispatchQueue.main.async { integration = m }
+            var cx: [String: (version: String?, status: String)] = [:]
+            for e in list {
+                guard let id = e["profile_id"] as? String else { continue }
+                if e["kind"] as? String == "codex" {
+                    cx[id] = (e["version"] as? String, e["status"] as? String ?? "unknown")
+                } else {
+                    m[id] = (e["config_dir"] as? String ?? "", e["status"] as? String ?? "missing")
+                }
+            }
+            DispatchQueue.main.async { integration = m; codex = cx }
         }
     }
 

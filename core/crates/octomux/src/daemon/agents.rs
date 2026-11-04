@@ -150,7 +150,18 @@ fn codex_home(profile: &Profile) -> PathBuf {
 /// Latest Codex rate limits from the newest rollout touched in the last 15 minutes:
 /// `(window, used_percent, resets_at)`. Windows map to Claude's names by length
 /// (300 min → `five_hour`, 10080 min → `seven_day`).
-pub fn codex_rate_limits(profile: &Profile) -> Vec<(String, f64, Option<i64>)> {
+/// `running`: rollout files of this profile's running sessions; the newest of them is read first, so a
+/// reading comes from this profile's own conversations even when another Codex wrote more recently.
+pub fn codex_rate_limits(profile: &Profile, running: &[String]) -> Vec<(String, f64, Option<i64>)> {
+    let mtime = |p: &str| std::fs::metadata(p).and_then(|m| m.modified()).ok();
+    let mut own: Vec<&String> = running.iter().filter(|p| mtime(p).is_some()).collect();
+    own.sort_by_key(|p| std::cmp::Reverse(mtime(p)));
+    for p in own {
+        let r = rate_limits_in(Path::new(p));
+        if !r.is_empty() {
+            return r;
+        }
+    }
     let root = codex_home(profile).join("sessions");
     let now = std::time::SystemTime::now();
     let mut newest: Option<(std::time::SystemTime, PathBuf)> = None;
@@ -171,7 +182,12 @@ pub fn codex_rate_limits(profile: &Profile) -> Vec<(String, f64, Option<i64>)> {
         }
     }
     let Some((_, path)) = newest else { return vec![] };
-    let Ok(bytes) = std::fs::read(&path) else { return vec![] };
+    rate_limits_in(&path)
+}
+
+/// The last `rate_limits` record in a rollout file (its last 512 KB).
+fn rate_limits_in(path: &Path) -> Vec<(String, f64, Option<i64>)> {
+    let Ok(bytes) = std::fs::read(path) else { return vec![] };
     let tail = &bytes[bytes.len().saturating_sub(512 * 1024)..];
     let text = String::from_utf8_lossy(tail);
     for line in text.lines().rev() {
@@ -280,6 +296,97 @@ pub fn discover_codex_session(profile: &Profile, cwd: &str, since: u64) -> Optio
         }
     }
     best.map(|(_, id)| id)
+}
+
+/// A Codex conversation as its rollout file names it: `<CODEX_HOME>/sessions/YYYY/MM/DD/rollout-<time>-<id>.jsonl`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CodexConversation {
+    pub id: String,
+    pub path: String,
+    pub codex_home: PathBuf,
+}
+
+pub fn parse_rollout_path(p: &str) -> Option<CodexConversation> {
+    let path = Path::new(p);
+    let stem = path.file_name()?.to_str()?.strip_prefix("rollout-")?.strip_suffix(".jsonl")?;
+    let id = stem.get(stem.len().checked_sub(36)?..)?;
+    uuid::Uuid::parse_str(id).ok()?;
+    // file, DD, MM, YYYY, sessions, CODEX_HOME
+    let sessions = path.ancestors().nth(4)?;
+    if sessions.file_name()? != "sessions" {
+        return None;
+    }
+    Some(CodexConversation { id: id.to_string(), path: p.to_string(), codex_home: sessions.parent()?.to_path_buf() })
+}
+
+/// The conversation a running codex works on: the rollout file it keeps open. Exact (like Claude's own
+/// `sessions/<pid>.json`): two codex in the same folder never get each other's conversation. None until
+/// Codex has created the file (it does so at start, or with the first message).
+pub fn codex_conversation_of(pid: i32) -> Option<CodexConversation> {
+    crate::procs::open_files(pid).iter().find_map(|p| parse_rollout_path(p))
+}
+
+/// Conversation names from `<CODEX_HOME>/session_index.jsonl` (`/rename`, or the name Codex picks after the
+/// first turn): one line per change, so the last line for an id wins.
+pub fn parse_session_index(text: &str) -> std::collections::HashMap<String, String> {
+    let mut out = std::collections::HashMap::new();
+    for line in text.lines() {
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else { continue };
+        let (Some(id), Some(name)) = (v.get("id").and_then(|x| x.as_str()), v.get("thread_name").and_then(|x| x.as_str())) else { continue };
+        if name.trim().is_empty() {
+            out.remove(id);
+        } else {
+            out.insert(id.to_string(), name.trim().to_string());
+        }
+    }
+    out
+}
+
+/// What the newest turn event in a Codex rollout chunk says, for a Codex too old to report its state
+/// (OSC 7501 came with 0.164): a turn started, finished, or was interrupted (Esc). Waiting for an approval
+/// is never written to the rollout, so that state needs a Codex that reports.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CodexTurn {
+    Started,
+    Complete,
+    Aborted,
+}
+
+/// The event and its time (ms).
+pub fn codex_last_turn_event(chunk: &str) -> Option<(CodexTurn, Option<u64>)> {
+    let mut last = None;
+    for line in chunk.lines() {
+        if !line.contains("\"event_msg\"") {
+            continue;
+        }
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else { continue };
+        let turn = match v.pointer("/payload/type").and_then(|t| t.as_str()) {
+            Some("task_started" | "turn_started") => CodexTurn::Started,
+            Some("task_complete" | "turn_complete") => CodexTurn::Complete,
+            Some("turn_aborted") => CodexTurn::Aborted,
+            _ => continue,
+        };
+        last = Some((turn, v.get("timestamp").and_then(|t| t.as_str()).and_then(util::parse_iso_millis)));
+    }
+    last
+}
+
+/// `codex --version` as the profile runs Codex (alias, login shell): "0.166.0".
+pub fn codex_version(profile: &Profile, aliases: &[(String, String)]) -> Option<String> {
+    let line = match expand_alias(&profile.command, aliases) {
+        Some(text) => format!("{text} --version"),
+        None => format!("{} --version", shell_quote(&expand_tilde(&profile.command))),
+    };
+    let env: String = profile.env.iter().map(|(k, v)| format!("{k}={} ", shell_quote(&expand_tilde(v)))).collect();
+    let out = shell_output(&format!("{env}{line}"))?;
+    out.split_whitespace().find(|w| w.chars().next().is_some_and(|c| c.is_ascii_digit()) && w.contains('.')).map(str::to_string)
+}
+
+/// Codex reports its own state (OSC 7501, with blocked and done) from 0.164 on.
+pub fn codex_reports_status(version: &str) -> bool {
+    let mut it = version.split(['.', '-']).map(|p| p.parse::<u64>().unwrap_or(0));
+    let (major, minor) = (it.next().unwrap_or(0), it.next().unwrap_or(0));
+    major > 0 || minor >= 164
 }
 
 /// Runs a command line through the user's *login* shell. Deliberately not `-i`:
@@ -631,6 +738,61 @@ mod tests {
 }
 
 #[cfg(test)]
+mod codex_tests {
+    use super::*;
+
+    #[test]
+    fn rollout_paths() {
+        let p = "/Users/x/.codex/sessions/2026/11/04/rollout-2026-11-04T10-24-41-01a1a572-1cdc-7503-b70c-b49d5c827750.jsonl";
+        let c = parse_rollout_path(p).unwrap();
+        assert_eq!(c.id, "01a1a572-1cdc-7503-b70c-b49d5c827750");
+        assert_eq!(c.codex_home, PathBuf::from("/Users/x/.codex"));
+        assert_eq!(c.path, p);
+        assert_eq!(parse_rollout_path("/Users/x/.codex/sessions/2026/11/04/notes.jsonl"), None);
+        assert_eq!(parse_rollout_path("/Users/x/.codex/archive/2026/11/04/rollout-2026-11-04T10-24-41-01a1a572-1cdc-7503-b70c-b49d5c827750.jsonl"), None);
+        assert_eq!(parse_rollout_path("/tmp/rollout-x.jsonl"), None);
+    }
+
+    #[test]
+    fn conversation_names_last_entry_wins() {
+        let text = concat!(
+            "{\"id\":\"a\",\"thread_name\":\"First\",\"updated_at\":\"x\"}\n",
+            "{\"id\":\"b\",\"thread_name\":\"Other\"}\n",
+            "not json\n",
+            "{\"id\":\"a\",\"thread_name\":\" Renamed \"}\n"
+        );
+        let m = parse_session_index(text);
+        assert_eq!(m.get("a").map(String::as_str), Some("Renamed"));
+        assert_eq!(m.get("b").map(String::as_str), Some("Other"));
+    }
+
+    #[test]
+    fn turn_events() {
+        let chunk = concat!(
+            "{\"timestamp\":\"2026-11-04T07:24:46.000Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\"}}\n",
+            "{\"type\":\"response_item\",\"payload\":{\"type\":\"message\"}}\n",
+            "{\"timestamp\":\"2026-11-04T07:25:08.678Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"turn_aborted\",\"reason\":\"interrupted\"}}\n",
+            "{\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\"}}\n"
+        );
+        let (turn, ts) = codex_last_turn_event(chunk).unwrap();
+        assert_eq!(turn, CodexTurn::Aborted);
+        assert_eq!(ts, util::parse_iso_millis("2026-11-04T07:25:08.678Z"));
+        assert_eq!(codex_last_turn_event("{\"type\":\"event_msg\",\"payload\":{\"type\":\"task_complete\"}}").map(|t| t.0), Some(CodexTurn::Complete));
+        assert_eq!(codex_last_turn_event("{\"type\":\"response_item\"}"), None);
+    }
+
+    #[test]
+    fn versions_that_report() {
+        assert!(codex_reports_status("0.166.0"));
+        assert!(codex_reports_status("0.164.0"));
+        assert!(codex_reports_status("0.168.0-alpha.1"));
+        assert!(codex_reports_status("1.0.0"));
+        assert!(!codex_reports_status("0.163.2"));
+        assert!(!codex_reports_status("0.144.4"));
+    }
+}
+
+#[cfg(test)]
 mod usage_tests {
     use super::*;
 
@@ -650,7 +812,7 @@ mod usage_tests {
         .unwrap();
         let mut p = default_profiles().into_iter().find(|p| p.kind == AgentKind::Codex).unwrap();
         p.env.insert("CODEX_HOME".into(), home.to_string_lossy().into_owned());
-        let r = codex_rate_limits(&p);
+        let r = codex_rate_limits(&p, &[]);
         assert_eq!(r, vec![("five_hour".to_string(), 12.5, Some(1900000000)), ("seven_day".to_string(), 40.0, Some(1900500000))]);
         let _ = std::fs::remove_dir_all(&home);
     }

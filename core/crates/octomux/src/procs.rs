@@ -88,8 +88,63 @@ pub fn claude_ancestors(pid: i32) -> usize {
     n
 }
 
+/// Paths of the regular files the process has open (Codex keeps its conversation's rollout file open).
+pub fn open_files(pid: i32) -> Vec<String> {
+    #[cfg(target_os = "macos")]
+    {
+        // <sys/proc_info.h>: PROC_PIDFDVNODEPATHINFO and `struct vnode_fdinfowithpath`, which libc lacks.
+        const PROC_PIDFDVNODEPATHINFO: i32 = 2;
+        #[repr(C)]
+        struct VnodeFdInfoWithPath {
+            pfi: [u64; 3], // struct proc_fileinfo
+            pvip: libc::vnode_info_path,
+        }
+        let fd_size = std::mem::size_of::<libc::proc_fdinfo>();
+        let need = unsafe { libc::proc_pidinfo(pid, libc::PROC_PIDLISTFDS, 0, std::ptr::null_mut(), 0) };
+        if need <= 0 {
+            return vec![];
+        }
+        // Room for a few more descriptors opened in between.
+        let mut fds: Vec<libc::proc_fdinfo> = vec![unsafe { std::mem::zeroed() }; need as usize / fd_size + 16];
+        let got = unsafe { libc::proc_pidinfo(pid, libc::PROC_PIDLISTFDS, 0, fds.as_mut_ptr().cast(), (fds.len() * fd_size) as i32) };
+        if got <= 0 {
+            return vec![];
+        }
+        fds.truncate(got as usize / fd_size);
+        let mut out = Vec::new();
+        for fd in fds.iter().filter(|f| f.proc_fdtype == libc::PROX_FDTYPE_VNODE as u32) {
+            let mut info: VnodeFdInfoWithPath = unsafe { std::mem::zeroed() };
+            let size = std::mem::size_of::<VnodeFdInfoWithPath>() as i32;
+            let n = unsafe { libc::proc_pidfdinfo(pid, fd.proc_fd, PROC_PIDFDVNODEPATHINFO, (&mut info as *mut VnodeFdInfoWithPath).cast(), size) };
+            if n != size {
+                continue;
+            }
+            let bytes: Vec<u8> = info.pvip.vip_path.iter().flatten().map(|c| *c as u8).take_while(|c| *c != 0).collect();
+            if !bytes.is_empty() {
+                out.push(String::from_utf8_lossy(&bytes).into_owned());
+            }
+        }
+        out
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let Ok(rd) = std::fs::read_dir(format!("/proc/{pid}/fd")) else { return vec![] };
+        rd.flatten().filter_map(|e| std::fs::read_link(e.path()).ok()).filter(|p| p.is_file()).map(|p| p.to_string_lossy().into_owned()).collect()
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn open_files_of_own_process() {
+        let path = std::env::temp_dir().join(format!("octomux-open-{}", std::process::id()));
+        let f = std::fs::File::create(&path).unwrap();
+        let canon = path.canonicalize().unwrap().to_string_lossy().into_owned();
+        assert!(super::open_files(std::process::id() as i32).contains(&canon));
+        drop(f);
+        let _ = std::fs::remove_file(path);
+    }
+
     #[test]
     fn own_process() {
         let me = std::process::id() as i32;

@@ -71,11 +71,11 @@ Any CLI agent runs in Octomux, since it is just a terminal. Some get more:
 | Agent | Keeps running when the app quits | Working / needs-input status | Resume after reboot | Usage limits | Chat view |
 |---|:-:|:-:|:-:|:-:|:-:|
 | Claude Code | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Codex | ✓ | — | ✓ | ✓ | — |
+| Codex | ✓ | ✓ (0.164+) | ✓ | ✓ | ✓ |
 | Gemini, Amp, OpenCode, Cursor, Kiro, Antigravity, Copilot, your own | ✓ | — | — | — | — |
 
 Installed agents are detected in Settings → Agents, including shell aliases (a second Claude account, say).
-Codex status tracking is next on the list. Want deeper support for another agent?
+Want deeper support for another agent?
 [Open an agent request](https://github.com/anilsenay/octomux/issues/new?template=agent_request.yml).
 
 ## Getting started

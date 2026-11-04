@@ -243,3 +243,17 @@ final class DefaultsMigrationTests: XCTestCase {
         XCTAssertTrue(d.bool(forKey: "octomux.defaultsMigrated"))
     }
 }
+
+final class CodexChatTests: XCTestCase {
+    /// Codex's code mode writes tool calls as scripts; the chat view shows the tool and its command.
+    func testCodeModeCall() {
+        let script = "const r = await tools.exec_command({\n  cmd: \"touch \\\"a b\\\" /tmp/x\",\n  sandbox_permissions: \"require_escalated\",\n});\ntext(r)"
+        let (name, input) = ChatModel.codeModeCall(script, fallback: "exec")
+        XCTAssertEqual(name, "exec_command")
+        XCTAssertEqual(input["command"] as? String, "touch \"a b\" /tmp/x")
+        XCTAssertEqual(ChatModel.summary(name, input), "touch \"a b\" /tmp/x")
+        let (other, rest) = ChatModel.codeModeCall("  \nconsole.log(1)\n", fallback: "exec")
+        XCTAssertEqual(other, "exec")
+        XCTAssertEqual(rest["command"] as? String, "console.log(1)")
+    }
+}

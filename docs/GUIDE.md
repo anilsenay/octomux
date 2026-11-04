@@ -20,6 +20,12 @@ Octomux doesn't wrap the agent: it runs your CLI with your config and login. For
 hooks and status line with `--settings` (your `~/.claude/settings.json` is left alone) to know when an agent is
 working, waiting for input, or done.
 
+Codex needs nothing set up: from version 0.164 on it reports its own state to the terminal (working, waiting
+for your approval, done), and Octomux reads it, also when you type `codex` in a terminal tab. Octomux finds the
+conversation from the file Codex keeps open, so the tab shows its name, the chat view follows it, and a restored
+tab reopens it with `codex resume`. Older Codex versions show working and done only; Settings → Agents shows
+which version you have.
+
 ## Notifications and the menu bar
 
 When an agent finishes or needs input, you get a macOS notification; clicking it focuses that pane. The bell in
@@ -39,9 +45,9 @@ with an agent or a terminal. Worktrees show under their project (right-click to 
   collapsed it is a header; open it shows commits and their diffs (drag its top edge to resize).
 - **Sessions**: the project's sessions.
 
-## Chat view (Claude)
+## Chat view (Claude and Codex)
 
-⌘⇧C (or the speech-bubble button in the top bar) shows a Claude session as a chat: its own transcript, live,
+⌘⇧C (or the speech-bubble button in the top bar) shows a Claude or Codex session as a chat: its own transcript, live,
 with tool calls as cards. What you type there goes into the same session, as if typed in the terminal.
 Permission prompts and menus are answered in the terminal (the chat offers a one-click switch). Turn it off in
 Settings → Features.

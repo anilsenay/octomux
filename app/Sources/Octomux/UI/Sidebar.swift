@@ -679,8 +679,10 @@ struct SessionMenu: View {
 }
 
 enum TranscriptLocator {
-    /// Claude transcript path for an agent session (searches the profile's config dir).
+    /// The session's transcript: the one the daemon follows (Claude hooks, a running Codex's rollout), else
+    /// a Claude conversation's file in the profile's config dir.
     static func path(for s: Session, model: AppModel) -> String? {
+        if let p = s.transcriptPath, FileManager.default.fileExists(atPath: p) { return p }
         guard let id = s.agentSessionId, let p = model.profile(s.profileId), p.kind == .claude else { return nil }
         let cfg = p.env["CLAUDE_CONFIG_DIR"].map { NSString(string: $0).expandingTildeInPath } ?? (NSHomeDirectory() + "/.claude")
         let projects = URL(fileURLWithPath: cfg).appendingPathComponent("projects")

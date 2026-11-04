@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- **Codex at the same level as Claude Code.** Working, waiting for approval and done for Codex 0.164 and
+  later (it reports its state itself, no hooks or setup), also for a `codex` typed in a terminal tab. The tab
+  takes the conversation's name, the chat view and Copy Transcript Path follow the running conversation, and a
+  terminal tab restored after a stop or reboot reopens its Codex conversation with `codex resume`. Older Codex
+  versions show working and done from their rollout file; Settings → Agents shows the version and what it
+  supports.
+- Chat view: Codex's newer tool calls (code mode) show as tool cards, and the context Codex adds to the first
+  message (AGENTS.md, environment) is no longer shown as your message.
+- Usage limits for Codex come from that profile's own running conversation.
+- A terminal tab whose agent conversation is reopened on restore keeps it while the agent is still starting.
+
 ## 0.1.2
 
 - While Octomux connects to its background service at launch (a few seconds right after an update), the window

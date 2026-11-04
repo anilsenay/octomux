@@ -48,6 +48,13 @@ pub struct Daemon {
     program_pid: Mutex<HashMap<String, i32>>,
     /// Per session: when find_claude_conversation last ran.
     resume_scan: Mutex<HashMap<String, Instant>>,
+    /// Per terminal tab: when we typed the command reopening its agent conversation (restore). Until that agent
+    /// is up (a shell's rc files can take seconds) its not running yet doesn't mean it exited.
+    resuming: Mutex<HashMap<String, Instant>>,
+    /// Per session running Codex: its process (0 = not found yet) and when its open rollout was last read.
+    codex_scan: Mutex<HashMap<String, (i32, Instant)>>,
+    /// Per CODEX_HOME: `session_index.jsonl`'s mtime and the conversation names in it.
+    codex_names: Mutex<HashMap<std::path::PathBuf, (std::time::SystemTime, HashMap<String, String>)>>,
     /// `daemon.stop_all` is taking everything down: sessions that die now are restored on the next start.
     stopping_all: std::sync::atomic::AtomicBool,
 }
@@ -210,6 +217,9 @@ pub fn run(paths: Paths) -> Result<()> {
         activity_at: Mutex::new(HashMap::new()),
         program_pid: Mutex::new(HashMap::new()),
         resume_scan: Mutex::new(HashMap::new()),
+        resuming: Mutex::new(HashMap::new()),
+        codex_scan: Mutex::new(HashMap::new()),
+        codex_names: Mutex::new(HashMap::new()),
         stopping_all: std::sync::atomic::AtomicBool::new(false),
     });
 
@@ -269,6 +279,7 @@ pub fn run(paths: Paths) -> Result<()> {
             std::thread::sleep(Duration::from_secs(1));
             d.poll_agent_titles();
             d.check_reporting_programs();
+            d.track_codex();
         });
     }
 
@@ -478,14 +489,16 @@ impl Daemon {
         // A terminal tab that had an agent conversation open when it was stopped (or crashed): reopen it in
         // the new shell, typed as the user would, so leaving the agent lands in the shell again.
         if session.kind == SessionKind::Terminal {
-            if let Some(r) = session.resume_agent.as_ref().filter(|r| r.app == "claude-code") {
+            if let Some(r) = session.resume_agent.as_ref().filter(|r| matches!(r.app.as_str(), "claude-code" | "codex")) {
+                let (var, cmd) = if r.app == "codex" { ("CODEX_HOME", "codex resume") } else { ("CLAUDE_CONFIG_DIR", "claude --resume") };
                 let line = match &r.config_dir {
-                    Some(d) => format!("CLAUDE_CONFIG_DIR={} claude --resume {}\r", util::shell_quote(d), util::shell_quote(&r.session_id)),
-                    None => format!("claude --resume {}\r", util::shell_quote(&r.session_id)),
+                    Some(d) => format!("{var}={} {cmd} {}\r", util::shell_quote(d), util::shell_quote(&r.session_id)),
+                    None => format!("{cmd} {}\r", util::shell_quote(&r.session_id)),
                 };
                 if let Ok(mut c) = HolderClient::connect(&self.paths, id, Role::Control, 0, 0) {
                     let _ = c.send(&Frame::new(Kind::Input, line.into_bytes()));
                 }
+                self.resuming.lock().unwrap().insert(id.to_string(), Instant::now());
                 self.with_session(id, |s| s.agent_app = Some(r.app.clone()));
             }
         }
@@ -638,17 +651,19 @@ impl Daemon {
 
     /// Codex rate limits from its rollout files (profiles with a running session), on `usage.refresh`.
     fn poll_codex_usage(&self, only: Option<&[String]>) {
-        let profiles: Vec<Profile> = {
+        let profiles: Vec<(Profile, Vec<String>)> = {
             let st = self.state.lock().unwrap();
             st.profiles
                 .iter()
                 .filter(|p| p.kind == AgentKind::Codex && only.is_none_or(|ids| ids.iter().any(|i| i == &p.id)))
-                .filter(|p| st.sessions.iter().any(|s| s.profile_id.as_deref() == Some(&p.id) && s.state == SessionState::Running))
-                .cloned()
+                .filter_map(|p| {
+                    let running: Vec<&Session> = st.sessions.iter().filter(|s| s.profile_id.as_deref() == Some(&p.id) && s.state == SessionState::Running).collect();
+                    (!running.is_empty()).then(|| (p.clone(), running.iter().filter_map(|s| s.transcript_path.clone()).collect()))
+                })
                 .collect()
         };
-        for p in profiles {
-            let r = agents::codex_rate_limits(&p);
+        for (p, rollouts) in profiles {
+            let r = agents::codex_rate_limits(&p, &rollouts);
             self.store_usage(&p.id, r);
         }
     }
@@ -665,6 +680,7 @@ impl Daemon {
         };
         let mut updates = Vec::new();
         let mut interrupted = Vec::new();
+        let mut codex_turns = Vec::new();
         {
             let mut scans = self.title_scan.lock().unwrap();
             scans.retain(|id, _| targets.iter().any(|(t, _)| t == id));
@@ -672,6 +688,11 @@ impl Daemon {
                 let sc = scans.entry(id.clone()).or_default();
                 if sc.path != path {
                     *sc = TitleScan { path: path.clone(), ..Default::default() };
+                }
+                // Codex keeps conversation names apart from the rollout (renames don't touch it).
+                let codex = agents::parse_rollout_path(&path);
+                if let Some(name) = codex.as_ref().and_then(|c| self.codex_thread_name(c)) {
+                    updates.push((id.clone(), name));
                 }
                 let Ok(mut f) = std::fs::File::open(&path) else { continue };
                 let len = f.metadata().map(|m| m.len()).unwrap_or(0);
@@ -691,12 +712,19 @@ impl Daemon {
                 }
                 // Only whole lines; a partial last line is read again next time.
                 let Some(end) = buf.iter().rposition(|b| *b == b'\n') else { continue };
+                let first = sc.offset == 0;
                 sc.offset += end as u64 + 1;
                 let (mut c, mut a) = (sc.custom.take(), sc.ai.take());
                 let chunk = String::from_utf8_lossy(&buf[..end]);
                 scan_titles(&chunk, &mut c, &mut a);
                 if let Some((true, ts)) = last_turn_record(&chunk) {
                     interrupted.push((id.clone(), ts));
+                }
+                // A resumed conversation's file starts with its old turns: only a fresh one counts there.
+                if let Some((turn, ts)) = codex.as_ref().and_then(|_| agents::codex_last_turn_event(&chunk)) {
+                    if !first || ts.is_some_and(|t| t + 5_000 >= util::now_millis()) {
+                        codex_turns.push((id.clone(), turn));
+                    }
                 }
                 sc.custom = c;
                 sc.ai = a;
@@ -707,6 +735,9 @@ impl Daemon {
         }
         for (id, ts) in interrupted {
             self.on_interrupt(&id, ts);
+        }
+        for (id, turn) in codex_turns {
+            self.on_codex_turn(&id, turn);
         }
         let mut any = false;
         for (id, t) in updates {
@@ -744,11 +775,18 @@ impl Daemon {
         let mut pids = self.program_pid.lock().unwrap();
         pids.retain(|id, _| reporting.iter().any(|(r, _)| r == id));
         let mut gone = Vec::new();
+        let mut resuming = self.resuming.lock().unwrap();
+        resuming.retain(|_, t| t.elapsed() < Duration::from_secs(60));
         for (id, app) in reporting {
             let pid = match pids.get(&id) {
                 Some(p) => *p,
                 None => match self.find_program_pid(&id, app.as_deref()) {
-                    Some(Some(p)) => *pids.entry(id.clone()).or_insert(p),
+                    Some(Some(p)) => {
+                        resuming.remove(&id);
+                        *pids.entry(id.clone()).or_insert(p)
+                    }
+                    // Typed for a restore a moment ago: still starting.
+                    Some(None) if resuming.contains_key(&id) => continue,
                     Some(None) => {
                         gone.push(id); // a known app no longer running (e.g. reported before a daemon restart)
                         continue;
@@ -762,6 +800,7 @@ impl Daemon {
             }
         }
         let alive: Vec<(String, i32)> = pids.iter().filter(|(_, p)| **p > 0).map(|(i, p)| (i.clone(), *p)).collect();
+        drop(resuming);
         drop(pids);
         for id in gone {
             self.on_holder_event(&id, HolderEvent::ProgramStatus { state: "clear".into(), app: String::new(), kind: String::new() });
@@ -847,6 +886,95 @@ impl Daemon {
             }
         }
         Some(None)
+    }
+
+    /// A turn event from the rollout of a Codex that doesn't report its state (older than 0.164). Codex that
+    /// reports is left to its reports, which also know when it waits for an approval.
+    fn on_codex_turn(&self, id: &str, turn: agents::CodexTurn) {
+        if self.with_session(id, |s| s.reports_status) != Some(false) {
+            return;
+        }
+        match turn {
+            agents::CodexTurn::Started => self.set_activity(id, Activity::Working),
+            agents::CodexTurn::Complete => self.set_activity(id, Activity::Done),
+            agents::CodexTurn::Aborted => self.on_interrupt(id, None),
+        }
+    }
+
+    /// The conversation's name in `<CODEX_HOME>/session_index.jsonl`, read again only when that file changes.
+    fn codex_thread_name(&self, c: &agents::CodexConversation) -> Option<String> {
+        let file = c.codex_home.join("session_index.jsonl");
+        let mtime = std::fs::metadata(&file).and_then(|m| m.modified()).ok()?;
+        let mut names = self.codex_names.lock().unwrap();
+        if names.get(&c.codex_home).is_none_or(|(t, _)| *t != mtime) {
+            let map = agents::parse_session_index(&std::fs::read_to_string(&file).unwrap_or_default());
+            names.insert(c.codex_home.clone(), (mtime, map));
+        }
+        names.get(&c.codex_home)?.1.get(&c.id).cloned()
+    }
+
+    /// The conversation of every running Codex: launched Codex agents, and a `codex` running in a terminal tab
+    /// (it reports `app=codex`). Read from the rollout file the process keeps open, every 2 s (it changes on
+    /// /new and /resume). Gives the chat view and the title scan their transcript, a launched session the id it
+    /// resumes with, and a terminal tab the conversation to reopen (`codex resume`) when it is restored.
+    pub(crate) fn track_codex(&self) {
+        let targets: Vec<(String, bool)> = {
+            let st = self.state.lock().unwrap();
+            st.sessions
+                .iter()
+                .filter(|s| s.state == SessionState::Running)
+                .filter_map(|s| {
+                    let launched = s.kind == SessionKind::Agent
+                        && s.profile_id.as_ref().is_some_and(|pid| st.profiles.iter().any(|p| &p.id == pid && p.kind == AgentKind::Codex));
+                    let typed = s.kind != SessionKind::Agent && s.agent_app.as_deref() == Some("codex");
+                    (launched || typed).then(|| (s.id.clone(), launched))
+                })
+                .collect()
+        };
+        let targets: Vec<(String, bool)> = targets.into_iter().filter(|(id, _)| holder_alive(&self.paths, id)).collect();
+        let mut found = Vec::new();
+        {
+            let mut scans = self.codex_scan.lock().unwrap();
+            scans.retain(|id, _| targets.iter().any(|(t, _)| t == id));
+            for (id, launched) in targets {
+                let e = scans.entry(id.clone()).or_insert((0, Instant::now() - Duration::from_secs(60)));
+                if e.1.elapsed() < Duration::from_secs(2) {
+                    continue;
+                }
+                e.1 = Instant::now();
+                if e.0 <= 0 || unsafe { libc::kill(e.0, 0) } != 0 {
+                    e.0 = match self.find_program_pid(&id, Some("codex")) {
+                        Some(Some(p)) => p,
+                        _ => 0,
+                    };
+                }
+                if e.0 > 0 {
+                    if let Some(c) = agents::codex_conversation_of(e.0) {
+                        found.push((id, launched, c));
+                    }
+                }
+            }
+        }
+        let default_home = util::home_dir().join(".codex");
+        for (id, launched, c) in found {
+            let changed = self.with_session(&id, |s| {
+                let before = (s.transcript_path.clone(), s.agent_session_id.clone(), s.resume_agent.clone());
+                s.transcript_path = Some(c.path.clone());
+                if launched {
+                    s.agent_session_id = Some(c.id.clone());
+                } else {
+                    let config_dir = (c.codex_home != default_home).then(|| c.codex_home.to_string_lossy().into_owned());
+                    s.resume_agent = Some(ResumeAgent { app: "codex".into(), session_id: c.id.clone(), config_dir, from_hook: false });
+                }
+                before != (s.transcript_path.clone(), s.agent_session_id.clone(), s.resume_agent.clone())
+            });
+            if changed == Some(true) {
+                if let Some(copy) = self.with_session(&id, |s| s.clone()) {
+                    self.persist_session(&copy);
+                }
+                self.changed();
+            }
+        }
     }
 
     /// You pressed Esc in a Claude session (its transcript says so): it is no longer working or waiting for you.
@@ -962,8 +1090,11 @@ impl Daemon {
                         if !gone {
                             s.agent_app = is_agent_app(&app).then(|| app.clone());
                         } else if s.state == SessionState::Running {
+                            // Its transcript and conversation title go with it (the tab is a shell again).
                             s.agent_app = None;
                             s.resume_agent = None;
+                            s.transcript_path = None;
+                            s.agent_title.clear();
                         }
                     }
                     before != (s.reports_status, s.agent_app.clone())
@@ -1386,7 +1517,7 @@ impl Daemon {
                 let aliases = self.aliases.lock().unwrap().clone();
                 let script = integration::script_path(&self.paths);
                 let st = self.state.lock().unwrap();
-                let list: Vec<Value> = st
+                let mut list: Vec<Value> = st
                     .profiles
                     .iter()
                     .filter(|p| p.kind == AgentKind::Claude)
@@ -1395,6 +1526,19 @@ impl Daemon {
                         json!({ "profile_id": p.id, "config_dir": dir, "status": integration::status(&dir, &script) })
                     })
                     .collect();
+                // Codex needs no hooks: from 0.164 on it reports its state itself, in launched sessions and in
+                // terminal tabs alike. Older ones only show working and done (from their rollout).
+                let codex: Vec<Profile> = st.profiles.iter().filter(|p| p.kind == AgentKind::Codex).cloned().collect();
+                drop(st);
+                for p in codex {
+                    let version = agents::codex_version(&p, &aliases);
+                    let status = match &version {
+                        Some(v) if agents::codex_reports_status(v) => "reports",
+                        Some(_) => "old",
+                        None => "unknown",
+                    };
+                    list.push(json!({ "profile_id": p.id, "kind": "codex", "version": version, "status": status }));
+                }
                 Ok(json!({ "profiles": list, "version": integration::VERSION }))
             }
             "integration.install" | "integration.uninstall" => {
