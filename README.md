@@ -120,4 +120,4 @@ Octomux stands on [Ghostty](https://github.com/ghostty-org/ghostty) (terminal en
 
 ## License
 
-Octomux is released under the [LICENSE_NAME](LICENSE).
+Octomux is released under the [MIT License](LICENSE).

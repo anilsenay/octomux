@@ -8,7 +8,7 @@
 | `core/` | Rust workspace: the `octomux` binary (daemon, holder, CLI) and `octomux-proto` (wire protocol). |
 | `app/editor-web/` | The code viewer (CodeMirror 6), bundled into `app/Resources/editor/` with `bun run build`. |
 | `tools/` | Build, release and test scripts, the debug client `dbg`, the UI fixture. |
-| `docs/` | Spec (`SPEC.md`), design system (`DESIGN.md`), decisions log (`DECISIONS.md`), progress notes. |
+| `docs/` | User guide, this file, the design system (`DESIGN.md`), README images. |
 
 ## Requirements
 

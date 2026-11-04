@@ -11,3 +11,6 @@
 app/editor-web/node_modules/
 /screenshots/
 dist/
+
+# Working notes kept out of the repo (progress logs, specs, decisions)
+/notes/
