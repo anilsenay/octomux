@@ -38,9 +38,8 @@ struct MarkedWorkspaceIcon: View {
     var body: some View {
         if attention != nil && mark.breathes && !reduceMotion {
             TimelineView(.animation(minimumInterval: 1 / 30)) { ctx in
-                // 0…1…0, eased (a slow breath, not a blink). The glow breathes slower than the bar.
-                let period = mark.isGlow ? 3.6 : 2.6
-                let t = ctx.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: period) / period
+                // 0…1…0 over 2.6 s, eased (a slow breath, not a blink).
+                let t = ctx.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 2.6) / 2.6
                 icon(level: 0.5 - 0.5 * cos(t * 2 * .pi))
             }
         } else {
@@ -52,13 +51,12 @@ struct MarkedWorkspaceIcon: View {
     private func icon(level: Double) -> some View {
         let color = (attention?.waiting ?? 0) > 0 ? T.amber : T.green
         let shape = RoundedRectangle(cornerRadius: 6, style: .continuous)
-        // How strong the mark is through a breath: the bar fades more, the glow only softens.
-        let breath = !mark.breathes ? 1 : mark.isGlow ? 0.55 + 0.45 * level : 0.35 + 0.65 * level
+        let breath = mark.breathes ? 0.35 + 0.65 * level : 1
         return WorkspaceIcon(workspace: workspace, size: 13, dimmed: dimmed)
             .frame(width: width, height: 24)
             .background {
                 if attention != nil && mark.isGlow {
-                    shape.fill(color.opacity(0.32 * breath)).padding(3).scaleEffect(mark.breathes ? 0.94 + 0.06 * level : 1).blur(radius: 4.5)
+                    shape.fill(color.opacity(0.32 * breath)).padding(3).scaleEffect(mark.breathes ? 0.85 + 0.15 * level : 1).blur(radius: 4)
                 }
             }
             .overlay(alignment: .bottom) {
