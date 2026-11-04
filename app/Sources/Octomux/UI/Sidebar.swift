@@ -871,30 +871,29 @@ func attentionText(_ a: (waiting: Int, unread: Int)) -> String {
 }
 
 /// Amber when something waits for input, else green (something new to look at).
-/// A soft wave behind a workspace that wants you, in the workspace's color: a glow spreads from the middle of
-/// its button to the corners and fades, then a pause. A faint still tint with Reduce Motion.
+/// A soft wave behind a workspace that wants you, in the workspace's color: a blurred glow grows from the
+/// middle of its button to about its size and fades, then a pause. Not clipped to the button, so no edge shows.
+/// A faint still glow with Reduce Motion.
 struct AttentionWave: View {
     let color: Color
     /// The wave's life, then the pause before the next one.
     var wave: Double = 1.4, pause: Double = 1.0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    private let shape = RoundedRectangle(cornerRadius: 6, style: .continuous)
+    private let shape = RoundedRectangle(cornerRadius: 7, style: .continuous)
 
     var body: some View {
         if reduceMotion {
-            shape.fill(color.opacity(0.12))
+            shape.fill(color.opacity(0.14)).padding(3).blur(radius: 4)
         } else {
             TimelineView(.animation(minimumInterval: 1 / 30)) { ctx in
                 let t = ctx.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: wave + pause)
                 let p = min(1, t / wave)
-                let grow = 1 - pow(1 - p, 3)                        // ease out
+                let grow = 1 - pow(1 - p, 3)                         // ease out
                 let alpha = p >= 1 ? 0 : 0.42 * min(1, p * 4) * (1 - p)  // quick fade in, slow fade out
-                GeometryReader { g in
-                    // Reaches the corners (half the diagonal) as it grows.
-                    let reach = max(1, (hypot(g.size.width, g.size.height) / 2) * (0.35 + 0.75 * grow))
-                    shape.fill(RadialGradient(colors: [color.opacity(alpha), color.opacity(alpha * 0.55), color.opacity(0)],
-                                              center: .center, startRadius: 0, endRadius: reach))
-                }
+                shape.fill(color.opacity(alpha))
+                    .padding(3)
+                    .scaleEffect(0.35 + 0.65 * grow)
+                    .blur(radius: 4)
             }
             .allowsHitTesting(false)
         }
