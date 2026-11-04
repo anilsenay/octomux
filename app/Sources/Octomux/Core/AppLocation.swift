@@ -41,6 +41,45 @@ enum AppLocation {
         return true
     }
 
+    /// Another Octomux (same bundle id, another process) already running: two copies would each point the
+    /// daemon's launchd agent at their own binary. Ask which one stays. Returns true when this one quits.
+    static func resolveOtherCopy() -> Bool {
+        guard !isDevRun, let id = Bundle.main.bundleIdentifier else { return false }
+        let me = ProcessInfo.processInfo.processIdentifier
+        var others = NSRunningApplication.runningApplications(withBundleIdentifier: id).filter { $0.processIdentifier != me }
+        // The copy that just moved us here (disk image / translocated) is quitting by itself: wait for it.
+        let movers = others.filter { a in
+            let p = a.bundleURL?.path ?? ""
+            return p.hasPrefix("/Volumes/") || p.contains("/AppTranslocation/")
+        }
+        let wait = Date().addingTimeInterval(5)
+        while movers.contains(where: { !$0.isTerminated }), Date() < wait {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+        others.removeAll { $0.isTerminated || movers.contains($0) }
+        guard let other = others.first else { return false }
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = "Octomux is already open"
+        let where_ = other.bundleURL?.deletingLastPathComponent().path ?? "another place"
+        alert.informativeText = "Another copy of Octomux is running from \(where_). Only one copy can run at a time. Your sessions keep running either way."
+        alert.addButton(withTitle: "Quit the Other Copy")
+        alert.addButton(withTitle: "Quit This One")
+        guard alert.runModal() == .alertFirstButtonReturn else {
+            other.activate()
+            NSApp.terminate(nil)
+            return true
+        }
+        for o in others { o.terminate() }
+        // Wait (bounded) so the other copy is gone before this one sets up the daemon.
+        let deadline = Date().addingTimeInterval(5)
+        while others.contains(where: { !$0.isTerminated }), Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+        for o in others where !o.isTerminated { o.forceTerminate() }
+        return false
+    }
+
     private static func move(to dest: URL) throws {
         let fm = FileManager.default
         if fm.fileExists(atPath: dest.path) {

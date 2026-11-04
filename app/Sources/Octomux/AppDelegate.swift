@@ -23,6 +23,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         // Opened from the disk image or Downloads: move to /Applications first (relaunches from there).
         if AppLocation.offerMoveIfNeeded() { return }
+        // Another copy already open (say the dev build and the installed one): only one may run.
+        if AppLocation.resolveOtherCopy() { return }
         buildMenu()
         Notifier.shared.start()
         AppModel.shared.start()

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.1
+
+- Only one copy of Octomux runs at a time: opening a second copy (say, one in Downloads and one in
+  Applications) asks which one to keep, instead of both taking over the background service.
+- The background service follows the copy you open, once at launch; a copy that was left open no longer takes
+  it back when it reconnects.
+
 ## 0.1.0 — first public release
 
 - Sessions in a background daemon (launchd agent, one holder per session): they survive app quits, crashes,

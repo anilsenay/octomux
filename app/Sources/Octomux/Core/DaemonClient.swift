@@ -118,17 +118,24 @@ final class DaemonClient {
     /// The user stopped Octomux (Settings): nothing may start the daemon again until they start it.
     static var held = false
 
+    /// Whether this app process already made the launchd agent point at its own CLI.
+    private static var agentChecked = false
+
     /// Makes sure a daemon is running (installs/kickstarts the launchd agent if needed).
     static func ensureDaemon() -> Bool {
         if held { return LineSocket(path: Paths.daemonSocket.path) != nil }
         let agents = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/LaunchAgents")
         let plist = agents.appendingPathComponent("dev.octomux.daemon.plist")
-        if !Paths.homeFromEnv && agentProgram(plist) != Paths.cliBinary {
-            // First run (or first run after the rename): also replaces the pre-rename `dev.ade-dev.daemon` agent,
-            // whose daemon may be serving the socket right now. Also when the agent runs another copy's CLI
-            // (the app was moved, or a second copy is opened): the daemon and the agents' hooks follow the
-            // agent's binary. Sessions survive the daemon restart.
-            run([Paths.cliBinary, "install-agent"])
+        if !Paths.homeFromEnv && !agentChecked {
+            agentChecked = true
+            if agentProgram(plist) != Paths.cliBinary {
+                // First run (or first run after the rename): also replaces the pre-rename `dev.ade-dev.daemon`
+                // agent, whose daemon may be serving the socket right now. Also when the agent runs another
+                // copy's CLI (the app was moved or updated to another place): the daemon and the agents' hooks
+                // follow the agent's binary. Sessions survive the daemon restart. Only once, at launch: on a
+                // reconnect, an older copy that is still open must not take the agent back.
+                run([Paths.cliBinary, "install-agent"])
+            }
         }
         if LineSocket(path: Paths.daemonSocket.path) != nil { return true }
         run([Paths.cliBinary, "status"])
