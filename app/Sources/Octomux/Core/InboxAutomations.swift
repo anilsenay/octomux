@@ -30,7 +30,7 @@ struct InboxRule: Codable, Equatable, Identifiable {
     /// "New review requests in octo/storefront → review it (read-only)".
     var summary: String {
         let what = [kind == "pr" ? "pull requests" : kind == "issue" ? "issues" : "items",
-                    source.map { "from " + ($0 == "github" ? "GitHub" : "Jira") }].compactMap { $0 }.joined(separator: " ")
+                    source.map { "from " + (InboxSource(rawValue: $0)?.name ?? $0) }].compactMap { $0 }.joined(separator: " ")
         let why = reason.flatMap { InboxItem.Reason(rawValue: $0)?.rawValue.lowercased() }.map { " (\($0))" } ?? ""
         let whereText = place.isEmpty ? "" : " in “\(place)”"
         return "New \(what)\(why)\(whereText) → \(action.title.lowercased())"

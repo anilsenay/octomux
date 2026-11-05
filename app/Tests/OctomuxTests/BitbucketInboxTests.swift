@@ -361,4 +361,126 @@ final class BitbucketInboxTests: XCTestCase {
         XCTAssertNotNil(s2.seen["gh:o/r#1"])
         XCTAssertEqual(InboxStore.repoKey(i), "bitbucket.org/acme/api")
     }
+
+    // MARK: Agents, notifications, automations, Jira (B2)
+
+    private func bbItem(_ reason: InboxItem.Reason = .review, failed: [InboxItem.FailedCheck] = []) -> InboxItem {
+        var i = BitbucketClient.item(pr(7, reviewers: ["acc-me"]), reason: reason, me: "acc-me")!
+        if !failed.isEmpty { i.checks = .failing; i.failedCheckDetails = failed; i.failedChecks = failed.map(\.name) }
+        return i
+    }
+
+    func testPromptsUseGitNotGh() {
+        let review = InboxStart.prompt(bbItem(), .review)
+        XCTAssertTrue(review.contains("git fetch origin feature-7 main"))
+        XCTAssertTrue(review.contains("git diff origin/main...origin/feature-7"))
+        XCTAssertFalse(review.contains("gh "))
+        XCTAssertTrue(review.contains("<work-item source=\"Bitbucket\">"))
+        let fix = InboxStart.prompt(bbItem(failed: [.init(name: "Pipeline #3", url: "u")]), .fix)
+        XCTAssertTrue(fix.contains("(Pipeline #3)"))
+        XCTAssertTrue(fix.contains("git fetch origin feature-7 && git checkout feature-7"))
+        XCTAssertTrue(fix.contains("Don't commit or push."))
+        XCTAssertFalse(fix.contains("gh "))
+        let work = InboxStart.prompt(bbItem(.mine), .work)
+        XCTAssertTrue(work.hasPrefix("Work on pull request #7 of acme/api on Bitbucket"))
+        XCTAssertTrue(InboxStart.askPrompt(bbItem()).contains("this Bitbucket pull request"))
+    }
+
+    func testFixEvidenceFromBuilds() {
+        let i = bbItem(failed: [.init(name: "Pipeline #3", url: "https://bitbucket.org/acme/api/pipelines/results/3", title: "Tests failed")])
+        // No gh log is read for Bitbucket; without a Pipelines reader the build's own words and link go in.
+        let parts = InboxCI.collect(i, log: { _, _ in XCTFail("gh asked"); return "" })
+        XCTAssertEqual(parts, [.init(name: "Pipeline #3", text: "Tests failed")])
+        var bare = i; bare.failedCheckDetails = [.init(name: "Lint", url: "https://x/1")]
+        XCTAssertEqual(InboxCI.collect(bare, log: { _, _ in "" }).first?.text, "(no log; see https://x/1)")
+        XCTAssertEqual(InboxCI.collect(bare, log: { _, _ in "" }, bitbucketLog: { _, _ in "line\nError: boom" }).first?.text, "line\nError: boom")
+    }
+
+    func testRulesMatchBitbucket() {
+        let r = InboxRule(name: "r", source: "bitbucket", kind: "pr", reason: InboxItem.Reason.review.rawValue, place: "acme")
+        XCTAssertTrue(r.matches(bbItem()))
+        XCTAssertFalse(r.matches(bbItem(.mine)))
+        XCTAssertTrue(r.summary.contains("from Bitbucket"))
+        XCTAssertFalse(InboxRule(name: "g", source: "github").matches(bbItem()))
+    }
+
+    func testJiraKeys() {
+        let known: Set<String> = ["SHOP", "DC"]
+        XCTAssertEqual(InboxStore.jiraKeys(title: "SHOP-7: fix and DC-12", branch: "feature/shop-7-x", known: known), ["SHOP-7", "DC-12"])
+        XCTAssertEqual(InboxStore.jiraKeys(title: "Refunds", branch: "feature/dc-4162-split", known: known), ["DC-4162"])
+        XCTAssertEqual(InboxStore.jiraKeys(title: "UTF-8 and SHOP-0", branch: nil, known: known), [])        // unknown project; no -0
+        // No projects known yet: the title's keys only (branches are too loose then).
+        XCTAssertEqual(InboxStore.jiraKeys(title: "ABC-1 tidy", branch: "xyz-2", known: []), ["ABC-1"])
+        XCTAssertEqual(InboxStore.jiraKeys(title: "XSHOP-7", branch: nil, known: ["SHOP"]), [])
+    }
+
+    private func quietStore() -> (InboxStore, () -> [AppNotification]) {
+        let name = "bbstore-\(UUID().uuidString)"
+        let d = UserDefaults(suiteName: name)!
+        addTeardownBlock { d.removePersistentDomain(forName: name) }
+        let store = InboxStore(defaults: d)
+        var sent: [AppNotification] = []
+        store.deliver = { sent.append($0) }; store.chime = {}
+        store.background = { $0() }; store.onMain = { $0() }
+        store.appeared = { _ in }
+        return (store, { sent })
+    }
+
+    func testJiraLinksInTheStore() {
+        let (store, _) = quietStore()
+        store.fixtureOn = [.jira, .bitbucket]
+        store.jiraProjects = [(id: "1", key: "SHOP", name: "Shop")]
+        var p = bbItem(); p = InboxItem(id: p.id, source: .bitbucket, kind: .pr, key: p.key, place: p.place, title: "Refunds", author: "Ann",
+                                        assignee: nil, status: "Open", statusTone: "done", reason: .review, updated: Date(), body: "", url: "",
+                                        branch: "feature/SHOP-7-split", number: 7, base: "main")
+        let issue = InboxItem(id: "jira:SHOP-7", source: .jira, kind: .issue, key: "SHOP-7", place: "Shop", title: "Split refunds", author: "",
+                              assignee: "You", status: "In Progress", statusTone: "progress", reason: .assigned, updated: Date(), body: "",
+                              url: "https://x.atlassian.net/browse/SHOP-7")
+        store.apply(.bitbucket, .success([p]))
+        store.apply(.jira, .success([issue]))
+        XCTAssertEqual(store.jiraKeys(p), ["SHOP-7"])
+        XCTAssertEqual(store.jiraItem("SHOP-7")?.id, issue.id)
+        XCTAssertEqual(store.pullRequests(naming: "SHOP-7").map(\.id), [p.id])
+        XCTAssertEqual(InboxStart.relatedJira(p, store: store), "Jira: SHOP-7 Split refunds (https://x.atlassian.net/browse/SHOP-7)")
+        store.fixtureOn = [.bitbucket]                      // Jira not connected: no links
+        XCTAssertEqual(store.jiraKeys(p), [])
+    }
+
+    func testNotificationsForBitbucket() {
+        let (store, sent) = quietStore()
+        let first = bbItem(.mine)
+        store.apply(.bitbucket, .success([first]))
+        XCTAssertTrue(sent().isEmpty)                                        // the first fetch is quiet
+        var review = BitbucketClient.item(pr(8, reviewers: ["acc-me"]), reason: .review, me: "acc-me")!
+        review.updated = Date()
+        var failing = first
+        failing.checks = .failing
+        failing.updated = first.updated.addingTimeInterval(30)             // a push whose build failed
+        store.apply(.bitbucket, .success([failing, review]))
+        XCTAssertEqual(sent().last?.title, "2 new in your Inbox")
+        XCTAssertTrue(sent().last?.body.contains("Checks failed on #7") == true)
+        XCTAssertTrue(sent().last?.body.contains("Review requested: #8") == true)
+        // A change on your pull request says who did what, from its Activity.
+        store.loadActivity = { _ in InboxActivity(events: [InboxEvent(kind: .review, actor: "Bob", date: Date(), summary: "approved", field: "review")]) }
+        var approved = failing
+        approved.updated = failing.updated.addingTimeInterval(60)
+        store.apply(.bitbucket, .success([approved, review]))
+        XCTAssertEqual(sent().last?.title, "#7: Bob approved")
+    }
+
+    func testLinkedNewsGoesToItsSession() {
+        let (store, _) = quietStore()
+        let i = bbItem(.mine)
+        store.apply(.bitbucket, .success([i]))
+        store.link(i.id, session: "s1", since: i.updated.timeIntervalSince1970)
+        store.loadActivity = { _ in InboxActivity(events: [
+            InboxEvent(kind: .comment, actor: "Bob", date: Date().addingTimeInterval(30), summary: "commented", detail: "Rename it?"),
+            InboxEvent(kind: .change, actor: "Bob", date: Date().addingTimeInterval(30), summary: "opened it", field: "opened"),
+        ]) }
+        var later = i; later.updated = Date().addingTimeInterval(60)
+        store.apply(.bitbucket, .success([later]))
+        XCTAssertEqual(store.linkedNotices["s1"]?.events.map(\.summary), ["commented"])
+        let text = InboxStore.linkedPrompt(store.linkedNotices["s1"]!, source: InboxSource.of(id: i.id)!.name)
+        XCTAssertTrue(text.contains("<work-item-update source=\"Bitbucket\">"))
+    }
 }

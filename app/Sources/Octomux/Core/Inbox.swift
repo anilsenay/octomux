@@ -823,6 +823,37 @@ final class InboxStore: ObservableObject {
         }
     }
 
+    // MARK: Jira issues named by pull requests
+
+    /// The Jira keys (SHOP-7) a pull request names in its title or branch. With Jira connected only: keys of the
+    /// projects known here (its project list and the issues in the Inbox), or the title's when none is known yet.
+    func jiraKeys(_ i: InboxItem) -> [String] {
+        guard i.kind == .pr, i.source.isCodeHost, isOn(.jira) else { return [] }
+        let known = Set(jiraProjects.map(\.key)).union(items.filter { $0.source == .jira }.map(\.projectKey))
+        return Self.jiraKeys(title: i.title, branch: i.branch, known: known)
+    }
+
+    static func jiraKeys(title: String, branch: String?, known: Set<String>) -> [String] {
+        let re = try! NSRegularExpression(pattern: #"(?<![A-Z0-9_])([A-Z][A-Z0-9_]+-[1-9][0-9]*)(?![0-9])"#)
+        func find(_ s: String) -> [String] {
+            re.matches(in: s, range: NSRange(location: 0, length: (s as NSString).length)).map { (s as NSString).substring(with: $0.range(at: 1)) }
+        }
+        var found = find(title)
+        if !known.isEmpty {
+            // Branches are often lowercase (feature/shop-7-…); a known project makes that safe.
+            if let b = branch { found += find(b.uppercased()) }
+            found = found.filter { known.contains(String($0.split(separator: "-").first ?? "")) }
+        }
+        var seen = Set<String>()
+        return found.filter { seen.insert($0).inserted }
+    }
+
+    /// The Inbox's Jira issue with this key, if it is listed.
+    func jiraItem(_ key: String) -> InboxItem? { items.first { $0.source == .jira && $0.key == key } }
+
+    /// The pull requests in the Inbox that name this Jira issue.
+    func pullRequests(naming key: String) -> [InboxItem] { items.filter { $0.kind == .pr && jiraKeys($0).contains(key) } }
+
     // MARK: Projects
 
     /// The Octomux project an item's agent works in: the last one picked for its repo / Jira project, else the

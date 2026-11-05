@@ -26,6 +26,17 @@ enum InboxFixture {
         store.fixtureApply(.github, fixtureItems.filter { $0.source == .github && $0.kind != .pr })
     }
 
+    /// A Bitbucket refresh that brings a new review request (#8) in.
+    static func newBitbucketPR() {
+        var pr = InboxItem(id: "bb:acme/payments-api#8", source: .bitbucket, kind: .pr, key: "#8", place: "acme/payments-api",
+                           title: "SHOP-7: round refunds per currency", author: "Eli", assignee: nil, status: "Open", statusTone: "done",
+                           reason: .review, updated: Date(), body: "Rounds each item's refund in its currency.",
+                           url: "https://bitbucket.org/acme/payments-api/pull-requests/8", branch: "eli/refund-rounding", number: 8, base: "develop")
+        pr.head = "77aa88bb99cc"; pr.checks = .pending; pr.checkCounts = (0, 0, 1)
+        fixtureItems.append(pr)
+        InboxStore.shared.fixtureApply(.bitbucket, fixtureItems.filter { $0.source == .bitbucket })
+    }
+
     /// A refresh in which the Bitbucket review request is gone because it was declined.
     static func declineBitbucket() {
         let store = InboxStore.shared

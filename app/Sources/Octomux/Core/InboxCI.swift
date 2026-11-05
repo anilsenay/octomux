@@ -40,18 +40,21 @@ enum InboxCI {
 
     struct Part: Equatable { let name: String; let text: String }
 
-    /// Each failed check's evidence. `log` reads one Actions job's failed log (gh; swapped in tests and the fixture).
-    static func collect(_ item: InboxItem, log: (String, String) throws -> String) -> [Part] {
-        guard let repo = item.repo else { return [] }
+    /// Each failed check's evidence. `log` reads one Actions job's failed log (gh; swapped in tests and the fixture);
+    /// a Bitbucket build's goes through `bitbucketLog` (Pipelines; nil: the build's own description and link only).
+    static func collect(_ item: InboxItem, log: (String, String) throws -> String,
+                        bitbucketLog: ((InboxItem, InboxItem.FailedCheck) throws -> String)? = nil) -> [Part] {
+        guard item.source.isCodeHost else { return [] }
         var parts: [Part] = []
         for c in item.failedCheckDetails.prefix(6) {
             var text = ""
-            if let job = jobId(c.url), let raw = try? log(repo, job) { text = clean(raw) }
+            if let repo = item.repo, let job = jobId(c.url), let raw = try? log(repo, job) { text = clean(raw) }
+            if item.source == .bitbucket, let read = bitbucketLog, let raw = try? read(item, c) { text = clean(raw) }
             if text.isEmpty {
                 text = [c.title, c.summary].compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }.joined(separator: "\n")
                 text = String(text.prefix(maxPerCheck))
             }
-            if text.isEmpty { text = "(no log; see \(c.url.isEmpty ? "the check on GitHub" : c.url))" }
+            if text.isEmpty { text = "(no log; see \(c.url.isEmpty ? "the check on \(item.source.name)" : c.url))" }
             parts.append(Part(name: c.name, text: text))
         }
         return parts

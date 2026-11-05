@@ -68,6 +68,13 @@
     (comments, inline comments with their file and line, approvals, changes asked for, pushes, merge/decline),
     the Code tab and the builds; declined and superseded pull requests stay a while like merged ones. Settings →
     Inbox picks the workspaces and repos, and can look in every repo instead.
+  - **Agents on Bitbucket pull requests**: Send to agent, Review with agent, Fix with agent and Ask work on them
+    too; the branch comes through git with your own credentials (the token never goes to git), and Fix starts
+    from what the failed builds reported. Linked sessions hear about new comments, approvals and pushes,
+    notifications say who did what ("#7: Ann approved"), and automations can pick Bitbucket as their source.
+  - **Jira issues named by pull requests**: a pull request whose title or branch names a Jira issue
+    (feature/SHOP-7-…) shows it under the header, with its status; the issue shows its pull requests. The agent's
+    prompt names the issue too.
   - Fixed: old items you had read (last updated two months ago or more) could come back unread after a relaunch
     when the other source loaded first.
   - Settings → Inbox: connections, Jira projects, GitHub repositories, what shows up, notifications, and what
