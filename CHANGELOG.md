@@ -114,6 +114,10 @@
     files, with your own git access (it fails rather than asking for a password). It stays for later reviews
     of that repo and goes after 7 days without one; Settings → Inbox shows their size and removes them.
     Automations still review only in local clones.
+  - Background reviews now run in the app as they were meant to. Claude gets its read-only tool limits as flags
+    (the settings they were passed in never reached it, so it ran with your usual permissions) and runs in
+    print mode; Codex runs as `codex exec`. Before, both stopped at their "trust this folder?" question in
+    every new review folder and the review hung until its time ran out.
   - The background review's Claude loads only your own settings and MCP servers: a pull request that adds hooks to
     its .claude settings or servers to its .mcp.json can no longer run them during the review. Its .codex folder
     is left out of the review's checkout: Codex loads it (MCP servers, notify commands) whenever your clone is a

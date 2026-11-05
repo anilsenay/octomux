@@ -352,12 +352,17 @@ enum DebugActions {
                 }
             case "inbox_review":      // Review in worktree for the open item (like its button); "auto": true as an automation would; "profile": agent id; "again": false = from scratch
                 if let item = InboxStore.shared.items.first(where: { $0.id == InboxStore.shared.selectedId }) {
+                    // "real": true reads the agent's own answer from its transcript (the fixture otherwise makes one up).
+                    if (p["real"] as? Bool) == true { InboxReviews.shared.read = InboxReviews.readSession }
                     if let proj = InboxStore.shared.checkoutProject(for: item) {
                         if let why = InboxReviews.shared.start(item, in: proj, profileId: p["profile"] as? String, auto: (p["auto"] as? Bool) ?? false,
                                                                again: (p["again"] as? Bool) ?? true) { m.lastError = why }
                     } else { m.lastError = "no checkout project for \(item.place)" }
                 }
             case "inbox_review_discard": if let id = InboxStore.shared.selectedId { m.lastError = InboxReviews.shared.discard(id) }
+            case "profile_add":       // an agent profile (fixture runs): "name", "command", "kind"
+                m.client.call("profile.create", ["name": p["name"] as? String ?? "agent", "command": p["command"] as? String ?? "",
+                                                 "icon": p["kind"] as? String ?? "agent", "kind": p["kind"] as? String ?? "generic"], completion: m.report)
             case "inbox_review_preview": InboxReviews.shared.previewRequest = InboxStore.shared.selectedId   // the card's Post Comments…
             case "inbox_review_post":  // posts the open item's review as the preview would (default pick; past the confirmation); "verdict", "summary": true
                 if let item = InboxStore.shared.items.first(where: { $0.id == InboxStore.shared.selectedId }),

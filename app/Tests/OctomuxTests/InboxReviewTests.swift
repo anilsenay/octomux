@@ -58,13 +58,21 @@ final class InboxReviewTests: XCTestCase {
         XCTAssertEqual(InboxReviews.changedLines(""), 0)
         let claude = InboxReviews.agentArgs(.claude)
         // The pull request's own .claude settings (hooks) and .mcp.json don't load.
-        XCTAssertEqual(Array(claude.prefix(6)), ["--permission-mode", "default", "--setting-sources", "user", "--strict-mcp-config", "--settings"])
-        let settings = try! JSONSerialization.jsonObject(with: Data(claude[6].utf8)) as! [String: Any]
-        let perms = settings["permissions"] as! [String: [String]]
-        XCTAssertTrue(perms["deny"]!.contains("Edit") && perms["deny"]!.contains("Write"))
-        XCTAssertTrue(perms["allow"]!.contains("Bash(git diff:*)"))
-        XCTAssertFalse(perms["allow"]!.contains { $0.hasPrefix("Bash(git push") || $0 == "Bash" })
-        XCTAssertEqual(InboxReviews.agentArgs(.codex), ["--sandbox", "read-only", "--ask-for-approval", "never"])
+        XCTAssertEqual(claude.first, "-p")   // print mode: no folder-trust question nobody would answer
+        XCTAssertEqual(Array(claude.dropFirst().prefix(3)), ["--setting-sources", "user", "--strict-mcp-config"])
+        // No --settings: the daemon drops it from extra args, and a later one would replace it anyway.
+        XCTAssertFalse(claude.contains("--settings"))
+        func list(_ flag: String) -> [String] {
+            guard let k = claude.firstIndex(of: flag) else { return [] }
+            return Array(claude[(k + 1)...].prefix { !$0.hasPrefix("--") })
+        }
+        XCTAssertTrue(list("--disallowedTools").contains("Edit") && list("--disallowedTools").contains("Write"))
+        XCTAssertTrue(list("--disallowedTools").contains("Bash(git push:*)"))
+        XCTAssertTrue(list("--allowedTools").contains("Bash(git diff:*)"))
+        XCTAssertFalse(list("--allowedTools").contains { $0.hasPrefix("Bash(git push") || $0 == "Bash" })
+        // The tool lists are variadic: a flag with one value closes them, so nothing after them is taken in.
+        XCTAssertEqual(Array(claude.suffix(2)), ["--permission-mode", "default"])
+        XCTAssertEqual(InboxReviews.agentArgs(.codex), ["exec", "--sandbox", "read-only"])   // asks nothing, not even trust
     }
 
     private func pr(_ n: Int, draft: Bool = false) -> InboxItem {

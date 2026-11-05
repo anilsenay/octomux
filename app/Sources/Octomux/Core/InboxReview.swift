@@ -429,19 +429,25 @@ final class InboxReviews: ObservableObject {
     }
 
     /// The agent may read and look around (git diff / log / show / status), never edit or write, and asks nothing.
+    ///
+    /// Claude: tool flags, not a settings JSON. Octomux's daemon drops --settings from a session's extra args (it adds
+    /// its own), and of two --settings Claude keeps only the last (checked with Claude Code 2.1.318). The tool lists
+    /// are variadic: the flag after them ends them, and the daemon puts the prompt last, after --session-id. The
+    /// pull request's own .claude settings (hooks) and .mcp.json servers don't load.
+    /// Both run to the end without asking anything: print mode (`claude -p`) and `codex exec`. Interactive, each first
+    /// asks whether to trust the review's new folder (checked: Claude Code 2.1.318, Codex 0.166), and Codex's yes
+    /// would trust your clone; nobody is there to answer. Codex works in its read-only sandbox.
     static func agentArgs(_ kind: AgentKind) -> [String] {
         switch kind {
         case .claude:
-            let settings: [String: Any] = ["permissions": [
-                "allow": ["Read", "Grep", "Glob", "LS", "Bash(git diff:*)", "Bash(git log:*)", "Bash(git show:*)", "Bash(git status:*)", "Bash(git blame:*)"],
-                "deny": ["Edit", "Write", "NotebookEdit", "WebFetch", "WebSearch"],
-            ]]
-            let json = String(decoding: (try? JSONSerialization.data(withJSONObject: settings, options: [.sortedKeys])) ?? Data(), as: UTF8.self)
-            // The checkout is the pull request's code: its .claude/settings*.json could add hooks (commands that run
-            // whatever the tool permissions say) and its .mcp.json servers. Only your own settings and servers load.
-            return ["--permission-mode", "default", "--setting-sources", "user", "--strict-mcp-config", "--settings", json]
+            return ["-p", "--setting-sources", "user", "--strict-mcp-config",
+                    "--allowedTools", "Read", "Grep", "Glob", "Bash(git diff:*)", "Bash(git log:*)", "Bash(git show:*)", "Bash(git status:*)", "Bash(git blame:*)",
+                    "--disallowedTools", "Edit", "Write", "NotebookEdit", "WebFetch", "WebSearch",
+                    "Bash(git push:*)", "Bash(git commit:*)", "Bash(git checkout:*)", "Bash(git reset:*)", "Bash(git switch:*)",
+                    "Bash(rm:*)", "Bash(mv:*)", "Bash(cp:*)", "Bash(tee:*)",
+                    "--permission-mode", "default"]
         case .codex:
-            return ["--sandbox", "read-only", "--ask-for-approval", "never"]
+            return ["exec", "--sandbox", "read-only"]
         default:
             return []
         }
