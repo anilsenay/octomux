@@ -273,6 +273,7 @@ enum BitbucketClient {
             branch: (src?["branch"] as? [String: Any])?["name"] as? String, number: id,
             base: (dest?["branch"] as? [String: Any])?["name"] as? String)
         item.head = (src?["commit"] as? [String: Any])?["hash"] as? String
+        item.commentCount = pr["comment_count"] as? Int
         for p in pr["participants"] as? [[String: Any]] ?? [] {
             let mine = me != nil && ((p["user"] as? [String: Any])?["account_id"] as? String) == me
             if p["approved"] as? Bool == true { item.approvals += 1; if mine { item.youApproved = true } }

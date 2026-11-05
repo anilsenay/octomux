@@ -73,6 +73,8 @@ struct InboxItem: Identifiable, Equatable {
     var changesRequested = 0
     var youApproved = false
     var youRequestedChanges = false
+    /// Comments so far (GitHub: the conversation's; Bitbucket: all, inline ones too). Nil when not known.
+    var commentCount: Int? = nil
     var isDraft: Bool { kind == .pr && status == "Draft" }
 
     static func == (a: InboxItem, b: InboxItem) -> Bool {
@@ -939,12 +941,12 @@ enum GitHubInbox {
     }
 
     static let prFields = """
-    number title url updatedAt isDraft state headRefName baseRefName body
+    number title url updatedAt isDraft state headRefName baseRefName body comments { totalCount }
     repository { nameWithOwner } author { login } assignees(first: 3) { nodes { login } }
     commits(last: 1) { nodes { commit { statusCheckRollup { state
       contexts(first: 80) { nodes { __typename ... on CheckRun { name conclusion status detailsUrl title summary } ... on StatusContext { context state targetUrl description } } } } } } }
     """
-    static let issueFields = "number title url updatedAt state body repository { nameWithOwner } author { login } assignees(first: 3) { nodes { login } }"
+    static let issueFields = "number title url updatedAt state body comments { totalCount } repository { nameWithOwner } author { login } assignees(first: 3) { nodes { login } }"
 
     static func searches() -> [(alias: String, reason: InboxItem.Reason, query: String)] {
         var s: [(String, InboxItem.Reason, String)] = []
@@ -1002,6 +1004,7 @@ enum GitHubInbox {
             status: draft ? "Draft" : "Open", statusTone: draft ? "todo" : "done", reason: reason,
             updated: InboxDates.iso(n["updatedAt"] as? String) ?? Date(), body: n["body"] as? String ?? "", url: url,
             branch: n["headRefName"] as? String, number: number, base: n["baseRefName"] as? String)
+        item.commentCount = (n["comments"] as? [String: Any])?["totalCount"] as? Int
         if isPR, let rollup = ((((n["commits"] as? [String: Any])?["nodes"] as? [[String: Any]])?.first?["commit"] as? [String: Any])?["statusCheckRollup"] as? [String: Any]) {
             var passed = 0, failed = 0, pending = 0
             var failedNames: [String] = []

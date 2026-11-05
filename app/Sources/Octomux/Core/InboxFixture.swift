@@ -80,16 +80,16 @@ enum InboxFixture {
         // Bitbucket: a review request with a failed build, and your own draft with a passing one.
         var bbReview = InboxItem(id: "bb:acme/payments-api#7", source: .bitbucket, kind: .pr, key: "#7", place: "acme/payments-api",
                                  title: "Refunds: split partial refunds per item", author: "Dana", assignee: nil, status: "Open", statusTone: "done",
-                                 reason: .review, updated: at(3), body: "Splits a partial refund across the order's items.\n\n- adds `RefundSplitter`\n- SHOP-7 follow-up",
+                                 reason: .review, updated: at(3), body: "[bot-note-0]: https://bot.example.com/#hidden-note-AAAA\n\nSplits a partial refund across the order's items.\n\n- adds `RefundSplitter`\n- SHOP-7 follow-up\n\n> ## Reviews paused\n> The bot waits for the branch to settle.",
                                  url: "https://bitbucket.org/acme/payments-api/pull-requests/7", branch: "feature/SHOP-7-refund-split", number: 7, base: "develop")
-        bbReview.head = "a1b2c3d4e5f6"; bbReview.approvals = 1; bbReview.changesRequested = 1
+        bbReview.head = "a1b2c3d4e5f6"; bbReview.approvals = 1; bbReview.changesRequested = 1; bbReview.commentCount = 18
         bbReview.checks = .failing; bbReview.checkCounts = (1, 1, 0); bbReview.failedChecks = ["Pipeline #318"]
         bbReview.failedCheckDetails = [.init(name: "Pipeline #318", url: "https://bitbucket.org/acme/payments-api/pipelines/results/318", title: "Tests failed in step test")]
         var bbMine = InboxItem(id: "bb:acme/web-shop#21", source: .bitbucket, kind: .pr, key: "#21", place: "acme/web-shop",
                                title: "Basket: show the delivery estimate", author: "You", assignee: nil, status: "Draft", statusTone: "todo",
                                reason: .mine, updated: at(45), body: "Shows the estimate under the basket total.",
                                url: "https://bitbucket.org/acme/web-shop/pull-requests/21", branch: "basket-estimate", number: 21, base: "main")
-        bbMine.head = "0f9e8d7c6b5a"; bbMine.approvals = 2; bbMine.checks = .passing; bbMine.checkCounts = (2, 0, 0)
+        bbMine.head = "0f9e8d7c6b5a"; bbMine.approvals = 2; bbMine.commentCount = 1; bbMine.checks = .passing; bbMine.checkCounts = (2, 0, 0)
         let history: [String: InboxActivity] = [
             bbReview.id: InboxActivity(events: [
                 InboxEvent(kind: .change, actor: "Dana", date: at(240), summary: "opened it", field: "opened"),

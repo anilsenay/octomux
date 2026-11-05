@@ -76,6 +76,9 @@
     request changes or withdraw it, merge (merge commit, squash or fast-forward; the branch stays), decline, and
     comment. Needs write:pullrequest on the token. **Fix with agent** reads the failed steps' logs of a Pipelines
     build (with read:pipeline); the log's storage link is followed without the token.
+  - **Comment counts** on pull requests and issues (GitHub and Bitbucket) next to approvals and changes asked for, in
+    the list and the detail. Descriptions no longer show Markdown link definitions ("[id]: https://…", where
+    review bots hide notes), and a heading inside a quote reads as one.
   - **Jira issues named by pull requests**: a pull request whose title or branch names a Jira issue
     (feature/SHOP-7-…) shows it under the header, with its status; the issue shows its pull requests. The agent's
     prompt names the issue too.

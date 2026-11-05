@@ -524,11 +524,12 @@ struct InboxRow: View {
                             .font(.system(size: T.k * 10.5, weight: .semibold)).foregroundStyle(InboxEndedColor.of(e))
                     } else {
                         Text(item.source == .jira ? item.status : item.reason.rawValue).font(.system(size: T.k * 10.5, weight: .medium)).foregroundStyle(reasonColor)
+                            .lineLimit(1).fixedSize()
                     }
                     Text("·").foregroundStyle(T.text3)
                     Text(item.place).font(.system(size: T.k * 10.5)).foregroundStyle(T.text3).lineLimit(1)
                     Spacer()
-                    if item.source == .bitbucket, item.ended == nil { InboxReviewTally(item: item) }
+                    if item.ended == nil { InboxReviewTally(item: item) }
                     if linked { Image(systemName: "sparkles").font(.system(size: T.k * 9.5)).foregroundStyle(T.text3).help("Has a session") }
                 }
             }
@@ -564,24 +565,31 @@ struct InboxStatusDot: View {
     }
 }
 
-/// A Bitbucket pull request's reviews so far: approvals, and changes asked for.
+/// An item's conversation so far: comments, and (Bitbucket) approvals and changes asked for.
 struct InboxReviewTally: View {
     let item: InboxItem
     var long = false
     var body: some View {
+        let comments = item.commentCount ?? 0
         HStack(spacing: 6) {
             if item.approvals > 0 {
                 Label(long ? "\(item.approvals) approved" : "\(item.approvals)", systemImage: "checkmark")
                     .foregroundStyle(item.youApproved ? T.green : T.text3)
             }
             if item.changesRequested > 0 {
-                Label(long ? "\(item.changesRequested) asked for changes" : "\(item.changesRequested)", systemImage: "exclamationmark.bubble")
+                Label(long ? "\(item.changesRequested) asked for changes" : "\(item.changesRequested)", systemImage: "exclamationmark.circle")
                     .foregroundStyle(T.amber)
+            }
+            if comments > 0 {
+                Label(long ? "\(comments) comment\(comments == 1 ? "" : "s")" : "\(comments)", systemImage: "bubble.left")
+                    .foregroundStyle(T.text3)
             }
         }
         .font(.system(size: T.k * 10.5, weight: .medium))
         .labelStyle(InboxTightLabel())
-        .help("\(item.approvals) approved\(item.youApproved ? " (you too)" : ""), \(item.changesRequested) asked for changes")
+        .help([item.approvals > 0 ? "\(item.approvals) approved\(item.youApproved ? " (you too)" : "")" : nil,
+               item.changesRequested > 0 ? "\(item.changesRequested) asked for changes" : nil,
+               comments > 0 ? "\(comments) comment\(comments == 1 ? "" : "s")" : nil].compactMap { $0 }.joined(separator: ", "))
     }
 }
 
@@ -689,7 +697,7 @@ struct InboxDetail: View {
                 if let b = item.branch { Text("·"); Text(b).font(T.mono(11)).lineLimit(1) }
             }
             .font(.system(size: T.k * 11.5)).foregroundStyle(T.text3)
-            if item.source == .bitbucket, item.ended == nil, item.approvals + item.changesRequested > 0 {
+            if item.ended == nil, item.approvals + item.changesRequested + (item.commentCount ?? 0) > 0 {
                 InboxReviewTally(item: item, long: true).font(.system(size: T.k * 11.5))
             }
         }
@@ -847,7 +855,7 @@ struct InboxDetail: View {
             InboxStatusDot(item: item)
             Text(item.checks == .failing ? "\(c.failed) of \(c.passed + c.failed + c.pending) checks failed"
                  : item.checks == .pending ? "\(c.pending) checks running, \(c.passed) passed"
-                 : "All \(c.passed) checks passed")
+                 : c.passed == 1 ? "1 check passed" : "All \(c.passed) checks passed")
                 .font(.system(size: T.k * 12.5, weight: .medium))
             if !item.failedChecks.isEmpty {
                 Text(item.failedChecks.prefix(4).joined(separator: " · ")).font(T.mono(11)).foregroundStyle(T.text3).lineLimit(1)
@@ -1216,6 +1224,8 @@ struct InboxMarkdown: View {
         var out: [String] = []
         var cur = "", inCode = false
         for line in text.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n") {
+            // Link reference definitions ("[id]: https://…") are not shown in Markdown (bots hide notes in them).
+            if !inCode, line.range(of: #"^ {0,3}\[[^\]]+\]:\s*\S+"#, options: .regularExpression) != nil { continue }
             if line.hasPrefix("```") {
                 if inCode { out.append(cur + "\n```"); cur = ""; inCode = false }
                 else { if !cur.trimmingCharacters(in: .whitespaces).isEmpty { out.append(cur) }; cur = "```\n"; inCode = true }
@@ -1248,6 +1258,9 @@ struct InboxMarkdown: View {
                 lines.append("**" + t.drop(while: { $0 == "#" }).trimmingCharacters(in: .whitespaces) + "**"); joinable = false
             } else if t.hasPrefix("- ") || t.hasPrefix("* ") || t.hasPrefix("+ ") {
                 lines.append(pad + "• " + t.dropFirst(2)); joinable = true
+            } else if t.hasPrefix(">"), case let q = t.drop(while: { $0 == ">" || $0 == " " }), q.hasPrefix("#") {
+                // A heading inside a quote: bold, the quote mark kept.
+                lines.append(pad + "> **" + q.drop(while: { $0 == "#" }).trimmingCharacters(in: .whitespaces) + "**"); joinable = false
             } else if t.range(of: "^[0-9]+[.)] ", options: .regularExpression) != nil || t.hasPrefix(">") || t.hasPrefix("|") {
                 lines.append(pad + t); joinable = !t.hasPrefix("|")
             } else if joinable, let last = lines.popLast() {

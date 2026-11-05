@@ -8,7 +8,7 @@ final class InboxTests: XCTestCase {
          "review":{"nodes":[
            {"number":7,"title":"Fix it","url":"https://github.com/o/r/pull/7","updatedAt":"2026-11-01T10:00:00Z","isDraft":false,
             "state":"OPEN","headRefName":"fix-it","body":"b","repository":{"nameWithOwner":"o/r"},"author":{"login":"ann"},
-            "assignees":{"nodes":[]},
+            "assignees":{"nodes":[]},"comments":{"totalCount":4},
             "commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"FAILURE","contexts":{"nodes":[
               {"__typename":"CheckRun","name":"lint","conclusion":"FAILURE","status":"COMPLETED"},
               {"__typename":"CheckRun","name":"test","conclusion":"SUCCESS","status":"COMPLETED"},
@@ -37,6 +37,7 @@ final class InboxTests: XCTestCase {
         XCTAssertEqual(first.checkCounts.pending, 1)
         XCTAssertEqual(first.failedChecks, ["lint"])
         XCTAssertEqual(first.branch, "fix-it")
+        XCTAssertEqual(first.commentCount, 4)
         let issue = r.items[1]
         XCTAssertEqual(issue.kind, .issue)
         XCTAssertEqual(issue.author, "You")

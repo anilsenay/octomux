@@ -53,6 +53,9 @@ final class BitbucketInboxTests: XCTestCase {
         XCTAssertEqual(mine.author, "You")
         XCTAssertEqual(mine.status, "Open")
         XCTAssertNil(BitbucketClient.item(["title": "no id"], reason: .mine, me: nil))
+        var counted = pr(10); counted["comment_count"] = 18
+        XCTAssertEqual(BitbucketClient.item(counted, reason: .mine, me: nil)?.commentCount, 18)
+        XCTAssertNil(i.commentCount)
     }
 
     func testSourceOfIdAndPrefixes() {
