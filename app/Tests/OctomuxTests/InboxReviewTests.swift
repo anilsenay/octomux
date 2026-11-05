@@ -49,17 +49,18 @@ final class InboxReviewTests: XCTestCase {
         ```
         """
         XCTAssertEqual(InboxReviews.parse(real)?.tally, "1 issue, 1 nit")
-        XCTAssertFalse(InboxReviews.agentArgs(.claude).joined().contains("MultiEdit"))   // not a tool any more
+        XCTAssertFalse(InboxReviews.agentArgs(.claude, restricted: true).joined().contains("MultiEdit"))   // not a tool any more
     }
 
     func testChangedLinesAndArgs() {
         XCTAssertEqual(InboxReviews.changedLines(" 3 files changed, 120 insertions(+), 14 deletions(-)"), 134)
         XCTAssertEqual(InboxReviews.changedLines(" 1 file changed, 1 deletion(-)"), 1)
         XCTAssertEqual(InboxReviews.changedLines(""), 0)
-        let claude = InboxReviews.agentArgs(.claude)
-        // The pull request's own .claude settings (hooks) and .mcp.json don't load.
+        let claude = InboxReviews.agentArgs(.claude, restricted: true)
         XCTAssertEqual(claude.first, "-p")   // print mode: no folder-trust question nobody would answer
-        XCTAssertEqual(Array(claude.dropFirst().prefix(3)), ["--setting-sources", "user", "--strict-mcp-config"])
+        // No settings file loads (yours could allow running the PR's code; the PR's could add hooks), no MCP server,
+        // and only the reading tools exist.
+        XCTAssertEqual(Array(claude.dropFirst().prefix(4)), ["--setting-sources=", "--strict-mcp-config", "--tools", "Read,Grep,Glob,Bash"])
         // No --settings: the daemon drops it from extra args, and a later one would replace it anyway.
         XCTAssertFalse(claude.contains("--settings"))
         func list(_ flag: String) -> [String] {
@@ -72,7 +73,10 @@ final class InboxReviewTests: XCTestCase {
         XCTAssertFalse(list("--allowedTools").contains { $0.hasPrefix("Bash(git push") || $0 == "Bash" })
         // The tool lists are variadic: a flag with one value closes them, so nothing after them is taken in.
         XCTAssertEqual(Array(claude.suffix(2)), ["--permission-mode", "default"])
-        XCTAssertEqual(InboxReviews.agentArgs(.codex), ["exec", "--sandbox", "read-only"])   // asks nothing, not even trust
+        XCTAssertEqual(InboxReviews.agentArgs(.codex, restricted: true), ["exec", "--sandbox", "read-only"])   // asks nothing, not even trust
+        // Not restricted: as your sessions run, still asking nothing.
+        XCTAssertEqual(InboxReviews.agentArgs(.claude, restricted: false), ["-p"])
+        XCTAssertEqual(InboxReviews.agentArgs(.codex, restricted: false), ["exec"])
     }
 
     private func pr(_ n: Int, draft: Bool = false) -> InboxItem {

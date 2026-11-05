@@ -151,6 +151,7 @@ enum InboxPrefs {
     static let fixes = "octomux.inbox.fixes"                   // item id → unix seconds "Fix with agent" started
     static let linkedSeen = "octomux.inbox.linkedSeen"         // item id → unix seconds its linked session last caught up
     static let reviewMode = "octomux.inbox.reviewMode"         // Review button: "background" | "chat"
+    static let reviewRestricted = "octomux.inbox.reviewRestricted"   // background reviews: read-only, no settings of yours or the PR's (default on)
     static let placeProject = "octomux.inbox.placeProject"     // repo / Jira project → Octomux project id
     static let snoozed = "octomux.inbox.snoozed"               // item id → [until, snoozed at] (unix seconds)
 

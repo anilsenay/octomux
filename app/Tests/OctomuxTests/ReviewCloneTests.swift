@@ -90,7 +90,7 @@ final class ReviewCloneTests: XCTestCase {
 
         var item = i; item.branch = "feature/x"; item.base = "develop"
         let p = Project(id: "p", workspaceId: "w", name: "host", path: "/nowhere", color: "#fff", icon: ProjectIcon(kind: "folder"), sort: 0, archived: false)
-        let prep = try InboxReviews.prepareWorktree(item, p, (dir: clone, projectPaths: [], job: nil), nil)
+        let prep = try InboxReviews.prepareWorktree(item, p, (dir: clone, projectPaths: [], job: nil), nil, restricted: true)
         XCTAssertEqual(prep.head, head)
         XCTAssertEqual(prep.path, ReviewClones.worktree(for: item, clone: clone))
         XCTAssertEqual(prep.lines, 2)
@@ -99,7 +99,7 @@ final class ReviewCloneTests: XCTestCase {
         XCTAssertEqual(run(["status", "--porcelain"], in: URL(fileURLWithPath: prep.path)), "")   // still clean
         XCTAssertTrue(run(["show", "HEAD:.codex/config.toml"], in: URL(fileURLWithPath: prep.path)).contains("notify"))
         // Again: the same clone and worktree, no second download.
-        let again = try InboxReviews.prepareWorktree(item, p, (dir: clone, projectPaths: [], job: nil), prep.path)
+        let again = try InboxReviews.prepareWorktree(item, p, (dir: clone, projectPaths: [], job: nil), prep.path, restricted: true)
         XCTAssertEqual(again.path, prep.path)
         XCTAssertFalse(FileManager.default.fileExists(atPath: prep.path + "/.codex"))
     }

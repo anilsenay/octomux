@@ -2375,6 +2375,7 @@ struct InboxSettings: View {
                     Text("A new tab").tag("tab"); Text("A new worktree").tag("worktree"); Text("Ask each time").tag("ask")
                 }.labelsHidden().fixedSize()
             }
+            InboxRestrictedReviewSetting()
             InboxCloneSetting()
             SettingRow("Agent in a new worktree", desc: "In a new tab you pick it on the new-session screen.") {
                 Picker("", selection: $profileId) {
@@ -3518,5 +3519,18 @@ struct InboxPostSheet: View {
         }
         .padding(18)
         .frame(width: 560)
+    }
+}
+
+/// Settings → Inbox: whether background reviews may only read (the default) or run as your sessions do.
+struct InboxRestrictedReviewSetting: View {
+    @AppStorage(InboxPrefs.reviewRestricted) private var restricted = true
+    var body: some View {
+        SettingRow("Restricted reviews",
+                   desc: restricted
+                    ? "On: the review agent may only read the code and git's history. Your agent settings and permissions don't apply, and neither do the pull request's own (hooks, MCP servers, .codex), so its code can't run anything."
+                    : "Off: the review agent runs as your sessions do, with your settings and permissions, and the pull request's own agent settings load too. It still asks nothing while it works.") {
+            Toggle("", isOn: $restricted).labelsHidden().toggleStyle(.switch).controlSize(.small)
+        }
     }
 }

@@ -109,7 +109,7 @@ final class InboxReviews: ObservableObject {
     struct Prepared { var path: String; var head: String; var base: String; var lines: Int }
     /// `clone`: the downloaded clone's folder and the local projects to learn the clone URL's form from; nil: the
     /// project's own checkout.
-    var prepare: (InboxItem, Project, _ clone: (dir: String, projectPaths: [String], job: GitJob?)?, _ existing: String?) throws -> Prepared = InboxReviews.prepareWorktree
+    var prepare: (InboxItem, Project, _ clone: (dir: String, projectPaths: [String], job: GitJob?)?, _ existing: String?) throws -> Prepared = { try InboxReviews.prepareWorktree($0, $1, $2, $3) }
     // MARK: Posting findings
 
     @Published private(set) var posting: Set<String> = []
@@ -376,7 +376,8 @@ final class InboxReviews: ObservableObject {
 
     // MARK: The real world
 
-    static func prompt(_ i: InboxItem, base: String, head: String, since: String? = nil, onTop: Bool = false, previous: InboxReviewResult? = nil) -> String {
+    static func prompt(_ i: InboxItem, base: String, head: String, since: String? = nil, onTop: Bool = false, previous: InboxReviewResult? = nil,
+                       restricted: Bool = InboxReviews.restricted) -> String {
         let n = i.number ?? 0
         let body = i.body.trimmingCharacters(in: .whitespacesAndNewlines)
         let cut = body.count > 8000 ? String(body.prefix(8000)) + "\n[…cut]" : body
@@ -409,7 +410,7 @@ final class InboxReviews: ObservableObject {
             ? #"{"summary": "two or three sentences on what changed and whether it is ready now", "risk": "low", "fixed": ["title of an earlier finding that is fixed now"], "findings": [{"file": "path/in/repo.ext", "line": 42, "severity": "issue", "title": "short", "detail": "what is wrong and what to do", "status": "new"}]}"#
             : #"{"summary": "two or three sentences on what it does and whether it is ready", "risk": "low", "findings": [{"file": "path/in/repo.ext", "line": 42, "severity": "issue", "title": "short", "detail": "what is wrong and what to do"}]}"#
         return """
-        Review pull request \(i.key) of \(i.place) on \(i.source.name). This folder is a checkout of its head (commit \(String(head.prefix(12)))); its base is `\(base)`. See the change with `git diff \(base)...HEAD` and `git log \(base)..HEAD`, and read any file you need (a .codex folder is left out of the folder; `git show HEAD:<path>` reads it). Don't change anything: no edits, no commits, no commands that write.
+        Review pull request \(i.key) of \(i.place) on \(i.source.name). This folder is a checkout of its head (commit \(String(head.prefix(12)))); its base is `\(base)`. See the change with `git diff \(base)...HEAD` and `git log \(base)..HEAD`, and read any file you need\(restricted ? " (a .codex folder is left out of the folder; `git show HEAD:<path>` reads it)" : ""). Don't change anything: no edits, no commits, no commands that write.
         \(what.isEmpty ? "" : "\n" + what + "\n")
         Look for bugs, missed cases, security and data risks, and anything that will hurt later; skip style the project doesn't care about. Write in the language the pull request is written in.
 
@@ -428,26 +429,33 @@ final class InboxReviews: ObservableObject {
         """
     }
 
-    /// The agent may read and look around (git diff / log / show / status), never edit or write, and asks nothing.
+    /// Whether background reviews are restricted (Settings → Inbox; on unless turned off).
+    static var restricted: Bool { InboxPrefs.bool(InboxPrefs.reviewRestricted, true) }
+
+    /// How the agent is started. Both run to the end without asking anything: print mode (`claude -p`) and
+    /// `codex exec`. Interactive, each first asks whether to trust the review's new folder (checked: Claude Code
+    /// 2.1.318, Codex 0.166), and Codex's yes would trust your clone; nobody is there to answer.
     ///
-    /// Claude: tool flags, not a settings JSON. Octomux's daemon drops --settings from a session's extra args (it adds
-    /// its own), and of two --settings Claude keeps only the last (checked with Claude Code 2.1.318). The tool lists
-    /// are variadic: the flag after them ends them, and the daemon puts the prompt last, after --session-id. The
-    /// pull request's own .claude settings (hooks) and .mcp.json servers don't load.
-    /// Both run to the end without asking anything: print mode (`claude -p`) and `codex exec`. Interactive, each first
-    /// asks whether to trust the review's new folder (checked: Claude Code 2.1.318, Codex 0.166), and Codex's yes
-    /// would trust your clone; nobody is there to answer. Codex works in its read-only sandbox.
-    static func agentArgs(_ kind: AgentKind) -> [String] {
+    /// Restricted (the default), the agent may only read. Claude has just Read, Grep, Glob and Bash; no settings file
+    /// loads (`--setting-sources=`: neither yours, whose allow rules could let it run e.g. a test command on the pull
+    /// request's code, nor the pull request's own .claude hooks), no MCP server; Bash runs git's reading commands
+    /// (Claude also lets through commands it knows only read). Checked: a command your settings allow was refused,
+    /// `touch` was refused. These are flags, not a settings JSON: the daemon drops --settings from extra args, and of
+    /// two --settings Claude keeps the last. The lists are variadic; the flag after them closes them, and the daemon
+    /// puts the prompt last. Codex works in its read-only sandbox (and the review folder has no .codex).
+    /// Not restricted, it runs as your sessions do: your settings and permissions (and the checkout's own).
+    static func agentArgs(_ kind: AgentKind, restricted: Bool = InboxReviews.restricted) -> [String] {
         switch kind {
         case .claude:
-            return ["-p", "--setting-sources", "user", "--strict-mcp-config",
+            guard restricted else { return ["-p"] }
+            return ["-p", "--setting-sources=", "--strict-mcp-config", "--tools", "Read,Grep,Glob,Bash",
                     "--allowedTools", "Read", "Grep", "Glob", "Bash(git diff:*)", "Bash(git log:*)", "Bash(git show:*)", "Bash(git status:*)", "Bash(git blame:*)",
                     "--disallowedTools", "Edit", "Write", "NotebookEdit", "WebFetch", "WebSearch",
                     "Bash(git push:*)", "Bash(git commit:*)", "Bash(git checkout:*)", "Bash(git reset:*)", "Bash(git switch:*)",
                     "Bash(rm:*)", "Bash(mv:*)", "Bash(cp:*)", "Bash(tee:*)",
                     "--permission-mode", "default"]
         case .codex:
-            return ["exec", "--sandbox", "read-only"]
+            return restricted ? ["exec", "--sandbox", "read-only"] : ["exec"]
         default:
             return []
         }
@@ -455,7 +463,8 @@ final class InboxReviews: ObservableObject {
 
     /// Fetches the pull request's head and base, checks the head out detached in the review worktree (made once per
     /// pull request, moved to the new head when it is clean), and counts the changed lines.
-    static func prepareWorktree(_ i: InboxItem, _ project: Project, _ clone: (dir: String, projectPaths: [String], job: GitJob?)?, _ existing: String?) throws -> Prepared {
+    static func prepareWorktree(_ i: InboxItem, _ project: Project, _ clone: (dir: String, projectPaths: [String], job: GitJob?)?, _ existing: String?,
+                                restricted: Bool = InboxReviews.restricted) throws -> Prepared {
         let dir = clone?.dir ?? project.path
         guard let branchBase = i.base, !branchBase.isEmpty else { throw InboxError("The pull request has no base branch.") }
         if let clone {
@@ -491,7 +500,7 @@ final class InboxReviews: ObservableObject {
             try? FileManager.default.createDirectory(atPath: (path as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
             try git(["worktree", "add", "--detach", path, head])
         }
-        try hideAgentConfig(in: path, git: { try git($0, in: path) })
+        if restricted { try hideAgentConfig(in: path, git: { try git($0, in: path) }) }
         if clone == nil { Worktrees.shared.refresh(dir) }
         return Prepared(path: path, head: head, base: base, lines: lines)
     }

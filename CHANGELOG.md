@@ -114,6 +114,11 @@
     files, with your own git access (it fails rather than asking for a password). It stays for later reviews
     of that repo and goes after 7 days without one; Settings → Inbox shows their size and removes them.
     Automations still review only in local clones.
+  - **Restricted reviews** (Settings → Inbox, on to start with): the background review's agent may only read.
+    Claude has just Read, Grep, Glob and Bash, loads no settings file (neither yours, whose permissions could let
+    it run a command on the pull request's code, nor the pull request's own) and no MCP server; Bash runs git's
+    reading commands. Codex reads in its read-only sandbox, without the pull request's .codex folder. Turned
+    off, the review runs as your sessions do, with your settings and permissions.
   - Background reviews now run in the app as they were meant to. Claude gets its read-only tool limits as flags
     (the settings they were passed in never reached it, so it ran with your usual permissions) and runs in
     print mode; Codex runs as `codex exec`. Before, both stopped at their "trust this folder?" question in
