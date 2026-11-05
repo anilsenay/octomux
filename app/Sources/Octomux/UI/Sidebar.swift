@@ -48,6 +48,7 @@ struct SidebarView: View {
                 .padding(.top, 10)
                 .padding(.bottom, 8)
             }
+            .modifier(WorkspacePaged())
             .frame(maxHeight: .infinity)
             AgentsPanel(maxHeight: max(AgentsPanel.minHeight, geo.size.height - 260))
             footer
@@ -229,7 +230,7 @@ final class WorkspaceScroller {
         }
     }
 
-    var onStep: (Int) -> Void = { d in withAnimation(.easeOut(duration: 0.15)) { AppModel.shared.cycleWorkspace(d) } }
+    var onStep: (Int) -> Void = { d in WorkspacePager.shared.slide(d) }
 
     private func step(_ delta: Int) {
         locked = true
@@ -255,7 +256,7 @@ struct WorkspaceButton: View {
             .contentShape(Rectangle())
             .onHover { hover = $0 }
             .pointerCursor()
-            .onTapGesture { model.selectWorkspace(workspace.id) }
+            .onTapGesture { WorkspacePager.shared.go(to: workspace.id) }
             .help((index >= 1 && index <= 9 ? "\(workspace.name)  ⌃\(index)   (⌃⌘← → or scroll to switch)" : workspace.name) + (note.isEmpty ? "" : "\n" + note))
             .contextMenu { WorkspaceMenu(workspace: workspace) }
             .animation(.easeOut(duration: 0.12), value: selected)

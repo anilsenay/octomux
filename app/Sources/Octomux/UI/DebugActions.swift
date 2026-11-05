@@ -50,6 +50,25 @@ enum DebugActions {
             case "select_session": if let id { m.selectSession(id) }
             case "select_workspace": if let id { m.selectWorkspace(id) }
             case "cycle_workspace": m.cycleWorkspace((p["delta"] as? Int) ?? 1)
+            case "workspace_slide": WorkspacePager.shared.slide((p["delta"] as? Int) ?? 1)
+            case "workspace_swipe":
+                // Synthesized trackpad swipe over the sidebar: `steps` changed events of `dx` points, 16 ms apart,
+                // then ended (or cancelled), after an optional `hold` in ms (to screenshot mid-drag).
+                let dx = (p["dx"] as? Int) ?? -20, steps = (p["steps"] as? Int) ?? 6, hold = (p["hold"] as? Int) ?? 0
+                let end: Int64 = (p["cancel"] as? Bool) == true ? 8 : 4
+                func ev(_ d: Int, _ phase: Int64) -> NSEvent? {
+                    guard let cg = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2, wheel1: 0, wheel2: Int32(d), wheel3: 0) else { return nil }
+                    cg.setIntegerValueField(.scrollWheelEventIsContinuous, value: 1)
+                    cg.setIntegerValueField(.scrollWheelEventScrollPhase, value: phase)
+                    cg.setDoubleValueField(.scrollWheelEventPointDeltaAxis2, value: Double(d))
+                    return NSEvent(cgEvent: cg)
+                }
+                let pager = WorkspacePager.shared
+                if let e = ev(0, 1) { pager.handle(e) }
+                for i in 0..<steps {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(16 * (i + 1))) { if let e = ev(dx, 2) { pager.handle(e) } }
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(16 * (steps + 1) + hold)) { if let e = ev(0, end) { pager.handle(e) } }
             case "select_tab": if let id { m.selectTab(id) }
             case "select_project": if let id { m.selectProject(id) }
             case "stop": if let id { m.stop(id, confirm: false) }

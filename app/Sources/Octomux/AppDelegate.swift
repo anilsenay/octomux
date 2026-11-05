@@ -4,7 +4,6 @@ import SwiftUI
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var windows: [NSWindow] = []
     var mainWindow: NSWindow?
-    private var swipeAccum: CGFloat = 0
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Paths.exportVariant()
@@ -89,17 +88,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             }
             guard let self, let win = event.window, win === self.mainWindow, AppModel.shared.sidebarVisible,
                   event.locationInWindow.x < AppModel.shared.sidebarWidth, event.hasPreciseScrollingDeltas else { return event }
-            if event.phase == .began { self.swipeAccum = 0 }
-            if abs(event.scrollingDeltaX) > abs(event.scrollingDeltaY) {
-                self.swipeAccum += event.scrollingDeltaX
-            }
-            if event.phase == .ended || event.phase == .cancelled {
-                if abs(self.swipeAccum) > 60 {
-                    AppModel.shared.cycleWorkspace(self.swipeAccum < 0 ? 1 : -1)
-                }
-                self.swipeAccum = 0
-            }
-            return event
+            // A horizontal swipe drags the project list toward the next workspace; vertical scrolling passes.
+            return WorkspacePager.shared.handle(event) ? nil : event
         }
     }
 
@@ -260,11 +250,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc func prevTab(_ s: Any?) { model.cycleTab(-1) }
     @objc func nextTab(_ s: Any?) { model.cycleTab(1) }
     @objc func goToTab(_ s: NSMenuItem) { model.selectTab(index: s.tag == 9 ? -1 : s.tag - 1) }
-    @objc func prevWorkspace(_ s: Any?) { model.cycleWorkspace(-1) }
-    @objc func nextWorkspace(_ s: Any?) { model.cycleWorkspace(1) }
+    @objc func prevWorkspace(_ s: Any?) { stepWorkspace(-1) }
+    @objc func nextWorkspace(_ s: Any?) { stepWorkspace(1) }
+    private func stepWorkspace(_ d: Int) {
+        WorkspacePager.shared.slide(d)
+    }
     @objc func goToWorkspace(_ s: NSMenuItem) {
         let ws = model.state.workspaces.sorted { $0.sort < $1.sort }
-        if s.tag - 1 < ws.count { model.selectWorkspace(ws[s.tag - 1].id) }
+        if s.tag - 1 < ws.count { WorkspacePager.shared.go(to: ws[s.tag - 1].id) }
     }
     @objc func focusLeft(_ s: Any?) { TerminalHost.shared.focusNeighbor(.minX) }
     @objc func focusRight(_ s: Any?) { TerminalHost.shared.focusNeighbor(.maxX) }
