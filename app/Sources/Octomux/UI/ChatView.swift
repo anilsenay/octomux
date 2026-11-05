@@ -498,10 +498,11 @@ extension AppModel {
         if !set.contains(id) { DispatchQueue.main.async { TerminalHost.shared.focusCurrent() } }
     }
 
-    /// Types `text` into the session like a paste followed by Enter.
-    func sendToSession(_ id: String, text: String) {
+    /// Types `text` into the session like a paste followed by Enter (or just the paste, to read it over first).
+    func sendToSession(_ id: String, text: String, submit: Bool = true) {
         let c = client(for: id)
         c.call("session.input", ["id": id, "data": "\u{1b}[200~" + text + "\u{1b}[201~"]) { [weak self] _ in
+            guard submit else { return }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
                 c.call("session.input", ["id": id, "data": "\r"], completion: self?.report)
             }

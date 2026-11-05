@@ -185,6 +185,12 @@ enum DebugActions {
             case "open_inbox": m.openInbox()
             case "inbox_refresh": InboxStore.shared.refresh()
             case "inbox_fake": InboxFixture.load()
+            case "inbox_tell_agent": if let sid = m.focusedSessionId { InboxStore.shared.tellAgent(session: sid) }
+            case "inbox_fake_link":   // links a fixture item (value) to the focused session, caught up `minutes` ago
+                if let v = p["value"] as? String, let sid = m.focusedSessionId {
+                    InboxStore.shared.link(v, session: sid, since: Date().timeIntervalSince1970 - Double((p["minutes"] as? Int) ?? 60) * 60)
+                    InboxStore.shared.recheckLinked()
+                }
             case "inbox_start":   // value: item id; "mode": tab | worktree; "task": work | review | fix; "project": id
                 if let v = p["value"] as? String, let item = InboxStore.shared.items.first(where: { $0.id == v }),
                    let proj = m.project(p["project"] as? String ?? "") ?? InboxStore.shared.project(for: item) ?? m.currentProject {

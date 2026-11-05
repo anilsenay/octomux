@@ -1253,3 +1253,56 @@ struct InboxActivityView: View {
         }
     }
 }
+
+/// The card in a linked session's pane: what happened to its Inbox item since the session started or last
+/// caught up, with the item in the Inbox, handing it to the agent, or closing it.
+struct LinkedItemNotice: View {
+    @EnvironmentObject var model: AppModel
+    @ObservedObject var store = InboxStore.shared
+    let sessionId: String
+    @State private var open = false
+
+    var body: some View {
+        if let n = store.linkedNotices[sessionId] {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 7) {
+                    Image(systemName: "tray.full").font(.system(size: T.k * 11)).foregroundStyle(T.accent)
+                    Text("New on \(n.key)").font(.system(size: T.k * 12, weight: .semibold))
+                    Spacer(minLength: 8)
+                    Button { withAnimation(.easeOut(duration: 0.15)) { open.toggle() } } label: {
+                        Image(systemName: open ? "chevron.up" : "chevron.down").font(.system(size: T.k * 9, weight: .semibold))
+                    }.buttonStyle(IconButtonStyle(size: 20)).help(open ? "Less" : "What changed")
+                    Button { store.dismissLinked(session: sessionId) } label: {
+                        Image(systemName: "xmark").font(.system(size: T.k * 9, weight: .bold))
+                    }.buttonStyle(IconButtonStyle(size: 20)).help("Dismiss")
+                }
+                Text(InboxHistory.summary(n.events)).font(.system(size: T.k * 11.5)).foregroundStyle(T.text2)
+                    .lineLimit(open ? nil : 2).fixedSize(horizontal: false, vertical: true)
+                if open {
+                    VStack(alignment: .leading, spacing: 5) {
+                        ForEach(InboxHistory.grouped(n.events).suffix(6)) { e in
+                            VStack(alignment: .leading, spacing: 1) {
+                                (Text(e.actor).fontWeight(.semibold) + Text(" " + e.summary)).font(.system(size: T.k * 11.5))
+                                let d = e.detail.trimmingCharacters(in: .whitespacesAndNewlines)
+                                if !d.isEmpty { Text(d).font(.system(size: T.k * 11)).foregroundStyle(T.text3).lineLimit(3) }
+                            }
+                        }
+                    }
+                }
+                HStack(spacing: 6) {
+                    Button("Tell the agent") { store.tellAgent(session: sessionId) }
+                    .buttonStyle(PrimaryButtonStyle()).fixedSize()
+                    .help("Pastes the news into the session; read it over and press Return to send")
+                    Button("Open in Inbox") { model.openInbox(); store.select(n.itemId) }
+                        .buttonStyle(SecondaryButtonStyle()).fixedSize()
+                }
+            }
+            .padding(12)
+            .frame(width: 300, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(T.raised))
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(T.accent.opacity(0.35)))
+            .shadow(color: .black.opacity(0.25), radius: 10, y: 3)
+            .transition(.opacity.combined(with: .move(edge: .top)))
+        }
+    }
+}

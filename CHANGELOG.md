@@ -21,6 +21,9 @@
     force-pushes) in one timeline, with a **New** line where you left off and a "Since you looked" summary on
     top. Notifications say who did what ("DC-12: Ann moved it to Code Review"); changes you made yourself on the
     website are no news. When the Jira token can't read the history, comments still show, with a note.
+  - **News in linked sessions**: when someone comments, reviews, pushes or moves an item you sent to an agent, a
+    card in that session's pane says what changed; **Tell the agent** pastes it in (as reference data, for you
+    to send), **Open in Inbox** shows the item.
   - Settings → Inbox: connections, Jira projects, GitHub repositories, what shows up, notifications, and what
     Send to agent opens.
 

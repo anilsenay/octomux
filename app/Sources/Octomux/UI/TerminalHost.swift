@@ -541,6 +541,25 @@ final class PaneView: NSView {
             v.leadingAnchor.constraint(equalTo: leadingAnchor), v.trailingAnchor.constraint(equalTo: trailingAnchor),
             v.topAnchor.constraint(equalTo: top), v.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
+        addLinkedNotice(below: top)
+    }
+
+    private var notice: NSView?
+
+    /// News about the session's Inbox item, in the pane's top right corner (above the content, sized to the card).
+    private func addLinkedNotice(below top: NSLayoutYAxisAnchor) {
+        notice?.removeFromSuperview()
+        guard !sessionId.isEmpty else { return }
+        let h = NSHostingView(rootView: AnyView(LinkedItemNotice(sessionId: sessionId).environmentObject(AppModel.shared)))
+        h.sizingOptions = [.intrinsicContentSize]
+        h.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(h)
+        NSLayoutConstraint.activate([
+            h.topAnchor.constraint(equalTo: top, constant: 10),
+            h.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
+            h.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 14),
+        ])
+        notice = h
     }
 }
 
