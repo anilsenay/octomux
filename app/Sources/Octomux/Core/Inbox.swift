@@ -68,6 +68,7 @@ enum InboxPrefs {
     static let nAssigned = "octomux.inbox.n.assigned"
     static let nUpdates = "octomux.inbox.n.updates"            // changes on your own items (yours / assigned / review)
     static let jiraWatched = "octomux.inbox.jira.watched"      // project keys whose every change notifies (the bell)
+    static let nProjects = "octomux.inbox.n.projects"          // how a belled project's changes notify: sound | banner
     static let startMode = "octomux.inbox.start"               // tab | worktree | ask
     static let profile = "octomux.inbox.profile"
     static let foldersCollapsed = "octomux.inbox.foldersCollapsed"
@@ -114,6 +115,8 @@ final class InboxStore: ObservableObject {
 
     /// Where notifications go (tests catch them).
     var deliver: (AppNotification) -> Void = { Notifier.shared.deliver($0) }
+    /// A sound with no banner, for other people's changes in belled projects (tests catch it).
+    var chime: () -> Void = { Notifier.shared.chime() }
     private var timer: Timer?
     private var lastFetch = Date.distantPast
     /// What the last refresh saw (id → updated), to tell new and changed items apart for notifications.
@@ -304,6 +307,9 @@ final class InboxStore: ObservableObject {
             for i in next { known[i.id] = i.updated.timeIntervalSince1970; knownStatus[i.id] = i.status; if let c = i.checks { knownChecks[i.id] = c } }
         }
         var lines: [(String, String)] = []
+        // Other people's changes in belled projects: a sound alone unless the user asked for banners.
+        let projectBanner = UserDefaults.standard.string(forKey: InboxPrefs.nProjects) == "banner"
+        var quiet = 0
         for i in next where sources.contains(i.source) && primed.contains(i.source) {
             guard isUnread(i) else { continue }
             let before = known[i.id]
@@ -316,12 +322,13 @@ final class InboxStore: ObservableObject {
             } else if isNew, i.reason == .assigned, InboxPrefs.bool(InboxPrefs.nAssigned, true) {
                 lines.append(("Assigned to you: \(i.key)", i.title))
             } else if i.reason == .project, isNew || changed, JiraClient.watched.contains(i.projectKey) {
-                lines.append((isNew ? "New in \(i.place): \(i.key)" : change(i), i.title))
+                if projectBanner { lines.append((isNew ? "New in \(i.place): \(i.key)" : change(i), i.title)) } else { quiet += 1 }
             } else if i.reason != .project, changed, InboxPrefs.bool(InboxPrefs.nUpdates, true) {
                 lines.append((change(i), i.title))
             }
         }
-        guard !lines.isEmpty else { return }
+        // One sound per refresh, and none when a banner (which has its own) goes out.
+        guard !lines.isEmpty else { if quiet > 0 { chime() }; return }
         let n = lines.count == 1
             ? AppNotification(sessionId: "", projectId: "", kind: "inbox", title: lines[0].0, body: lines[0].1)
             : AppNotification(sessionId: "", projectId: "", kind: "inbox", title: "\(lines.count) new in your Inbox",

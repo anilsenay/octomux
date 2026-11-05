@@ -145,6 +145,7 @@ final class InboxTests: XCTestCase {
 final class InboxStoreTests: XCTestCase {
     private var store: InboxStore!
     private var rung: [String] = []
+    private var chimes = 0
     private var suite = ""
 
     override func setUp() {
@@ -152,11 +153,14 @@ final class InboxStoreTests: XCTestCase {
         store = InboxStore(defaults: UserDefaults(suiteName: suite)!)
         rung = []
         store.deliver = { [unowned self] n in self.rung.append(n.title) }
+        chimes = 0
+        store.chime = { [unowned self] in self.chimes += 1 }
     }
 
     override func tearDown() {
         UserDefaults().removePersistentDomain(forName: suite)
         UserDefaults.standard.removeObject(forKey: InboxPrefs.jiraWatched)
+        UserDefaults.standard.removeObject(forKey: InboxPrefs.nProjects)
     }
 
     private func gh(_ n: Int, _ reason: InboxItem.Reason = .assigned, at t: Double = 1000, checks: InboxItem.Checks? = nil, repo: String = "o/r") -> InboxItem {
@@ -239,7 +243,27 @@ final class InboxStoreTests: XCTestCase {
         XCTAssertEqual(rung, ["Assigned to you: DC-4"])
     }
 
+    func testWatchedProjectChimesWithoutBanner() {
+        store.apply(.jira, .success([jira("DC-1", .project), jira("DC-2", .project), jira("BO-1", .project)]))
+        UserDefaults.standard.set("DC", forKey: InboxPrefs.jiraWatched)
+        // Two changes in a belled project, one in an unbelled one: one sound, no banner.
+        store.apply(.jira, .success([jira("DC-1", .project, at: 2000), jira("DC-2", .project, at: 2000), jira("BO-1", .project, at: 2000)]))
+        XCTAssertEqual(rung, [])
+        XCTAssertEqual(chimes, 1)
+        XCTAssertTrue(store.isUnread(store.items.first { $0.key == "DC-1" }!))   // still waits in the Inbox
+        // Something of your own at the same time: its banner carries the sound, no extra chime.
+        store.apply(.jira, .success([jira("DC-1", .project, at: 3000), jira("DC-2", .project, at: 2000), jira("BO-1", .project, at: 2000),
+                                     jira("DC-9")]))
+        XCTAssertEqual(rung, ["Assigned to you: DC-9"])
+        XCTAssertEqual(chimes, 1)
+        // Nothing changed: silence.
+        store.apply(.jira, .success([jira("DC-1", .project, at: 3000), jira("DC-2", .project, at: 2000), jira("BO-1", .project, at: 2000),
+                                     jira("DC-9")]))
+        XCTAssertEqual(chimes, 1)
+    }
+
     func testWatchedProjectRingsForAnyChange() {
+        UserDefaults.standard.set("banner", forKey: InboxPrefs.nProjects)
         store.apply(.jira, .success([jira("DC-1", .project), jira("BO-1", .project)]))
         store.apply(.jira, .success([jira("DC-1", .project, at: 2000, status: "Code Review"), jira("BO-1", .project, at: 2000)]))
         XCTAssertEqual(rung, [])                                    // no bell: other people's issues are quiet
@@ -251,6 +275,7 @@ final class InboxStoreTests: XCTestCase {
         // Several at once: one banner.
         store.apply(.jira, .success([jira("DC-1", .project, at: 4000), jira("BO-1", .project, at: 3000), jira("DC-2", .project, at: 4000)]))
         XCTAssertEqual(rung.last, "2 new in your Inbox")
+        XCTAssertEqual(chimes, 0)
     }
 
     func testHiddenPlacesStayOutAndQuiet() {

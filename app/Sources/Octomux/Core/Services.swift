@@ -412,6 +412,13 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
+    /// Just a sound: no banner, no Notification Center entry, no Dock bounce (the Inbox's belled projects).
+    /// Follows the Sound switch in Settings → Notifications. Played by the app, so macOS Focus doesn't mute it.
+    func chime() {
+        guard AppModel.shared.setting("notifications.sound")?.bool ?? true else { return }
+        NSSound(named: "Tink")?.play()
+    }
+
     // MARK: Sounds
 
     /// The notification kinds that have a sound of their own, and the setting that holds it.

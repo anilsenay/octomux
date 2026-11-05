@@ -11,7 +11,8 @@
     item's branch; **Review with agent** for review requests, **Fix with agent** when checks failed. The session
     stays linked to the item (Go to session).
   - Notifications for review requests, failed checks, new assignments and changes to your things; ring the
-    bell on a Jira project to hear about every change there, by anyone. Checked every 1–10 minutes.
+    bell on a Jira project to hear about every change there, by anyone: a sound only (no banner) unless you
+    choose banners. Checked every 1–10 minutes.
   - Settings → Inbox: connections, Jira projects, GitHub repositories, what shows up, notifications, and what
     Send to agent opens.
 

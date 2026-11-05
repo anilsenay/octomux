@@ -869,6 +869,7 @@ struct InboxSettings: View {
     @AppStorage(InboxPrefs.nAssigned) private var nAssigned = true
     @AppStorage(InboxPrefs.nUpdates) private var nUpdates = true
     @AppStorage(InboxPrefs.jiraWatched) private var watchedRaw = ""
+    @AppStorage(InboxPrefs.nProjects) private var nProjects = "sound"
     @State private var ghStatus: String?
     @State private var ghError: String?
     @State private var checking = false
@@ -975,6 +976,9 @@ struct InboxSettings: View {
                         .help("Notify on every change in another project")
                     }
                 }
+                SettingRow("For those changes", desc: "A sound lets you know without taking your eyes off your work; the items wait unread in the Inbox.") {
+                    projectStylePicker
+                }
             }
         }
         SettingsGroup("Starting work") {
@@ -1066,6 +1070,14 @@ struct InboxSettings: View {
 
     private var picked: Set<String> { Set(jiraPicked.split(separator: ",").map(String.init)) }
     private var watched: Set<String> { Set(watchedRaw.split(separator: ",").map(String.init)) }
+
+    private var projectStylePicker: some View {
+        Picker("", selection: $nProjects) {
+            Text("Play a sound").tag("sound")
+            Text("Show a banner").tag("banner")
+        }
+        .labelsHidden().fixedSize().disabled(watched.isEmpty)
+    }
 
     private func setWatch(_ key: String, _ on: Bool) {
         JiraClient.setWatched(key, on)
