@@ -300,8 +300,9 @@ final class AppModel: ObservableObject {
 
     var workspace: Workspace? { state.workspaces.first { $0.id == selectedWorkspaceId } }
 
-    var projects: [Project] {
-        state.projects.filter { $0.workspaceId == selectedWorkspaceId && !$0.archived }.sorted { $0.sort < $1.sort }
+    var projects: [Project] { projects(in: selectedWorkspaceId) }
+    func projects(in workspace: String?) -> [Project] {
+        state.projects.filter { $0.workspaceId == workspace && !$0.archived }.sorted { $0.sort < $1.sort }
     }
 
     func project(_ id: String?) -> Project? { state.projects.first { $0.id == id } }

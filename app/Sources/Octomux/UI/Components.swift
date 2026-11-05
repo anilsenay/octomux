@@ -755,12 +755,20 @@ extension View {
 /// grays need more to be seen at all, near-white almost none). `strength` keeps it subtle.
 struct WorkspaceTintedFrame: View {
     @EnvironmentObject var model: AppModel
+    @ObservedObject private var pager = WorkspacePager.shared
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         let base = ThemeStore.shared.colors(dark: scheme == .dark).frame
+        let strength = WorkspaceTint.strength(dark: scheme == .dark)
+        let here = WorkspaceTint.washed(base, toward: model.workspace?.color, strength: strength)
+        // While a workspace pages in, blend toward its color as the swipe passes the middle.
+        let incoming = pager.target.flatMap { id in model.state.workspaces.first { $0.id == id } }
+        let fill = incoming.map { w in
+            here.blended(withFraction: pager.colorBlend, of: WorkspaceTint.washed(base, toward: w.color, strength: strength)) ?? here
+        } ?? here
         Rectangle()
-            .fill(Color(nsColor: WorkspaceTint.washed(base, toward: model.workspace?.color, strength: WorkspaceTint.strength(dark: scheme == .dark))))
+            .fill(Color(nsColor: fill))
             .animation(.easeOut(duration: 0.4), value: model.selectedWorkspaceId)
     }
 }

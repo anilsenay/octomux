@@ -1,14 +1,19 @@
 import AppKit
 import SwiftUI
 
-/// Moves the sidebar's project list between workspaces: it follows two fingers while they swipe, then
-/// slides out and the next workspace's list slides in from the other side (or it springs back when the
-/// swipe was too short). Keyboard and the switcher dots get the same slide without the dragging.
+/// Pages the sidebar's project list between workspaces. While two fingers swipe, the current list moves
+/// with them and the neighboring workspace's list comes in beside it; around the middle the window's
+/// workspace color starts blending toward the neighbor's. Let go past the commit point (or with a flick)
+/// and the neighbor finishes sliding in and becomes the workspace; otherwise both spring back.
+/// Keyboard, ⌃N and the switcher dots run the same slide without the dragging.
 final class WorkspacePager: ObservableObject {
     static let shared = WorkspacePager()
 
-    /// Horizontal offset of the project list, in points.
+    /// Horizontal offset of the current list, in points: negative moves it left (the next workspace
+    /// comes in from the right).
     @Published private(set) var offset: CGFloat = 0
+    /// The workspace coming in (shown beside the current list while `offset` isn't 0).
+    @Published private(set) var target: String?
 
     private enum Axis { case undecided, horizontal, vertical }
     private var axis = Axis.undecided
@@ -16,15 +21,31 @@ final class WorkspacePager: ObservableObject {
     private var velocity: CGFloat = 0        // points per event, smoothed
     private var sliding = false
 
-    /// How far a swipe must go (or how fast) before it switches on release.
-    static let commitDistance: CGFloat = 60
+    /// Share of the sidebar width a swipe must cover (or a flick speed) to switch on release.
+    static let commitShare: CGFloat = 0.4
     static let commitVelocity: CGFloat = 12
 
     /// Swapped in tests.
-    var workspaceCount: () -> Int = { AppModel.shared.state.workspaces.count }
-    var commit: (Int) -> Void = { WorkspacePager.shared.slide($0) }
+    var workspaceIds: () -> [String] = { AppModel.shared.state.workspaces.sorted { $0.sort < $1.sort }.map(\.id) }
+    var currentId: () -> String? = { AppModel.shared.selectedWorkspaceId }
+    var select: (String) -> Void = { AppModel.shared.selectWorkspace($0) }
+    var animated = true
     var width: CGFloat { max(AppModel.shared.sidebarWidth, 160) }
-    private var canSwitch: Bool { workspaceCount() > 1 }
+
+    /// 0 at rest, 1 when the incoming list fills the sidebar.
+    var progress: CGFloat { min(abs(offset) / width, 1) }
+    /// How far the window color has moved toward the incoming workspace: starts around the middle of the swipe.
+    var colorBlend: CGFloat {
+        let t = min(max((progress - 0.2) / 0.6, 0), 1)
+        return t * t * (3 - 2 * t)
+    }
+
+    /// The workspace `delta` steps away, wrapping around (nil with a single workspace).
+    func neighbor(_ delta: Int) -> String? {
+        let ws = workspaceIds()
+        guard ws.count > 1, let i = ws.firstIndex(where: { $0 == currentId() }) else { return nil }
+        return ws[(i + delta + ws.count) % ws.count]
+    }
 
     // MARK: Swipe
 
@@ -45,79 +66,99 @@ final class WorkspacePager: ObservableObject {
         if e.phase == .changed {
             travel += e.scrollingDeltaX
             velocity = velocity * 0.6 + e.scrollingDeltaX * 0.4
-            offset = rubberBand(travel)
+            // Fingers moving left bring in the next workspace from the right.
+            target = travel == 0 ? nil : neighbor(travel < 0 ? 1 : -1)
+            offset = target == nil ? rubberBand(travel) : max(-width, min(width, travel))
         }
         if e.phase == .ended || e.phase == .cancelled {
             let fast = abs(velocity) > Self.commitVelocity && velocity.sign == travel.sign
-            if canSwitch, e.phase == .ended, abs(travel) > Self.commitDistance || fast {
-                // Fingers moved left → next workspace, the list leaves to the left.
-                commit(travel < 0 ? 1 : -1)
+            if target != nil, e.phase == .ended, progress > Self.commitShare || fast {
+                finish()
             } else {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { offset = 0 }
+                springBack()
             }
             axis = .undecided; travel = 0; velocity = 0
         }
         return true
     }
 
-    /// Follows the fingers one to one, then resists; with a single workspace it resists from the start.
+    /// With nowhere to go, the list only budges.
     private func rubberBand(_ x: CGFloat) -> CGFloat {
-        let limit = canSwitch ? width * 0.45 : 40
-        let free = canSwitch ? width * 0.25 : 0
-        let a = abs(x)
-        if a <= free { return x }
-        let over = a - free
-        let damped = free + (limit - free) * (1 - 1 / (over / (limit - free) * 0.55 + 1))
-        return damped * (x < 0 ? -1 : 1)
+        let limit: CGFloat = 40
+        return limit * (1 - 1 / (abs(x) / limit * 0.55 + 1)) * (x < 0 ? -1 : 1)
+    }
+
+    private func springBack() {
+        guard offset != 0 else { target = nil; return }
+        run(.spring(response: 0.32, dampingFraction: 0.82), { self.offset = 0 }) { self.target = nil }
+    }
+
+    /// Slides the incoming list the rest of the way, then makes it the workspace with nothing moving on screen.
+    private func finish() {
+        guard let id = target else { return }
+        sliding = true
+        let end: CGFloat = offset < 0 ? -width : width
+        let rest = 1 - progress
+        run(.spring(response: 0.22 + 0.16 * rest, dampingFraction: 0.95), { self.offset = end }) {
+            var t = Transaction(); t.disablesAnimations = true
+            withTransaction(t) {
+                self.select(id)
+                self.offset = 0
+                self.target = nil
+            }
+            self.sliding = false
+        }
+    }
+
+    private func run(_ a: Animation, _ change: @escaping () -> Void, completion: @escaping () -> Void) {
+        if animated { withAnimation(a, change, completion: completion) } else { change(); completion() }
     }
 
     // MARK: Step
 
     /// Next (+1) or previous (-1) workspace with the slide (wrapping around, like cycleWorkspace).
     func slide(_ delta: Int) {
-        let ws = AppModel.shared.state.workspaces.sorted { $0.sort < $1.sort }
-        guard ws.count > 1, let i = ws.firstIndex(where: { $0.id == AppModel.shared.selectedWorkspaceId }) else {
-            AppModel.shared.cycleWorkspace(delta); return
-        }
-        go(to: ws[(i + delta + ws.count) % ws.count].id, direction: delta)
+        guard let id = neighbor(delta) else { return }
+        go(to: id, direction: delta)
     }
 
-    /// A chosen workspace with the slide, leftward when it sits after the current one.
+    /// A chosen workspace with the slide, coming in from the right when it sits after the current one.
     func go(to id: String) {
-        let ws = AppModel.shared.state.workspaces.sorted { $0.sort < $1.sort }
-        let from = ws.firstIndex { $0.id == AppModel.shared.selectedWorkspaceId } ?? 0
-        let to = ws.firstIndex { $0.id == id } ?? from
+        let ws = workspaceIds()
+        let from = ws.firstIndex { $0 == currentId() } ?? 0
+        let to = ws.firstIndex { $0 == id } ?? from
         go(to: id, direction: to >= from ? 1 : -1)
     }
 
-    /// The list leaves toward -direction and the new one comes in from +direction.
     private func go(to id: String, direction: Int) {
-        let model = AppModel.shared
-        guard id != model.selectedWorkspaceId else { return }
-        guard model.sidebarVisible, !sliding else { model.selectWorkspace(id); return }
-        sliding = true
-        let out = CGFloat(-direction) * width
-        withAnimation(.easeIn(duration: 0.12)) { offset = out } completion: { [self] in
-            model.selectWorkspace(id)
-            var t = Transaction(); t.disablesAnimations = true
-            withTransaction(t) { offset = -out * 0.6 }
-            withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) { offset = 0 } completion: { [self] in
-                sliding = false
-            }
-        }
+        guard id != currentId() else { return }
+        guard (!animated || AppModel.shared.sidebarVisible), !sliding else { select(id); return }
+        target = id
+        offset = direction > 0 ? -0.001 : 0.001     // puts the incoming list on its side before it moves
+        finish()
     }
 }
 
-/// Puts the pager's offset on the project list and fades it a little as it travels.
-struct WorkspacePaged: ViewModifier {
+/// The sidebar's project list for the current workspace, with the incoming one beside it while paging.
+struct WorkspacePages<Page: View>: View {
     @ObservedObject var pager = WorkspacePager.shared
-    @EnvironmentObject var model: AppModel
+    let current: String?
+    let page: (String) -> Page
 
-    func body(content: Content) -> some View {
-        let w = max(model.sidebarWidth, 160)
-        content
-            .offset(x: pager.offset)
-            .opacity(1 - min(abs(pager.offset) / w, 1) * 0.6)
-            .clipped()
+    var body: some View {
+        GeometryReader { geo in
+            let w = geo.size.width
+            ZStack(alignment: .topLeading) {
+                if let c = current {
+                    page(c).frame(width: w, height: geo.size.height).offset(x: pager.offset)
+                }
+                if let t = pager.target, t != current, pager.offset != 0 {
+                    page(t).frame(width: w, height: geo.size.height)
+                        .offset(x: pager.offset + (pager.offset < 0 ? w : -w))
+                        .allowsHitTesting(false)
+                }
+            }
+        }
+        .clipped()
     }
 }

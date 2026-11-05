@@ -2,9 +2,9 @@
 
 ## Unreleased
 
-- **Workspace switching slides**: a two-finger swipe over the sidebar drags the project list with your fingers;
-  let go far or fast enough and the next workspace slides in, otherwise it springs back. ⌃⌘← →, ⌃1…⌃9 and
-  the switcher dots slide too.
+- **Workspace paging**: a two-finger swipe over the sidebar pulls the next workspace's projects in beside the
+  current ones, and the window color blends toward the new workspace's as you pass the middle. Let go past
+  the point (or flick) and it switches; otherwise it springs back. ⌃⌘← →, ⌃1…⌃9 and the switcher dots page too.
 - **Inbox** (sidebar, above the projects): pull requests that wait for your review, your pull requests with their
   checks, and issues assigned to you, from **GitHub** (through the GitHub CLI, so Octomux keeps no GitHub token)
   and **Jira Cloud** (site, email and an API token, with or without scopes, kept in your Keychain).

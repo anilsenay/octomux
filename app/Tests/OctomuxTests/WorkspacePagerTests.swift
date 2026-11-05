@@ -2,16 +2,20 @@ import AppKit
 import XCTest
 @testable import Octomux
 
-/// The sidebar's workspace swipe, fed with synthesized trackpad scroll events.
+/// The sidebar's workspace paging, fed with synthesized trackpad scroll events.
 final class WorkspacePagerTests: XCTestCase {
     private var pager: WorkspacePager!
-    private var commits: [Int] = []
+    private var current = "a"
+    private var selected: [String] = []
 
     override func setUp() {
         pager = WorkspacePager()
-        commits = []
-        pager.workspaceCount = { 3 }
-        pager.commit = { [unowned self] in self.commits.append($0) }
+        current = "a"
+        selected = []
+        pager.animated = false
+        pager.workspaceIds = { ["a", "b", "c"] }
+        pager.currentId = { [unowned self] in self.current }
+        pager.select = { [unowned self] in self.selected.append($0); self.current = $0 }
     }
 
     /// A continuous (trackpad) scroll event; phase 1 began, 2 changed, 4 ended, 8 cancelled.
@@ -25,45 +29,79 @@ final class WorkspacePagerTests: XCTestCase {
         return NSEvent(cgEvent: cg)!
     }
 
-    private func swipe(_ steps: [Int32], dy: Int32 = 0, end: Int64 = 4) -> [Bool] {
+    private func drag(_ steps: [Int32], dy: Int32 = 0) -> [Bool] {
         var out = [pager.handle(ev(0, phase: 1))]
         for d in steps { out.append(pager.handle(ev(d, dy, phase: 2))) }
+        return out
+    }
+
+    private func swipe(_ steps: [Int32], dy: Int32 = 0, end: Int64 = 4) -> [Bool] {
+        var out = drag(steps, dy: dy)
         out.append(pager.handle(ev(0, phase: end)))
         return out
     }
 
-    func testLongSwipeLeftGoesToTheNextWorkspace() {
-        _ = pager.handle(ev(0, phase: 1))
-        for _ in 0..<3 { _ = pager.handle(ev(-10, phase: 2)) }
-        XCTAssertEqual(pager.offset, -30)                       // follows the fingers until release
+    /// Slow steps: no flick, so only the distance decides.
+    private func slow(_ total: Int, _ sign: Int32) -> [Int32] { Array(repeating: 5 * sign, count: total / 5) }
+
+    func testDraggingShowsTheNeighborAndBlendsColorAroundTheMiddle() {
+        _ = drag(Array(repeating: -5, count: 4))
+        XCTAssertEqual(pager.target, "b")                        // fingers left → the next workspace comes in
+        XCTAssertEqual(pager.offset, -20)                         // one to one with the fingers
+        XCTAssertEqual(pager.colorBlend, 0)                       // color still the current workspace's
+        let half = Int(pager.width / 2) / 5 - 4
+        for _ in 0..<half { _ = pager.handle(ev(-5, phase: 2)) }  // same gesture, to about the middle
+        XCTAssertGreaterThan(pager.colorBlend, 0.3)
+        XCTAssertLessThan(pager.colorBlend, 0.7)
         _ = pager.handle(ev(0, phase: 8))
-        _ = swipe([-25, -25, -25, -2, -1])
-        XCTAssertEqual(commits, [1])
-        _ = swipe([25, 25, 25, 2, 1])
-        XCTAssertEqual(commits, [1, -1])
+        XCTAssertEqual(pager.colorBlend, 0)                       // springs back with the color
     }
 
-    func testShortSlowSwipeSpringsBack() {
-        _ = swipe([-3, -3, -3, -3, -3, -3, -3, -3, -3, -3])     // 30 pt, slow at the end
-        XCTAssertEqual(commits, [])
+    func testPastTheCommitPointSwitches() {
+        _ = swipe(slow(Int(pager.width * 0.5), -1))
+        XCTAssertEqual(selected, ["b"])
         XCTAssertEqual(pager.offset, 0)
+        XCTAssertNil(pager.target)
+        _ = swipe(slow(Int(pager.width * 0.5), 1))              // and back
+        XCTAssertEqual(selected, ["b", "a"])
     }
 
-    func testShortFlickSwitches() {
-        _ = swipe([-4, -16, -24])                               // 44 pt but fast
-        XCTAssertEqual(commits, [1])
+    func testShortOfTheCommitPointSpringsBack() {
+        _ = swipe(slow(Int(pager.width * 0.3), -1))
+        XCTAssertEqual(selected, [])
+        XCTAssertEqual(pager.offset, 0)
+        XCTAssertNil(pager.target)
+    }
+
+    func testFlickSwitchesEarly() {
+        _ = swipe([-4, -16, -24])                                 // 44 pt but fast
+        XCTAssertEqual(selected, ["b"])
+    }
+
+    func testWrapsAroundBackwards() {
+        _ = swipe(slow(Int(pager.width * 0.5), 1))              // fingers right → previous, wraps to the last
+        XCTAssertEqual(selected, ["c"])
+    }
+
+    func testChangingDirectionMidSwipeChangesTheNeighbor() {
+        _ = drag([-10, -10])
+        XCTAssertEqual(pager.target, "b")
+        _ = drag([30])
+        XCTAssertEqual(pager.target, "c")
+        _ = pager.handle(ev(0, phase: 8))
     }
 
     func testCancelledSwipeNeverSwitches() {
-        _ = swipe([-40, -40, -40], end: 8)
-        XCTAssertEqual(commits, [])
+        _ = swipe(slow(Int(pager.width * 0.8), -1), end: 8)
+        XCTAssertEqual(selected, [])
+        XCTAssertEqual(pager.offset, 0)
     }
 
     func testVerticalScrollPassesThrough() {
         let handled = swipe([2, 1, 3], dy: 20)
         XCTAssertEqual(handled.dropFirst().dropLast(), [false, false, false])
         XCTAssertEqual(pager.offset, 0)
-        XCTAssertEqual(commits, [])
+        XCTAssertEqual(selected, [])
     }
 
     func testMomentumIsIgnored() {
@@ -71,19 +109,27 @@ final class WorkspacePagerTests: XCTestCase {
         XCTAssertEqual(pager.offset, 0)
     }
 
-    func testDragResistsBeyondAQuarterAndStaysUnderHalf() {
-        _ = pager.handle(ev(0, phase: 1))
-        for _ in 0..<40 { _ = pager.handle(ev(-20, phase: 2)) }  // 800 pt of travel
-        XCTAssertLessThan(abs(pager.offset), pager.width * 0.45)
-        XCTAssertGreaterThan(abs(pager.offset), pager.width * 0.3)
+    func testOffsetStopsAtAFullPage() {
+        _ = drag(Array(repeating: -40, count: 30))
+        XCTAssertEqual(pager.offset, -pager.width)
+        _ = pager.handle(ev(0, phase: 8))
     }
 
     func testOneWorkspaceOnlyBudges() {
-        pager.workspaceCount = { 1 }
-        _ = pager.handle(ev(0, phase: 1))
-        for _ in 0..<10 { _ = pager.handle(ev(-30, phase: 2)) }
+        pager.workspaceIds = { ["a"] }
+        _ = drag(Array(repeating: -30, count: 10))
+        XCTAssertNil(pager.target)
         XCTAssertLessThanOrEqual(abs(pager.offset), 40)
         _ = pager.handle(ev(0, phase: 4))
-        XCTAssertEqual(commits, [])
+        XCTAssertEqual(selected, [])
+    }
+
+    func testStepsAndJumps() {
+        pager.slide(1)
+        XCTAssertEqual(selected, ["b"])
+        pager.go(to: "a")
+        XCTAssertEqual(selected, ["b", "a"])
+        pager.go(to: "a")                                         // already there
+        XCTAssertEqual(selected, ["b", "a"])
     }
 }

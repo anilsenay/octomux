@@ -13,9 +13,19 @@ struct SidebarView: View {
         VStack(spacing: 0) {
             header
             InboxSidebarRow()
+            WorkspacePages(current: model.selectedWorkspaceId) { ws in projectList(ws) }
+            .frame(maxHeight: .infinity)
+            AgentsPanel(maxHeight: max(AgentsPanel.minHeight, geo.size.height - 260))
+            footer
+        }
+        }
+    }
+
+    /// One workspace's projects, sessions and worktrees (the current one, or the one paging in).
+    private func projectList(_ workspace: String) -> some View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 1) {
-                    ForEach(Array(model.projects.enumerated()), id: \.element.id) { i, p in
+                    ForEach(Array(model.projects(in: workspace).enumerated()), id: \.element.id) { i, p in
                         ProjectRow(project: p, collapsed: collapsed.contains(p.id)) {
                             if collapsed.contains(p.id) { collapsed.remove(p.id) } else { collapsed.insert(p.id) }
                             UserDefaults.standard.set(Array(collapsed), forKey: "octomux.collapsed")
@@ -40,7 +50,7 @@ struct SidebarView: View {
                             }
                         }
                     }
-                    if model.projects.isEmpty {
+                    if model.projects(in: workspace).isEmpty {
                         SidebarEmptyState()
                     }
                 }
@@ -48,12 +58,6 @@ struct SidebarView: View {
                 .padding(.top, 10)
                 .padding(.bottom, 8)
             }
-            .modifier(WorkspacePaged())
-            .frame(maxHeight: .infinity)
-            AgentsPanel(maxHeight: max(AgentsPanel.minHeight, geo.size.height - 260))
-            footer
-        }
-        }
     }
 
     struct WorktreeGroup { let path: String; let branch: String; let sessions: [Session] }
