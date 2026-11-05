@@ -70,7 +70,9 @@ struct InboxView: View {
     private var loadingLine: some View {
         HStack(spacing: 6) {
             ProgressView().controlSize(.small)
-            Text("Loading \(ListFormatter.localizedString(byJoining: loadingHere.map(\.name)))…")
+            // A list kept from the last run is on screen: it is being brought up to date, not loaded.
+            let updating = loadingHere.allSatisfy { store.cached.contains($0) }
+            Text("\(updating ? "Updating" : "Loading") \(ListFormatter.localizedString(byJoining: loadingHere.map(\.name)))…")
         }
         .font(T.caption).foregroundStyle(T.text3)
     }

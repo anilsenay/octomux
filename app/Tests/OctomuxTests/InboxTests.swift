@@ -167,6 +167,38 @@ final class InboxStoreTests: XCTestCase {
         UserDefaults.standard.removeObject(forKey: InboxPrefs.nProjects)
     }
 
+    func testLastListsShowAtOnceUntilTheFirstFetch() {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("inbox-cache-\(UUID().uuidString).json")
+        addTeardownBlock { try? FileManager.default.removeItem(at: file) }
+        var a = gh(1, .review, checks: .failing); a.checkCounts = (2, 1, 0); a.failedCheckDetails = [.init(name: "test", url: "u")]
+        a.reviewers = [InboxReviewer(id: "x", name: "Max", state: .approved)]; a.commentCount = 4; a.branch = "feat"
+        var jira = gh(9); jira = InboxItem(id: "jira:SHOP-1", source: .jira, kind: .issue, key: "SHOP-1", place: "Shop", title: "J", author: "",
+                                          assignee: "You", status: "To Do", statusTone: "todo", reason: .assigned, updated: Date(), body: "", url: "")
+        InboxCache.write([a, gh(2), jira], to: file)
+        // Round trip, the tuple included; too old a file is not shown.
+        let back = InboxCache.read(file)!
+        XCTAssertEqual(back.first?.checkCounts.failed, 1)
+        XCTAssertEqual(back.first?.reviewers.first?.state, .approved)
+        XCTAssertEqual(back.first?.commentCount, 4)
+        XCTAssertNil(InboxCache.read(file, now: Date().addingTimeInterval(InboxCache.maxAge + 60)))
+
+        // Only connected sources come back, marked as kept; nothing rings for them.
+        store.cacheFile = file
+        store.fixtureOn = [.github]
+        store.loadCache()
+        XCTAssertEqual(Set(store.items.map(\.id)), ["gh:o/r#1", "gh:o/r#2"])
+        XCTAssertEqual(store.cached, [.github])
+        XCTAssertTrue(rung.isEmpty)
+        // The first fetch replaces the kept list and writes the new one.
+        store.apply(.github, .success([gh(3)]))
+        XCTAssertEqual(store.items.map(\.id), ["gh:o/r#3"])
+        XCTAssertTrue(store.cached.isEmpty)
+        let expect = expectation(description: "written")
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.3) { expect.fulfill() }
+        wait(for: [expect], timeout: 2)
+        XCTAssertEqual(InboxCache.read(file)?.map(\.id), ["gh:o/r#3"])
+    }
+
     private func gh(_ n: Int, _ reason: InboxItem.Reason = .assigned, at t: Double = 1000, checks: InboxItem.Checks? = nil, repo: String = "o/r") -> InboxItem {
         var i = InboxItem(id: "gh:\(repo)#\(n)", source: .github, kind: .pr, key: "#\(n)", place: repo, title: "PR \(n)", author: "ann",
                           assignee: nil, status: "Open", statusTone: "done", reason: reason, updated: Date(timeIntervalSince1970: t),

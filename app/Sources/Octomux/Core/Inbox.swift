@@ -29,16 +29,16 @@ enum InboxSource: String, CaseIterable, Identifiable, Codable {
     var isCodeHost: Bool { self != .jira }
 }
 
-struct InboxItem: Identifiable, Equatable {
-    enum Kind: String { case pr, issue }
+struct InboxItem: Identifiable, Equatable, Codable {
+    enum Kind: String, Codable { case pr, issue }
     /// Why it is in the inbox (an item found by several searches keeps the first of these).
-    enum Reason: String, CaseIterable {
+    enum Reason: String, CaseIterable, Codable {
         case review = "Review requested", mine = "Your pull request", assigned = "Assigned to you"
         case mention = "Mentioned you", project = "In your projects", filter = "From your filters"
         /// Other people's work, there because of a project or a filter: news only with the project's bell.
         var isOthers: Bool { self == .project || self == .filter }
     }
-    enum Checks: String { case passing, failing, pending }
+    enum Checks: String, Codable { case passing, failing, pending }
 
     let id: String            // "gh:owner/repo#12", "bb:workspace/repo#7", "jira:DC-4162"
     let source: InboxSource
@@ -55,10 +55,10 @@ struct InboxItem: Identifiable, Equatable {
     var checkCounts: (passed: Int, failed: Int, pending: Int) = (0, 0, 0)
     var failedChecks: [String] = []
     /// A failed check: its link (an Actions job's, for its log) and what it said about itself.
-    struct FailedCheck: Equatable { var name: String; var url: String; var title: String? = nil; var summary: String? = nil }
+    struct FailedCheck: Equatable, Codable { var name: String; var url: String; var title: String? = nil; var summary: String? = nil }
     var failedCheckDetails: [FailedCheck] = []
     /// Merged, closed or done since it left the open searches: it stays listed for a while with this label.
-    struct Ended: Equatable { var label: String; var merged: Bool = false; var at: Date }
+    struct Ended: Equatable, Codable { var label: String; var merged: Bool = false; var at: Date }
     var ended: Ended? = nil
     var updated: Date
     let body: String
@@ -82,6 +82,13 @@ struct InboxItem: Identifiable, Equatable {
     var reviewers: [InboxReviewer] = []
     var isDraft: Bool { kind == .pr && status == "Draft" }
 
+    /// Everything but checkCounts (a tuple; InboxCache keeps it beside the item).
+    enum CodingKeys: String, CodingKey {
+        case id, source, kind, key, place, title, author, assignee, status, statusTone, reason, checks, failedChecks
+        case failedCheckDetails, ended, updated, body, url, branch, number, base, head, approvals, changesRequested
+        case youApproved, youRequestedChanges, commentCount, priority, openTasks, reviewers
+    }
+
     static func == (a: InboxItem, b: InboxItem) -> Bool {
         a.id == b.id && a.updated == b.updated && a.reason == b.reason && a.checks == b.checks && a.status == b.status && a.ended == b.ended
     }
@@ -95,8 +102,8 @@ struct InboxItem: Identifiable, Equatable {
 }
 
 /// A pull request's reviewer and their review so far.
-struct InboxReviewer: Equatable, Identifiable {
-    enum State: Equatable { case approved, changes, none }
+struct InboxReviewer: Equatable, Identifiable, Codable {
+    enum State: Equatable, Codable { case approved, changes, none }
     let id: String          // account id
     let name: String
     var state: State
@@ -153,7 +160,7 @@ enum InboxPrefs {
 // MARK: - Store
 
 final class InboxStore: ObservableObject {
-    static let shared = InboxStore()
+    static let shared: InboxStore = { let s = InboxStore(); s.cacheFile = Paths.home.appendingPathComponent("inbox-cache.json"); return s }()
 
     /// What the Inbox shows: everything fetched but the hidden repos and projects.
     @Published private(set) var items: [InboxItem] = []
@@ -335,8 +342,32 @@ final class InboxStore: ObservableObject {
     func isUnread(_ i: InboxItem) -> Bool { (seen[i.id] ?? 0) < i.updated.timeIntervalSince1970 }
     var unreadCount: Int { items.filter(isUnread).count }
 
+    /// Where the last lists are kept, to show them at once after a launch (the app's store only; tests: nil).
+    var cacheFile: URL?
+    /// A source whose list came from the cache, not from a fetch since launch.
+    @Published private(set) var cached: Set<InboxSource> = []
+
+    /// Shows the lists kept at the last quit (connected sources only) until their first fetch replaces them.
+    func loadCache() {
+        guard let f = cacheFile, !frozen, fetched.isEmpty, let c = InboxCache.read(f) else { return }
+        let on = Set(InboxSource.allCases.filter(isOn))
+        let list = c.filter { on.contains($0.source) }
+        guard !list.isEmpty else { return }
+        fetched = list.sorted { $0.updated > $1.updated }
+        cached = Set(list.map(\.source))
+        publish()
+    }
+
+    private func saveCache() {
+        guard let f = cacheFile, !frozen else { return }
+        // A source still showing its cached list is written as it was read.
+        let list = fetched
+        DispatchQueue.global(qos: .utility).async { InboxCache.write(list, to: f) }
+    }
+
     func start() {
         guard timer == nil else { return }
+        loadCache()
         timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in self?.tick() }
         InboxReviews.shared.pump()          // reviews that were running when Octomux quit are watched again
         refresh()
@@ -770,7 +801,8 @@ final class InboxStore: ObservableObject {
         let on: [InboxSource: Bool] = Dictionary(uniqueKeysWithValues: InboxSource.allCases.map { ($0, isOn($0)) })
         // A source turned off leaves.
         for (s, v) in on where !v && fetched.contains(where: { $0.source == s }) {
-            fetched.removeAll { $0.source == s }; errors[s] = nil; primed.remove(s); loading.remove(s)
+            fetched.removeAll { $0.source == s }; errors[s] = nil; primed.remove(s); loading.remove(s); cached.remove(s)
+            saveCache()
             endedItems = endedItems.filter { $0.value.source != s }
             publish()
         }
@@ -922,7 +954,9 @@ final class InboxStore: ObservableObject {
         // Hidden ones count as seen by the notifier too: showing a repo again does not ring for all of it.
         for i in mine where hidden.contains(i.place) { known[i.id] = i.updated.timeIntervalSince1970; knownStatus[i.id] = i.status }
         primed.insert(source)
+        cached.remove(source)
         publish()
+        saveCache()
         if !departed.isEmpty { checkEnded(departed) }
         pruneSeen(live: Set(next.map(\.id)).union(endedItems.keys))
         if let s = selectedId, !items.contains(where: { $0.id == s }) { selectedId = nil }
@@ -2065,5 +2099,31 @@ extension String {
             t = t.replacingOccurrences(of: k, with: v)
         }
         return t
+    }
+}
+
+/// The Inbox's lists as they were at the last fetch, kept on disk so a launch shows them at once.
+enum InboxCache {
+    /// Older than this, a kept list is not shown (it would be misleading).
+    static let maxAge: TimeInterval = 3 * 86400
+
+    private struct Entry: Codable { var item: InboxItem; var counts: [Int] }
+    private struct File: Codable { var version = 1; var saved: Date; var items: [Entry] }
+
+    static func write(_ items: [InboxItem], to url: URL, now: Date = Date()) {
+        let f = File(saved: now, items: items.map { Entry(item: $0, counts: [$0.checkCounts.passed, $0.checkCounts.failed, $0.checkCounts.pending]) })
+        guard let data = try? JSONEncoder().encode(f) else { return }
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? data.write(to: url, options: .atomic)
+    }
+
+    static func read(_ url: URL, now: Date = Date()) -> [InboxItem]? {
+        guard let data = try? Data(contentsOf: url), let f = try? JSONDecoder().decode(File.self, from: data), f.version == 1,
+              now.timeIntervalSince(f.saved) < maxAge else { return nil }
+        return f.items.map { e in
+            var i = e.item
+            if e.counts.count == 3 { i.checkCounts = (e.counts[0], e.counts[1], e.counts[2]) }
+            return i
+        }
     }
 }

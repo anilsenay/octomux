@@ -116,8 +116,10 @@
     its .claude settings or servers to its .mcp.json can no longer run them during the review.
   - The Inbox's folders and list are resized by dragging their right edge (a double click puts one back); the
     widths are kept, and the detail never gets narrower than it can show.
-  - While a source is loading for the first time after launch, the list says so ("Loading Bitbucket…") instead
-    of showing nothing or "Nothing matches.".
+  - After a launch the Inbox shows the lists from the last run at once (kept for up to three days, connected
+    sources only) and says it is updating them; the first fetch replaces them and nothing rings for the kept
+    ones. A source loading with nothing kept says so ("Loading Bitbucket…") instead of showing nothing or
+    "Nothing matches.".
   - **Bitbucket tasks and reviewers**: a pull request shows how many open tasks it has (the reviewers' to-dos), and
     its detail lists them; a click marks one resolved or opens it again (asked first). Work on it and Fix with
     agent hand the open ones to the agent. The detail lists the reviewers with where each one's review stands.
