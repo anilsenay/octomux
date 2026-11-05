@@ -590,6 +590,62 @@ struct InboxStatusDot: View {
     }
 }
 
+/// Searches the people a Jira issue can be assigned to, and assigns the picked one (asks first).
+struct InboxAssigneePicker: View {
+    @ObservedObject var jira = InboxJiraActions.shared
+    let item: InboxItem
+    let close: () -> Void
+    @State private var query = ""
+    @State private var found: [JiraClient.User] = []
+    @State private var error: String?
+    @State private var searching = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Assign \(item.key) to").font(.system(size: T.k * 13, weight: .semibold))
+            TextField("Name or email", text: $query).textFieldStyle(.roundedBorder)
+                .onSubmit { search() }
+                .onChange(of: query) { _, q in
+                    let now = q
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { if now == query { search() } }
+                }
+            if let error { Text(error).font(T.caption).foregroundStyle(T.red).fixedSize(horizontal: false, vertical: true) }
+            if searching && found.isEmpty { Text("Searching…").font(T.caption).foregroundStyle(T.text3) }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(found) { u in
+                        Button { close(); jira.assign(item, to: u) } label: {
+                            HStack {
+                                Text(u.name).font(.system(size: T.k * 12.5))
+                                Spacer()
+                                if u.name == item.assignee { Image(systemName: "checkmark").font(.system(size: T.k * 10)) }
+                            }
+                            .padding(.horizontal, 8).frame(height: 26).contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .frame(height: 180)
+        }
+        .padding(14).frame(width: 300)
+        .onAppear { search() }
+    }
+
+    private func search() {
+        searching = true; error = nil
+        let q = query
+        jira.searchUsers(item, q) { r in
+            guard q == query else { return }
+            searching = false
+            switch r {
+            case .success(let u): found = u
+            case .failure(let e): error = "\(e)"; found = []
+            }
+        }
+    }
+}
+
 /// Snooze: out of the list until a time (or until something happens to the item).
 struct InboxSnoozeMenu: View {
     static let tint = Color(hex: "#A78BFA")
@@ -677,6 +733,13 @@ struct InboxDetail: View {
     @State private var comment = ""
     @State private var posting = false
     @State private var postError: String?
+    @State private var editingTitle = false
+    @State private var titleDraft = ""
+    /// Jira description editing: nil until asked; .some(nil) when it has formatting a plain edit would lose.
+    @State private var plainDescription: String??
+    @State private var editingDescription = false
+    @State private var descriptionDraft = ""
+    @State private var pickingAssignee = false
 
     private var project: Project? { store.project(for: item) ?? model.currentProject }
 
@@ -717,8 +780,24 @@ struct InboxDetail: View {
                 if item.kind == .pr && store.detailTab == "code" {
                     InboxPRCode(item: item) { id in withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(id, anchor: .top) } }
                 } else {
-                    if !item.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { InboxMarkdown(text: item.body, item: item) }
-                    else { Text("No description.").font(T.body).foregroundStyle(T.text3) }
+                    if editingDescription {
+                        VStack(alignment: .trailing, spacing: 6) {
+                            TextEditor(text: $descriptionDraft).font(.system(size: T.k * 12.5)).frame(minHeight: 120)
+                                .padding(6)
+                                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(T.frame.opacity(0.4)))
+                                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(T.border))
+                            HStack {
+                                Button("Cancel") { editingDescription = false }.buttonStyle(SecondaryButtonStyle())
+                                Button("Save") {
+                                    jiraActions.describe(item, descriptionDraft) { ok in if ok { editingDescription = false; plainDescription = nil } }
+                                }.buttonStyle(PrimaryButtonStyle())
+                            }
+                        }
+                    } else {
+                        if !item.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { InboxMarkdown(text: item.body, item: item) }
+                        else { Text("No description.").font(T.body).foregroundStyle(T.text3) }
+                        if canEdit("description") { descriptionEditLink }
+                    }
                     InboxActivityView(item: item)
                     commentBox
                 }
@@ -758,7 +837,8 @@ struct InboxDetail: View {
                     }
                     .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().pointerCursor()
                     .help("Change the status")
-                    .onAppear { jiraActions.loadTransitions(item) }
+                    .onAppear { jiraActions.loadTransitions(item); jiraActions.loadEditMeta(item) }
+                    priorityMenu
                 } else {
                     Text(item.ended?.label ?? item.status).font(.system(size: T.k * 10.5, weight: .semibold)).foregroundStyle(statusColor)
                         .padding(.horizontal, 6).frame(height: 17)
@@ -766,11 +846,29 @@ struct InboxDetail: View {
                 }
                 Text(item.place).font(.system(size: T.k * 11.5)).foregroundStyle(T.text3)
             }
-            Text(item.title).font(.system(size: T.k * 19, weight: .bold)).foregroundStyle(T.text).textSelection(.enabled)
+            if editingTitle {
+                HStack(spacing: 8) {
+                    TextField("Title", text: $titleDraft).textFieldStyle(.roundedBorder).font(.system(size: T.k * 15, weight: .semibold))
+                        .onSubmit { saveTitle() }
+                    Button("Save") { saveTitle() }.buttonStyle(PrimaryButtonStyle()).disabled(titleDraft.trimmingCharacters(in: .whitespaces).isEmpty)
+                    Button("Cancel") { editingTitle = false }.buttonStyle(SecondaryButtonStyle())
+                }
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(item.title).font(.system(size: T.k * 19, weight: .bold)).foregroundStyle(T.text).textSelection(.enabled)
+                    if canEdit("summary") {
+                        Button { titleDraft = item.title; editingTitle = true } label: { Image(systemName: "pencil").font(.system(size: T.k * 11)) }
+                            .buttonStyle(IconButtonStyle(size: 22)).help("Rename on Jira (asks first)")
+                    }
+                }
+            }
             HStack(spacing: 6) {
                 Text(item.author)
                 Text("·")
-                if item.source != .bitbucket {
+                if item.source == .jira, item.ended == nil {
+                    assigneeMenu
+                    Text("·")
+                } else if item.source != .bitbucket {
                     Text(item.assignee.map { "Assigned to \($0)" } ?? "Unassigned")
                     Text("·")
                 }
@@ -786,6 +884,82 @@ struct InboxDetail: View {
                 if item.kind == .pr, item.reason == .review, item.ended == nil, item.source == .bitbucket || store.activity[item.id] != nil { yourReview }
             }
             .font(.system(size: T.k * 11.5))
+        }
+    }
+
+    // MARK: Changing a Jira issue (each change asks first)
+
+    private func canEdit(_ field: String) -> Bool {
+        item.source == .jira && item.ended == nil && jiraActions.editMeta[item.id]?.editable.contains(field) == true
+    }
+
+    private func saveTitle() {
+        jiraActions.rename(item, titleDraft) { ok in if ok { editingTitle = false } }
+    }
+
+    @ViewBuilder private var priorityMenu: some View {
+        let options = jiraActions.editMeta[item.id]?.priorities ?? []
+        if item.priority != nil || !options.isEmpty {
+            Menu {
+                if options.isEmpty { Text(jiraActions.editMeta[item.id] == nil ? "Loading…" : "The priority can't be changed here") }
+                ForEach(options) { p in
+                    Button((p.name == item.priority ? "✓ " : "") + p.name) { if p.name != item.priority { jiraActions.setPriority(item, p) } }
+                }
+            } label: {
+                HStack(spacing: 3) {
+                    Image(systemName: "flag").font(.system(size: T.k * 8.5, weight: .semibold))
+                    Text(item.priority ?? "Priority").font(.system(size: T.k * 10.5, weight: .medium))
+                    if !options.isEmpty { Image(systemName: "chevron.down").font(.system(size: T.k * 7, weight: .bold)) }
+                }
+                .foregroundStyle(T.text2).padding(.horizontal, 6).frame(height: 17)
+                .background(Capsule().fill(T.hover))
+            }
+            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().pointerCursor()
+            .help(options.isEmpty ? "Priority" : "Change the priority (asks first)")
+        }
+    }
+
+    private var assigneeMenu: some View {
+        Menu {
+            if item.assignee != "You" { Button("Assign to Me") { jiraActions.assignToMe(item) } }
+            Button("Assign to Someone…") { pickingAssignee = true }
+            if item.assignee != nil { Button("Unassign") { jiraActions.assign(item, to: nil) } }
+        } label: {
+            HStack(spacing: 3) {
+                Text(item.assignee.map { "Assigned to \($0)" } ?? "Unassigned")
+                Image(systemName: "chevron.down").font(.system(size: T.k * 7, weight: .bold))
+            }
+            .contentShape(Rectangle())
+        }
+        .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().pointerCursor()
+        .help("Change the assignee (asks first)")
+        .popover(isPresented: $pickingAssignee, arrowEdge: .bottom) {
+            InboxAssigneePicker(item: item) { pickingAssignee = false }
+        }
+    }
+
+    @ViewBuilder private var descriptionEditLink: some View {
+        switch plainDescription {
+        case nil:
+            Button("Edit description") {
+                let load = jiraActions.loadPlainDescription, key = item.key
+                DispatchQueue.global(qos: .userInitiated).async {
+                    let r = try? load(key)
+                    DispatchQueue.main.async {
+                        plainDescription = .some(r ?? nil)
+                        if let text = r ?? nil { descriptionDraft = text; editingDescription = true }
+                    }
+                }
+            }
+            .buttonStyle(.link).font(T.caption)
+        case .some(nil):
+            HStack(spacing: 6) {
+                Text("This description has formatting (lists, links or images) that editing it here would drop.").font(T.caption).foregroundStyle(T.text3)
+                Button("Edit on Jira") { if let u = URL(string: item.url) { NSWorkspace.shared.open(u) } }.buttonStyle(.link).font(T.caption)
+            }
+        case .some(.some):
+            Button("Edit description") { descriptionDraft = (plainDescription ?? nil) ?? ""; editingDescription = true }
+                .buttonStyle(.link).font(T.caption)
         }
     }
 

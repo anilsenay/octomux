@@ -163,6 +163,74 @@ final class InboxJiraActions: ObservableObject {
     var loadTypes: (String) throws -> [JiraClient.IssueType] = JiraClient.issueTypes
     var doCreate: (_ project: String, _ type: String, _ summary: String, _ description: String, _ mine: Bool) throws -> String = JiraClient.create
     var loadFilters: () throws -> [JiraClient.Filter] = JiraClient.favouriteFilters
+    var loadUsers: (_ key: String, _ query: String) throws -> [JiraClient.User] = JiraClient.assignableUsers
+    var doAssignTo: (_ key: String, _ accountId: String?) throws -> Void = JiraClient.assign
+    var loadEditMeta: (String) throws -> (priorities: [JiraClient.Priority], editable: Set<String>) = JiraClient.editMeta
+    var doFields: (_ key: String, _ fields: [String: Any]) throws -> Void = JiraClient.setFields
+    var loadPlainDescription: (String) throws -> String? = JiraClient.plainDescription
+
+    /// Item id → what can be changed on it (from onAppear of its detail).
+    @Published private(set) var editMeta: [String: (priorities: [JiraClient.Priority], editable: Set<String>)] = [:]
+
+    func loadEditMeta(_ i: InboxItem) {
+        guard i.source == .jira, i.ended == nil, editMeta[i.id] == nil else { return }
+        let load = loadEditMeta
+        background { [weak self] in
+            guard let m = try? load(i.key) else { return }
+            self?.onMain { self?.editMeta[i.id] = m }
+        }
+    }
+
+    /// Searches the people the issue can be assigned to; `done` gets them (or an error) on the main thread.
+    func searchUsers(_ i: InboxItem, _ query: String, done: @escaping (Result<[JiraClient.User], Error>) -> Void) {
+        let load = loadUsers
+        background { [weak self] in
+            let r = Result { try load(i.key, query) }
+            self?.onMain { done(r) }
+        }
+    }
+
+    func assign(_ i: InboxItem, to user: JiraClient.User?) {
+        guard !busy.contains(i.id) else { return }
+        let from = i.assignee.map { " (now \($0))" } ?? ""
+        let (title, message, button) = user.map { ("Assign \(i.key) to \($0.name)?", "Makes \($0.name) the assignee of “\(i.title)”\(from) on Jira.", "Assign") }
+            ?? ("Unassign \(i.key)?", "Leaves “\(i.title)”\(from) without an assignee on Jira.", "Unassign")
+        confirm(title, message, button) { [weak self] yes in
+            guard yes, let self else { return }
+            let run = self.doAssignTo
+            self.go(i, done: user.map { "Assigned to \($0.name)." } ?? "Unassigned.") { try run(i.key, user?.id) }
+        }
+    }
+
+    func setPriority(_ i: InboxItem, _ p: JiraClient.Priority) {
+        guard !busy.contains(i.id) else { return }
+        confirm("Change \(i.key)'s priority to \(p.name)?", "Sets the priority of “\(i.title)”\(i.priority.map { " from \($0)" } ?? "") to \(p.name) on Jira.", "Change Priority") { [weak self] yes in
+            guard yes, let self else { return }
+            let run = self.doFields
+            self.go(i, done: "Priority: \(p.name).") { try run(i.key, ["priority": ["id": p.id]]) }
+        }
+    }
+
+    /// Renames the issue (asks first); `done(true)` once it is saved.
+    func rename(_ i: InboxItem, _ title: String, done: @escaping (Bool) -> Void = { _ in }) {
+        let t = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty, t != i.title, !busy.contains(i.id) else { done(false); return }
+        confirm("Rename \(i.key)?", "Changes the title on Jira from “\(i.title)” to “\(t)”.", "Rename") { [weak self] yes in
+            guard yes, let self else { done(false); return }
+            let run = self.doFields
+            self.go(i, done: "Renamed.", after: done) { try run(i.key, ["summary": t]) }
+        }
+    }
+
+    /// Replaces a plain description (asks first); `done(true)` once it is saved.
+    func describe(_ i: InboxItem, _ text: String, done: @escaping (Bool) -> Void = { _ in }) {
+        guard !busy.contains(i.id) else { done(false); return }
+        confirm("Change \(i.key)'s description?", "Replaces the description of “\(i.title)” on Jira with the text you wrote.", "Save Description") { [weak self] yes in
+            guard yes, let self else { done(false); return }
+            let run = self.doFields
+            self.go(i, done: "Description saved.", after: done) { try run(i.key, ["description": ADF.doc(text)]) }
+        }
+    }
     var confirm: (_ title: String, _ message: String, _ button: String, _ done: @escaping (Bool) -> Void) -> Void = InboxConfirm.ask
     var background: (@escaping () -> Void) -> Void = { DispatchQueue.global(qos: .userInitiated).async(execute: $0) }
     var onMain: (@escaping () -> Void) -> Void = { DispatchQueue.main.async(execute: $0) }
@@ -197,7 +265,7 @@ final class InboxJiraActions: ObservableObject {
         }
     }
 
-    private func go(_ i: InboxItem, done: String, _ work: @escaping () throws -> Void) {
+    private func go(_ i: InboxItem, done: String, after: @escaping (Bool) -> Void = { _ in }, _ work: @escaping () throws -> Void) {
         busy.insert(i.id)
         results[i.id] = nil
         background { [weak self] in
@@ -209,8 +277,11 @@ final class InboxJiraActions: ObservableObject {
                 case .success:
                     self.results[i.id] = (true, done)
                     self.transitions[i.id] = nil
+                    self.editMeta[i.id] = nil
+                    self.loadEditMeta(i)               // what can be changed may differ now (a new status)
                     self.changed(i)
-                case .failure(let e): self.results[i.id] = (false, "\(e)")
+                    after(true)
+                case .failure(let e): self.results[i.id] = (false, "\(e)"); after(false)
                 }
             }
         }

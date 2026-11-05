@@ -370,6 +370,13 @@ enum DebugActions {
                 if v == "compose" { InboxStore.shared.composingIssue = true }
                 else if v == "save_filter" || v == "unsave_filter", let f = try? ja.loadFilters().first { JiraClient.setSaved(f, v == "save_filter") }
                 else if v == "assign", let item { ja.assignToMe(item) }
+                else if v == "unassign", let item { ja.assign(item, to: nil) }
+                else if v.hasPrefix("assign_to:"), let item {   // the first person the search finds for the rest
+                    ja.searchUsers(item, String(v.dropFirst(10))) { r in if case .success(let u) = r, let first = u.first { ja.assign(item, to: first) } }
+                }
+                else if v.hasPrefix("priority:"), let item, let pr = ja.editMeta[item.id]?.priorities.first(where: { $0.name == String(v.dropFirst(9)) }) { ja.setPriority(item, pr) }
+                else if v.hasPrefix("rename:"), let item { ja.rename(item, String(v.dropFirst(7))) }
+                else if v.hasPrefix("describe:"), let item { ja.describe(item, String(v.dropFirst(9))) }
                 else if v.hasPrefix("move:"), let item, let t = ja.transitions[item.id]?.first(where: { $0.id == String(v.dropFirst(5)) }) { ja.move(item, t) }
                 else if v.hasPrefix("create:") {
                     ja.create(project: "SHOP", type: .init(id: "10001", name: "Task"), summary: String(v.dropFirst(7)), description: "", mine: true) { _ in }

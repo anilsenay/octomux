@@ -71,9 +71,10 @@ enum InboxFixture {
             test\tRun tests\t2026-11-05T09:00:06.0000000Z ##[error]Process completed with exit code 1.
             """
         }
-        let issue = InboxItem(id: "jira:SHOP-7", source: .jira, kind: .issue, key: "SHOP-7", place: "Shop", title: "Price filter ignores the currency",
+        var issue = InboxItem(id: "jira:SHOP-7", source: .jira, kind: .issue, key: "SHOP-7", place: "Shop", title: "Price filter ignores the currency",
                               author: "Cem", assignee: "You", status: "Code Review", statusTone: "progress", reason: .assigned, updated: at(12),
                               body: "When the currency is EUR the filter still compares USD prices.\n\n![eur-filter.png](jira-attachment:eur-filter.png)", url: "https://example.atlassian.net/browse/SHOP-7")
+        issue.priority = "High"
         let quiet = InboxItem(id: "jira:SHOP-3", source: .jira, kind: .issue, key: "SHOP-3", place: "Shop", title: "Update the size guide",
                               author: "Bob", assignee: "Bob", status: "To Do", statusTone: "todo", reason: .project, updated: at(300),
                               body: "", url: "https://example.atlassian.net/browse/SHOP-3")
@@ -161,6 +162,22 @@ enum InboxFixture {
         jira.doAssign = { k in ran.append("jira assign \(k)") }
         jira.loadTypes = { _ in [.init(id: "10001", name: "Task"), .init(id: "10002", name: "Bug")] }
         jira.doCreate = { p, t, s, _, mine in ran.append("jira create \(p) \(t) \(s) mine=\(mine)"); return "\(p)-100" }
+        jira.loadUsers = { _, q in
+            [.init(id: "u1", name: "Bob Builder"), .init(id: "u2", name: "Carl Kent"), .init(id: "u3", name: "Dana Doe")]
+                .filter { q.isEmpty || $0.name.localizedCaseInsensitiveContains(q) }
+        }
+        jira.doAssignTo = { k, id in ran.append("jira assign \(k) to \(id ?? "nobody")") }
+        jira.loadEditMeta = { _ in ([.init(id: "1", name: "Highest"), .init(id: "2", name: "High"), .init(id: "3", name: "Medium"), .init(id: "4", name: "Low")],
+                                    ["summary", "description", "priority"]) }
+        jira.doFields = { k, f in
+            let what = f.keys.sorted().map { key -> String in
+                if key == "priority" { return "priority=\((f[key] as? [String: Any])?["id"] as? String ?? "?")" }
+                if key == "summary" { return "summary=\(f[key] as? String ?? "")" }
+                return key
+            }
+            ran.append("jira edit \(k) " + what.joined(separator: " "))
+        }
+        jira.loadPlainDescription = { k in k == "SHOP-7" ? nil : "Plain text description." }
         jira.loadFilters = { [.init(id: "1", name: "Shop bugs", jql: "project = SHOP AND type = Bug ORDER BY priority"),
                               .init(id: "2", name: "Waiting for me", jql: "assignee = currentUser() AND status = \"In Review\"")] }
         InboxStore.shared.jiraProjects = [(id: "1", key: "SHOP", name: "Shop")]

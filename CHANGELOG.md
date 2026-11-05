@@ -88,6 +88,10 @@
     next to Mark unread.
   - Settings → Inbox lists the Bitbucket repos read for review requests too, with how many items each holds;
     an unticked one is no longer read.
+  - **More Jira changes from the Inbox**, each asked first: assign an issue to anyone (search by name) or unassign it
+    (the assignee is a menu), change its priority (a chip next to the status, with the priorities its screen
+    allows), rename it (the pencil by the title) and edit a plain description. A description with formatting
+    (lists, links, images) isn't edited here, so nothing in it is lost: Edit on Jira opens it there.
   - **Snooze** an item (the moon in the detail, or z for tomorrow morning): later today, tomorrow, next week or a
     date you pick. It leaves the list and the count until then, comes back unread with a notification, or sooner
     when something happens to it. The Snoozed folder lists them; Unsnooze brings one back.

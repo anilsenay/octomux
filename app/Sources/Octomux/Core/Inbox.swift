@@ -75,6 +75,8 @@ struct InboxItem: Identifiable, Equatable {
     var youRequestedChanges = false
     /// Comments so far (GitHub: the conversation's; Bitbucket: all, inline ones too). Nil when not known.
     var commentCount: Int? = nil
+    /// Jira: the priority's name.
+    var priority: String? = nil
     var isDraft: Bool { kind == .pr && status == "Draft" }
 
     static func == (a: InboxItem, b: InboxItem) -> Bool {
@@ -1482,7 +1484,7 @@ enum JiraClient {
         return (scope.isEmpty ? "" : scope + " AND ") + "statusCategory != Done ORDER BY updated DESC"
     }
 
-    static let fields = ["summary", "status", "assignee", "reporter", "updated", "project", "issuetype", "description"]
+    static let fields = ["summary", "status", "assignee", "reporter", "updated", "project", "issuetype", "description", "priority"]
 
     /// Two searches, so one cannot crowd out the other: everything open assigned to you (all of it, paged), and
     /// the newest of the other people's issues where you asked for them (All open ones, or a project's bell).
@@ -1551,7 +1553,7 @@ enum JiraClient {
             let mine = me != nil && (assignee?["accountId"] as? String) == me
             let status = f["status"] as? [String: Any]
             let cat = (status?["statusCategory"] as? [String: Any])?["key"] as? String ?? "new"
-            return InboxItem(
+            var item = InboxItem(
                 id: "jira:\(key)", source: .jira, kind: .issue, key: key,
                 place: ((f["project"] as? [String: Any])?["name"] as? String ?? key.split(separator: "-").first.map(String.init) ?? "").htmlUnescaped,
                 title: f["summary"] as? String ?? key,
@@ -1561,6 +1563,8 @@ enum JiraClient {
                 reason: mine ? .assigned : .project,
                 updated: InboxDates.iso(f["updated"] as? String) ?? Date(),
                 body: ADF.text(f["description"]), url: "\(site)/browse/\(key)")
+            item.priority = (f["priority"] as? [String: Any])?["name"] as? String
+            return item
         }
     }
 
@@ -1628,6 +1632,64 @@ enum JiraClient {
     static func transition(_ key: String, to id: String) throws {
         _ = try request("/rest/api/3/issue/\(key)/transitions", method: "POST", body: ["transition": ["id": id]])
     }
+    struct User: Equatable, Identifiable { let id: String; let name: String }
+
+    /// People the issue can be assigned to, matching `query` (name or email).
+    static func assignableUsers(_ key: String, query: String) throws -> [User] {
+        let q = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        let d = try request("/rest/api/3/user/assignable/search?issueKey=\(key)&query=\(q)&maxResults=20")
+        return users((try JSONSerialization.jsonObject(with: d) as? [[String: Any]]) ?? [])
+    }
+    static func users(_ list: [[String: Any]]) -> [User] {
+        list.compactMap { u in
+            guard let id = u["accountId"] as? String, (u["active"] as? Bool) != false else { return nil }
+            return User(id: id, name: (u["displayName"] as? String ?? id).htmlUnescaped)
+        }
+    }
+
+    /// Assigns the issue to someone (nil: nobody).
+    static func assign(_ key: String, to accountId: String?) throws {
+        _ = try request("/rest/api/3/issue/\(key)/assignee", method: "PUT", body: ["accountId": accountId.map { $0 as Any } ?? NSNull()])
+    }
+
+    struct Priority: Equatable, Identifiable { let id: String; let name: String }
+
+    /// What can be changed on the issue: the priorities its screen allows, and whether summary / description / priority
+    /// are editable at all.
+    static func editMeta(_ key: String) throws -> (priorities: [Priority], editable: Set<String>) {
+        editMeta(try object(request("/rest/api/3/issue/\(key)/editmeta")))
+    }
+    static func editMeta(_ o: [String: Any]) -> (priorities: [Priority], editable: Set<String>) {
+        let f = o["fields"] as? [String: Any] ?? [:]
+        let pr = ((f["priority"] as? [String: Any])?["allowedValues"] as? [[String: Any]] ?? []).compactMap { p -> Priority? in
+            guard let id = p["id"] as? String, let name = p["name"] as? String else { return nil }
+            return Priority(id: id, name: name)
+        }
+        return (pr, Set(f.keys).intersection(["summary", "description", "priority"]))
+    }
+
+    static func setFields(_ key: String, _ fields: [String: Any]) throws {
+        _ = try request("/rest/api/3/issue/\(key)", method: "PUT", body: ["fields": fields])
+    }
+
+    /// The description as plain text when it is only plain paragraphs (then it can be edited here without losing
+    /// anything); nil when it has formatting (lists, links, images, marks…) that a plain-text edit would drop.
+    static func plainDescription(_ key: String) throws -> String? {
+        plainDescription((try object(request("/rest/api/3/issue/\(key)?fields=description"))["fields"] as? [String: Any])?["description"])
+    }
+    static func plainDescription(_ adf: Any?) -> String? {
+        guard let doc = adf as? [String: Any] else { return "" }          // none yet
+        func plain(_ n: [String: Any]) -> Bool {
+            switch n["type"] as? String ?? "" {
+            case "doc", "paragraph": return (n["content"] as? [[String: Any]] ?? []).allSatisfy(plain)
+            case "text": return (n["marks"] as? [Any] ?? []).isEmpty
+            case "hardBreak": return true
+            default: return false
+            }
+        }
+        return plain(doc) ? ADF.text(doc) : nil
+    }
+
     static func assignToMe(_ key: String) throws {
         let me = try myAccountId ?? (object(request("/rest/api/3/myself"))["accountId"] as? String)
         guard let me else { throw InboxError("Couldn't tell who you are on Jira") }

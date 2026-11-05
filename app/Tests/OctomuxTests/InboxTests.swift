@@ -1383,4 +1383,54 @@ final class InboxReadAcrossLaunchTests: XCTestCase {
         XCTAssertEqual(InboxStore.snoozeOptions(now: evening, calendar: cal).first?.title, "Tomorrow")
         XCTAssertEqual(InboxKeys.action(characters: "z", keyCode: 6, modifiers: []), .snooze)
     }
+
+    // MARK: Changing Jira issues (assign to anyone, priority, title, description)
+
+    func testJiraEditParsing() {
+        let meta = JiraClient.editMeta(["fields": [
+            "summary": [:], "description": [:],
+            "priority": ["allowedValues": [["id": "1", "name": "Highest"], ["id": "3", "name": "Medium"], ["name": "no id"]]],
+            "labels": [:],
+        ]])
+        XCTAssertEqual(meta.priorities.map(\.name), ["Highest", "Medium"])
+        XCTAssertEqual(meta.editable, ["summary", "description", "priority"])
+        XCTAssertEqual(JiraClient.users([["accountId": "a", "displayName": "Ann &amp; Co"], ["accountId": "b", "active": false], ["displayName": "x"]]).map(\.name), ["Ann & Co"])
+        // A plain description can be edited here; one with formatting can't (an edit would drop it).
+        let plain: [String: Any] = ["type": "doc", "content": [["type": "paragraph", "content": [["type": "text", "text": "Hello"], ["type": "hardBreak"], ["type": "text", "text": "there"]]]]]
+        XCTAssertEqual(JiraClient.plainDescription(plain), "Hello\nthere")
+        let bold: [String: Any] = ["type": "doc", "content": [["type": "paragraph", "content": [["type": "text", "text": "Hi", "marks": [["type": "strong"]]]]]]]
+        XCTAssertNil(JiraClient.plainDescription(bold))
+        let list: [String: Any] = ["type": "doc", "content": [["type": "bulletList", "content": []]]]
+        XCTAssertNil(JiraClient.plainDescription(list))
+        XCTAssertEqual(JiraClient.plainDescription(nil), "")
+        let issue = JiraClient.parse(["issues": [["key": "A-1", "fields": ["summary": "s", "priority": ["name": "High"], "status": ["name": "To Do"]]]]], me: nil)
+        XCTAssertEqual(issue.first?.priority, "High")
+    }
+
+    func testJiraEditsAskFirst() {
+        let ja = InboxJiraActions()
+        var asked: [String] = [], answer = false, ran: [String] = [], changed = 0
+        ja.confirm = { t, _, _, done in asked.append(t); done(answer) }
+        ja.background = { $0() }; ja.onMain = { $0() }
+        ja.changed = { _ in changed += 1 }
+        ja.doAssignTo = { k, id in ran.append("assign \(k) \(id ?? "nil")") }
+        ja.doFields = { k, f in ran.append("edit \(k) \(f.keys.sorted().joined(separator: ","))") }
+        let i = InboxItem(id: "jira:A-1", source: .jira, kind: .issue, key: "A-1", place: "P", title: "Old", author: "", assignee: "Bob",
+                          status: "To Do", statusTone: "todo", reason: .assigned, updated: Date(), body: "", url: "")
+        ja.assign(i, to: .init(id: "u2", name: "Cem"))
+        XCTAssertEqual(ran, [])                                        // said no
+        answer = true
+        ja.assign(i, to: .init(id: "u2", name: "Cem"))
+        ja.assign(i, to: nil)
+        ja.setPriority(i, .init(id: "1", name: "Highest"))
+        var renamed = false
+        ja.rename(i, "  New  ") { renamed = $0 }
+        ja.rename(i, "Old")                                            // unchanged: nothing asked
+        ja.describe(i, "Plain")
+        XCTAssertEqual(ran, ["assign A-1 u2", "assign A-1 nil", "edit A-1 priority", "edit A-1 summary", "edit A-1 description"])
+        XCTAssertTrue(renamed)
+        XCTAssertEqual(asked, ["Assign A-1 to Cem?", "Assign A-1 to Cem?", "Unassign A-1?", "Change A-1's priority to Highest?", "Rename A-1?", "Change A-1's description?"])
+        XCTAssertEqual(changed, 5)
+        XCTAssertEqual(ja.results[i.id]?.text, "Description saved.")
+    }
 }
