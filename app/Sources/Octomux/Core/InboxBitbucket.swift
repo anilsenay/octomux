@@ -252,8 +252,9 @@ enum BitbucketClient {
 
     // MARK: Pull requests as Inbox items
 
-    /// Extra fields on list answers: who reviews and who approved, the description, draft.
-    static let prFields = "+values.participants,+values.reviewers,+values.summary,+values.draft"
+    /// Extra fields on list answers: who reviews and who approved, the description, draft. The `+` (add to the
+    /// default fields) is sent encoded: a bare one reads as a space, and the answer then has only these fields.
+    static let prFields = "%2Bvalues.participants,%2Bvalues.reviewers,%2Bvalues.summary,%2Bvalues.draft"
 
     static func item(_ pr: [String: Any], reason: InboxItem.Reason, me: String?) -> InboxItem? {
         guard let id = pr["id"] as? Int, let title = pr["title"] as? String else { return nil }

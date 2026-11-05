@@ -190,6 +190,10 @@ final class BitbucketInboxTests: XCTestCase {
         XCTAssertEqual(first.first?.checks, .passing)
         XCTAssertEqual(f.count("/repositories/acme/local-only/pullrequests?"), 1)   // the local project's repo too
         XCTAssertTrue(f.asked.contains { $0.contains("reviewers.account_id") })      // Bitbucket filters by reviewer
+        // The extra fields are added to the defaults: their "+" goes encoded (a bare one is a space, and the
+        // answer would carry only those fields).
+        XCTAssertTrue(f.asked.contains { $0.contains("fields=%2Bvalues.participants,%2Bvalues.reviewers") })
+        XCTAssertFalse(f.asked.contains { $0.contains("fields=+") })
         // Two minutes later: only repos holding an item (api: a review, web: yours) are read; statuses not again.
         f.asked = []
         t += 120

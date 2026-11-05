@@ -162,7 +162,9 @@ enum DebugActions {
             let me = try bb.loadMe()
             let ws = try bb.listWorkspaces()
             out["workspaces"] = ws.count
-            guard let first = (p["workspace"] as? String) ?? ws.first else { return out }
+            let skipped = Set((UserDefaults.standard.string(forKey: InboxPrefs.bbSkipped) ?? "").split(separator: ",").map(String.init))
+            guard let first = (p["workspace"] as? String) ?? ws.first(where: { !skipped.contains($0) }) ?? ws.first else { return out }
+            out["workspace_checked"] = first
             // 4
             var forms: [String: Any] = [:]
             for (form, who) in [("account", me.accountId), ("uuid", me.uuid)] {
