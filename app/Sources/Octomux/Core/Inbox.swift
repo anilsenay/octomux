@@ -307,6 +307,17 @@ final class InboxStore: ObservableObject {
     var jiraOn: Bool { JiraClient.configured }
     var bitbucketOn: Bool { BitbucketClient.configured }
     var anyConnected: Bool { InboxSource.allCases.contains(where: isOn) }
+    /// A pull request was merged, declined or closed: its review worktree can go (tests swap it).
+    var reviewEnded: (String) -> Void = { InboxReviews.shared.ended($0) }
+
+    /// Debug fixture: says which local project is a checkout of a repo (key as `repoKey`).
+    func fixtureMapRepo(_ key: String, to projectId: String) { repoProjects[key] = projectId }
+
+    /// The local project that is a checkout of the item's repo (for a review worktree), if any.
+    func checkoutProject(for i: InboxItem) -> Project? {
+        Self.repoKey(i).flatMap { repoProjects[$0] }.flatMap { AppModel.shared.project($0) }
+    }
+
     /// Debug fixture: sources shown as connected without an account.
     var fixtureOn: Set<InboxSource> = []
     func isOn(_ s: InboxSource) -> Bool {
@@ -324,6 +335,7 @@ final class InboxStore: ObservableObject {
     func start() {
         guard timer == nil else { return }
         timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in self?.tick() }
+        InboxReviews.shared.pump()          // reviews that were running when Octomux quit are watched again
         refresh()
     }
 
@@ -563,6 +575,7 @@ final class InboxStore: ObservableObject {
                     copy.ended = e
                     copy.updated = max(i.updated, e.at)
                     self.endedItems[i.id] = copy
+                    self.reviewEnded(i.id)
                     let what = e.merged ? "was merged" : ["Closed", "Declined", "Superseded"].contains(e.label) ? "was \(e.label.lowercased())" : "moved to \(e.label)"
                     if let sid = self.links[i.id] {
                         self.linkedNotices[sid] = LinkedNotice(itemId: i.id, key: i.key, title: i.title,
@@ -782,7 +795,8 @@ final class InboxStore: ObservableObject {
             }
             let r = Result { try GitHubInbox.fetch() }
             DispatchQueue.main.async {
-                self.repoProjects = self.repoProjects.filter { $0.key.hasPrefix("bitbucket.org/") }.merging(repos) { _, b in b }
+                // The debug fixture's own map stays (a fetch started before it loaded ends after).
+                if !self.frozen { self.repoProjects = self.repoProjects.filter { $0.key.hasPrefix("bitbucket.org/") }.merging(repos) { _, b in b } }
                 if case .success(let v) = r { self.githubLogin = v.login }
                 self.apply(.github, r.map(\.items))
             }
@@ -808,7 +822,7 @@ final class InboxStore: ObservableObject {
             BitbucketInbox.shared.skippedRepos = Set(self.hidden.map { $0.lowercased() })
             let r = Result { try BitbucketInbox.shared.fetch(review: review, mine: mine, force: force) }
             DispatchQueue.main.async {
-                self.repoProjects.merge(repos) { _, b in b }
+                if !self.frozen { self.repoProjects.merge(repos) { _, b in b } }
                 self.apply(.bitbucket, r)
             }
         }

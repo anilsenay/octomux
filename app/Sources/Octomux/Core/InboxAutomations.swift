@@ -5,8 +5,15 @@ import Foundation
 struct InboxRule: Codable, Equatable, Identifiable {
     enum Action: String, Codable, CaseIterable {
         case review     // a read-only session in the project that reviews it
+        case reviewWorktree // the pull request checked out in a worktree of its own, reviewed there by a read-only agent
         case work       // a new worktree with an agent working on it
-        var title: String { self == .review ? "Review it (read-only)" : "Work on it in a new worktree" }
+        var title: String {
+            switch self {
+            case .review: return "Review it (read-only)"
+            case .reviewWorktree: return "Review it in a worktree (read-only)"
+            case .work: return "Work on it in a new worktree"
+            }
+        }
     }
     var id = UUID().uuidString
     var name: String
@@ -24,7 +31,7 @@ struct InboxRule: Codable, Equatable, Identifiable {
             && (reason == nil || reason == i.reason.rawValue)
             && (place.trimmingCharacters(in: .whitespaces).isEmpty || i.place.localizedCaseInsensitiveContains(place.trimmingCharacters(in: .whitespaces)))
             && i.ended == nil
-            && (action != .review || i.kind == .pr)        // reviewing needs a pull request
+            && (action == .work || i.kind == .pr)          // reviewing needs a pull request
     }
 
     /// "New review requests in octo/storefront → review it (read-only)".
@@ -96,7 +103,8 @@ final class InboxAutomations: ObservableObject {
                 if runs.count > 500 { runs.removeFirst(runs.count - 500) }
                 defaults.set(runs, forKey: InboxPrefs.ruleRuns)
                 if let why = start(item, r) {
-                    notify("“\(r.name)” didn't start: \(item.key)", why)
+                    // "" = skipped on purpose (a draft, one you approved): no news.
+                    if !why.isEmpty { notify("“\(r.name)” didn't start: \(item.key)", why) }
                 } else {
                     started += 1
                     notify("Started an agent on \(item.key)", "\(r.name): \(item.title)")
@@ -115,6 +123,12 @@ final class InboxAutomations: ObservableObject {
             ?? model.enabledProfiles.first { $0.kind == .claude || $0.kind == .codex }
         guard let profile else { return "No Claude or Codex agent is set up." }
         switch r.action {
+        case .reviewWorktree:
+            if item.isDraft || store.yourReview(item) == .approved { return "" }
+            guard let own = store.checkoutProject(for: item) else {
+                return "No local project is a checkout of \(item.place); add one to review its pull requests in a worktree."
+            }
+            return InboxReviews.shared.start(item, in: own, profileId: profile.id, auto: true)
         case .work:
             InboxStart.start(item, in: project, worktree: true, task: .work, model: model, select: false, profile: profile.id)
         case .review:

@@ -733,6 +733,7 @@ struct InboxDetail: View {
     @ObservedObject var store = InboxStore.shared
     @ObservedObject var prActions = InboxActions.shared
     @ObservedObject var jiraActions = InboxJiraActions.shared
+    @ObservedObject var reviews = InboxReviews.shared
     let item: InboxItem
     @AppStorage(InboxPrefs.startMode) private var startMode = "tab"
     @State private var comment = ""
@@ -765,6 +766,7 @@ struct InboxDetail: View {
                 }
                 related
                 reviewersLine
+                agentReviewCard
                 summaryCard
                 if let until = store.snoozedUntil(item.id) {
                     HStack(spacing: 8) {
@@ -892,6 +894,101 @@ struct InboxDetail: View {
                 if item.kind == .pr, item.reason == .review, item.ended == nil, item.source == .bitbucket || store.activity[item.id] != nil { yourReview }
             }
             .font(.system(size: T.k * 11.5))
+        }
+    }
+
+    private func reviewInWorktree() {
+        guard let p = store.checkoutProject(for: item) else {
+            model.lastError = "No local project is a checkout of \(item.place). Add it as a project to review its pull requests in a worktree."
+            return
+        }
+        if let why = reviews.start(item, in: p, profileId: nil, auto: false) { model.lastError = why }
+    }
+
+    /// The agent's review from its worktree: progress, then its summary and findings (a finding's file opens in Code).
+    @ViewBuilder private var agentReviewCard: some View {
+        if let r = reviews.run(item.id) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 6) {
+                    Image(systemName: "eye.square").foregroundStyle(T.accent)
+                    Text("Agent review").font(.system(size: T.k * 12.5, weight: .semibold))
+                    if let res = r.result, r.state == .done {
+                        Text("· \(res.tally)").font(.system(size: T.k * 12)).foregroundStyle(T.text2)
+                        let risk = res.risk.lowercased()
+                        Text("risk \(risk)").font(.system(size: T.k * 10.5, weight: .semibold))
+                            .foregroundStyle(risk == "high" ? T.red : risk == "medium" ? T.amber : T.green)
+                            .padding(.horizontal, 6).frame(height: 16)
+                            .background(Capsule().fill((risk == "high" ? T.red : risk == "medium" ? T.amber : T.green).opacity(0.14)))
+                        if let h = r.head, h != item.head, item.head != nil {
+                            Text("· new commits since").font(.system(size: T.k * 11.5)).foregroundStyle(T.amber)
+                        }
+                    }
+                    Spacer()
+                    if let sid = r.sessionId, model.session(sid) != nil {
+                        Button("Go to session") { model.selectSession(sid) }.buttonStyle(.link).font(T.caption)
+                    }
+                    if !r.isActive {
+                        Button("Review Again") { reviewInWorktree() }.buttonStyle(.link).font(T.caption)
+                        Button { if let why = reviews.discard(item.id) { model.lastError = "The worktree stayed: \(why)" } } label: {
+                            Image(systemName: "trash").font(.system(size: T.k * 10))
+                        }
+                        .buttonStyle(IconButtonStyle(size: 20)).help("Forget this review and remove its worktree (when nothing in it changed)")
+                    }
+                }
+                switch r.state {
+                case .queued: progress("Waiting for another review to finish.")
+                case .preparing: progress("Fetching the pull request and checking it out in its worktree…")
+                case .working: progress(r.note ?? "The agent is reviewing it (read-only).")
+                case .failed, .skipped:
+                    Text(r.note ?? "It didn't run.").font(.system(size: T.k * 12)).foregroundStyle(T.amber).fixedSize(horizontal: false, vertical: true)
+                case .done:
+                    if let res = r.result {
+                        if !res.summary.isEmpty { Text(res.summary).font(.system(size: T.k * 12.5)).foregroundStyle(T.text).fixedSize(horizontal: false, vertical: true).textSelection(.enabled) }
+                        ForEach(res.findings) { f in finding(f) }
+                    }
+                }
+            }
+            .padding(12)
+            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(T.frame.opacity(0.55)))
+            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(T.border))
+        }
+    }
+
+    private func progress(_ text: String) -> some View {
+        HStack(spacing: 8) {
+            ProgressView().controlSize(.small)
+            Text(text).font(.system(size: T.k * 12)).foregroundStyle(T.text3)
+        }
+    }
+
+    private func finding(_ f: InboxReviewResult.Finding) -> some View {
+        let (icon, color): (String, Color) = {
+            switch f.severity {
+            case "issue": return ("exclamationmark.triangle.fill", T.red)
+            case "question": return ("questionmark.circle", T.blue)
+            case "nit": return ("circle", T.text3)
+            default: return ("lightbulb", T.amber)
+            }
+        }()
+        return HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: icon).font(.system(size: T.k * 10.5)).foregroundStyle(color).frame(width: 14)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(f.title).font(.system(size: T.k * 12.5, weight: .semibold)).fixedSize(horizontal: false, vertical: true)
+                    if !f.file.isEmpty {
+                        Button {
+                            store.focusFile = f.file
+                            store.detailTab = "code"
+                        } label: {
+                            Text((f.file.split(separator: "/").last.map(String.init) ?? f.file) + (f.line.map { ":\($0)" } ?? "")).font(T.mono(10.5))
+                        }
+                        .buttonStyle(.link).help("Show \(f.file) in the Code tab")
+                    }
+                }
+                if !f.detail.isEmpty {
+                    Text(f.detail).font(.system(size: T.k * 12)).foregroundStyle(T.text2).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                }
+            }
         }
     }
 
@@ -1172,6 +1269,12 @@ struct InboxDetail: View {
             .help("The project the agent works in (remembered for \(item.place))")
             if item.kind == .pr && item.reason == .review && item.ended == nil {
                 Button("Review with agent") { start("tab", .review) }.buttonStyle(SecondaryButtonStyle()).fixedSize()
+            }
+            if item.kind == .pr, item.source.isCodeHost, item.ended == nil {
+                let active = reviews.run(item.id)?.isActive == true
+                Button { reviewInWorktree() } label: { Label(active ? "Reviewing…" : "Review in Worktree", systemImage: "eye.square") }
+                    .buttonStyle(SecondaryButtonStyle()).fixedSize().disabled(active)
+                    .help("Checks the pull request out in a worktree of its own and has an agent that may only read review it there. Its findings show here; nothing is posted.")
             }
             if item.source == .jira, item.ended == nil, item.assignee != "You" {
                 Button { jiraActions.assignToMe(item) } label: { Label("Assign to Me", systemImage: "person.crop.circle.badge.plus") }
@@ -2847,6 +2950,8 @@ struct InboxRuleEditor: View {
             .font(.system(size: T.k * 12.5))
             Text(rule.action == .review
                  ? "Reviews run read-only (Claude's plan mode, Codex's read-only sandbox) in the item's project, and only for pull requests."
+                 : rule.action == .reviewWorktree
+                 ? "The pull request is checked out in a worktree of its own and an agent that may only read reviews it; its findings show in the item. Drafts, ones you approved and ones over \(InboxReviews.maxAutoLines) changed lines are skipped; \(InboxReviews.maxRunning) run at a time. Nothing is posted."
                  : "Work runs in a new worktree of the item's project with your usual agent permissions.")
                 .font(T.caption).foregroundStyle(T.text3).fixedSize(horizontal: false, vertical: true)
             Text(rule.summary).font(.system(size: T.k * 12, weight: .medium)).foregroundStyle(T.text2)

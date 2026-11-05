@@ -61,6 +61,9 @@ enum DebugActions {
                 },
                 "activity_errors": st.activityErrors,
                 "bitbucket_requests_last_hour": BitbucketInbox.shared.requestsLastHour,
+                "reviews": InboxReviews.shared.runs.mapValues { ["state": $0.state.rawValue, "path": $0.path ?? NSNull(), "head": $0.head ?? NSNull(),
+                                                                  "session": $0.sessionId ?? NSNull(), "note": $0.note ?? NSNull(),
+                                                                  "findings": $0.result?.findings.count ?? -1] as [String: Any] },
             ] as [String: Any]
         }
         // Reads one GitHub item's history (read-only) and returns how many events of each kind it has.
@@ -347,6 +350,13 @@ enum DebugActions {
                    let t = InboxStore.shared.prTasks[item.id]?.first(where: { $0.id == (p["value"] as? Int) }) {
                     InboxStore.shared.setTask(item, t, resolved: (p["resolved"] as? Bool) ?? !t.resolved)
                 }
+            case "inbox_review":      // Review in worktree for the open item (like its button); "auto": true as an automation would
+                if let item = InboxStore.shared.items.first(where: { $0.id == InboxStore.shared.selectedId }) {
+                    if let proj = InboxStore.shared.checkoutProject(for: item) {
+                        if let why = InboxReviews.shared.start(item, in: proj, profileId: nil, auto: (p["auto"] as? Bool) ?? false) { m.lastError = why }
+                    } else { m.lastError = "no checkout project for \(item.place)" }
+                }
+            case "inbox_review_discard": if let id = InboxStore.shared.selectedId { m.lastError = InboxReviews.shared.discard(id) }
             case "inbox_summarize":   // the open item's summary (the fixture's agent answers with a made-up one)
                 if let item = InboxStore.shared.items.first(where: { $0.id == InboxStore.shared.selectedId }) { InboxStore.shared.summarize(item) }
             case "inbox_snooze":      // snoozes the open item for `minutes` (default 60)

@@ -151,7 +151,26 @@ enum InboxFixture {
             ]
         }
         InboxStore.shared.taskWriter = { i, id, resolved in ran.append("task \(i.id) \(id) \(resolved ? "RESOLVED" : "UNRESOLVED")") }
-        // A made-up agent: no CLI runs.
+        // Review in worktree: the fixture's storefront project is octo/storefront's checkout (its origin is a local
+        // bare repo the fixture script made); the agent is the fixture's own, so its "answer" is made up here, a few
+        // seconds after it started. Fetching and the worktree are real.
+        if let sf = AppModel.shared.projects.first(where: { $0.path.hasSuffix("/storefront") }) {
+            InboxStore.shared.fixtureMapRepo("octo/storefront", to: sf.id)
+        }
+        var reviewStarted: [String: Date] = [:]
+        InboxReviews.shared.launch = { r, prompt, select, done in
+            InboxReviews.launchAgent(r, prompt, select) { sid in if let sid { reviewStarted[sid] = Date() }; done(sid) }
+        }
+        InboxReviews.shared.read = { sid in
+            guard let t = reviewStarted[sid], Date().timeIntervalSince(t) > 3 else { return (nil, false, false) }
+            return (InboxReviewResult(summary: "Retries a timed-out payment once. The retry cap is read from config, but the test still expects two attempts.",
+                                      risk: "medium", findings: [
+                .init(file: "src/checkout/pay.ts", line: 14, severity: "issue", title: "A declined card is retried too",
+                      detail: "shouldRetry only checks the code on the second call; check it before the first retry as well."),
+                .init(file: "src/checkout/retry.ts", line: 2, severity: "suggestion", title: "Default max to the config value", detail: "Avoid a second default here."),
+                .init(file: "src/checkout/pay.ts", line: 17, severity: "nit", title: "Log the order id once", detail: ""),
+            ]), false, false)
+        }
         InboxStore.summarizer = { prompt, _ in
             Thread.sleep(forTimeInterval: 0.6)
             ran.append("summarize \(prompt.count) chars")

@@ -88,6 +88,14 @@
     next to Mark unread.
   - Settings → Inbox lists the Bitbucket repos read for review requests too, with how many items each holds;
     an unticked one is no longer read.
+  - **Review in Worktree** (pull requests on GitHub and Bitbucket): the pull request's head is checked out in a
+    worktree of its own (detached: no branch of yours is made or moved; setup scripts skipped) and an agent that
+    may only read (Claude: reading and git diff/log/show only, no edits or writes; Codex: read-only sandbox) reviews
+    it there. Its summary, risk and findings (each with its file and line, which opens in the Code tab) show in the
+    item's Agent review card, with a notification when it is ready. Nothing is posted. Two run at a time; the
+    worktree goes when the pull request is merged, declined or closed (when nothing in it changed). An automation
+    can do it for new review requests ("Review it in a worktree"): drafts, ones you approved and ones over 3,000
+    changed lines are skipped, and it doesn't take over the window.
   - **Bitbucket tasks and reviewers**: a pull request shows how many open tasks it has (the reviewers' to-dos), and
     its detail lists them; a click marks one resolved or opens it again (asked first). Send to agent and Fix with
     agent hand the open ones to the agent. The detail lists the reviewers with where each one's review stands.
