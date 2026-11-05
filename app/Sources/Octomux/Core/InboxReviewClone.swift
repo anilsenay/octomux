@@ -38,7 +38,7 @@ enum ReviewClones {
     static func exists(_ dir: String) -> Bool { FileManager.default.fileExists(atPath: dir + "/.git") }
 
     /// Git that never waits for a password or a passphrase (it fails instead) and skips LFS downloads.
-    static func git(_ args: [String], in dir: String?, skipLFS: Bool = true) -> (ok: Bool, out: String, err: String) {
+    static func git(_ args: [String], in dir: String?, skipLFS: Bool = true, job: GitJob? = nil) -> (ok: Bool, out: String, err: String) {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/bin/git")
         p.arguments = (dir.map { ["-C", $0] } ?? []) + args
@@ -49,6 +49,7 @@ enum ReviewClones {
         p.environment = env
         let out = Pipe(), err = Pipe()
         p.standardOutput = out; p.standardError = err
+        guard job?.started(p) != false else { return (false, "", "Cancelled.") }
         do { try p.run() } catch { return (false, "", "\(error)") }
         // Read both before waiting (a full pipe would block git).
         var o = Data(), e = Data()
@@ -57,15 +58,16 @@ enum ReviewClones {
         e = err.fileHandleForReading.readDataToEndOfFile()
         g.wait()
         p.waitUntilExit()
+        if job?.isCancelled == true { return (false, "", "Cancelled.") }
         return (p.terminationStatus == 0, String(decoding: o, as: UTF8.self), String(decoding: e, as: UTF8.self))
     }
 
     /// Makes the clone when it isn't there yet and marks it used. Blocks (git over the network).
-    static func ensure(_ i: InboxItem, remotes: [String], dir: String) throws {
-        try ensure(i, urls: urls(for: i, remotes: remotes), dir: dir)
+    static func ensure(_ i: InboxItem, remotes: [String], dir: String, job: GitJob? = nil) throws {
+        try ensure(i, urls: urls(for: i, remotes: remotes), dir: dir, job: job)
     }
 
-    static func ensure(_ i: InboxItem, urls: [String], dir: String) throws {
+    static func ensure(_ i: InboxItem, urls: [String], dir: String, job: GitJob? = nil) throws {
         defer { touch(dir) }
         if exists(dir) { return }
         let fm = FileManager.default
@@ -73,7 +75,11 @@ enum ReviewClones {
         var errors: [String] = []
         for url in urls {
             if fm.fileExists(atPath: dir) { try? fm.removeItem(atPath: dir) }   // what a failed try left
-            let r = git(["clone", "--filter=blob:none", "--no-checkout", "--single-branch", "--no-tags", url, dir], in: nil)
+            let r = git(["clone", "--filter=blob:none", "--no-checkout", "--single-branch", "--no-tags", url, dir], in: nil, job: job)
+            if job?.isCancelled == true {
+                if fm.fileExists(atPath: dir) { try? fm.removeItem(atPath: dir) }
+                throw InboxError("Cancelled.")
+            }
             if r.ok {
                 // LFS files stay pointers in the review worktree too.
                 _ = git(["config", "filter.lfs.smudge", "git-lfs smudge --skip -- %f"], in: dir)
@@ -154,6 +160,11 @@ enum RepoClone {
         return counts.max { ($0.value, $1.key) < ($1.value, $0.key) }?.key ?? FileManager.default.homeDirectoryForCurrentUser.path
     }
 
+    /// Empties a folder that was empty before a clone started into it.
+    private static func clearOut(_ dir: String) {
+        for f in (try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? [] { try? FileManager.default.removeItem(atPath: dir + "/" + f) }
+    }
+
     /// Why `dest` can't take a clone, or nil.
     static func problem(_ dest: String) -> String? {
         let fm = FileManager.default
@@ -165,21 +176,46 @@ enum RepoClone {
     }
 
     /// Clones (ssh or https, as your other clones of that host; never asks for a password). Blocks.
-    static func clone(_ i: InboxItem, remotes: [String], into dest: String) throws {
-        try clone(i, urls: ReviewClones.urls(for: i, remotes: remotes), into: dest)
+    static func clone(_ i: InboxItem, remotes: [String], into dest: String, job: GitJob? = nil) throws {
+        try clone(i, urls: ReviewClones.urls(for: i, remotes: remotes), into: dest, job: job)
     }
 
-    static func clone(_ i: InboxItem, urls: [String], into dest: String) throws {
+    static func clone(_ i: InboxItem, urls: [String], into dest: String, job: GitJob? = nil) throws {
         if let p = problem(dest) { throw InboxError(p) }
         var errors: [String] = []
         let fm = FileManager.default
         let existed = fm.fileExists(atPath: dest)
         for url in urls {
-            let r = ReviewClones.git(["clone", url, dest], in: nil, skipLFS: false)
+            let r = ReviewClones.git(["clone", url, dest], in: nil, skipLFS: false, job: job)
+            if job?.isCancelled == true {
+                if !existed { try? fm.removeItem(atPath: dest) } else { clearOut(dest) }
+                throw InboxError("Cancelled.")
+            }
             if r.ok { return }
             errors.append("\(url): \(r.err.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: "\n").last ?? "")")
             if !existed { try? fm.removeItem(atPath: dest) }   // what the failed try left
         }
         throw InboxError("Couldn't clone \(i.place) (git needs access without asking for a password):\n" + errors.joined(separator: "\n"))
+    }
+}
+
+/// A git run that can be stopped from another thread (a clone being cancelled).
+final class GitJob {
+    private let lock = NSLock()
+    private var process: Process?
+    private var cancelled = false
+    var isCancelled: Bool { lock.lock(); defer { lock.unlock() }; return cancelled }
+
+    /// Called just before a process starts; false: cancelled already, don't start it.
+    func started(_ p: Process) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        if cancelled { return false }
+        process = p
+        return true
+    }
+
+    func cancel() {
+        lock.lock(); cancelled = true; let p = process; lock.unlock()
+        if let p, p.isRunning { p.terminate() }
     }
 }

@@ -105,7 +105,8 @@
     cancels). "Use an Existing Folder…" in the picker adds a folder you pick as a project, in the
     workspace you pick (it says so if the folder is another repo's), and uses it for that repo. "Clone
     Repository…" clones the repo (folder and workspace picked in one dialog; the last folder is remembered) and
-    does the same once it is done, with "Cloning…" in the picker meanwhile. Clones in
+    does the same once it is done, with "Cloning…" in the picker meanwhile; the picker's Cancel Cloning stops
+    it and removes what it wrote. A background review's download can be cancelled from its card too. Clones in
     other workspaces count too. The detail header's counts wrap as whole labels in a narrow window.
   - A background review of a repo you have no local clone of downloads one (asked first): a partial clone, so
     only the history without file contents and the files of the pull request's head come down, no Git LFS

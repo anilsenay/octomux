@@ -96,7 +96,16 @@ final class InboxReviews: ObservableObject {
     struct Prepared { var path: String; var head: String; var base: String; var lines: Int }
     /// `clone`: the downloaded clone's folder and the local projects to learn the clone URL's form from; nil: the
     /// project's own checkout.
-    var prepare: (InboxItem, Project, _ clone: (dir: String, projectPaths: [String])?, _ existing: String?) throws -> Prepared = InboxReviews.prepareWorktree
+    var prepare: (InboxItem, Project, _ clone: (dir: String, projectPaths: [String], job: GitJob?)?, _ existing: String?) throws -> Prepared = InboxReviews.prepareWorktree
+    /// Downloads in progress (a review's first one of a repo), to cancel.
+    private var jobs: [String: GitJob] = [:]
+
+    /// Stops a review while it downloads or fetches (its clone's partial download goes).
+    func cancel(_ id: String) {
+        guard let r = runs[id], r.state == .preparing || r.state == .queued else { return }
+        jobs[id]?.cancel()
+        if r.state == .queued { fail(id, "Cancelled.") }
+    }
     var launch: (_ run: InboxReviewRun, _ prompt: String, _ select: Bool, _ done: @escaping (String?) -> Void) -> Void = InboxReviews.launchAgent
     /// The session's answer so far: the result once the agent wrote it; `stopped` when its program is gone.
     var read: (_ sessionId: String) -> (result: InboxReviewResult?, stopped: Bool, needsInput: Bool) = InboxReviews.readSession
@@ -174,10 +183,13 @@ final class InboxReviews: ObservableObject {
         runs[id] = r
         save()
         let prepare = self.prepare, existing = r.path
-        let clone = r.clone.map { (dir: $0, projectPaths: AppModel.shared.projects.map(\.path)) }
+        let job = GitJob()
+        jobs[id] = job
+        let clone = r.clone.map { (dir: $0, projectPaths: AppModel.shared.state.projects.map(\.path), job: Optional(job)) }
         background { [weak self] in
             let res = Result { try prepare(i, p, clone, existing) }
             self?.onMain {
+                self?.jobs[id] = nil
                 guard let self, var r = self.runs[id], r.state == .preparing else { return }
                 switch res {
                 case .failure(let e):
@@ -322,16 +334,17 @@ final class InboxReviews: ObservableObject {
 
     /// Fetches the pull request's head and base, checks the head out detached in the review worktree (made once per
     /// pull request, moved to the new head when it is clean), and counts the changed lines.
-    static func prepareWorktree(_ i: InboxItem, _ project: Project, _ clone: (dir: String, projectPaths: [String])?, _ existing: String?) throws -> Prepared {
+    static func prepareWorktree(_ i: InboxItem, _ project: Project, _ clone: (dir: String, projectPaths: [String], job: GitJob?)?, _ existing: String?) throws -> Prepared {
         let dir = clone?.dir ?? project.path
         guard let branchBase = i.base, !branchBase.isEmpty else { throw InboxError("The pull request has no base branch.") }
         if let clone {
             let remotes = clone.projectPaths.compactMap { GitInfo.git(["remote", "get-url", "origin"], in: $0)?.trimmingCharacters(in: .whitespacesAndNewlines) }
-            try ReviewClones.ensure(i, remotes: remotes, dir: clone.dir)
+            try ReviewClones.ensure(i, remotes: remotes, dir: clone.dir, job: clone.job)
         }
         func git(_ args: [String], in d: String = dir) throws {
             // A downloaded clone's git never waits for a password and skips LFS files.
-            let (ok, err) = clone != nil ? { let r = ReviewClones.git(args, in: d); return (r.ok, r.err) }() : Worktrees.gitWithError(args, in: d)
+            let (ok, err) = clone != nil ? { let r = ReviewClones.git(args, in: d, job: clone?.job); return (r.ok, r.err) }() : Worktrees.gitWithError(args, in: d)
+            if clone?.job?.isCancelled == true { throw InboxError("Cancelled.") }
             if !ok { throw InboxError("git \(args.prefix(2).joined(separator: " ")) failed: \(err.trimmingCharacters(in: .whitespacesAndNewlines))") }
         }
         // The base first (it moves origin/<base>), then the head into FETCH_HEAD.

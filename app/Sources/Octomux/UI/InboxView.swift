@@ -1004,7 +1004,12 @@ struct InboxDetail: View {
                 }
                 switch r.state {
                 case .queued: progress("Waiting for another review to finish.")
-                case .preparing: progress(r.note ?? "Fetching the pull request and checking it out in its worktree…")
+                case .preparing:
+                    HStack(alignment: .firstTextBaseline) {
+                        progress(r.note ?? "Fetching the pull request and checking it out in its worktree…")
+                        Spacer(minLength: 8)
+                        Button("Cancel") { reviews.cancel(item.id) }.buttonStyle(.link).font(T.caption)
+                    }
                 case .working: progress(r.note ?? "The agent is reviewing it (read-only).")
                 case .failed, .skipped:
                     Text(r.note ?? "It didn't run.").font(.system(size: T.k * 12)).foregroundStyle(T.amber).fixedSize(horizontal: false, vertical: true)
@@ -1420,7 +1425,9 @@ struct InboxDetail: View {
         return HStack(spacing: 6) {
             Text("in").font(.system(size: T.k * 12)).foregroundStyle(T.text3)
             Menu {
-                if repo {
+                if store.cloning[item.place] != nil {
+                    Button("Cancel Cloning") { store.cancelClone(item) }
+                } else if repo {
                     Section(clones.isEmpty ? "No local clone of \(item.place)" : "Clones of \(item.place)") {
                         ForEach(clones) { p in Button(cloneTitle(p)) { store.choose(p, for: item) } }
                     }
@@ -1455,7 +1462,6 @@ struct InboxDetail: View {
                 .contentShape(Rectangle())
             }
             .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().pointerCursor()
-            .disabled(store.cloning[item.place] != nil)
             .help(pickerHelp(other: other, repo: repo))
         }
         .fixedSize()

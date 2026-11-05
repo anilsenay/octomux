@@ -86,14 +86,35 @@ final class ReviewCloneTests: XCTestCase {
 
         var item = i; item.branch = "feature/x"; item.base = "develop"
         let p = Project(id: "p", workspaceId: "w", name: "host", path: "/nowhere", color: "#fff", icon: ProjectIcon(kind: "folder"), sort: 0, archived: false)
-        let prep = try InboxReviews.prepareWorktree(item, p, (dir: clone, projectPaths: []), nil)
+        let prep = try InboxReviews.prepareWorktree(item, p, (dir: clone, projectPaths: [], job: nil), nil)
         XCTAssertEqual(prep.head, head)
         XCTAssertEqual(prep.path, ReviewClones.worktree(for: item, clone: clone))
         XCTAssertEqual(prep.lines, 1)
         XCTAssertEqual(try String(contentsOfFile: prep.path + "/a.txt", encoding: .utf8), "one\ntwo\n")
         // Again: the same clone and worktree, no second download.
-        let again = try InboxReviews.prepareWorktree(item, p, (dir: clone, projectPaths: []), prep.path)
+        let again = try InboxReviews.prepareWorktree(item, p, (dir: clone, projectPaths: [], job: nil), prep.path)
         XCTAssertEqual(again.path, prep.path)
+    }
+
+    func testCancelledCloneLeavesNothing() throws {
+        let t = temp(), fm = FileManager.default
+        let job = GitJob(); job.cancel()
+        let r = ReviewClones.git(["--version"], in: nil, job: job)
+        XCTAssertFalse(r.ok); XCTAssertEqual(r.err, "Cancelled.")
+        let i = pr(.github, "o/r")
+        let dest = t.appendingPathComponent("code/r").path
+        XCTAssertThrowsError(try RepoClone.clone(i, urls: ["file:///nowhere/a.git", "file:///nowhere/b.git"], into: dest, job: job)) {
+            XCTAssertEqual("\($0)", "Cancelled.")   // stops at once, not after trying every URL
+        }
+        XCTAssertFalse(fm.fileExists(atPath: dest))
+        // An empty folder picked to clone into stays, empty.
+        let empty = t.appendingPathComponent("empty").path
+        try fm.createDirectory(atPath: empty, withIntermediateDirectories: true)
+        XCTAssertThrowsError(try RepoClone.clone(i, urls: ["file:///nowhere/a.git"], into: empty, job: job))
+        XCTAssertEqual(try fm.contentsOfDirectory(atPath: empty), [])
+        let clone = t.appendingPathComponent("clones/github/o/r").path
+        XCTAssertThrowsError(try ReviewClones.ensure(i, urls: ["file:///nowhere/a.git"], dir: clone, job: job))
+        XCTAssertFalse(fm.fileExists(atPath: clone))
     }
 
     func testFullCloneIntoAFolder() throws {
