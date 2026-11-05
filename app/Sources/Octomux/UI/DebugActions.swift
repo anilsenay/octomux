@@ -38,6 +38,16 @@ enum DebugActions {
                 "recent_notifications": Notifier.shared.recent.prefix(10).map { ["kind": $0.0.kind, "title": $0.0.title, "body": $0.0.body] },
             ] as [String: Any]
         }
+        // Inbox counts per source, errors and whether a refresh is running (no item contents).
+        d.register("inbox_state") { _ in
+            let st = InboxStore.shared
+            return [
+                "refreshing": st.refreshing,
+                "counts": Dictionary(grouping: st.items, by: { $0.source.rawValue }).mapValues(\.count),
+                "errors": Dictionary(uniqueKeysWithValues: st.errors.map { ($0.key.rawValue, $0.value) }),
+                "last_refresh": st.lastRefresh.map { ISO8601DateFormatter().string(from: $0) } ?? NSNull(),
+            ] as [String: Any]
+        }
         d.register("ui_action") { p in
             let name = p["name"] as? String ?? ""
             let id = p["id"] as? String
