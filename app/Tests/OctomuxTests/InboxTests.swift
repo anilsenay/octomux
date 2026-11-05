@@ -1282,3 +1282,37 @@ final class InboxAutomationTests: XCTestCase {
         XCTAssertEqual(got, [["#2"]])
     }
 }
+
+/// Read marks survive a relaunch whatever order the sources load in (old items included).
+final class InboxReadAcrossLaunchTests: XCTestCase {
+    func testOldReadItemsStayReadWhenAnotherSourceLoadsFirst() {
+        let suite = "octomux-inbox-relaunch-\(UUID().uuidString)"
+        defer { UserDefaults().removePersistentDomain(forName: suite) }
+        let d = UserDefaults(suiteName: suite)!
+        let old = Date().addingTimeInterval(-4 * 365 * 86400)          // updated four years ago
+        let gh = InboxItem(id: "gh:o/r#4", source: .github, kind: .issue, key: "#4", place: "o/r", title: "t", author: "a", assignee: "You",
+                           status: "Open", statusTone: "done", reason: .assigned, updated: old, body: "", url: "", number: 4)
+        let jira = InboxItem(id: "jira:DC-1", source: .jira, kind: .issue, key: "DC-1", place: "D", title: "t", author: "a", assignee: "You",
+                             status: "To Do", statusTone: "todo", reason: .assigned, updated: Date(), body: "", url: "")
+        let fresh = InboxItem(id: "gh:o/r#9", source: .github, kind: .pr, key: "#9", place: "o/r", title: "t", author: "a", assignee: nil,
+                              status: "Open", statusTone: "done", reason: .mine, updated: Date(), body: "", url: "", number: 9)
+        func store() -> InboxStore {
+            let s = InboxStore(defaults: d)
+            s.deliver = { _ in }; s.chime = {}; s.appeared = { _ in }
+            s.loadActivity = { _ in throw InboxError("offline") }
+            s.background = { $0() }; s.onMain = { $0() }
+            return s
+        }
+        let first = store()
+        first.apply(.github, .success([gh, fresh]))
+        first.apply(.jira, .success([jira]))
+        first.markUnread(first.items.first { $0.id == gh.id }!)
+        first.markAllRead()
+        XCTAssertEqual(first.unreadCount, 0)
+        // Relaunch: Jira answers first.
+        let second = store()
+        second.apply(.jira, .success([jira]))
+        second.apply(.github, .success([gh, fresh]))
+        XCTAssertEqual(second.unreadCount, 0, "unread after relaunch: \(second.items.filter(second.isUnread).map(\.id))")
+    }
+}

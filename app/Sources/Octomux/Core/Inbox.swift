@@ -223,9 +223,14 @@ final class InboxStore: ObservableObject {
 
     /// Forgets read marks of items no longer listed that were last updated two months ago or more (the map would
     /// only grow). Newer ones stay, so an item that drops out for a while (a search turned off) comes back read.
+    /// Only marks of sources fetched since launch are judged: a source that hasn't answered yet keeps all of its marks
+    /// (pruning them against another source's list made old read items come back unread after a relaunch).
     private func pruneSeen(live: Set<String>) {
         let cutoff = Date().timeIntervalSince1970 - 60 * 86400
-        let kept = seen.filter { live.contains($0.key) || $0.value > cutoff || $0.value == 0 }
+        let judged = primed.map { $0 == .github ? "gh:" : "jira:" }
+        let kept = seen.filter { e in
+            !judged.contains { e.key.hasPrefix($0) } || live.contains(e.key) || e.value > cutoff || e.value == 0
+        }
         if kept.count != seen.count { seen = kept; defaults.set(seen, forKey: InboxPrefs.seen) }
     }
 

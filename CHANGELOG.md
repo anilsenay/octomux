@@ -58,6 +58,8 @@
     item comes in (from, what, why, where), either reviewing a pull request read-only or working on the item in
     a new worktree, in the item's own project and without switching to it. Rules are off until you turn them on
     (and confirm); each item starts at most once per rule, at most three per check, and only new arrivals count.
+  - Fixed: old items you had read (last updated two months ago or more) could come back unread after a relaunch
+    when the other source loaded first.
   - Settings → Inbox: connections, Jira projects, GitHub repositories, what shows up, notifications, and what
     Send to agent opens.
 
