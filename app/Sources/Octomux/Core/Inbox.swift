@@ -34,6 +34,9 @@ struct InboxItem: Identifiable, Equatable {
     var checks: Checks? = nil
     var checkCounts: (passed: Int, failed: Int, pending: Int) = (0, 0, 0)
     var failedChecks: [String] = []
+    /// A failed check: its link (an Actions job's, for its log) and what it said about itself.
+    struct FailedCheck: Equatable { var name: String; var url: String; var title: String? = nil; var summary: String? = nil }
+    var failedCheckDetails: [FailedCheck] = []
     let updated: Date
     let body: String
     let url: String
@@ -74,6 +77,7 @@ enum InboxPrefs {
     static let hidden = "octomux.inbox.hidden"                 // repos / Jira projects kept out of the Inbox
     static let seen = "octomux.inbox.seen"                     // item id → updated (unix seconds) when last read
     static let links = "octomux.inbox.links"                   // item id → session id
+    static let fixes = "octomux.inbox.fixes"                   // item id → unix seconds "Fix with agent" started
     static let linkedSeen = "octomux.inbox.linkedSeen"         // item id → unix seconds its linked session last caught up
     static let placeProject = "octomux.inbox.placeProject"     // repo / Jira project → Octomux project id
 
@@ -148,6 +152,7 @@ final class InboxStore: ObservableObject {
         hidden = Set(defaults.stringArray(forKey: InboxPrefs.hidden) ?? [])
         seen = defaults.dictionary(forKey: InboxPrefs.seen) as? [String: Double] ?? [:]
         links = defaults.dictionary(forKey: InboxPrefs.links) as? [String: String] ?? [:]
+        fixes = defaults.dictionary(forKey: InboxPrefs.fixes) as? [String: Double] ?? [:]
     }
 
     var githubOn: Bool { InboxPrefs.bool(InboxPrefs.githubOn, false) }
@@ -210,6 +215,63 @@ final class InboxStore: ObservableObject {
 
     /// Looks at the linked items in the list again (after a link, and for the debug fixture).
     func recheckLinked() { checkLinked(items) }
+
+    // MARK: Fixing checks
+
+    /// Items whose "Fix with agent" is collecting the failed checks' logs.
+    @Published private(set) var collecting: Set<String> = []
+    /// Item id → when "Fix with agent" started on it (for the progress line under the checks).
+    @Published private(set) var fixes: [String: Double] = [:]
+    /// Reads one Actions job's failed log (gh; the fixture swaps it).
+    var ciLog: (String, String) throws -> String = InboxCI.ghLog
+
+    /// Collects the failed checks' evidence off the main thread, then starts the agent with it.
+    func startFix(_ i: InboxItem, in project: Project, worktree: Bool, model: AppModel) {
+        guard !collecting.contains(i.id) else { return }
+        collecting.insert(i.id)
+        let log = ciLog
+        background { [weak self] in
+            let evidence = InboxCI.block(InboxCI.collect(i, log: log))
+            self?.onMain {
+                guard let self else { return }
+                self.collecting.remove(i.id)
+                self.markFixStarted(i)
+                InboxStart.start(i, in: project, worktree: worktree, task: .fix, model: model, evidence: evidence)
+            }
+        }
+    }
+
+    enum FixState: Equatable {
+        case collecting, waitingToSend, working(String), needsInput(String), stopped(String), rerunning, passing
+    }
+
+    /// Where a fix stands: the agent's session, then the checks once something was pushed.
+    func fixState(_ i: InboxItem, session: Session?) -> FixState? {
+        if collecting.contains(i.id) { return .collecting }
+        guard let started = fixes[i.id] else { return nil }
+        let pushedSince = i.updated.timeIntervalSince1970 > started
+        if pushedSince, i.checks == .passing { return .passing }
+        if pushedSince, i.checks == .pending { return .rerunning }
+        guard let s = session else { return .waitingToSend }
+        if s.state == .running {
+            switch s.activity {
+            case .needsInput: return .needsInput(s.id)
+            case .working: return .working(s.id)
+            default: return .stopped(s.id)
+            }
+        }
+        return .stopped(s.id)
+    }
+
+    func markFixStarted(_ i: InboxItem, at t: Double = Date().timeIntervalSince1970) {
+        fixes[i.id] = t
+        defaults.set(fixes, forKey: InboxPrefs.fixes)
+    }
+
+    func clearFix(_ i: InboxItem) {
+        fixes[i.id] = nil
+        defaults.set(fixes, forKey: InboxPrefs.fixes)
+    }
 
     // MARK: Linked sessions
 
@@ -610,7 +672,7 @@ enum GitHubInbox {
     number title url updatedAt isDraft state headRefName body
     repository { nameWithOwner } author { login } assignees(first: 3) { nodes { login } }
     commits(last: 1) { nodes { commit { statusCheckRollup { state
-      contexts(first: 80) { nodes { __typename ... on CheckRun { name conclusion status } ... on StatusContext { context state } } } } } } }
+      contexts(first: 80) { nodes { __typename ... on CheckRun { name conclusion status detailsUrl title summary } ... on StatusContext { context state targetUrl description } } } } } } }
     """
     static let issueFields = "number title url updatedAt state body repository { nameWithOwner } author { login } assignees(first: 3) { nodes { login } }"
 
@@ -673,16 +735,22 @@ enum GitHubInbox {
         if isPR, let rollup = ((((n["commits"] as? [String: Any])?["nodes"] as? [[String: Any]])?.first?["commit"] as? [String: Any])?["statusCheckRollup"] as? [String: Any]) {
             var passed = 0, failed = 0, pending = 0
             var failedNames: [String] = []
+            var failedDetails: [InboxItem.FailedCheck] = []
             for c in ((rollup["contexts"] as? [String: Any])?["nodes"] as? [[String: Any]]) ?? [] {
                 let name = c["name"] as? String ?? c["context"] as? String ?? "check"
                 let v = ((c["conclusion"] as? String) ?? (c["state"] as? String) ?? "").uppercased()
                 let st = (c["status"] as? String ?? "").uppercased()
                 if st == "IN_PROGRESS" || st == "QUEUED" || st == "PENDING" || v == "PENDING" || v == "EXPECTED" || (v.isEmpty && st != "COMPLETED") { pending += 1 }
-                else if ["FAILURE", "ERROR", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "STARTUP_FAILURE"].contains(v) { failed += 1; failedNames.append(name) }
+                else if ["FAILURE", "ERROR", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "STARTUP_FAILURE"].contains(v) {
+                    failed += 1; failedNames.append(name)
+                    failedDetails.append(InboxItem.FailedCheck(name: name, url: c["detailsUrl"] as? String ?? c["targetUrl"] as? String ?? "",
+                                                               title: c["title"] as? String, summary: c["summary"] as? String ?? c["description"] as? String))
+                }
                 else { passed += 1 }
             }
             item.checkCounts = (passed, failed, pending)
             item.failedChecks = failedNames
+            item.failedCheckDetails = failedDetails
             switch (rollup["state"] as? String ?? "").uppercased() {
             case "SUCCESS": item.checks = .passing
             case "FAILURE", "ERROR": item.checks = .failing

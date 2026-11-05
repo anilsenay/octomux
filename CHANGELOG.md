@@ -24,6 +24,10 @@
   - **News in linked sessions**: when someone comments, reviews, pushes or moves an item you sent to an agent, a
     card in that session's pane says what changed; **Tell the agent** pastes it in (as reference data, for you
     to send), **Open in Inbox** shows the item.
+  - **Fix with agent** reads what the failed checks printed first (the failed steps of GitHub Actions jobs, or
+    another check's own summary), and hands it to the agent with the prompt (up to 12,000 characters). A line
+    under the checks follows the fix: prompt waiting, agent working or waiting for you, checks running again,
+    checks pass.
   - Settings → Inbox: connections, Jira projects, GitHub repositories, what shows up, notifications, and what
     Send to agent opens.
 

@@ -9,7 +9,24 @@ enum InboxFixture {
                            title: "Checkout: retry failed payments once", author: "ann", assignee: nil, status: "Open", statusTone: "done",
                            reason: .review, updated: at(5), body: "Retries a declined payment once when the gateway times out.\n\n- adds `RetryPolicy`\n- logs the second attempt",
                            url: "https://github.com/octo/storefront/pull/42", branch: "ann/payment-retry", number: 42)
-        pr.checks = .failing; pr.checkCounts = (6, 1, 0); pr.failedChecks = ["test (ubuntu-latest)"]
+        pr.checks = .failing; pr.checkCounts = (5, 2, 0); pr.failedChecks = ["test (ubuntu-latest)", "Vercel"]
+        pr.failedCheckDetails = [
+            .init(name: "test (ubuntu-latest)", url: "https://github.com/octo/storefront/actions/runs/111/job/222", title: "Process completed with exit code 1"),
+            .init(name: "Vercel", url: "https://vercel.example/octo/storefront/abc", title: "Deployment failed", summary: "Build step: `next build` exited with 1"),
+        ]
+        InboxStore.shared.ciLog = { _, job in
+            guard job == "222" else { throw InboxError("no such job") }
+            return """
+            test\tRun tests\t2026-11-05T09:00:00.0000000Z ##[group]Run npm test
+            test\tRun tests\t2026-11-05T09:00:01.0000000Z > storefront@1.0.0 test
+            test\tRun tests\t2026-11-05T09:00:05.0000000Z FAIL src/checkout/retry.test.ts
+            test\tRun tests\t2026-11-05T09:00:05.1000000Z   ● RetryPolicy › retries a timed-out payment once
+            test\tRun tests\t2026-11-05T09:00:05.2000000Z     expect(received).toBe(expected)
+            test\tRun tests\t2026-11-05T09:00:05.3000000Z     Expected: 1
+            test\tRun tests\t2026-11-05T09:00:05.4000000Z     Received: 2
+            test\tRun tests\t2026-11-05T09:00:06.0000000Z ##[error]Process completed with exit code 1.
+            """
+        }
         let issue = InboxItem(id: "jira:SHOP-7", source: .jira, kind: .issue, key: "SHOP-7", place: "Shop", title: "Price filter ignores the currency",
                               author: "Cem", assignee: "You", status: "Code Review", statusTone: "progress", reason: .assigned, updated: at(12),
                               body: "When the currency is EUR the filter still compares USD prices.", url: "https://example.atlassian.net/browse/SHOP-7")

@@ -194,8 +194,12 @@ enum DebugActions {
             case "inbox_start":   // value: item id; "mode": tab | worktree; "task": work | review | fix; "project": id
                 if let v = p["value"] as? String, let item = InboxStore.shared.items.first(where: { $0.id == v }),
                    let proj = m.project(p["project"] as? String ?? "") ?? InboxStore.shared.project(for: item) ?? m.currentProject {
-                    InboxStart.start(item, in: proj, worktree: (p["mode"] as? String) == "worktree",
-                                     task: InboxStart.Task(rawValue: p["task"] as? String ?? "work") ?? .work, model: m)
+                    let task = InboxStart.Task(rawValue: p["task"] as? String ?? "work") ?? .work
+                    if task == .fix {
+                        InboxStore.shared.startFix(item, in: proj, worktree: (p["mode"] as? String) == "worktree", model: m)
+                    } else {
+                        InboxStart.start(item, in: proj, worktree: (p["mode"] as? String) == "worktree", task: task, model: m)
+                    }
                 }
             case "inbox_links": NSLog("inbox links: \(InboxStore.shared.links)")
             case "inbox_hide": if let v = p["value"] as? String { InboxStore.shared.setHidden(v, (p["on"] as? Bool) ?? true) }
