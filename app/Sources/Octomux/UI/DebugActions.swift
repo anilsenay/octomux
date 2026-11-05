@@ -424,8 +424,11 @@ enum DebugActions {
                     InboxStore.shared.link(v, session: sid, since: Date().timeIntervalSince1970 - Double((p["minutes"] as? Int) ?? 60) * 60)
                     InboxStore.shared.recheckLinked()
                 }
-            case "inbox_start":   // value: item id; "mode": tab | worktree; "task": work | review | fix; "project": id
-                if let v = p["value"] as? String, let item = InboxStore.shared.items.first(where: { $0.id == v }),
+            case "inbox_start":   // value: item id; "mode": tab | worktree; "task": work | review | fix; "project": id; "button": true = as the button does (its alerts too)
+                if p["button"] as? Bool == true, let v = p["value"] as? String, let item = InboxStore.shared.items.first(where: { $0.id == v }) {
+                    let task = InboxStart.Task(rawValue: p["task"] as? String ?? "work") ?? .work
+                    DispatchQueue.main.async { InboxStart.begin(item, mode: p["mode"] as? String ?? "tab", task: task, model: m) }
+                } else if let v = p["value"] as? String, let item = InboxStore.shared.items.first(where: { $0.id == v }),
                    let proj = m.project(p["project"] as? String ?? "") ?? InboxStore.shared.project(for: item) ?? m.currentProject {
                     let task = InboxStart.Task(rawValue: p["task"] as? String ?? "work") ?? .work
                     if task == .fix {

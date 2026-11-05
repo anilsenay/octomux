@@ -728,4 +728,17 @@ final class BitbucketInboxTests: XCTestCase {
         XCTAssertEqual(store.prTasks[i.id]?.first { $0.id == 11 }?.resolved, true)
         XCTAssertEqual(asked, ["Mark the task resolved?", "Mark the task resolved?"])
     }
+
+    func testReviewWarnsWhenTheProjectIsAnotherRepo() {
+        let i = bbItem()   // place "acme/api"
+        XCTAssertNil(InboxStart.otherRepo(i, remote: "git@bitbucket.org:acme/api.git\n"))
+        XCTAssertNil(InboxStart.otherRepo(i, remote: "https://ann@bitbucket.org/ACME/Api.git"))
+        XCTAssertEqual(InboxStart.otherRepo(i, remote: "git@bitbucket.org:acme/other.git"), "is a checkout of acme/other")
+        XCTAssertEqual(InboxStart.otherRepo(i, remote: "git@github.com:o/r.git"), "is a checkout of another repo")
+        XCTAssertEqual(InboxStart.otherRepo(i, remote: nil), "has no origin remote")
+        let gh = InboxItem(id: "gh:o/r#1", source: .github, kind: .pr, key: "#1", place: "o/r", title: "t", author: "ann", assignee: nil,
+                           status: "Open", statusTone: "done", reason: .review, updated: Date(), body: "", url: "", number: 1)
+        XCTAssertNil(InboxStart.otherRepo(gh, remote: "https://github.com/O/R.git"))
+        XCTAssertEqual(InboxStart.otherRepo(gh, remote: "git@github.com:o/x.git"), "is a checkout of o/x")
+    }
 }

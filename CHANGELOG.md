@@ -96,6 +96,8 @@
     worktree goes when the pull request is merged, declined or closed (when nothing in it changed). An automation
     can do it for new review requests ("Review it in a worktree"): drafts, ones you approved and ones over 3,000
     changed lines are skipped, and it doesn't take over the window.
+  - Review with agent asks first when the project it would start in isn't a checkout of the pull request's repo
+    (Return cancels). The detail header's counts wrap as whole labels in a narrow window.
   - **Bitbucket tasks and reviewers**: a pull request shows how many open tasks it has (the reviewers' to-dos), and
     its detail lists them; a click marks one resolved or opens it again (asked first). Send to agent and Fix with
     agent hand the open ones to the agent. The detail lists the reviewers with where each one's review stands.

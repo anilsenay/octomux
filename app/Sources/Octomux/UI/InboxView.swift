@@ -693,7 +693,19 @@ struct InboxReviewTally: View {
     var long = false
     var body: some View {
         let comments = item.commentCount ?? 0
-        HStack(spacing: 6) {
+        Group {
+            // The detail header is narrow: its long labels wrap as whole labels, never inside a word.
+            if long { FlowLayout(spacing: 8, lineSpacing: 4) { labels(comments) } } else { HStack(spacing: 6) { labels(comments) } }
+        }
+        .font(.system(size: T.k * 10.5, weight: .medium))
+        .labelStyle(InboxTightLabel())
+        .help([item.approvals > 0 ? "\(item.approvals) approved\(item.youApproved ? " (you too)" : "")" : nil,
+               item.changesRequested > 0 ? "\(item.changesRequested) asked for changes" : nil,
+               comments > 0 ? "\(comments) comment\(comments == 1 ? "" : "s")" : nil,
+               (item.openTasks ?? 0) > 0 ? "\(item.openTasks!) open task\((item.openTasks ?? 0) == 1 ? "" : "s")" : nil].compactMap { $0 }.joined(separator: ", "))
+    }
+
+    @ViewBuilder private func labels(_ comments: Int) -> some View {
             if item.approvals > 0 {
                 Label(long ? "\(item.approvals) approved" : "\(item.approvals)", systemImage: "checkmark")
                     .foregroundStyle(item.youApproved ? T.green : T.text3)
@@ -710,19 +722,13 @@ struct InboxReviewTally: View {
                 Label(long ? "\(t) open task\(t == 1 ? "" : "s")" : "\(t)", systemImage: "checklist")
                     .foregroundStyle(T.blue)
             }
-        }
-        .font(.system(size: T.k * 10.5, weight: .medium))
-        .labelStyle(InboxTightLabel())
-        .help([item.approvals > 0 ? "\(item.approvals) approved\(item.youApproved ? " (you too)" : "")" : nil,
-               item.changesRequested > 0 ? "\(item.changesRequested) asked for changes" : nil,
-               comments > 0 ? "\(comments) comment\(comments == 1 ? "" : "s")" : nil,
-               (item.openTasks ?? 0) > 0 ? "\(item.openTasks!) open task\((item.openTasks ?? 0) == 1 ? "" : "s")" : nil].compactMap { $0 }.joined(separator: ", "))
     }
 }
 
 struct InboxTightLabel: LabelStyle {
     func makeBody(configuration: Configuration) -> some View {
-        HStack(spacing: 2) { configuration.icon.font(.system(size: T.k * 8.5, weight: .bold)); configuration.title }
+        HStack(spacing: 2) { configuration.icon.font(.system(size: T.k * 8.5, weight: .bold)); configuration.title.lineLimit(1) }
+            .fixedSize()
     }
 }
 
@@ -886,7 +892,7 @@ struct InboxDetail: View {
                 if let b = item.branch { Text("·"); Text(b).font(T.mono(11)).lineLimit(1) }
             }
             .font(.system(size: T.k * 11.5)).foregroundStyle(T.text3)
-            HStack(spacing: 10) {
+            FlowLayout(spacing: 10, lineSpacing: 4) {
                 if item.ended == nil, item.approvals + item.changesRequested + (item.commentCount ?? 0) + (item.openTasks ?? 0) > 0 {
                     InboxReviewTally(item: item, long: true)
                 }
@@ -1534,11 +1540,41 @@ enum InboxStart {
             return
         }
         guard let project else { model.lastError = "Add a project first (⌘⇧O)."; return }
+        if task == .review, let other = otherRepo(item, project: project, model: model) {
+            let a = NSAlert()
+            a.messageText = "\(project.name) isn't a checkout of \(item.place)"
+            a.informativeText = "The pull request is in \(item.place), but \(project.name) \(other). An agent there won't see the pull request's code. Start the review anyway?"
+            // Return cancels: a stray Return must not start an agent in the wrong repo.
+            a.addButton(withTitle: "Start Anyway").keyEquivalent = ""
+            a.addButton(withTitle: "Cancel").keyEquivalent = "\r"
+            guard a.runModal() == .alertFirstButtonReturn else { return }
+        }
         if task == .fix {
             store.startFix(item, in: project, worktree: mode == "worktree", model: model)
         } else {
             start(item, in: project, worktree: mode == "worktree", task: task, model: model)
         }
+    }
+
+    /// Why `project` isn't a checkout of the pull request's repo ("is a checkout of …" / "has no origin remote"),
+    /// or nil when it is, when the item has no repo, or when the project is on a remote host (no local git to ask).
+    static func otherRepo(_ item: InboxItem, project: Project, model: AppModel) -> String? {
+        guard item.source.isCodeHost, !model.host(forPath: project.path).0.isRemote else { return nil }
+        return otherRepo(item, remote: GitInfo.git(["remote", "get-url", "origin"], in: project.path))
+    }
+
+    static func otherRepo(_ item: InboxItem, remote: String?) -> String? {
+        guard let want = InboxStore.repoKey(item) else { return nil }
+        guard let remote, !remote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return "has no origin remote" }
+        let have: String?
+        switch item.source {
+        case .github: have = PullRequest.githubRepo(remote)?.lowercased()
+        case .bitbucket: have = BitbucketClient.repo(fromRemote: remote).map(InboxStore.bitbucketKey)
+        case .jira: return nil
+        }
+        if have == want { return nil }
+        guard let have else { return "is a checkout of another repo" }
+        return "is a checkout of " + (have.hasPrefix("bitbucket.org/") ? String(have.dropFirst("bitbucket.org/".count)) : have)
     }
 
     static let defaultJiraTemplate = "Work on this Jira issue."
