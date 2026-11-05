@@ -114,7 +114,9 @@
     of that repo and goes after 7 days without one; Settings → Inbox shows their size and removes them.
     Automations still review only in local clones.
   - The background review's Claude loads only your own settings and MCP servers: a pull request that adds hooks to
-    its .claude settings or servers to its .mcp.json can no longer run them during the review.
+    its .claude settings or servers to its .mcp.json can no longer run them during the review. Its .codex folder
+    is left out of the review's checkout: Codex loads it (MCP servers, notify commands) whenever your clone is a
+    trusted Codex project, and no flag turns that off. The agent can still read it with git show.
   - The Inbox's folders and list are resized by dragging their right edge (a double click puts one back); the
     widths are kept, and the detail never gets narrower than it can show.
   - After a launch the Inbox shows the lists from the last run at once (kept for up to three days, connected

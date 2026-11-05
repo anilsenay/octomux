@@ -359,7 +359,7 @@ final class InboxReviews: ObservableObject {
             ? #"{"summary": "two or three sentences on what changed and whether it is ready now", "risk": "low", "fixed": ["title of an earlier finding that is fixed now"], "findings": [{"file": "path/in/repo.ext", "line": 42, "severity": "issue", "title": "short", "detail": "what is wrong and what to do", "status": "new"}]}"#
             : #"{"summary": "two or three sentences on what it does and whether it is ready", "risk": "low", "findings": [{"file": "path/in/repo.ext", "line": 42, "severity": "issue", "title": "short", "detail": "what is wrong and what to do"}]}"#
         return """
-        Review pull request \(i.key) of \(i.place) on \(i.source.name). This folder is a checkout of its head (commit \(String(head.prefix(12)))); its base is `\(base)`. See the change with `git diff \(base)...HEAD` and `git log \(base)..HEAD`, and read any file you need. Don't change anything: no edits, no commits, no commands that write.
+        Review pull request \(i.key) of \(i.place) on \(i.source.name). This folder is a checkout of its head (commit \(String(head.prefix(12)))); its base is `\(base)`. See the change with `git diff \(base)...HEAD` and `git log \(base)..HEAD`, and read any file you need (a .codex folder is left out of the folder; `git show HEAD:<path>` reads it). Don't change anything: no edits, no commits, no commands that write.
         \(what.isEmpty ? "" : "\n" + what + "\n")
         Look for bugs, missed cases, security and data risks, and anything that will hurt later; skip style the project doesn't care about. Write in the language the pull request is written in.
 
@@ -435,8 +435,24 @@ final class InboxReviews: ObservableObject {
             try? FileManager.default.createDirectory(atPath: (path as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
             try git(["worktree", "add", "--detach", path, head])
         }
+        try hideAgentConfig(in: path, git: { try git($0, in: path) })
         if clone == nil { Worktrees.shared.refresh(dir) }
         return Prepared(path: path, head: head, base: base, lines: lines)
+    }
+
+    /// Folders of the pull request's own that an agent CLI would load as its settings in the review worktree. Codex
+    /// reads .codex/ (config.toml: MCP servers, notify commands …) whenever the main clone is a trusted project, and
+    /// no flag turns that off; Claude's are kept out by its flags. They are left out of the checkout (skip-worktree:
+    /// the worktree stays clean; `git show HEAD:.codex/…` still reads them). A checkout puts them back: done each time.
+    static let hiddenConfig = [".codex"]
+
+    static func hideAgentConfig(in path: String, git: ([String]) throws -> Void) throws {
+        for d in hiddenConfig {
+            let files = (GitInfo.git(["ls-files", "-z", "--", d], in: path) ?? "").split(separator: "\0").map(String.init).filter { !$0.isEmpty }
+            if !files.isEmpty { try git(["update-index", "--skip-worktree", "--"] + files) }
+            let full = (path as NSString).appendingPathComponent(d)
+            if FileManager.default.fileExists(atPath: full) { try FileManager.default.removeItem(atPath: full) }
+        }
     }
 
     /// " 3 files changed, 120 insertions(+), 14 deletions(-)" → 134.

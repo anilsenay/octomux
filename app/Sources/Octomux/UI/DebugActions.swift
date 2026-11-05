@@ -350,10 +350,11 @@ enum DebugActions {
                    let t = InboxStore.shared.prTasks[item.id]?.first(where: { $0.id == (p["value"] as? Int) }) {
                     InboxStore.shared.setTask(item, t, resolved: (p["resolved"] as? Bool) ?? !t.resolved)
                 }
-            case "inbox_review":      // Review in worktree for the open item (like its button); "auto": true as an automation would
+            case "inbox_review":      // Review in worktree for the open item (like its button); "auto": true as an automation would; "profile": agent id; "again": false = from scratch
                 if let item = InboxStore.shared.items.first(where: { $0.id == InboxStore.shared.selectedId }) {
                     if let proj = InboxStore.shared.checkoutProject(for: item) {
-                        if let why = InboxReviews.shared.start(item, in: proj, profileId: nil, auto: (p["auto"] as? Bool) ?? false) { m.lastError = why }
+                        if let why = InboxReviews.shared.start(item, in: proj, profileId: p["profile"] as? String, auto: (p["auto"] as? Bool) ?? false,
+                                                               again: (p["again"] as? Bool) ?? true) { m.lastError = why }
                     } else { m.lastError = "no checkout project for \(item.place)" }
                 }
             case "inbox_review_discard": if let id = InboxStore.shared.selectedId { m.lastError = InboxReviews.shared.discard(id) }
