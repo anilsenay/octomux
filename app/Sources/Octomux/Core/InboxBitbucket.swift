@@ -626,9 +626,12 @@ final class BitbucketInbox {
             for f in found { if let r = BitbucketClient.item(f.pr, reason: f.reason, me: me.accountId)?.place { hot.insert(r) } }
             let overBudget = requestsLastHour >= Self.budget
             let discovery = force || (!overBudget && t.timeIntervalSince(lastDiscovery) >= Self.discoveryEvery)
-            var scan = hot
-            if discovery { scan.formUnion(wss.flatMap { activeRepos[$0] ?? [] }); scan.formUnion(localRepos) }
-            let list = scan.filter(inWorkspaces).sorted().prefix(Self.maxScan)
+            // Repos holding your items first, then your projects', then the most recently updated (the list's order):
+            // past the cap, the ones left out are the stalest.
+            var ordered = hot.sorted()
+            if discovery { ordered += localRepos.sorted() + wss.flatMap { activeRepos[$0] ?? [] } }
+            var seenRepo = Set<String>()
+            let list = ordered.filter { inWorkspaces($0) && seenRepo.insert($0.lowercased()).inserted }.prefix(Self.maxScan)
             var fresh: [String: [[String: Any]]] = [:]
             for repo in list { fresh[repo] = try reviewPRs(repo, me: me) }
             lock.lock()

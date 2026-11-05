@@ -200,7 +200,9 @@ enum DebugActions {
             // The fallbacks the answers call for.
             var applied: [String] = []
             if serverMissed > 0 || !filterErrors.isEmpty { UserDefaults.standard.set("client", forKey: InboxPrefs.bbReviewFilter); applied.append("reviewer filter off (repos read whole)") }
-            if notBumped > 0 { UserDefaults.standard.set(true, forKey: InboxPrefs.bbSweepAll); applied.append("look in every repo") }
+            // A repo date that stays behind a pull request matters only for repos idle longer than the scan window;
+            // "look in every repo" stays the user's call (it spends much more of the allowance).
+            if notBumped > 0 { out["note"] = "Some repo dates stay behind their pull requests; a review request in a repo idle for 14+ days would be missed unless “look in every repo” is on." }
             out["applied"] = applied
             out["requests_last_hour"] = bb.requestsLastHour
             return out

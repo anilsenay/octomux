@@ -288,6 +288,20 @@ final class BitbucketInboxTests: XCTestCase {
         XCTAssertNil(bb.pausedUntil)
     }
 
+    func testScanCapKeepsYourReposAndTheFreshestOnes() throws {
+        let (bb, _, f) = store()
+        // More active repos than one scan reads, listed freshest first, named so that alphabetical order would differ.
+        let repos = (0..<(BitbucketInbox.maxScan + 20)).map { "acme/r\(String(format: "%03d", 999 - $0))" }
+        world(f, reviews: [:], mine: [pr(9, repo: "acme/zzz-mine", author: "acc-me")], repos: repos)
+        _ = try bb.fetch(review: true, mine: true)
+        let scanned = f.asked.filter { $0.hasPrefix("/repositories/acme/") && $0.contains("/pullrequests?") }
+            .map { String($0.dropFirst("/repositories/".count).split(separator: "/").prefix(2).joined(separator: "/")) }
+        XCTAssertEqual(scanned.count, BitbucketInbox.maxScan)
+        XCTAssertEqual(scanned.first, "acme/zzz-mine")                       // where your pull request is
+        XCTAssertTrue(scanned.contains("acme/r999"))                         // the freshest
+        XCTAssertFalse(scanned.contains(repos.last!))                        // the stalest is left out
+    }
+
     func testOverBudgetSkipsTheWideScan() throws {
         let (bb, _, f) = store()
         let t = Date(timeIntervalSince1970: 1_800_000_000)
