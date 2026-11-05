@@ -13,6 +13,11 @@ struct InboxEvent: Equatable, Identifiable {
     var detail: String = ""
     /// For changes: the field ("status", "assignee", "labels", "title", …), used for summaries.
     var field: String = ""
+    /// A comment on a line of code: its file and line (Bitbucket's inline comments).
+    var path: String = ""
+    var line: Int? = nil
+    /// Written by a bot (a review bot's long reports start folded).
+    var bot = false
     var id: String { "\(date.timeIntervalSince1970)|\(actor)|\(kind.rawValue)|\(summary)" }
 }
 
@@ -38,6 +43,13 @@ enum InboxHistory {
             }
         }
         return out
+    }
+
+    /// Whether a name looks like a bot's: "dependabot[bot]", "Some CodeRabbit", "renovate-bot"…
+    static func looksLikeBot(_ name: String) -> Bool {
+        let n = name.lowercased()
+        return n.range(of: #"(\[bot\]$|\bbot\b|bot$|-bot\b|coderabbit|dependabot|renovate|sonarcloud|sonarqube|snyk|codecov|copilot)"#,
+                       options: .regularExpression) != nil
     }
 
     /// The events after `since` (unix seconds), oldest first.
@@ -174,7 +186,10 @@ enum InboxHistory {
             switch t {
             case "IssueComment":
                 guard let d = when(n) else { continue }
-                out.append(InboxEvent(kind: .comment, actor: who(login(n["author"])), date: d, summary: "commented", detail: n["body"] as? String ?? ""))
+                let author = login(n["author"])
+                var e = InboxEvent(kind: .comment, actor: who(author), date: d, summary: "commented", detail: n["body"] as? String ?? "")
+                e.bot = InboxHistory.looksLikeBot(author ?? "")
+                out.append(e)
             case "PullRequestCommit":
                 guard let c = n["commit"] as? [String: Any], let d = InboxDates.iso(c["committedDate"] as? String) else { continue }
                 let a = c["author"] as? [String: Any]

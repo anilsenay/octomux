@@ -295,7 +295,30 @@ final class InboxStore: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { self.refresh() }
     }
 
+    // MARK: Reviews
+
+    /// Who asked you to review a pull request (from its history, when it says so).
+    func reviewAskedBy(_ i: InboxItem) -> String? {
+        guard i.kind == .pr, i.reason == .review else { return nil }
+        return activity[i.id]?.events.last { $0.field == "review request" && $0.summary == "asked you for a review" }?.actor
+    }
+
+    enum YourReview: Equatable { case none, approved, changes, commented }
+    /// Your review of a pull request so far: Bitbucket's participants, else your newest review in its history.
+    func yourReview(_ i: InboxItem) -> YourReview {
+        if i.source == .bitbucket { return i.youRequestedChanges ? .changes : i.youApproved ? .approved : .none }
+        guard let r = activity[i.id]?.events.last(where: { $0.kind == .review && $0.actor == "You" }) else { return .none }
+        switch r.summary {
+        case "approved": return .approved
+        case "requested changes": return .changes
+        default: return .commented
+        }
+    }
+
     // MARK: Pull request diffs
+
+    /// A file the Code tab should open and show (an inline comment's file was clicked).
+    @Published var focusFile: String?
 
     /// The New Jira issue form is open.
     @Published var composingIssue = false
@@ -524,7 +547,8 @@ final class InboxStore: ObservableObject {
         var lines: [String] = []
         for e in n.events {
             let detail = e.detail.trimmingCharacters(in: .whitespacesAndNewlines)
-            lines.append("- \(e.actor) \(e.summary)" + (detail.isEmpty ? "" : ":\n" + detail.split(separator: "\n").map { "  " + $0 }.joined(separator: "\n")))
+            let place = e.path.isEmpty ? "" : " on \(e.path)\(e.line.map { ":\($0)" } ?? "")"
+            lines.append("- \(e.actor) \(e.summary)\(place)" + (detail.isEmpty ? "" : ":\n" + detail.split(separator: "\n").map { "  " + $0 }.joined(separator: "\n")))
         }
         var body = lines.joined(separator: "\n")
         if body.count > 12000 { body = String(body.prefix(12000)) + "\n[…cut]" }
@@ -607,6 +631,7 @@ final class InboxStore: ObservableObject {
                 }
             }
             BitbucketInbox.shared.localRepos = Set(repos.keys.map { String($0.dropFirst(Self.bitbucketKey("").count)) })
+            BitbucketInbox.shared.skippedRepos = Set(self.hidden.map { $0.lowercased() })
             let r = Result { try BitbucketInbox.shared.fetch(review: review, mine: mine, force: force) }
             DispatchQueue.main.async {
                 self.repoProjects.merge(repos) { _, b in b }
@@ -858,6 +883,29 @@ final class InboxStore: ObservableObject {
         }
         var seen = Set<String>()
         return found.filter { seen.insert($0).inserted }
+    }
+
+    /// Jira issues named by pull requests but not in the Inbox: key → (title, status), read once per launch.
+    @Published private(set) var jiraLookups: [String: (title: String, status: String)] = [:]
+    private var jiraLooking: Set<String> = []
+    /// Reads one issue's title and status (network; the debug fixture swaps it).
+    var jiraLookup: (String) throws -> (title: String, status: String) = { key in
+        let o = try JSONSerialization.jsonObject(with: JiraClient.request("/rest/api/3/issue/\(key)?fields=summary,status")) as? [String: Any]
+        let f = o?["fields"] as? [String: Any]
+        return (f?["summary"] as? String ?? key, (f?["status"] as? [String: Any])?["name"] as? String ?? "")
+    }
+
+    /// Looks up the keys that are neither listed nor read yet (from the detail's onAppear).
+    func lookUpJira(_ keys: [String]) {
+        let missing = keys.filter { jiraItem($0) == nil && jiraLookups[$0] == nil && !jiraLooking.contains($0) }.prefix(5)
+        guard !missing.isEmpty, isOn(.jira) else { return }
+        jiraLooking.formUnion(missing)
+        let read = jiraLookup
+        background { [weak self] in
+            var found: [String: (title: String, status: String)] = [:]
+            for k in missing { if let v = try? read(k) { found[k] = v } }
+            self?.onMain { self?.jiraLookups.merge(found) { _, b in b } }
+        }
     }
 
     /// The Inbox's Jira issue with this key, if it is listed.

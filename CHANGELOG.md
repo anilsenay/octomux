@@ -79,6 +79,15 @@
   - **Comment counts** on pull requests and issues (GitHub and Bitbucket) next to approvals and changes asked for, in
     the list and the detail. Descriptions no longer show Markdown link definitions ("[id]: https://…", where
     review bots hide notes), and a heading inside a quote reads as one.
+  - **Activity that reads faster**: long comments show their first lines with Show more, review bots' reports
+    start folded to one line (marked "bot"), new ones always open; Collapse all / Expand all, and Newest first
+    (with an "Earlier" line under what is new). "Jump to new" on the "Since you looked" card. An inline comment's
+    file opens in the Code tab. Quotes show as quotes, with a bar.
+  - The detail says where your review stands on a review request (and who asked, when GitHub says), and a Jira
+    issue named by a pull request shows its title and status even when it isn't in your Inbox. "Open in…" moved
+    next to Mark unread.
+  - Settings → Inbox lists the Bitbucket repos read for review requests too, with how many items each holds;
+    an unticked one is no longer read.
   - **Jira issues named by pull requests**: a pull request whose title or branch names a Jira issue
     (feature/SHOP-7-…) shows it under the header, with its status; the issue shows its pull requests. The agent's
     prompt names the issue too.

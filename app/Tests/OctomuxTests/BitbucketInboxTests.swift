@@ -121,7 +121,18 @@ final class BitbucketInboxTests: XCTestCase {
         ], me: "acc-me")
         XCTAssertEqual(ev.map(\.summary), ["opened it", "commented", "requested changes", "approved", "pushed new commits",
                                            "merged it", "renamed it to “New title”"])
-        XCTAssertEqual(ev.first { $0.kind == .comment }?.detail, "On `src/a.ts:42`:\n\nWhy?")
+        let inline = ev.first { $0.kind == .comment }
+        XCTAssertEqual(inline?.detail, "Why?")
+        XCTAssertEqual(inline?.path, "src/a.ts")
+        XCTAssertEqual(inline?.line, 42)
+        XCTAssertFalse(inline?.bot ?? true)
+        let botComment = BitbucketClient.events([["comment": ["created_on": "2026-11-05T11:00:00+00:00", "content": ["raw": "Summary"],
+                                                              "user": ["display_name": "Acme CodeRabbit", "type": "user"]]]], me: nil)
+        XCTAssertTrue(botComment.first?.bot ?? false)
+        XCTAssertTrue(InboxHistory.looksLikeBot("dependabot[bot]"))
+        XCTAssertTrue(InboxHistory.looksLikeBot("renovate-bot"))
+        XCTAssertFalse(InboxHistory.looksLikeBot("Abbot Smith"))
+        XCTAssertFalse(InboxHistory.looksLikeBot("Robert"))
         XCTAssertEqual(ev.first { $0.summary == "approved" }?.actor, "You")
         XCTAssertEqual(ev.first { $0.summary == "merged it" }?.field, "status")
         XCTAssertEqual(ev.first { $0.summary == "opened it" }?.field, "opened")      // not news for a linked session
@@ -613,5 +624,63 @@ final class BitbucketInboxTests: XCTestCase {
         store.postComment(bbItem(), "Looks good") { err in XCTAssertNil(err); done.fulfill() }
         wait(for: [done], timeout: 2)
         XCTAssertEqual(wrote, ["bitbucket: Looks good"])
+    }
+
+    // MARK: Detail polish
+
+    func testHiddenReposAreNotScannedAndTheScanIsKept() throws {
+        let (bb, _, f) = store()
+        bb.skippedRepos = ["acme/web"]
+        world(f, reviews: [:], repos: ["acme/api", "acme/web"])
+        _ = try bb.fetch(review: true, mine: false)
+        XCTAssertEqual(f.count("/repositories/acme/web/pullrequests?"), 0)
+        XCTAssertEqual(bb.lastScan, ["acme/api"])
+    }
+
+    func testYourReviewAndWhoAsked() {
+        let (store, _) = quietStore()
+        var bbI = bbItem()
+        XCTAssertEqual(store.yourReview(bbI), .none)
+        bbI.youApproved = true
+        XCTAssertEqual(store.yourReview(bbI), .approved)
+        bbI.youRequestedChanges = true
+        XCTAssertEqual(store.yourReview(bbI), .changes)
+        let gh = InboxItem(id: "gh:o/r#1", source: .github, kind: .pr, key: "#1", place: "o/r", title: "t", author: "ann", assignee: nil,
+                           status: "Open", statusTone: "done", reason: .review, updated: Date(), body: "", url: "", number: 1)
+        store.loadActivity = { _ in InboxActivity(events: [
+            InboxEvent(kind: .change, actor: "ann", date: Date(timeIntervalSince1970: 1), summary: "asked you for a review", field: "review request"),
+            InboxEvent(kind: .review, actor: "You", date: Date(timeIntervalSince1970: 2), summary: "requested changes", field: "review"),
+            InboxEvent(kind: .review, actor: "You", date: Date(timeIntervalSince1970: 3), summary: "approved", field: "review"),
+        ]) }
+        store.apply(.github, .success([gh]))
+        let loaded = expectation(description: "activity")
+        store.loadActivity(gh)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { loaded.fulfill() }
+        wait(for: [loaded], timeout: 2)
+        XCTAssertEqual(store.reviewAskedBy(gh), "ann")
+        XCTAssertEqual(store.yourReview(gh), .approved)               // the newest one
+    }
+
+    func testJiraLookupForIssuesNotListed() {
+        let (store, _) = quietStore()
+        store.fixtureOn = [.jira]
+        var asked: [String] = []
+        store.jiraLookup = { k in asked.append(k); return ("Title of \(k)", "In Progress") }
+        store.lookUpJira(["DC-1", "DC-2"])
+        store.lookUpJira(["DC-1"])                                    // read once
+        XCTAssertEqual(asked, ["DC-1", "DC-2"])
+        XCTAssertEqual(store.jiraLookups["DC-2"]?.status, "In Progress")
+        store.fixtureOn = []
+        store.lookUpJira(["DC-9"])                                    // Jira not connected: nothing read
+        XCTAssertEqual(asked.count, 2)
+    }
+
+    func testQuoteBlocksAndLongComments() {
+        XCTAssertEqual(InboxMarkdown.quote("> ## Paused\n> wait"), "## Paused\nwait")
+        XCTAssertEqual(InboxMarkdown.quote(">> nested"), "> nested")
+        XCTAssertNil(InboxMarkdown.quote("> a\nb"))
+        XCTAssertFalse(InboxActivityView.isLong("one\ntwo"))
+        XCTAssertTrue(InboxActivityView.isLong((1...8).map(String.init).joined(separator: "\n")))
+        XCTAssertTrue(InboxActivityView.isLong(String(repeating: "x", count: 800)))
     }
 }

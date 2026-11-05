@@ -346,12 +346,15 @@ enum BitbucketClient {
         for v in values {
             if let c = v["comment"] as? [String: Any] {
                 guard c["deleted"] as? Bool != true, let d = InboxDates.iso(c["created_on"] as? String) else { continue }
-                var text = (c["content"] as? [String: Any])?["raw"] as? String ?? ""
+                var e = InboxEvent(kind: .comment, actor: who(c["user"]), date: d, summary: "commented",
+                                   detail: (c["content"] as? [String: Any])?["raw"] as? String ?? "")
                 if let inline = c["inline"] as? [String: Any], let path = inline["path"] as? String {
-                    let line = (inline["to"] as? Int ?? inline["from"] as? Int).map { ":\($0)" } ?? ""
-                    text = "On `\(path)\(line)`:\n\n" + text
+                    e.path = path
+                    e.line = inline["to"] as? Int ?? inline["from"] as? Int
                 }
-                out.append(InboxEvent(kind: .comment, actor: who(c["user"]), date: d, summary: "commented", detail: text))
+                let user = c["user"] as? [String: Any]
+                e.bot = (user?["type"] as? String) == "app_user" || InboxHistory.looksLikeBot(user?["display_name"] as? String ?? user?["nickname"] as? String ?? "")
+                out.append(e)
             } else if let a = v["approval"] as? [String: Any], let d = InboxDates.iso(a["date"] as? String) {
                 out.append(InboxEvent(kind: .review, actor: who(a["user"]), date: d, summary: "approved", field: "review"))
             } else if let r = v["changes_requested"] as? [String: Any], let d = InboxDates.iso(r["date"] as? String) {
@@ -476,6 +479,10 @@ final class BitbucketInbox {
     private var backoff: TimeInterval = 0
     /// Repos of the local projects (from their origin remotes); always scanned.
     var localRepos: Set<String> = []
+    /// Repos hidden in the Inbox (lowercased): not scanned for review requests.
+    var skippedRepos: Set<String> = []
+    /// The repos the last scan for review requests read, in order (for Settings).
+    private(set) var lastScan: [String] = []
 
     func reset() {
         lock.lock(); defer { lock.unlock() }
@@ -632,11 +639,13 @@ final class BitbucketInbox {
             var ordered = hot.sorted()
             if discovery { ordered += localRepos.sorted() + wss.flatMap { activeRepos[$0] ?? [] } }
             var seenRepo = Set<String>()
-            let list = ordered.filter { inWorkspaces($0) && seenRepo.insert($0.lowercased()).inserted }.prefix(Self.maxScan)
+            let list = ordered.filter { inWorkspaces($0) && !skippedRepos.contains($0.lowercased()) && seenRepo.insert($0.lowercased()).inserted }
+                .prefix(Self.maxScan)
             var fresh: [String: [[String: Any]]] = [:]
             for repo in list { fresh[repo] = try reviewPRs(repo, me: me) }
             lock.lock()
             if discovery {
+                lastScan = Array(list)
                 // Repos that left the scan (no longer updated lately) and held nothing: forgotten.
                 reviewByRepo = reviewByRepo.filter { fresh[$0.key] != nil || !$0.value.isEmpty }
                 lastDiscovery = t

@@ -88,12 +88,18 @@ enum InboxFixture {
         var bbMine = InboxItem(id: "bb:acme/web-shop#21", source: .bitbucket, kind: .pr, key: "#21", place: "acme/web-shop",
                                title: "Basket: show the delivery estimate", author: "You", assignee: nil, status: "Draft", statusTone: "todo",
                                reason: .mine, updated: at(45), body: "Shows the estimate under the basket total.",
-                               url: "https://bitbucket.org/acme/web-shop/pull-requests/21", branch: "basket-estimate", number: 21, base: "main")
+                               url: "https://bitbucket.org/acme/web-shop/pull-requests/21", branch: "feature/SHOP-9-basket-estimate", number: 21, base: "main")
         bbMine.head = "0f9e8d7c6b5a"; bbMine.approvals = 2; bbMine.commentCount = 1; bbMine.checks = .passing; bbMine.checkCounts = (2, 0, 0)
         let history: [String: InboxActivity] = [
             bbReview.id: InboxActivity(events: [
                 InboxEvent(kind: .change, actor: "Dana", date: at(240), summary: "opened it", field: "opened"),
-                InboxEvent(kind: .comment, actor: "Eli", date: at(120), summary: "commented", detail: "On `src/refunds/split.ts:42`:\n\nRounding: should the last item take the remainder?"),
+                { var e = InboxEvent(kind: .comment, actor: "Acme CodeRabbit", date: at(235), summary: "commented",
+                                     detail: "[bot-note-1]: https://bot.example.com/#note\n\n**Summary by the review bot**\n\n" + (1...14).map { "- Change \($0): refunds are now split per item and rounded" }.joined(separator: "\n"))
+                  e.bot = true; return e }(),
+                InboxEvent(kind: .comment, actor: "Max", date: at(200), summary: "commented",
+                           detail: "A few thoughts before this goes in:\n\n1. The splitter should not know about currencies.\n2. Rounding belongs to the money type.\n3. The tests cover two items only.\n4. Partial refunds of shipping are missing.\n5. The log line repeats the order id.\n6. The config default should stay at one.\n7. Docs need a line about the remainder.\n\n> Does anyone remember why we round down?\n\nThanks!"),
+                { var e = InboxEvent(kind: .comment, actor: "Eli", date: at(120), summary: "commented", detail: "Rounding: should the last item take the remainder?")
+                  e.path = "src/checkout/pay.ts"; e.line = 14; return e }(),
                 InboxEvent(kind: .review, actor: "Eli", date: at(110), summary: "requested changes", field: "review"),
                 InboxEvent(kind: .commits, actor: "Dana", date: at(20), summary: "pushed new commits", detail: "a1b2c3d"),
                 InboxEvent(kind: .review, actor: "Max", date: at(3), summary: "approved", field: "review"),
@@ -158,6 +164,7 @@ enum InboxFixture {
         jira.loadFilters = { [.init(id: "1", name: "Shop bugs", jql: "project = SHOP AND type = Bug ORDER BY priority"),
                               .init(id: "2", name: "Waiting for me", jql: "assignee = currentUser() AND status = \"In Review\"")] }
         InboxStore.shared.jiraProjects = [(id: "1", key: "SHOP", name: "Shop")]
+        InboxStore.shared.jiraLookup = { k in k == "SHOP-9" ? ("Show the delivery estimate in the basket", "To Do") : (k, "") }
         InboxStore.shared.loadDiff = { _ in
             """
             diff --git a/src/checkout/retry.ts b/src/checkout/retry.ts
