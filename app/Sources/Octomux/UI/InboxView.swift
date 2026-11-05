@@ -92,6 +92,11 @@ struct InboxView: View {
         }
     }
 
+    static let foldersDefault: Double = 210, foldersRange: ClosedRange<Double> = 160...340
+    static let listDefault: Double = 330, listMin: Double = 260, minDetail: Double = 380
+    @AppStorage("octomux.inbox.foldersWidth") private var foldersWidth = InboxView.foldersDefault
+    @AppStorage("octomux.inbox.listWidth") private var listWidth = InboxView.listDefault
+
     var body: some View {
         VStack(spacing: 0) {
             topBar
@@ -100,15 +105,34 @@ struct InboxView: View {
                 InboxConnectCard()
             } else {
                 let item = store.items.first(where: { $0.id == store.selectedId }) ?? store.snoozedItems.first(where: { $0.id == store.selectedId })
-                HStack(spacing: 0) {
-                    folders.frame(width: collapsed ? 46 : 210).clipped()
-                    Hairline(vertical: true)
-                    // Nothing open: the list takes the width; an item opens its detail beside it.
-                    list.frame(minWidth: 330, maxWidth: item == nil ? .infinity : 330)
-                    if let item {
+                GeometryReader { geo in
+                    let folderW = collapsed ? 46 : min(max(foldersWidth, Self.foldersRange.lowerBound), Self.foldersRange.upperBound)
+                    // The detail keeps at least `minDetail`; the list gives way first.
+                    let listMax = max(Self.listMin, geo.size.width - folderW - Self.minDetail - 2)   // 2: the hairlines
+                    let listW = min(max(listWidth, Self.listMin), listMax)
+                    HStack(spacing: 0) {
+                        folders.frame(width: folderW).clipped()
+                            .overlay(alignment: .trailing) {
+                                if !collapsed {
+                                    InboxColumnHandle(width: $foldersWidth, range: Self.foldersRange, reset: Self.foldersDefault)
+                                }
+                            }
+                            .zIndex(2)   // the handle reaches over the next column's edge
                         Hairline(vertical: true)
-                        InboxDetail(item: item).id(item.id)
-                            .transition(.move(edge: .trailing).combined(with: .opacity))
+                        // Nothing open: the list takes the width; an item opens its detail beside it.
+                        list.frame(minWidth: Self.listMin, maxWidth: item == nil ? .infinity : listW)
+                            .overlay(alignment: .trailing) {
+                                if item != nil {
+                                    InboxColumnHandle(width: $listWidth, range: Self.listMin...listMax, reset: Self.listDefault)
+                                }
+                            }
+                            .zIndex(1)
+                        if let item {
+                            Hairline(vertical: true)
+                            InboxDetail(item: item).id(item.id)
+                                .frame(minWidth: Self.minDetail)
+                                .transition(.move(edge: .trailing).combined(with: .opacity))
+                        }
                     }
                 }
                 .animation(.easeInOut(duration: 0.22), value: collapsed)
@@ -711,7 +735,8 @@ struct InboxReviewTally: View {
         let comments = item.commentCount ?? 0
         Group {
             // The detail header is narrow: its long labels wrap as whole labels, never inside a word.
-            if long { FlowLayout(spacing: 8, lineSpacing: 4) { labels(comments) } } else { HStack(spacing: 6) { labels(comments) } }
+            // Long: each label is its own piece of the caller's FlowLayout (a nested one gets no width to wrap in).
+            if long { labels(comments) } else { HStack(spacing: 6) { labels(comments) } }
         }
         .font(.system(size: T.k * 10.5, weight: .medium))
         .labelStyle(InboxTightLabel())
@@ -3268,4 +3293,27 @@ final class InboxClosureButton: NSButton {
         target = self; action = #selector(fire)
     }
     @objc private func fire() { run() }
+}
+
+/// Drag a column's right edge to resize it; a double click puts it back.
+struct InboxColumnHandle: View {
+    @Binding var width: Double
+    let range: ClosedRange<Double>
+    let reset: Double
+    @State private var start: Double?
+
+    var body: some View {
+        Rectangle().fill(Color.clear).frame(width: 7)
+            .contentShape(Rectangle())
+            .onHover { h in if h { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() } }
+            .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                .onChanged { v in
+                    if start == nil { start = min(max(width, range.lowerBound), range.upperBound) }
+                    width = min(range.upperBound, max(range.lowerBound, (start ?? width) + v.translation.width))
+                }
+                .onEnded { _ in start = nil })
+            .onTapGesture(count: 2) { width = reset }
+            .offset(x: 4)
+            .help("Drag to resize; double-click for the default width")
+    }
 }

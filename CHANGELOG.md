@@ -114,6 +114,8 @@
     Automations still review only in local clones.
   - The background review's Claude loads only your own settings and MCP servers: a pull request that adds hooks to
     its .claude settings or servers to its .mcp.json can no longer run them during the review.
+  - The Inbox's folders and list are resized by dragging their right edge (a double click puts one back); the
+    widths are kept, and the detail never gets narrower than it can show.
   - While a source is loading for the first time after launch, the list says so ("Loading Bitbucket…") instead
     of showing nothing or "Nothing matches.".
   - **Bitbucket tasks and reviewers**: a pull request shows how many open tasks it has (the reviewers' to-dos), and
