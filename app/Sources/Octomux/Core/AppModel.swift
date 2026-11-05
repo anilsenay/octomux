@@ -814,10 +814,13 @@ final class AppModel: ObservableObject {
     /// A session whose tab was closed and is being opened in a new one (`selectSession`).
     private var pendingTabFor: String?
 
-    func addProject(path: String, workspaceId: String) {
+    /// `select`: go to the new project (false: stay where you are, e.g. in the Inbox). `done` gets its id, or nil.
+    func addProject(path: String, workspaceId: String, select: Bool = true, done: ((String?) -> Void)? = nil) {
         client.call("project.create", ["workspace_id": workspaceId, "path": path]) { [weak self] r in
-            if case .success(let v) = r, let id = (v as? [String: Any])?["id"] as? String { self?.selectProject(id) }
+            let id: String? = { if case .success(let v) = r { return (v as? [String: Any])?["id"] as? String }; return nil }()
+            if let id, select { self?.selectProject(id) }
             self?.report(r)
+            done?(id)
         }
     }
 

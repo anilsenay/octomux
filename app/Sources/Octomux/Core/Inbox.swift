@@ -790,7 +790,7 @@ final class InboxStore: ObservableObject {
 
     private func fetchGitHub() {
         let m = AppModel.shared
-        let local = m.projects.filter { !m.host(forPath: $0.path).0.isRemote }.map { ($0.id, $0.path) }
+        let local = Self.localProjects(m)
         DispatchQueue.global(qos: .utility).async {
             // Which local project is which GitHub repo (git runs here, never while a view is drawn).
             var repos: [String: String] = [:], own: [String: String] = [:]
@@ -816,7 +816,7 @@ final class InboxStore: ObservableObject {
 
     private func fetchBitbucket(force: Bool) {
         let m = AppModel.shared
-        let local = m.projects.filter { !m.host(forPath: $0.path).0.isRemote }.map { ($0.id, $0.path) }
+        let local = Self.localProjects(m)
         let review = InboxPrefs.bool(InboxPrefs.bbReview, true), mine = InboxPrefs.bool(InboxPrefs.bbMine, true)
         DispatchQueue.global(qos: .utility).async {
             var repos: [String: String] = [:], own: [String: String] = [:]
@@ -837,6 +837,13 @@ final class InboxStore: ObservableObject {
                 self.apply(.bitbucket, r)
             }
         }
+    }
+
+    /// Every local project (all workspaces; the open one's first, so its clone wins when there are several).
+    static func localProjects(_ m: AppModel) -> [(String, String)] {
+        m.state.projects.filter { !$0.archived && !m.host(forPath: $0.path).0.isRemote }
+            .sorted { ($0.workspaceId == m.selectedWorkspaceId ? 0 : 1, $0.sort) < ($1.workspaceId == m.selectedWorkspaceId ? 0 : 1, $1.sort) }
+            .map { ($0.id, $0.path) }
     }
 
     /// repoProjects' key for a Bitbucket repo (kept apart from GitHub's owner/repo).
@@ -1131,7 +1138,7 @@ final class InboxStore: ObservableObject {
     /// (nil: not known, e.g. on a remote host or no Inbox fetch has looked yet).
     func checkouts(of i: InboxItem) -> [Project] {
         guard let key = Self.repoKey(i) else { return [] }
-        return AppModel.shared.projects.filter { projectRepos[$0.id] == key || repoProjects[key] == $0.id }
+        return AppModel.shared.state.projects.filter { !$0.archived && (projectRepos[$0.id] == key || repoProjects[key] == $0.id) }
     }
     func isCheckout(_ p: Project, of i: InboxItem) -> Bool? {
         guard let key = Self.repoKey(i) else { return nil }
@@ -1148,9 +1155,17 @@ final class InboxStore: ObservableObject {
         return nil
     }
 
-    func choose(_ p: Project, for i: InboxItem) {
+    /// A project just added for the item's repo: it is that repo's clone (known before the next refresh looks).
+    func added(_ projectId: String, cloneOf i: InboxItem) {
+        if let key = Self.repoKey(i) { projectRepos[projectId] = key; if repoProjects[key] == nil { repoProjects[key] = projectId } }
+        choose(projectId: projectId, for: i)
+    }
+
+    func choose(_ p: Project, for i: InboxItem) { choose(projectId: p.id, for: i) }
+
+    func choose(projectId: String, for i: InboxItem) {
         var chosen = defaults.dictionary(forKey: InboxPrefs.placeProject) as? [String: String] ?? [:]
-        chosen[i.place] = p.id
+        chosen[i.place] = projectId
         defaults.set(chosen, forKey: InboxPrefs.placeProject)
         objectWillChange.send()
     }

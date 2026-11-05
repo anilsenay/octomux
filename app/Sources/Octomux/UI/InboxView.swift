@@ -1388,7 +1388,10 @@ struct InboxDetail: View {
             Menu {
                 if repo {
                     Section(clones.isEmpty ? "No local clone of \(item.place)" : "Clones of \(item.place)") {
-                        ForEach(clones) { p in Button(p.name) { store.choose(p, for: item) } }
+                        ForEach(clones) { p in
+                            Button(p.workspaceId == model.selectedWorkspaceId ? p.name
+                                   : "\(p.name) (\(model.state.workspaces.first { $0.id == p.workspaceId }?.name ?? "another workspace"))") { store.choose(p, for: item) }
+                        }
                     }
                     Section("Other projects") {
                         ForEach(model.projects.filter { p in !clones.contains { $0.id == p.id } }) { p in
@@ -1396,7 +1399,7 @@ struct InboxDetail: View {
                         }
                     }
                     Divider()
-                    Button("Add a Clone as a Project…") { model.addProject() }
+                    Button("Choose a Clone on This Mac…") { InboxStart.addClone(item, model: model) }
                 } else {
                     ForEach(model.projects) { p in Button(p.name) { store.choose(p, for: item) } }
                 }
@@ -1418,7 +1421,7 @@ struct InboxDetail: View {
             }
             .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().pointerCursor()
             .help(other ? "\(project?.name ?? "") is a clone of another repo, not \(item.place): an agent there won't see this pull request's code"
-                  : project == nil && repo ? "No local project is a clone of \(item.place). Pick one or add a clone as a project."
+                  : project == nil && repo ? "No local project is a clone of \(item.place). Pick one, or choose your clone on this Mac."
                   : "Where Work on it, Review in a chat and Ask run (remembered for \(item.place))")
         }
         .fixedSize()
@@ -1677,9 +1680,48 @@ enum InboxStart {
         }
     }
 
+    /// Picks a folder that is a clone of the item's repo and adds it as a project (in a workspace you pick), then
+    /// uses it for the repo. A folder that is a project already is just used.
+    static func addClone(_ item: InboxItem, model: AppModel) {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true; panel.canChooseFiles = false; panel.allowsMultipleSelection = false
+        panel.message = "Choose your clone of \(item.place)"
+        panel.prompt = "Choose"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let path = url.standardizedFileURL.path
+        if let p = model.state.projects.first(where: { !$0.archived && URL(fileURLWithPath: $0.path).standardizedFileURL.path == path }) {
+            InboxStore.shared.choose(p, for: item)
+            return
+        }
+        if let other = otherRepo(item, remote: GitInfo.git(["remote", "get-url", "origin"], in: path)) {
+            let a = NSAlert()
+            a.messageText = "\(url.lastPathComponent) isn't a clone of \(item.place)"
+            a.informativeText = "It \(other). An agent there won't see this pull request's code. Add it anyway?"
+            a.addButton(withTitle: "Cancel").keyEquivalent = "\r"
+            a.addButton(withTitle: "Add Anyway").keyEquivalent = ""
+            guard a.runModal() == .alertSecondButtonReturn else { return }
+        }
+        let spaces = model.state.workspaces.sorted { $0.sort < $1.sort }
+        guard !spaces.isEmpty else { model.lastError = "Make a workspace first."; return }
+        let a = NSAlert()
+        a.messageText = "Add \(url.lastPathComponent) as a project?"
+        a.informativeText = "\((path as NSString).abbreviatingWithTildeInPath) will be added to this workspace:"
+        let pick = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 240, height: 26), pullsDown: false)
+        for w in spaces { pick.addItem(withTitle: w.name); pick.lastItem?.representedObject = w.id }
+        if let i = spaces.firstIndex(where: { $0.id == model.selectedWorkspaceId }) { pick.selectItem(at: i) }
+        a.accessoryView = pick
+        a.addButton(withTitle: "Add Project")
+        a.addButton(withTitle: "Cancel")
+        guard a.runModal() == .alertFirstButtonReturn, let ws = pick.selectedItem?.representedObject as? String else { return }
+        model.addProject(path: path, workspaceId: ws, select: false) { id in
+            guard let id else { return }
+            DispatchQueue.main.async { InboxStore.shared.added(id, cloneOf: item) }
+        }
+    }
+
     static func noProject(_ item: InboxItem) -> String {
         InboxStore.repoKey(item) == nil ? "Add a project first (⌘⇧O)."
-            : "No local project is a clone of \(item.place). Pick a project in the detail, or add a clone as a project (⌘⇧O)."
+            : "No local project is a clone of \(item.place). Pick a project in the detail, or choose your clone on this Mac there."
     }
 
     /// Why `project` isn't a checkout of the pull request's repo ("is a checkout of …" / "has no origin remote"),
