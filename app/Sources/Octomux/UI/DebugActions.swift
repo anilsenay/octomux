@@ -46,7 +46,24 @@ enum DebugActions {
                 "counts": Dictionary(grouping: st.items, by: { $0.source.rawValue }).mapValues(\.count),
                 "errors": Dictionary(uniqueKeysWithValues: st.errors.map { ($0.key.rawValue, $0.value) }),
                 "last_refresh": st.lastRefresh.map { ISO8601DateFormatter().string(from: $0) } ?? NSNull(),
+                "first_ids": Dictionary(grouping: st.items, by: { $0.source.rawValue }).mapValues { $0.prefix(3).map(\.id) },
+                // Opened items: how many events of each kind, and why history is missing (no contents).
+                "activity": st.activity.mapValues { a in
+                    ["kinds": Dictionary(grouping: a.events, by: { $0.kind.rawValue }).mapValues(\.count),
+                     "note": a.note ?? NSNull()] as [String: Any]
+                },
+                "activity_errors": st.activityErrors,
             ] as [String: Any]
+        }
+        // Reads one GitHub item's history (read-only) and returns how many events of each kind it has.
+        d.register("inbox_probe_github") { p in
+            let repo = p["repo"] as? String ?? "", n = p["number"] as? Int ?? 0
+            let item = InboxItem(id: "gh:\(repo)#\(n)", source: .github, kind: (p["pr"] as? Bool) == false ? .issue : .pr, key: "#\(n)",
+                                 place: repo, title: "", author: "", assignee: nil, status: "", statusTone: "", reason: .mention,
+                                 updated: Date(), body: "", url: "", number: n)
+            let a = try GitHubInbox.activity(item, me: nil)
+            return ["kinds": Dictionary(grouping: a.events, by: { $0.kind.rawValue }).mapValues(\.count),
+                    "summaries": Array(Set(a.events.map { $0.kind == .comment ? "commented" : $0.summary.components(separatedBy: " ").prefix(2).joined(separator: " ") })).sorted()]
         }
         d.register("ui_action") { p in
             let name = p["name"] as? String ?? ""
@@ -167,6 +184,7 @@ enum DebugActions {
                 }
             case "open_inbox": m.openInbox()
             case "inbox_refresh": InboxStore.shared.refresh()
+            case "inbox_fake": InboxFixture.load()
             case "inbox_start":   // value: item id; "mode": tab | worktree; "task": work | review | fix; "project": id
                 if let v = p["value"] as? String, let item = InboxStore.shared.items.first(where: { $0.id == v }),
                    let proj = m.project(p["project"] as? String ?? "") ?? InboxStore.shared.project(for: item) ?? m.currentProject {

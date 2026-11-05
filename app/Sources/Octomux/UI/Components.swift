@@ -963,3 +963,43 @@ struct PopoverAnchor<Content: View>: NSViewRepresentable {
         }
     }
 }
+
+/// Lays children out left to right and wraps to a new line when the next one doesn't fit.
+struct FlowLayout: Layout {
+    var spacing: CGFloat = 8
+    var lineSpacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let rows = arrange(subviews, width: proposal.width ?? .infinity)
+        let w = rows.map { r in r.reduce(0) { $0 + $1.size.width } + spacing * CGFloat(max(0, r.count - 1)) }.max() ?? 0
+        let h = rows.map { r in r.map(\.size.height).max() ?? 0 }.reduce(0, +) + lineSpacing * CGFloat(max(0, rows.count - 1))
+        return CGSize(width: min(w, proposal.width ?? w), height: h)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var y = bounds.minY
+        for row in arrange(subviews, width: bounds.width) {
+            let h = row.map(\.size.height).max() ?? 0
+            var x = bounds.minX
+            for item in row {
+                subviews[item.index].place(at: CGPoint(x: x, y: y + (h - item.size.height) / 2), proposal: ProposedViewSize(item.size))
+                x += item.size.width + spacing
+            }
+            y += h + lineSpacing
+        }
+    }
+
+    private func arrange(_ subviews: Subviews, width: CGFloat) -> [[(index: Int, size: CGSize)]] {
+        var rows: [[(index: Int, size: CGSize)]] = [[]]
+        var x: CGFloat = 0
+        for (i, v) in subviews.enumerated() {
+            let size = v.sizeThatFits(.unspecified)
+            if !rows[rows.count - 1].isEmpty, x + spacing + size.width > width {
+                rows.append([]); x = 0
+            }
+            x += (rows[rows.count - 1].isEmpty ? 0 : spacing) + size.width
+            rows[rows.count - 1].append((i, size))
+        }
+        return rows
+    }
+}

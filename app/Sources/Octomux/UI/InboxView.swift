@@ -494,10 +494,11 @@ struct InboxDetail: View {
                 actions
                 if item.kind == .pr, item.checks != nil { checks }
                 if let s = store.linkedSession(item) { linked(s) }
+                sinceCard
                 Hairline()
                 if !item.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { InboxMarkdown(text: item.body) }
                 else { Text("No description.").font(T.body).foregroundStyle(T.text3) }
-                comments
+                InboxActivityView(item: item)
                 commentBox
             }
             .padding(.horizontal, 28).padding(.vertical, 22)
@@ -545,7 +546,9 @@ struct InboxDetail: View {
     }
 
     private var actions: some View {
-        HStack(spacing: 8) {
+        // Wraps when the detail is narrow (a pull request has more buttons than a narrow pane fits).
+        HStack(alignment: .top, spacing: 8) {
+          FlowLayout(spacing: 8, lineSpacing: 8) {
             if let s = store.linkedSession(item) {
                 Button("Go to session") { model.selectSession(s.id) }.buttonStyle(PrimaryButtonStyle()).fixedSize()
             }
@@ -588,7 +591,8 @@ struct InboxDetail: View {
                 Label("Open in \(item.source.name)", systemImage: "arrow.up.forward.square")
             }
             .buttonStyle(SecondaryButtonStyle()).fixedSize()
-            Spacer()
+          }
+            Spacer(minLength: 0)
             Button { store.markUnread(item) } label: { Image(systemName: "envelope.badge") }
                 .buttonStyle(IconButtonStyle(size: 26)).help("Mark unread")
         }
@@ -629,29 +633,21 @@ struct InboxDetail: View {
         .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(T.accent.opacity(0.25)))
     }
 
-    @ViewBuilder private var comments: some View {
-        let list = store.comments[item.id]
-        if let list, !list.isEmpty {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("\(list.count) comment\(list.count == 1 ? "" : "s")").font(.system(size: T.k * 11.5, weight: .semibold)).foregroundStyle(T.text2)
-                ForEach(Array(list.enumerated()), id: \.offset) { _, c in
-                    VStack(alignment: .leading, spacing: 5) {
-                        HStack(spacing: 6) {
-                            Circle().fill(T.hover).frame(width: 16, height: 16)
-                                .overlay(Text(String(c.author.prefix(1)).uppercased()).font(.system(size: T.k * 9, weight: .bold)).foregroundStyle(T.text2))
-                            Text(c.author).font(.system(size: T.k * 12, weight: .semibold))
-                            if let d = c.date { Text("·").foregroundStyle(T.text3); Text(d, format: .relative(presentation: .named)).font(.system(size: T.k * 11.5)).foregroundStyle(T.text3) }
-                        }
-                        InboxMarkdown(text: c.text, size: 12.5)
-                    }
-                    .padding(12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(T.frame.opacity(0.55)))
-                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(T.border))
+    /// "Since you looked": what changed after the item was last read, in one line.
+    @ViewBuilder private var sinceCard: some View {
+        if let since = store.newSince(item), let a = store.activity[item.id] {
+            let text = InboxHistory.summary(InboxHistory.after(a.events, since))
+            if !text.isEmpty {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Image(systemName: "sparkles").font(.system(size: T.k * 11)).foregroundStyle(T.accent)
+                    (Text("Since you looked: ").foregroundStyle(T.text2) + Text(text).foregroundStyle(T.text))
+                        .font(.system(size: T.k * 12.5)).fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
                 }
+                .padding(.horizontal, 12).padding(.vertical, 9)
+                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(T.accent.opacity(0.07)))
+                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(T.accent.opacity(0.25)))
             }
-        } else if list == nil {
-            Text("Loading comments…").font(T.caption).foregroundStyle(T.text3)
         }
     }
 
@@ -1127,6 +1123,133 @@ struct InboxSettings: View {
             } catch {
                 DispatchQueue.main.async { projectsError = "\(error)" }
             }
+        }
+    }
+}
+
+/// An item's history: comments as cards, everything else as one-line rows on a rail, oldest first, with a
+/// "New" line where the user last left off.
+struct InboxActivityView: View {
+    @ObservedObject var store = InboxStore.shared
+    let item: InboxItem
+
+    var body: some View {
+        let a = store.activity[item.id]
+        VStack(alignment: .leading, spacing: 8) {
+            if let a {
+                let events = InboxHistory.grouped(a.events)
+                HStack(spacing: 6) {
+                    Text("Activity").font(.system(size: T.k * 11.5, weight: .semibold)).foregroundStyle(T.text2)
+                    let c = a.events.filter { $0.kind == .comment }.count
+                    if c > 0 { Text("· \(c) comment\(c == 1 ? "" : "s")").font(.system(size: T.k * 11.5)).foregroundStyle(T.text3) }
+                }
+                if let note = a.note {
+                    Label(note, systemImage: "exclamationmark.triangle").font(T.caption).foregroundStyle(T.amber)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if let err = store.activityErrors[item.id] {
+                    Label("Couldn't load the activity: \(err)", systemImage: "exclamationmark.triangle").font(T.caption).foregroundStyle(T.amber)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if events.isEmpty, store.activityErrors[item.id] == nil {
+                    Text("Nothing yet.").font(T.caption).foregroundStyle(T.text3)
+                }
+                let since = store.newSince(item)
+                let firstNew = since.flatMap { s in events.firstIndex { $0.date.timeIntervalSince1970 > s + 0.5 } }
+                ForEach(Array(events.enumerated()), id: \.element.id) { n, e in
+                    if n == firstNew { newLine }
+                    row(e, isNew: firstNew.map { n >= $0 } ?? false)
+                }
+            } else {
+                Text("Loading activity…").font(T.caption).foregroundStyle(T.text3)
+            }
+        }
+    }
+
+    private var newLine: some View {
+        HStack(spacing: 8) {
+            Rectangle().fill(T.accent).frame(height: 1)
+            Text("New").font(.system(size: T.k * 10.5, weight: .bold)).foregroundStyle(T.accent)
+            Rectangle().fill(T.accent).frame(height: 1)
+        }
+        .padding(.vertical, 2)
+    }
+
+    @ViewBuilder private func row(_ e: InboxEvent, isNew: Bool) -> some View {
+        switch e.kind {
+        case .comment:
+            card(e, isNew: isNew)
+        case .review where !e.detail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty:
+            card(e, isNew: isNew)
+        default:
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(alignment: .firstTextBaseline, spacing: 7) {
+                    Image(systemName: icon(e)).font(.system(size: T.k * 10.5)).foregroundStyle(tint(e)).frame(width: 16)
+                    (Text(e.actor).fontWeight(.semibold) + Text(" " + e.summary))
+                        .font(.system(size: T.k * 12)).foregroundStyle(T.text).lineLimit(2)
+                    Text(e.date, format: .relative(presentation: .named)).font(.system(size: T.k * 11)).foregroundStyle(T.text3).lineLimit(1)
+                    Spacer(minLength: 0)
+                }
+                if e.kind == .commits {
+                    let lines = e.detail.split(separator: "\n").map(String.init)
+                    VStack(alignment: .leading, spacing: 1) {
+                        ForEach(Array(lines.prefix(6).enumerated()), id: \.offset) { _, l in
+                            Text(l).font(T.mono(11)).foregroundStyle(T.text2).lineLimit(1)
+                        }
+                        if lines.count > 6 { Text("and \(lines.count - 6) more").font(T.caption).foregroundStyle(T.text3) }
+                    }
+                    .padding(.leading, 23)
+                }
+            }
+            .padding(.vertical, 3).padding(.horizontal, 4)
+            .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(isNew ? T.accent.opacity(0.06) : .clear))
+        }
+    }
+
+    private func card(_ e: InboxEvent, isNew: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 6) {
+                Circle().fill(T.hover).frame(width: 16, height: 16)
+                    .overlay(Text(String(e.actor.prefix(1)).uppercased()).font(.system(size: T.k * 9, weight: .bold)).foregroundStyle(T.text2))
+                Text(e.actor).font(.system(size: T.k * 12, weight: .semibold))
+                if e.kind == .review { Text(e.summary).font(.system(size: T.k * 12)).foregroundStyle(tint(e)) }
+                Text("·").foregroundStyle(T.text3)
+                Text(e.date, format: .relative(presentation: .named)).font(.system(size: T.k * 11.5)).foregroundStyle(T.text3)
+            }
+            InboxMarkdown(text: e.detail, size: 12.5)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(T.frame.opacity(0.55)))
+        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(isNew ? T.accent.opacity(0.45) : T.border))
+    }
+
+    private func icon(_ e: InboxEvent) -> String {
+        switch e.kind {
+        case .commits: return "arrow.triangle.branch"
+        case .review: return e.summary == "approved" ? "checkmark.circle" : e.summary == "requested changes" ? "exclamationmark.bubble" : "eye"
+        case .comment: return "text.bubble"
+        case .change:
+            switch e.field {
+            case "status": return e.summary.contains("merged") ? "arrow.triangle.merge" : "arrow.right.circle"
+            case "assignee": return "person"
+            case "labels": return "tag"
+            case "priority": return "flag"
+            case "sprint": return "calendar"
+            case "title", "description": return "pencil"
+            case "review request": return "person.badge.clock"
+            case "push": return "arrow.up.circle"
+            default: return "slider.horizontal.3"
+            }
+        }
+    }
+
+    private func tint(_ e: InboxEvent) -> Color {
+        switch e.summary {
+        case "approved": return T.green
+        case "requested changes": return T.red
+        case _ where e.summary.contains("merged"): return Color(hex: "#8957e5")
+        default: return T.text3
         }
     }
 }

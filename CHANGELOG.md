@@ -16,6 +16,11 @@
   - Notifications for review requests, failed checks, new assignments and changes to your things; ring the
     bell on a Jira project to hear about every change there, by anyone: a sound only (no banner) unless you
     choose banners. Checked every 1–10 minutes.
+  - **Activity**: an item's comments, Jira changes (status, assignee, priority, sprint, title, description; who and
+    when) and GitHub events (commits, reviews, review requests, labels, assignees, merge/close, renames,
+    force-pushes) in one timeline, with a **New** line where you left off and a "Since you looked" summary on
+    top. Notifications say who did what ("DC-12: Ann moved it to Code Review"); changes you made yourself on the
+    website are no news. When the Jira token can't read the history, comments still show, with a note.
   - Settings → Inbox: connections, Jira projects, GitHub repositories, what shows up, notifications, and what
     Send to agent opens.
 

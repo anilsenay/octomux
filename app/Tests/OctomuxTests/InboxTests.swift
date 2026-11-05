@@ -155,6 +155,9 @@ final class InboxStoreTests: XCTestCase {
         store.deliver = { [unowned self] n in self.rung.append(n.title) }
         chimes = 0
         store.chime = { [unowned self] in self.chimes += 1 }
+        store.loadActivity = { _ in throw InboxError("offline") }
+        store.background = { $0() }
+        store.onMain = { $0() }
     }
 
     override func tearDown() {
@@ -322,5 +325,151 @@ final class InboxStartTests: XCTestCase {
         XCTAssertTrue(InboxStart.prompt(pr(body: "  \n"), .work).contains("https://github.com/o/r/pull/7\n</work-item>"))
         // Long descriptions are cut.
         XCTAssertLessThan(InboxStart.prompt(pr(body: String(repeating: "x", count: 20000)), .work).count, 12600)
+    }
+}
+
+/// Item history: Jira changelog and GitHub timeline parsing, grouping, "since you looked", notification text.
+final class InboxActivityTests: XCTestCase {
+    private func d(_ t: Double) -> Date { Date(timeIntervalSince1970: t) }
+
+    func testJiraChangelog() {
+        let h: [[String: Any]] = [
+            ["author": ["accountId": "a1", "displayName": "Ann"], "created": "2026-11-05T10:00:00.000+0300", "items": [
+                ["field": "status", "fieldId": "status", "fromString": "To Do", "toString": "Code Review"],
+                ["field": "Rank", "fieldId": "customfield_10019", "fromString": "", "toString": "Ranked higher"],
+                ["field": "Sprint", "fieldId": "customfield_10020", "fromString": "Sprint 41", "toString": "Sprint 41, Sprint 42"],
+            ]],
+            ["author": ["accountId": "me", "displayName": "Me Myself"], "created": "2026-11-05T11:00:00.000+0300", "items": [
+                ["field": "assignee", "fieldId": "assignee", "fromString": "", "toString": "Bob"],
+                ["field": "summary", "fieldId": "summary", "fromString": "Old", "toString": "New title"],
+                ["field": "priority", "fieldId": "priority", "fromString": "Low", "toString": "High"],
+                ["field": "description", "fieldId": "description", "fromString": "", "toString": ""],
+                ["field": "Story Points", "fieldId": "customfield_10016", "fromString": "3", "toString": "5"],
+            ]],
+        ]
+        let e = InboxHistory.jiraChanges(h, me: "me")
+        XCTAssertEqual(e.map(\.summary), ["moved it to Code Review", "moved it to Sprint 42", "assigned it to Bob",
+                                          "renamed it to “New title”", "set priority to High", "edited the description",
+                                          "changed Story Points to 5"])
+        XCTAssertEqual(e.map(\.actor), ["Ann", "Ann", "You", "You", "You", "You", "You"])
+        XCTAssertEqual(e.first?.field, "status")
+        XCTAssertEqual(e[1].field, "sprint")
+    }
+
+    func testGitHubTimeline() throws {
+        let json = """
+        {"data":{"repository":{"issueOrPullRequest":{"timelineItems":{"nodes":[
+          {"__typename":"PullRequestCommit","commit":{"messageHeadline":"Add parser","committedDate":"2026-11-05T08:00:00Z","author":{"name":"Ann A","user":{"login":"ann"}}}},
+          {"__typename":"PullRequestCommit","commit":{"messageHeadline":"Fix test","committedDate":"2026-11-05T08:05:00Z","author":{"name":"Ann A","user":{"login":"ann"}}}},
+          {"__typename":"ReviewRequestedEvent","actor":{"login":"ann"},"createdAt":"2026-11-05T08:10:00Z","requestedReviewer":{"login":"me"}},
+          {"__typename":"PullRequestReview","author":{"login":"bob"},"state":"CHANGES_REQUESTED","body":"Please rename","submittedAt":"2026-11-05T09:00:00Z","createdAt":"2026-11-05T09:00:00Z"},
+          {"__typename":"PullRequestReview","author":{"login":"me"},"state":"PENDING","body":"","submittedAt":null,"createdAt":"2026-11-05T09:01:00Z"},
+          {"__typename":"IssueComment","author":{"login":"me"},"body":"Done","createdAt":"2026-11-05T09:30:00Z"},
+          {"__typename":"LabeledEvent","actor":{"login":"bob"},"createdAt":"2026-11-05T09:40:00Z","label":{"name":"bug"}},
+          {"__typename":"HeadRefForcePushedEvent","actor":{"login":"ann"},"createdAt":"2026-11-05T09:50:00Z"},
+          {"__typename":"RenamedTitleEvent","actor":{"login":"ann"},"createdAt":"2026-11-05T09:55:00Z","currentTitle":"Parser v2"},
+          {"__typename":"MergedEvent","actor":{"login":"bob"},"createdAt":"2026-11-05T10:00:00Z"}
+        ]}}}}}
+        """
+        let a = try GitHubInbox.activity(Data(json.utf8), me: "me")
+        XCTAssertEqual(a.events.map { "\($0.actor) \($0.summary)" }, [
+            "ann pushed a commit", "ann pushed a commit", "ann asked you for a review", "bob requested changes",
+            "You commented", "bob added the label bug", "ann force-pushed the branch", "ann renamed it to “Parser v2”", "bob merged it",
+        ])
+        let g = InboxHistory.grouped(a.events)
+        XCTAssertEqual(g.first?.summary, "pushed 2 commits")
+        XCTAssertEqual(g.first?.detail, "Add parser\nFix test")
+        XCTAssertEqual(g.count, a.events.count - 1)
+    }
+
+    func testGitHubTimelineErrors() {
+        XCTAssertThrowsError(try GitHubInbox.activity(Data(#"{"errors":[{"message":"Could not resolve"}]}"#.utf8), me: nil))
+    }
+
+    func testSinceSummary() {
+        let e = [
+            InboxEvent(kind: .comment, actor: "Bob", date: d(10), summary: "commented", detail: "hi"),
+            InboxEvent(kind: .change, actor: "Ann", date: d(20), summary: "moved it to In Progress", field: "status"),
+            InboxEvent(kind: .change, actor: "Ann", date: d(30), summary: "moved it to Code Review", field: "status"),
+            InboxEvent(kind: .comment, actor: "Cem", date: d(40), summary: "commented", detail: "ok"),
+            InboxEvent(kind: .commits, actor: "Ann", date: d(50), summary: "pushed 2 commits", detail: "a\nb"),
+            InboxEvent(kind: .change, actor: "Bob", date: d(60), summary: "added the label bug", field: "labels"),
+        ]
+        XCTAssertEqual(InboxHistory.summary(e), "Ann moved it to Code Review · 2 comments by Bob and Cem · 2 commits · Bob added the label bug")
+        XCTAssertEqual(InboxHistory.after(e, 30).count, 3)
+        XCTAssertEqual(InboxHistory.summary([]), "")
+    }
+
+    func testNotice() {
+        let c = InboxEvent(kind: .comment, actor: "Bob", date: d(10), summary: "commented", detail: "Looks good\nsecond line")
+        let s = InboxEvent(kind: .change, actor: "Ann", date: d(20), summary: "moved it to Done", field: "status")
+        let mine = InboxEvent(kind: .comment, actor: "You", date: d(30), summary: "commented", detail: "thanks")
+        XCTAssertEqual(InboxHistory.notice([c])?.text, "Bob commented: Looks good")
+        XCTAssertEqual(InboxHistory.notice([c, s, mine])?.text, "Ann moved it to Done (+1 more)")
+        XCTAssertEqual(InboxHistory.notice([mine])?.onlyMine, true)
+        XCTAssertNil(InboxHistory.notice([]))
+    }
+}
+
+/// Notifications that say who changed what (InboxStore with a fake history).
+final class InboxNoticeTests: XCTestCase {
+    private var store: InboxStore!
+    private var rung: [String] = []
+    private var suite = ""
+    private var history: [String: [InboxEvent]] = [:]
+
+    override func setUp() {
+        suite = "octomux-inbox-notice-\(UUID().uuidString)"
+        store = InboxStore(defaults: UserDefaults(suiteName: suite)!)
+        rung = []
+        history = [:]
+        store.deliver = { [unowned self] n in self.rung.append(n.title) }
+        store.chime = {}
+        store.loadActivity = { [unowned self] i in InboxActivity(events: self.history[i.id] ?? []) }
+        store.background = { $0() }
+        store.onMain = { $0() }
+    }
+
+    override func tearDown() { UserDefaults().removePersistentDomain(forName: suite) }
+
+    private func jira(_ key: String, at t: Double) -> InboxItem {
+        InboxItem(id: "jira:\(key)", source: .jira, kind: .issue, key: key, place: "Discover", title: "Title \(key)", author: "ann",
+                  assignee: "You", status: "To Do", statusTone: "todo", reason: .assigned, updated: Date(timeIntervalSince1970: t), body: "", url: "")
+    }
+
+    func testChangeSaysWhoDidWhat() {
+        store.apply(.jira, .success([jira("DC-1", at: 1000)]))
+        history["jira:DC-1"] = [
+            InboxEvent(kind: .comment, actor: "Old", date: Date(timeIntervalSince1970: 900), summary: "commented", detail: "before"),
+            InboxEvent(kind: .comment, actor: "Bob", date: Date(timeIntervalSince1970: 1500), summary: "commented", detail: "Can you check the logs?"),
+        ]
+        store.apply(.jira, .success([jira("DC-1", at: 1500)]))
+        XCTAssertEqual(rung, ["DC-1: Bob commented: Can you check the logs?"])
+    }
+
+    func testYourOwnChangeIsNoNews() {
+        store.apply(.jira, .success([jira("DC-1", at: 1000)]))
+        history["jira:DC-1"] = [InboxEvent(kind: .change, actor: "You", date: Date(timeIntervalSince1970: 1500), summary: "moved it to Done", field: "status")]
+        store.apply(.jira, .success([jira("DC-1", at: 1500)]))
+        XCTAssertEqual(rung, [])
+        XCTAssertFalse(store.isUnread(store.items[0]))          // and it counts as read
+    }
+
+    func testHistoryFailureFallsBack() {
+        store.loadActivity = { _ in throw InboxError("403") }
+        store.apply(.jira, .success([jira("DC-1", at: 1000)]))
+        store.apply(.jira, .success([jira("DC-1", at: 1500)]))
+        XCTAssertEqual(rung, ["DC-1 updated"])
+    }
+
+    func testNewLineStaysWhileReading() {
+        store.apply(.jira, .success([jira("DC-1", at: 1000)]))          // first fetch: read up to 1000
+        store.apply(.jira, .success([jira("DC-1", at: 1500)]))
+        XCTAssertEqual(store.newSince(store.items[0]), 1000)
+        store.select("jira:DC-1")
+        store.markRead(store.items[0])
+        XCTAssertEqual(store.newSince(store.items[0]), 1000)          // as of opening
+        store.markUnread(store.items[0])
+        XCTAssertTrue(store.isUnread(store.items[0]))
     }
 }

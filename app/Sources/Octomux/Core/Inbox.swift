@@ -19,7 +19,6 @@ struct InboxItem: Identifiable, Equatable {
         case mention = "Mentioned you", project = "In your projects"
     }
     enum Checks: String { case passing, failing, pending }
-    struct Comment: Equatable { let author: String; let date: Date?; let text: String }
 
     let id: String            // "gh:owner/repo#12", "jira:DC-4162"
     let source: InboxSource
@@ -107,7 +106,11 @@ final class InboxStore: ObservableObject {
     @Published private(set) var refreshing = false
     @Published private(set) var lastRefresh: Date?
     @Published private(set) var errors: [InboxSource: String] = [:]
-    @Published private(set) var comments: [String: [InboxItem.Comment]] = [:]
+    /// Each opened item's history (comments, changes, commits, reviews), oldest first.
+    @Published private(set) var activity: [String: InboxActivity] = [:]
+    @Published private(set) var activityErrors: [String: String] = [:]
+    /// The read mark an item had when it was opened, so its "New" line stays put while it is read.
+    @Published private(set) var openedSeen: [String: Double] = [:]
     @Published private(set) var seen: [String: Double]
     @Published private(set) var links: [String: String]
     @Published var githubLogin: String?
@@ -117,6 +120,16 @@ final class InboxStore: ObservableObject {
     var deliver: (AppNotification) -> Void = { Notifier.shared.deliver($0) }
     /// A sound with no banner, for other people's changes in belled projects (tests catch it).
     var chime: () -> Void = { Notifier.shared.chime() }
+    /// Reads an item's history (network; tests and the debug fixture swap it).
+    lazy var loadActivity: (InboxItem) throws -> InboxActivity = { [weak self] i in
+        let me = self?.githubLogin
+        return i.source == .github ? try GitHubInbox.activity(i, me: me) : try JiraClient.activity(i.key)
+    }
+    /// Where history is read for notifications, and where the result comes back (tests run both inline).
+    var background: (@escaping () -> Void) -> Void = { DispatchQueue.global(qos: .utility).async(execute: $0) }
+    var onMain: (@escaping () -> Void) -> Void = { DispatchQueue.main.async(execute: $0) }
+    /// Debug fixture: fixed items, no fetching.
+    var frozen = false
     private var timer: Timer?
     private var lastFetch = Date.distantPast
     /// What the last refresh saw (id → updated), to tell new and changed items apart for notifications.
@@ -158,7 +171,8 @@ final class InboxStore: ObservableObject {
     func select(_ id: String?) {
         selectedId = id
         guard let id, let item = items.first(where: { $0.id == id }) else { return }
-        loadComments(item)
+        openedSeen[id] = seen[id]
+        loadActivity(item)
         // Read once it has been on screen for a moment (arrowing past it does not count).
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
             guard let self, self.selectedId == id else { return }
@@ -167,7 +181,8 @@ final class InboxStore: ObservableObject {
     }
 
     func markRead(_ i: InboxItem) { setSeen([i.id: i.updated.timeIntervalSince1970]) }
-    func markUnread(_ i: InboxItem) { setSeen([i.id: 0]) }
+    /// Just before its last update, so the newest change shows as new.
+    func markUnread(_ i: InboxItem) { setSeen([i.id: min(seen[i.id] ?? 0, i.updated.timeIntervalSince1970 - 1)]) }
     func markAllRead() { setSeen(Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0.updated.timeIntervalSince1970) })) }
 
     private func setSeen(_ v: [String: Double]) {
@@ -199,6 +214,7 @@ final class InboxStore: ObservableObject {
     /// is not news: it comes in read and rings nothing.
     /// Each source fetches on its own: Jira waiting on a Keychain prompt or a slow network does not hold GitHub.
     func refresh(widened: Bool = false) {
+        if frozen { return }
         if widened { widen() }
         lastFetch = Date()
         let on: [InboxSource: Bool] = [.github: githubOn, .jira: jiraOn]
@@ -251,6 +267,7 @@ final class InboxStore: ObservableObject {
     func apply(_ source: InboxSource, _ result: Result<[InboxItem], Error>) {
         inFlight.remove(source)
         refreshing = !inFlight.isEmpty
+        if frozen { return }                 // the debug fixture: a fetch started before it is dropped
         lastRefresh = Date()
         let found: [InboxItem]
         switch result {
@@ -294,6 +311,19 @@ final class InboxStore: ObservableObject {
         finish(source)
     }
 
+    /// Debug fixture: shows these items with this history and read marks, and stops fetching.
+    func loadFixture(_ list: [InboxItem], seen marks: [String: Double], activity history: [String: InboxActivity]) {
+        frozen = true
+        timer?.invalidate(); timer = nil
+        loadActivity = { i in history[i.id] ?? InboxActivity(events: []) }
+        setSeen(marks)
+        fetched = list.sorted { $0.updated > $1.updated }
+        items = fetched.filter { !hidden.contains($0.place) }
+        activity = [:]; openedSeen = [:]
+        primed = Set(InboxSource.allCases)
+        for i in list { known[i.id] = i.updated.timeIntervalSince1970; knownStatus[i.id] = i.status }
+    }
+
     /// A change made while this source was fetching: fetch it again with that change.
     private func finish(_ source: InboxSource) {
         guard pending.remove(source) != nil else { return }
@@ -302,38 +332,61 @@ final class InboxStore: ObservableObject {
 
     // MARK: Notifications
 
+    private struct Line { var title: String; var body: String; var item: InboxItem? = nil; var since: Double? = nil }
+
     private func notify(_ next: [InboxItem], sources: Set<InboxSource>) {
         defer {
             for i in next { known[i.id] = i.updated.timeIntervalSince1970; knownStatus[i.id] = i.status; if let c = i.checks { knownChecks[i.id] = c } }
         }
-        var lines: [(String, String)] = []
+        var lines: [Line] = []
         // Other people's changes in belled projects: a sound alone unless the user asked for banners.
         let projectBanner = UserDefaults.standard.string(forKey: InboxPrefs.nProjects) == "banner"
-        var quiet = 0
+        var quiet: [Line] = []
         for i in next where sources.contains(i.source) && primed.contains(i.source) {
             guard isUnread(i) else { continue }
             let before = known[i.id]
             let isNew = before == nil
             let changed = before.map { $0 < i.updated.timeIntervalSince1970 } ?? false
             if i.reason == .mine, i.checks == .failing, knownChecks[i.id] != .failing, InboxPrefs.bool(InboxPrefs.nChecks, true) {
-                lines.append(("Checks failed on \(i.key)", i.title))
+                lines.append(Line(title: "Checks failed on \(i.key)", body: i.title))
             } else if isNew, i.reason == .review, InboxPrefs.bool(InboxPrefs.nReview, true) {
-                lines.append(("Review requested: \(i.key)", i.title))
+                lines.append(Line(title: "Review requested: \(i.key)", body: i.title))
             } else if isNew, i.reason == .assigned, InboxPrefs.bool(InboxPrefs.nAssigned, true) {
-                lines.append(("Assigned to you: \(i.key)", i.title))
+                lines.append(Line(title: "Assigned to you: \(i.key)", body: i.title))
             } else if i.reason == .project, isNew || changed, JiraClient.watched.contains(i.projectKey) {
-                if projectBanner { lines.append((isNew ? "New in \(i.place): \(i.key)" : change(i), i.title)) } else { quiet += 1 }
+                let l = Line(title: isNew ? "New in \(i.place): \(i.key)" : change(i), body: i.title, item: isNew ? nil : i, since: before)
+                if projectBanner { lines.append(l) } else { quiet.append(l) }
             } else if i.reason != .project, changed, InboxPrefs.bool(InboxPrefs.nUpdates, true) {
-                lines.append((change(i), i.title))
+                lines.append(Line(title: change(i), body: i.title, item: i, since: before))
             }
         }
-        // One sound per refresh, and none when a banner (which has its own) goes out.
-        guard !lines.isEmpty else { if quiet > 0 { chime() }; return }
-        let n = lines.count == 1
-            ? AppNotification(sessionId: "", projectId: "", kind: "inbox", title: lines[0].0, body: lines[0].1)
-            : AppNotification(sessionId: "", projectId: "", kind: "inbox", title: "\(lines.count) new in your Inbox",
-                              body: lines.prefix(3).map(\.0).joined(separator: " · "))
-        deliver(n)
+        guard !lines.isEmpty || !quiet.isEmpty else { return }
+        // A change says who did what; that takes the item's history, read off the main thread.
+        let load = loadActivity
+        background { [weak self] in
+            func describe(_ l: Line) -> Line? {
+                guard let i = l.item, let since = l.since, let a = try? load(i),
+                      let n = InboxHistory.notice(InboxHistory.after(a.events, since)) else { return l }
+                if n.onlyMine { return nil }                       // all yours (done on the website): no news
+                var out = l
+                out.title = "\(i.key): \(n.text)"
+                return out
+            }
+            let shown = lines.prefix(6).compactMap(describe) + lines.dropFirst(6)
+            let hushed = quiet.prefix(6).compactMap(describe) + quiet.dropFirst(6)
+            let mine = (lines + quiet).compactMap(\.item).filter { i in !(shown + hushed).contains { $0.item?.id == i.id } }
+            self?.onMain {
+                guard let self else { return }
+                if !mine.isEmpty { self.setSeen(Dictionary(mine.map { ($0.id, $0.updated.timeIntervalSince1970) }) { a, _ in a }) }
+                // One sound per refresh, and none when a banner (which has its own) goes out.
+                guard !shown.isEmpty else { if !hushed.isEmpty { self.chime() }; return }
+                let n = shown.count == 1
+                    ? AppNotification(sessionId: "", projectId: "", kind: "inbox", title: shown[0].title, body: shown[0].body)
+                    : AppNotification(sessionId: "", projectId: "", kind: "inbox", title: "\(shown.count) new in your Inbox",
+                                      body: shown.prefix(3).map(\.title).joined(separator: " · "))
+                self.deliver(n)
+            }
+        }
     }
 
     /// "DC-12 → Code Review" when the status moved, else "DC-12 updated" (a comment, a field, new commits).
@@ -344,11 +397,23 @@ final class InboxStore: ObservableObject {
 
     // MARK: Details
 
-    func loadComments(_ i: InboxItem) {
+    func loadActivity(_ i: InboxItem) {
+        let load = loadActivity
         DispatchQueue.global(qos: .userInitiated).async {
-            let c = (try? (i.source == .github ? GitHubInbox.comments(i) : JiraClient.comments(i.key))) ?? []
-            DispatchQueue.main.async { self.comments[i.id] = c }
+            let r = Result { try load(i) }
+            DispatchQueue.main.async {
+                switch r {
+                case .success(let a): self.activity[i.id] = a; self.activityErrors[i.id] = nil
+                case .failure(let e): self.activityErrors[i.id] = "\(e)"; if self.activity[i.id] == nil { self.activity[i.id] = InboxActivity(events: []) }
+                }
+            }
         }
+    }
+
+    /// What happened since the item was last read, as of when it was opened (nil: never read, or nothing new).
+    func newSince(_ i: InboxItem) -> Double? {
+        guard let s = openedSeen[i.id] ?? seen[i.id], s > 0, s < i.updated.timeIntervalSince1970 else { return nil }
+        return s
     }
 
     func postComment(_ i: InboxItem, _ text: String, done: @escaping (String?) -> Void) {
@@ -360,7 +425,7 @@ final class InboxStore: ObservableObject {
             DispatchQueue.main.async {
                 done(err)
                 if err == nil {
-                    self.loadComments(i)
+                    self.loadActivity(i)
                     // Your own comment is no news: what the next refresh sees of this item counts as read.
                     self.readOnNextRefresh.insert(i.id)
                     DispatchQueue.main.asyncAfter(deadline: .now() + 2) { self.refresh() }
@@ -529,23 +594,29 @@ enum GitHubInbox {
         return item
     }
 
-    static func comments(_ i: InboxItem) throws -> [InboxItem.Comment] {
-        guard let repo = i.repo, let number = i.number else { return [] }
+    /// Comments, commits, reviews and events, oldest first (the last 100 of them).
+    static func activity(_ i: InboxItem, me: String?) throws -> InboxActivity {
+        guard let repo = i.repo, let number = i.number else { return InboxActivity(events: []) }
         let parts = repo.split(separator: "/")
-        guard parts.count == 2 else { return [] }
+        guard parts.count == 2 else { return InboxActivity(events: []) }
+        let f = InboxHistory.timelineFragments
         let q = """
         query($o: String!, $n: String!, $num: Int!) { repository(owner: $o, name: $n) { issueOrPullRequest(number: $num) {
-          ... on Issue { comments(last: 30) { nodes { author { login } body createdAt } } }
-          ... on PullRequest { comments(last: 30) { nodes { author { login } body createdAt } } } } } }
+          ... on PullRequest { timelineItems(last: 100, itemTypes: [\(InboxHistory.prTimelineTypes)]) { nodes { \(f) } } }
+          ... on Issue { timelineItems(last: 100, itemTypes: [\(InboxHistory.issueTimelineTypes)]) { nodes { \(InboxHistory.issueTimelineFragments) } } } } } }
         """
         let out = try InboxShell.run(["gh", "api", "graphql", "-f", "query=\(q)", "-F", "o=\(parts[0])", "-F", "n=\(parts[1])", "-F", "num=\(number)"])
-        guard let root = try JSONSerialization.jsonObject(with: Data(out.utf8)) as? [String: Any],
-              let node = (((root["data"] as? [String: Any])?["repository"] as? [String: Any])?["issueOrPullRequest"] as? [String: Any]),
-              let nodes = (node["comments"] as? [String: Any])?["nodes"] as? [[String: Any]] else { return [] }
-        return nodes.map {
-            InboxItem.Comment(author: ($0["author"] as? [String: Any])?["login"] as? String ?? "ghost",
-                              date: InboxDates.iso($0["createdAt"] as? String), text: $0["body"] as? String ?? "")
+        return try activity(Data(out.utf8), me: me)
+    }
+
+    static func activity(_ data: Data, me: String?) throws -> InboxActivity {
+        guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw InboxError("GitHub sent no JSON") }
+        if let errs = root["errors"] as? [[String: Any]], root["data"] == nil {
+            throw InboxError(errs.compactMap { $0["message"] as? String }.joined(separator: "; "))
         }
+        let node = (((root["data"] as? [String: Any])?["repository"] as? [String: Any])?["issueOrPullRequest"] as? [String: Any])
+        let nodes = (node?["timelineItems"] as? [String: Any])?["nodes"] as? [[String: Any]] ?? []
+        return InboxActivity(events: InboxHistory.githubEvents(nodes, me: me).sorted { $0.date < $1.date })
     }
 
     static func comment(_ i: InboxItem, _ text: String) throws {
@@ -795,6 +866,7 @@ enum JiraClient {
         let all = (UserDefaults.standard.string(forKey: InboxPrefs.jiraScope) ?? "assigned") == "all" && !picked.isEmpty
         let w = watched.filter { picked.isEmpty || picked.contains($0) }.sorted()
         let me = (try? object(request("/rest/api/3/myself")))?["accountId"] as? String
+        if let me { myAccountId = me }
         var out = try search(jql(assignedOnly: true, projects: picked), limit: 200, me: me)
         let others = all ? picked : w
         if !others.isEmpty {
@@ -840,12 +912,39 @@ enum JiraClient {
         }
     }
 
-    static func comments(_ key: String) throws -> [InboxItem.Comment] {
-        let o = try object(request("/rest/api/3/issue/\(key)/comment?orderBy=created&maxResults=50"))
-        return (o["comments"] as? [[String: Any]] ?? []).map {
-            InboxItem.Comment(author: ($0["author"] as? [String: Any])?["displayName"] as? String ?? "",
-                              date: InboxDates.iso($0["created"] as? String), text: ADF.text($0["body"]))
+    /// The signed-in account (set by `inbox()`), to show your own changes as "You".
+    static var myAccountId: String?
+
+    /// Comments plus the change history. History the token may not read leaves comments and a note.
+    static func activity(_ key: String) throws -> InboxActivity {
+        let me = myAccountId
+        let o = try object(request("/rest/api/3/issue/\(key)/comment?orderBy=created&maxResults=100"))
+        var events = commentEvents(o, me: me)
+        var note: String?
+        do {
+            events += InboxHistory.jiraChanges(try changelog(key), me: me)
+        } catch {
+            note = "The history isn't available (\(error)). Showing comments only."
         }
+        return InboxActivity(events: events.sorted { $0.date < $1.date }, note: note)
+    }
+
+    static func commentEvents(_ o: [String: Any], me: String?) -> [InboxEvent] {
+        (o["comments"] as? [[String: Any]] ?? []).compactMap { c in
+            guard let d = InboxDates.iso(c["created"] as? String) else { return nil }
+            let a = c["author"] as? [String: Any]
+            let actor = (a?["accountId"] as? String) == me && me != nil ? "You" : (a?["displayName"] as? String ?? "").htmlUnescaped
+            return InboxEvent(kind: .comment, actor: actor, date: d, summary: "commented", detail: ADF.text(c["body"]))
+        }
+    }
+
+    /// The newest 100 changelog entries (Jira pages them oldest first).
+    static func changelog(_ key: String) throws -> [[String: Any]] {
+        let first = try object(request("/rest/api/3/issue/\(key)/changelog?maxResults=100"))
+        let total = first["total"] as? Int ?? 0
+        if total <= 100 { return first["values"] as? [[String: Any]] ?? [] }
+        let last = try object(request("/rest/api/3/issue/\(key)/changelog?maxResults=100&startAt=\(total - 100)"))
+        return last["values"] as? [[String: Any]] ?? []
     }
 
     static func addComment(_ key: String, _ text: String) throws {
