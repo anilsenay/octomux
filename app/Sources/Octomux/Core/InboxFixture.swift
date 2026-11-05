@@ -2,6 +2,17 @@ import Foundation
 
 /// Made-up Inbox items and history for the debug fixture (`ui_action inbox_fake`): no account is read or written.
 enum InboxFixture {
+    static var fixtureItems: [InboxItem] = []
+
+    /// A refresh in which the pull request is gone from the open searches because it was merged.
+    static func mergePR() {
+        let store = InboxStore.shared
+        store.endedState = { list in
+            Dictionary(uniqueKeysWithValues: list.filter { $0.kind == .pr }.map { ($0.id, InboxItem.Ended(label: "Merged", merged: true, at: Date())) })
+        }
+        store.fixtureApply(.github, fixtureItems.filter { $0.source == .github && $0.kind != .pr })
+    }
+
     static func load(now: Date = Date()) {
         let t = now.timeIntervalSince1970
         func at(_ minutesAgo: Double) -> Date { Date(timeIntervalSince1970: t - minutesAgo * 60) }
@@ -53,6 +64,7 @@ enum InboxFixture {
                 InboxEvent(kind: .comment, actor: "Bob", date: at(300), summary: "commented", detail: "Waiting for the new measurements."),
             ], note: "The history isn't available (Jira answered 403). Showing comments only."),
         ]
+        fixtureItems = [pr, issue, quiet]
         // Read up to an hour ago on the PR and the issue, so both have something new.
         InboxStore.shared.loadFixture([pr, issue, quiet], seen: [pr.id: t - 3600, issue.id: t - 3600, quiet.id: t], activity: history)
     }

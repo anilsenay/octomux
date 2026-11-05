@@ -432,10 +432,15 @@ struct InboxRow: View {
                     Text(item.updated, format: .relative(presentation: .named)).font(.system(size: T.k * 10.5)).foregroundStyle(T.text3)
                     Circle().fill(T.accent).frame(width: 6, height: 6).opacity(unread ? 1 : 0)
                 }
-                Text(item.title).font(.system(size: T.k * 12.5, weight: unread ? .semibold : .regular)).foregroundStyle(T.text)
+                Text(item.title).font(.system(size: T.k * 12.5, weight: unread ? .semibold : .regular)).foregroundStyle(item.ended == nil ? T.text : T.text2)
                     .lineLimit(1).truncationMode(.tail)
                 HStack(spacing: 6) {
-                    Text(item.source == .jira ? item.status : item.reason.rawValue).font(.system(size: T.k * 10.5, weight: .medium)).foregroundStyle(reasonColor)
+                    if let e = item.ended {
+                        Label(e.label, systemImage: e.merged ? "arrow.triangle.merge" : "checkmark.circle")
+                            .font(.system(size: T.k * 10.5, weight: .semibold)).foregroundStyle(InboxEndedColor.of(e))
+                    } else {
+                        Text(item.source == .jira ? item.status : item.reason.rawValue).font(.system(size: T.k * 10.5, weight: .medium)).foregroundStyle(reasonColor)
+                    }
                     Text("·").foregroundStyle(T.text3)
                     Text(item.place).font(.system(size: T.k * 10.5)).foregroundStyle(T.text3).lineLimit(1)
                     Spacer()
@@ -492,7 +497,8 @@ struct InboxDetail: View {
             VStack(alignment: .leading, spacing: 14) {
                 header
                 actions
-                if item.kind == .pr, item.checks != nil { checks }
+                if let e = item.ended { endedLine(e) }
+                else if item.kind == .pr, item.checks != nil { checks }
                 if let s = store.linkedSession(item) { linked(s) }
                 sinceCard
                 Hairline()
@@ -519,7 +525,7 @@ struct InboxDetail: View {
                 BrandMark(key: item.source.rawValue, color: item.source.color, size: 12)
                 Text(item.kindName).font(.system(size: T.k * 11.5)).foregroundStyle(T.text2)
                 Text(item.key).font(T.mono(11.5)).foregroundStyle(T.text2)
-                Text(item.status).font(.system(size: T.k * 10.5, weight: .semibold)).foregroundStyle(statusColor)
+                Text(item.ended?.label ?? item.status).font(.system(size: T.k * 10.5, weight: .semibold)).foregroundStyle(statusColor)
                     .padding(.horizontal, 6).frame(height: 17)
                     .background(Capsule().fill(statusColor.opacity(0.14)))
                 Text(item.place).font(.system(size: T.k * 11.5)).foregroundStyle(T.text3)
@@ -538,6 +544,7 @@ struct InboxDetail: View {
     }
 
     private var statusColor: Color {
+        if let e = item.ended { return InboxEndedColor.of(e) }
         switch item.statusTone {
         case "progress": return T.blue
         case "todo": return T.text2
@@ -584,7 +591,7 @@ struct InboxDetail: View {
             }
             .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().pointerCursor()
             .help("The project the agent works in (remembered for \(item.place))")
-            if item.kind == .pr && item.reason == .review {
+            if item.kind == .pr && item.reason == .review && item.ended == nil {
                 Button("Review with agent") { start("tab", .review) }.buttonStyle(SecondaryButtonStyle()).fixedSize()
             }
             Button { if let u = URL(string: item.url) { NSWorkspace.shared.open(u) } } label: {
@@ -623,6 +630,21 @@ struct InboxDetail: View {
         .padding(.horizontal, 12).padding(.vertical, 9)
         .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(T.frame.opacity(0.55)))
         .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(T.border))
+    }
+
+    private func endedLine(_ e: InboxItem.Ended) -> some View {
+        let keep = store.linkedSession(item) != nil ? InboxStore.endedKeepLinked : InboxStore.endedKeep
+        return HStack(spacing: 8) {
+            Image(systemName: e.merged ? "arrow.triangle.merge" : "checkmark.circle").foregroundStyle(InboxEndedColor.of(e))
+            (Text(e.merged ? "Merged " : e.label == "Closed" ? "Closed " : "Moved to \(e.label) ") + Text(e.at, format: .relative(presentation: .named)))
+                .font(.system(size: T.k * 12.5, weight: .medium))
+            Text("· leaves the Inbox ") .font(.system(size: T.k * 12)).foregroundStyle(T.text3)
+                + Text(e.at.addingTimeInterval(keep), format: .relative(presentation: .named)).font(.system(size: T.k * 12)).foregroundStyle(T.text3)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 9)
+        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(InboxEndedColor.of(e).opacity(0.08)))
+        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(InboxEndedColor.of(e).opacity(0.3)))
     }
 
     /// How the fix is going: the agent, then the checks after a push.
@@ -1285,7 +1307,7 @@ struct InboxActivityView: View {
         switch e.summary {
         case "approved": return T.green
         case "requested changes": return T.red
-        case _ where e.summary.contains("merged"): return Color(hex: "#8957e5")
+        case _ where e.summary.contains("merged"): return InboxEndedColor.merged
         default: return T.text3
         }
     }
@@ -1342,4 +1364,9 @@ struct LinkedItemNotice: View {
             .transition(.opacity.combined(with: .move(edge: .top)))
         }
     }
+}
+
+enum InboxEndedColor {
+    static let merged = Color(hex: "#8957e5")
+    static func of(_ e: InboxItem.Ended) -> Color { e.merged ? merged : T.text3 }
 }

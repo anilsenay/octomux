@@ -37,14 +37,17 @@ struct InboxItem: Identifiable, Equatable {
     /// A failed check: its link (an Actions job's, for its log) and what it said about itself.
     struct FailedCheck: Equatable { var name: String; var url: String; var title: String? = nil; var summary: String? = nil }
     var failedCheckDetails: [FailedCheck] = []
-    let updated: Date
+    /// Merged, closed or done since it left the open searches: it stays listed for a while with this label.
+    struct Ended: Equatable { var label: String; var merged: Bool = false; var at: Date }
+    var ended: Ended? = nil
+    var updated: Date
     let body: String
     let url: String
     var branch: String? = nil
     var number: Int? = nil
 
     static func == (a: InboxItem, b: InboxItem) -> Bool {
-        a.id == b.id && a.updated == b.updated && a.reason == b.reason && a.checks == b.checks && a.status == b.status
+        a.id == b.id && a.updated == b.updated && a.reason == b.reason && a.checks == b.checks && a.status == b.status && a.ended == b.ended
     }
     var kindName: String { kind == .pr ? "Pull request" : "Issue" }
     /// Jira: the project key ("DC" of DC-12).
@@ -104,7 +107,7 @@ final class InboxStore: ObservableObject {
     func setHidden(_ place: String, _ on: Bool) {
         if on { hidden.insert(place) } else { hidden.remove(place) }
         defaults.set(hidden.sorted(), forKey: InboxPrefs.hidden)
-        items = fetched.filter { !hidden.contains($0.place) }
+        publish()
         if let s = selectedId, !items.contains(where: { $0.id == s }) { selectedId = nil }
     }
     @Published var selectedId: String?
@@ -215,6 +218,64 @@ final class InboxStore: ObservableObject {
 
     /// Looks at the linked items in the list again (after a link, and for the debug fixture).
     func recheckLinked() { checkLinked(items) }
+
+    // MARK: Merged, closed, done
+
+    /// Items that left the open searches because they were merged, closed or done.
+    private var endedItems: [String: InboxItem] = [:]
+    /// How long an ended item stays listed (one an agent worked on, longer).
+    static let endedKeep: Double = 3 * 86400
+    static let endedKeepLinked: Double = 7 * 86400
+    /// Asks GitHub / Jira which of these ended (network; tests swap it).
+    var endedState: ([InboxItem]) throws -> [String: InboxItem.Ended] = { list in
+        var out: [String: InboxItem.Ended] = [:]
+        let gh = list.filter { $0.source == .github }, jira = list.filter { $0.source == .jira }
+        if !gh.isEmpty { out.merge((try? GitHubInbox.ended(gh)) ?? [:]) { a, _ in a } }
+        if !jira.isEmpty { out.merge((try? JiraClient.ended(jira)) ?? [:]) { a, _ in a } }
+        return out
+    }
+
+    /// The list: what the searches found plus what ended lately, minus hidden places, newest first.
+    private func publish() {
+        let now = Date().timeIntervalSince1970
+        endedItems = endedItems.filter { id, i in
+            now - (i.ended?.at.timeIntervalSince1970 ?? 0) < (links[id] != nil ? Self.endedKeepLinked : Self.endedKeep)
+        }
+        items = (fetched + endedItems.values).filter { !hidden.contains($0.place) }.sorted { $0.updated > $1.updated }
+    }
+
+    private func checkEnded(_ departed: [InboxItem]) {
+        let ask = endedState
+        background { [weak self] in
+            let states = (try? ask(departed)) ?? [:]
+            self?.onMain {
+                guard let self else { return }
+                var lines: [String] = []
+                for i in departed {
+                    guard let e = states[i.id], !self.fetched.contains(where: { $0.id == i.id }) else { continue }
+                    var copy = i
+                    copy.ended = e
+                    copy.updated = max(i.updated, e.at)
+                    self.endedItems[i.id] = copy
+                    let what = e.merged ? "was merged" : e.label == "Closed" ? "was closed" : "moved to \(e.label)"
+                    if let sid = self.links[i.id] {
+                        self.linkedNotices[sid] = LinkedNotice(itemId: i.id, key: i.key, title: i.title,
+                                                               events: [InboxEvent(kind: .change, actor: i.key, date: e.at, summary: what, field: "status")])
+                    }
+                    let relevant = i.reason == .project ? JiraClient.watched.contains(i.projectKey) : InboxPrefs.bool(InboxPrefs.nUpdates, true)
+                    if relevant || self.links[i.id] != nil, self.isUnread(copy) { lines.append("\(i.key) \(what)") }
+                }
+                self.publish()
+                if lines.count == 1 {
+                    self.deliver(AppNotification(sessionId: "", projectId: "", kind: "inbox", title: lines[0],
+                                                 body: departed.first { lines[0].hasPrefix($0.key + " ") }?.title ?? ""))
+                } else if lines.count > 1 {
+                    self.deliver(AppNotification(sessionId: "", projectId: "", kind: "inbox", title: "\(lines.count) finished in your Inbox",
+                                                 body: lines.prefix(3).joined(separator: " · ")))
+                }
+            }
+        }
+    }
 
     // MARK: Fixing checks
 
@@ -380,7 +441,8 @@ final class InboxStore: ObservableObject {
         // A source turned off leaves.
         for (s, v) in on where !v && fetched.contains(where: { $0.source == s }) {
             fetched.removeAll { $0.source == s }; errors[s] = nil; primed.remove(s)
-            items = fetched.filter { !hidden.contains($0.place) }
+            endedItems = endedItems.filter { $0.value.source != s }
+            publish()
         }
         if !on.values.contains(true) { errors = [:] }
         for (s, v) in on where v {
@@ -439,6 +501,11 @@ final class InboxStore: ObservableObject {
             finish(source)
             return
         }
+        // What left this source's open searches: merged, closed or done items stay listed for a while.
+        let foundIds = Set(found.map(\.id))
+        let scopeChanged = quietNext.contains(source)
+        let departed = primed.contains(source) && !scopeChanged ? fetched.filter { $0.source == source && !foundIds.contains($0.id) } : []
+        endedItems = endedItems.filter { !foundIds.contains($0.key) }          // reopened
         var next = fetched.filter { $0.source != source } + found
         next.sort { $0.updated > $1.updated }
         let mine = next.filter { $0.source == source }
@@ -465,8 +532,9 @@ final class InboxStore: ObservableObject {
         // Hidden ones count as seen by the notifier too: showing a repo again does not ring for all of it.
         for i in mine where hidden.contains(i.place) { known[i.id] = i.updated.timeIntervalSince1970; knownStatus[i.id] = i.status }
         primed.insert(source)
-        items = next.filter { !hidden.contains($0.place) }
-        pruneSeen(live: Set(next.map(\.id)))
+        publish()
+        if !departed.isEmpty { checkEnded(departed) }
+        pruneSeen(live: Set(next.map(\.id)).union(endedItems.keys))
         if let s = selectedId, !items.contains(where: { $0.id == s }) { selectedId = nil }
         finish(source)
     }
@@ -478,10 +546,18 @@ final class InboxStore: ObservableObject {
         loadActivity = { i in history[i.id] ?? InboxActivity(events: []) }
         setSeen(marks)
         fetched = list.sorted { $0.updated > $1.updated }
-        items = fetched.filter { !hidden.contains($0.place) }
+        endedItems = [:]
+        publish()
         activity = [:]; openedSeen = [:]
         primed = Set(InboxSource.allCases)
         for i in list { known[i.id] = i.updated.timeIntervalSince1970; knownStatus[i.id] = i.status }
+    }
+
+    /// Debug fixture: one made-up refresh of a source (the store stays frozen otherwise).
+    func fixtureApply(_ source: InboxSource, _ list: [InboxItem]) {
+        frozen = false
+        apply(source, .success(list))
+        frozen = true
     }
 
     /// A change made while this source was fetching: fetch it again with that change.
@@ -785,6 +861,34 @@ enum GitHubInbox {
         return InboxActivity(events: InboxHistory.githubEvents(nodes, me: me).sorted { $0.date < $1.date })
     }
 
+    /// Which of these items were merged or closed (one query for all of them).
+    static func ended(_ items: [InboxItem]) throws -> [String: InboxItem.Ended] {
+        let list = items.filter { $0.repo != nil && $0.number != nil }.prefix(40)
+        guard !list.isEmpty else { return [:] }
+        func q(_ s: String) -> String { "\"" + s.replacingOccurrences(of: "\\", with: "").replacingOccurrences(of: "\"", with: "") + "\"" }
+        let parts = list.enumerated().map { n, i -> String in
+            let rp = i.repo!.split(separator: "/").map(String.init)
+            return "i\(n): repository(owner: \(q(rp.first ?? "")), name: \(q(rp.last ?? ""))) { issueOrPullRequest(number: \(i.number!)) { __typename ... on PullRequest { state mergedAt closedAt } ... on Issue { state closedAt } } }"
+        }
+        let out = try InboxShell.run(["gh", "api", "graphql", "-f", "query=query { \(parts.joined(separator: " ")) }"])
+        return ended(Data(out.utf8), ids: list.map(\.id))
+    }
+
+    /// Partial answers count: a repo that is gone or private now answers null and stays unknown.
+    static func ended(_ data: Data, ids: [String]) -> [String: InboxItem.Ended] {
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let d = root["data"] as? [String: Any] else { return [:] }
+        var out: [String: InboxItem.Ended] = [:]
+        for (n, id) in ids.enumerated() {
+            guard let node = (d["i\(n)"] as? [String: Any])?["issueOrPullRequest"] as? [String: Any] else { continue }
+            switch (node["state"] as? String ?? "").uppercased() {
+            case "MERGED": out[id] = .init(label: "Merged", merged: true, at: InboxDates.iso(node["mergedAt"] as? String) ?? Date())
+            case "CLOSED": out[id] = .init(label: "Closed", at: InboxDates.iso(node["closedAt"] as? String) ?? Date())
+            default: break
+            }
+        }
+        return out
+    }
+
     static func comment(_ i: InboxItem, _ text: String) throws {
         guard let repo = i.repo, let number = i.number else { return }
         _ = try InboxShell.run(["gh", i.kind == .pr ? "pr" : "issue", "comment", "\(number)", "--repo", repo, "--body-file", "-"], input: text)
@@ -1076,6 +1180,25 @@ enum JiraClient {
                 updated: InboxDates.iso(f["updated"] as? String) ?? Date(),
                 body: ADF.text(f["description"]), url: "\(site)/browse/\(key)")
         }
+    }
+
+    /// Which of these issues are done now (one search for all of them).
+    static func ended(_ items: [InboxItem]) throws -> [String: InboxItem.Ended] {
+        let keys = items.map(\.key).filter { $0.range(of: #"^[A-Z][A-Z0-9_]*-\d+$"#, options: .regularExpression) != nil }.prefix(50)
+        guard !keys.isEmpty else { return [:] }
+        let body: [String: Any] = ["jql": "key in (\(keys.joined(separator: ", ")))", "maxResults": 50, "fields": ["status", "updated", "resolutiondate"]]
+        return ended(try object(request("/rest/api/3/search/jql", method: "POST", body: body)))
+    }
+
+    static func ended(_ o: [String: Any]) -> [String: InboxItem.Ended] {
+        var out: [String: InboxItem.Ended] = [:]
+        for i in o["issues"] as? [[String: Any]] ?? [] {
+            guard let key = i["key"] as? String, let f = i["fields"] as? [String: Any], let st = f["status"] as? [String: Any],
+                  (st["statusCategory"] as? [String: Any])?["key"] as? String == "done" else { continue }
+            let at = InboxDates.iso(f["resolutiondate"] as? String) ?? InboxDates.iso(f["updated"] as? String) ?? Date()
+            out["jira:\(key)"] = .init(label: st["name"] as? String ?? "Done", at: at)
+        }
+        return out
     }
 
     /// The signed-in account (set by `inbox()`), to show your own changes as "You".

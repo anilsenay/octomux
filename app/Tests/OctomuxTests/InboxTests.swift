@@ -650,3 +650,103 @@ final class InboxCITests: XCTestCase {
         XCTAssertNil(store.fixState(item, session: s))
     }
 }
+
+/// Items that leave the open searches: merged / closed / done ones stay listed for a while.
+final class InboxEndedTests: XCTestCase {
+    private var store: InboxStore!
+    private var suite = ""
+    private var rung: [String] = []
+    private var states: [String: InboxItem.Ended] = [:]
+    private var asked: [[String]] = []
+
+    override func setUp() {
+        suite = "octomux-inbox-ended-\(UUID().uuidString)"
+        store = InboxStore(defaults: UserDefaults(suiteName: suite)!)
+        rung = []; states = [:]; asked = []
+        store.deliver = { [unowned self] n in self.rung.append(n.title) }
+        store.chime = {}
+        store.loadActivity = { _ in InboxActivity(events: []) }
+        store.endedState = { [unowned self] l in self.asked.append(l.map(\.id)); return self.states }
+        store.background = { $0() }
+        store.onMain = { $0() }
+    }
+
+    override func tearDown() { UserDefaults().removePersistentDomain(forName: suite) }
+
+    private func pr(_ n: Int, at t: Double = 1000, reason: InboxItem.Reason = .mine) -> InboxItem {
+        InboxItem(id: "gh:o/r#\(n)", source: .github, kind: .pr, key: "#\(n)", place: "o/r", title: "PR \(n)", author: "you", assignee: nil,
+                  status: "Open", statusTone: "done", reason: reason, updated: Date(timeIntervalSince1970: t), body: "", url: "", number: n)
+    }
+
+    func testMergedItemStaysWithALabel() {
+        store.apply(.github, .success([pr(1), pr(2)]))
+        let now = Date()
+        states = ["gh:o/r#1": .init(label: "Merged", merged: true, at: now)]
+        store.apply(.github, .success([pr(2)]))
+        XCTAssertEqual(asked, [["gh:o/r#1"]])
+        let one = store.items.first { $0.id == "gh:o/r#1" }
+        XCTAssertEqual(one?.ended?.label, "Merged")
+        XCTAssertEqual(one?.updated, now)
+        XCTAssertTrue(store.isUnread(one!))
+        XCTAssertEqual(rung, ["#1 was merged"])
+        // The next refresh does not ask again, and the item stays.
+        store.apply(.github, .success([pr(2)]))
+        XCTAssertEqual(asked.count, 1)
+        XCTAssertNotNil(store.items.first { $0.id == "gh:o/r#1" })
+    }
+
+    func testStillOpenLeavesQuietly() {
+        store.apply(.github, .success([pr(1, reason: .review)]))
+        store.apply(.github, .success([]))                          // review request withdrawn: still open
+        XCTAssertTrue(store.items.isEmpty)
+        XCTAssertEqual(rung, [])
+    }
+
+    func testReopenedComesBack() {
+        store.apply(.github, .success([pr(1)]))
+        states = ["gh:o/r#1": .init(label: "Closed", at: Date())]
+        store.apply(.github, .success([]))
+        XCTAssertEqual(store.items.first?.ended?.label, "Closed")
+        store.apply(.github, .success([pr(1, at: 5000)]))
+        XCTAssertEqual(store.items.count, 1)
+        XCTAssertNil(store.items.first?.ended)
+    }
+
+    func testOldEndedItemsGo() {
+        store.apply(.github, .success([pr(1)]))
+        states = ["gh:o/r#1": .init(label: "Closed", at: Date().addingTimeInterval(-4 * 86400))]
+        store.apply(.github, .success([]))
+        XCTAssertTrue(store.items.isEmpty)                           // past three days
+    }
+
+    func testLinkedSessionHearsOfTheMerge() {
+        store.apply(.github, .success([pr(1)]))
+        store.link("gh:o/r#1", session: "s1")
+        states = ["gh:o/r#1": .init(label: "Merged", merged: true, at: Date().addingTimeInterval(-5 * 86400))]
+        store.apply(.github, .success([]))
+        XCTAssertEqual(store.linkedNotices["s1"]?.events.first?.summary, "was merged")
+        XCTAssertNotNil(store.items.first)                           // linked: kept a week
+    }
+
+    func testScopeChangeDoesNotAsk() {
+        store.apply(.github, .success([pr(1)]))
+        store.widen()
+        store.apply(.github, .success([]))
+        XCTAssertEqual(asked, [])
+    }
+
+    func testStateParsers() {
+        let gh = #"{"data":{"i0":{"issueOrPullRequest":{"__typename":"PullRequest","state":"MERGED","mergedAt":"2026-11-05T10:00:00Z","closedAt":"2026-11-05T10:00:00Z"}},"i1":{"issueOrPullRequest":{"__typename":"Issue","state":"OPEN","closedAt":null}},"i2":null,"i3":{"issueOrPullRequest":{"__typename":"Issue","state":"CLOSED","closedAt":"2026-11-04T10:00:00Z"}}}}"#
+        let g = GitHubInbox.ended(Data(gh.utf8), ids: ["a", "b", "c", "d"])
+        XCTAssertEqual(g["a"]?.label, "Merged"); XCTAssertEqual(g["a"]?.merged, true)
+        XCTAssertNil(g["b"]); XCTAssertNil(g["c"])
+        XCTAssertEqual(g["d"]?.label, "Closed")
+        let j: [String: Any] = ["issues": [
+            ["key": "DC-1", "fields": ["status": ["name": "Done", "statusCategory": ["key": "done"]], "resolutiondate": "2026-11-05T10:00:00.000+0300"]],
+            ["key": "DC-2", "fields": ["status": ["name": "In Progress", "statusCategory": ["key": "indeterminate"]]]],
+        ]]
+        let e = JiraClient.ended(j)
+        XCTAssertEqual(e["jira:DC-1"]?.label, "Done")
+        XCTAssertNil(e["jira:DC-2"])
+    }
+}

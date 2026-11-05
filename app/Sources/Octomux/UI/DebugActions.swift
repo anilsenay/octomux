@@ -185,6 +185,7 @@ enum DebugActions {
             case "open_inbox": m.openInbox()
             case "inbox_refresh": InboxStore.shared.refresh()
             case "inbox_fake": InboxFixture.load()
+            case "inbox_fake_merge": InboxFixture.mergePR()
             case "inbox_tell_agent": if let sid = m.focusedSessionId { InboxStore.shared.tellAgent(session: sid) }
             case "inbox_fake_link":   // links a fixture item (value) to the focused session, caught up `minutes` ago
                 if let v = p["value"] as? String, let sid = m.focusedSessionId {

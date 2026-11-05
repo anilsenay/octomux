@@ -28,6 +28,10 @@
     another check's own summary), and hands it to the agent with the prompt (up to 12,000 characters). A line
     under the checks follows the fix: prompt waiting, agent working or waiting for you, checks running again,
     checks pass.
+  - **Merged, closed and done items stay a while**: something that leaves the open searches because it was
+    merged, closed or finished stays in the list with that label for three days (a week when an agent worked on
+    it), with a notification and a note in its linked session. Items that only left a search (a review request
+    withdrawn) still go quietly.
   - Settings → Inbox: connections, Jira projects, GitHub repositories, what shows up, notifications, and what
     Send to agent opens.
 
