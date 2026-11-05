@@ -397,14 +397,16 @@ final class InboxStore: ObservableObject {
     @Published private(set) var fixes: [String: Double] = [:]
     /// Reads one Actions job's failed log (gh; the fixture swaps it).
     var ciLog: (String, String) throws -> String = InboxCI.ghLog
+    /// Reads a failed Bitbucket Pipelines build's step logs (the fixture swaps it).
+    var bitbucketLog: (InboxItem, InboxItem.FailedCheck) throws -> String = { try BitbucketInbox.shared.pipelineLog($0, $1) }
 
     /// Collects the failed checks' evidence off the main thread, then starts the agent with it.
     func startFix(_ i: InboxItem, in project: Project, worktree: Bool, model: AppModel) {
         guard !collecting.contains(i.id) else { return }
         collecting.insert(i.id)
-        let log = ciLog
+        let log = ciLog, bbLog = bitbucketLog
         background { [weak self] in
-            let evidence = InboxCI.block(InboxCI.collect(i, log: log))
+            let evidence = InboxCI.block(InboxCI.collect(i, log: log, bitbucketLog: bbLog))
             self?.onMain {
                 guard let self else { return }
                 self.collecting.remove(i.id)
@@ -805,12 +807,20 @@ final class InboxStore: ObservableObject {
         return s
     }
 
+    /// Posts a comment (network; the debug fixture swaps it).
+    var commentWriter: (InboxItem, String) throws -> Void = { i, text in
+        switch i.source {
+        case .github: try GitHubInbox.comment(i, text)
+        case .bitbucket: try BitbucketWrites.comment(i, text)
+        case .jira: try JiraClient.addComment(i.key, text)
+        }
+    }
+
     func postComment(_ i: InboxItem, _ text: String, done: @escaping (String?) -> Void) {
+        let write = commentWriter
         DispatchQueue.global(qos: .userInitiated).async {
             var err: String?
-            do {
-                if i.source == .github { try GitHubInbox.comment(i, text) } else { try JiraClient.addComment(i.key, text) }
-            } catch { err = "\(error)" }
+            do { try write(i, text) } catch { err = "\(error)" }
             DispatchQueue.main.async {
                 done(err)
                 if err == nil {

@@ -1,17 +1,27 @@
 import AppKit
 import Foundation
 
-/// Changing a pull request from the Inbox (merge, ready / draft, close / reopen) through the GitHub CLI.
-/// Every action is confirmed first, naming exactly what will happen.
+/// Changing a pull request from the Inbox: on GitHub (merge, ready / draft, close / reopen) through the GitHub CLI; on
+/// Bitbucket (approve, request changes, merge, decline) through its API. Every action is confirmed first, naming
+/// exactly what will happen.
 enum InboxPRAction: String, CaseIterable, Identifiable {
-    case merge, squash, rebase, ready, draft, close, reopen
+    case merge, squash, rebase, fastForward, ready, draft, close, reopen
+    case approve, unapprove, requestChanges, undoRequestChanges, decline
     var id: String { rawValue }
+    var isMerge: Bool { [.merge, .squash, .rebase, .fastForward].contains(self) }
+    var isReview: Bool { [.approve, .unapprove, .requestChanges, .undoRequestChanges].contains(self) }
 
     var title: String {
         switch self {
         case .merge: return "Create a Merge Commit"
         case .squash: return "Squash and Merge"
         case .rebase: return "Rebase and Merge"
+        case .fastForward: return "Fast-Forward Merge"
+        case .approve: return "Approve"
+        case .unapprove: return "Remove Your Approval"
+        case .requestChanges: return "Request Changes"
+        case .undoRequestChanges: return "Withdraw Request for Changes"
+        case .decline: return "Decline Pull Request"
         case .ready: return "Mark Ready for Review"
         case .draft: return "Convert to Draft"
         case .close: return "Close Pull Request"
@@ -30,11 +40,24 @@ enum InboxPRAction: String, CaseIterable, Identifiable {
         case .draft: return ["gh", "pr", "ready", n, "--repo", repo, "--undo"]
         case .close: return ["gh", "pr", "close", n, "--repo", repo]
         case .reopen: return ["gh", "pr", "reopen", n, "--repo", repo]
+        case .fastForward, .approve, .unapprove, .requestChanges, .undoRequestChanges, .decline: return []
         }
     }
 
     /// What can be done to the pull request as it is now.
     static func available(_ i: InboxItem) -> [InboxPRAction] {
+        if i.source == .bitbucket {
+            guard i.kind == .pr, i.number != nil, i.ended == nil else { return [] }
+            var out: [InboxPRAction] = []
+            // You can't review your own pull request.
+            if i.author != "You" {
+                out.append(i.youApproved ? .unapprove : .approve)
+                out.append(i.youRequestedChanges ? .undoRequestChanges : .requestChanges)
+            }
+            if !i.isDraft { out += [.merge, .squash, .fastForward] }
+            out.append(.decline)
+            return out
+        }
         guard i.kind == .pr, i.source == .github, i.number != nil, i.repo != nil else { return [] }
         if let e = i.ended { return e.merged ? [] : [.reopen] }
         if i.isDraft { return [.ready, .close] }
@@ -53,6 +76,12 @@ enum InboxPRAction: String, CaseIterable, Identifiable {
         case .draft: return ("Convert \(i.key) to a draft?", "Turns \(what) back into a draft.", "Convert to Draft")
         case .close: return ("Close \(i.key)?", "Closes \(what) without merging it.", "Close")
         case .reopen: return ("Reopen \(i.key)?", "Reopens \(what).", "Reopen")
+        case .fastForward: return ("Fast-forward merge \(i.key)\(into)?", "Moves\(i.base.map { " " + $0 } ?? " the base") up to the commits of \(what) without a merge commit (only if it can). The branch \(i.branch ?? "") stays.", "Fast-Forward Merge")
+        case .approve: return ("Approve \(i.key)?", "Approves \(what) on \(i.source.name) as you.", "Approve")
+        case .unapprove: return ("Remove your approval of \(i.key)?", "Takes back your approval of \(what).", "Remove Approval")
+        case .requestChanges: return ("Request changes on \(i.key)?", "Marks \(what) as needing changes, as you. Leave a comment to say which.", "Request Changes")
+        case .undoRequestChanges: return ("Withdraw your request for changes on \(i.key)?", "Takes back your request for changes on \(what).", "Withdraw")
+        case .decline: return ("Decline \(i.key)?", "Declines \(what) without merging it. Bitbucket can't reopen a declined pull request.", "Decline")
         }
     }
 }
@@ -66,6 +95,8 @@ final class InboxActions: ObservableObject {
     @Published private(set) var results: [String: (ok: Bool, text: String)] = [:]
 
     var run: ([String]) throws -> String = { try InboxShell.run($0) }
+    /// Bitbucket's API for its pull requests (tests and the fixture swap it).
+    var bitbucket: (InboxPRAction, InboxItem) throws -> String = BitbucketWrites.perform
     /// Asks the user (a sheet on the main window); calls back with the answer.
     var confirm: (_ title: String, _ message: String, _ button: String, _ done: @escaping (Bool) -> Void) -> Void = InboxConfirm.ask
     var background: (@escaping () -> Void) -> Void = { DispatchQueue.global(qos: .userInitiated).async(execute: $0) }
@@ -80,9 +111,9 @@ final class InboxActions: ObservableObject {
             guard let self, yes else { return }
             self.busy.insert(i.id)
             self.results[i.id] = nil
-            let run = self.run
+            let run = self.run, bb = self.bitbucket
             self.background {
-                let r = Result { try run(a.args(i)) }
+                let r = Result { i.source == .bitbucket ? try bb(a, i) : try run(a.args(i)) }
                 self.onMain {
                     self.busy.remove(i.id)
                     switch r {

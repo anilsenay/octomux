@@ -127,6 +127,25 @@ enum InboxFixture {
         // Writes go nowhere: the commands are only recorded.
         ran = []
         InboxActions.shared.run = { args in ran.append(args.joined(separator: " ")); return "" }
+        InboxActions.shared.bitbucket = { a, i in
+            let r = BitbucketWrites.request(a, i)
+            ran.append("bitbucket \(r?.method ?? "?") \(r?.path ?? a.rawValue)" + ((r?.body?["merge_strategy"] as? String).map { " " + $0 } ?? ""))
+            return ""
+        }
+        InboxStore.shared.commentWriter = { i, text in ran.append("comment \(i.id) \(text)") }
+        InboxStore.shared.bitbucketLog = { _, c in
+            guard c.name == "Pipeline #318" else { throw InboxError("no such build") }
+            return """
+            + npm test
+            > payments-api@2.1.0 test
+            FAIL src/refunds/split.test.ts
+              ● RefundSplitter › gives the last item the remainder
+                expect(received).toBe(expected)
+                Expected: 3.34
+                Received: 3.33
+            Tests: 1 failed, 41 passed, 42 total
+            """
+        }
         let jira = InboxJiraActions.shared
         jira.loadTransitions = { _ in [
             .init(id: "21", name: "Back to work", to: "In Progress", category: "indeterminate"),

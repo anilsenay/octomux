@@ -72,6 +72,10 @@
     too; the branch comes through git with your own credentials (the token never goes to git), and Fix starts
     from what the failed builds reported. Linked sessions hear about new comments, approvals and pushes,
     notifications say who did what ("#7: Ann approved"), and automations can pick Bitbucket as their source.
+  - **Change Bitbucket pull requests from the Inbox** (Pull Request menu, each asked first): approve or take it back,
+    request changes or withdraw it, merge (merge commit, squash or fast-forward; the branch stays), decline, and
+    comment. Needs write:pullrequest on the token. **Fix with agent** reads the failed steps' logs of a Pipelines
+    build (with read:pipeline); the log's storage link is followed without the token.
   - **Jira issues named by pull requests**: a pull request whose title or branch names a Jira issue
     (feature/SHOP-7-…) shows it under the header, with its status; the issue shows its pull requests. The agent's
     prompt names the issue too.

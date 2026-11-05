@@ -338,6 +338,13 @@ enum DebugActions {
             case "inbox_fake_merge": InboxFixture.mergePR()
             case "inbox_fake_bb_decline": InboxFixture.declineBitbucket()
             case "inbox_fake_bb_new": InboxFixture.newBitbucketPR()
+            case "inbox_comment":     // value: text, on the open item; asks first on Bitbucket like the Comment button
+                if let v = p["value"] as? String, let item = InboxStore.shared.items.first(where: { $0.id == InboxStore.shared.selectedId }) {
+                    let post = { InboxStore.shared.postComment(item, v) { err in if let err { NSLog("inbox_comment: \(err)") } } }
+                    if item.source == .bitbucket {
+                        InboxActions.shared.confirm("Comment on \(item.key)?", "Posts your comment on “\(item.title)” in \(item.place) on Bitbucket, as you.", "Comment") { if $0 { post() } }
+                    } else { post() }
+                }
             case "inbox_tab": InboxStore.shared.detailTab = p["value"] as? String ?? "overview"
             case "inbox_pr_action":   // value: merge | squash | rebase | ready | draft | close | reopen, on the open item
                 if let v = p["value"] as? String, let a = InboxPRAction(rawValue: v),

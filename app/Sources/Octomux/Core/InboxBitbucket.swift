@@ -100,8 +100,10 @@ enum BitbucketClient {
     }
 
     /// One request with the saved token (or the given one while connecting).
+    /// `range`: an HTTP Range (a log's tail). `logRedirect`: a step log answers with a redirect to its storage; that is
+    /// followed without the token (the link carries its own signature).
     static func request(_ pathOrURL: String, method: String = "GET", body: Any? = nil, accept: String = "application/json",
-                        auth: Auth? = nil, token: String? = nil) throws -> Data {
+                        auth: Auth? = nil, token: String? = nil, range: String? = nil, logRedirect: Bool = false) throws -> Data {
         guard let a = auth ?? savedAuth, let tok = token ?? self.token else {
             throw InboxError(configured ? "Couldn't read the Bitbucket token from the Keychain. Connect again in Settings → Inbox." : "Bitbucket is not connected.")
         }
@@ -109,12 +111,13 @@ enum BitbucketClient {
         r.httpMethod = method
         r.setValue(header(a, tok), forHTTPHeaderField: "Authorization")
         r.setValue(accept, forHTTPHeaderField: "Accept")
+        if let range { r.setValue(range, forHTTPHeaderField: "Range") }
         if let body {
             r.setValue("application/json", forHTTPHeaderField: "Content-Type")
             r.httpBody = try JSONSerialization.data(withJSONObject: body)
         }
         BitbucketInbox.shared.counted()
-        let (data, resp) = try sync(r)
+        let (data, resp) = try sync(r, session: logRedirect ? logSession : session)
         let http = resp as? HTTPURLResponse
         let code = http?.statusCode ?? 0
         if code == 429 {
@@ -143,15 +146,30 @@ enum BitbucketClient {
         }
     }
 
-    private static let session: URLSession = {
+    /// Step logs: on api.bitbucket.org as above; a redirect elsewhere (https only) goes without the token.
+    private final class LogRedirects: NSObject, URLSessionTaskDelegate {
+        func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+                        newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
+            guard request.url?.scheme == "https" else { completionHandler(nil); return }
+            var r = request
+            let same = request.url?.host?.lowercased() == BitbucketClient.host
+            r.setValue(same ? task.originalRequest?.value(forHTTPHeaderField: "Authorization") : nil, forHTTPHeaderField: "Authorization")
+            r.setValue(task.originalRequest?.value(forHTTPHeaderField: "Range"), forHTTPHeaderField: "Range")
+            completionHandler(r)
+        }
+    }
+
+    private static func config() -> URLSessionConfiguration {
         let c = URLSessionConfiguration.ephemeral
         c.httpShouldSetCookies = false
         c.httpCookieAcceptPolicy = .never
         c.urlCredentialStorage = nil
-        return URLSession(configuration: c, delegate: SameHost(), delegateQueue: nil)
-    }()
+        return c
+    }
+    private static let session = URLSession(configuration: config(), delegate: SameHost(), delegateQueue: nil)
+    private static let logSession = URLSession(configuration: config(), delegate: LogRedirects(), delegateQueue: nil)
 
-    private static func sync(_ r: URLRequest) throws -> (Data, URLResponse) {
+    private static func sync(_ r: URLRequest, session: URLSession) throws -> (Data, URLResponse) {
         var result: Result<(Data, URLResponse), Error> = .failure(InboxError("No answer"))
         let sem = DispatchSemaphore(value: 0)
         session.dataTask(with: r) { d, resp, e in
@@ -376,6 +394,46 @@ enum BitbucketClient {
         case "SUPERSEDED": return .init(label: "Superseded", at: at)
         default: return nil
         }
+    }
+}
+
+/// Changing a pull request on Bitbucket (each one confirmed by the user first; see InboxActions). Needs a token with
+/// write:pullrequest:bitbucket.
+enum BitbucketWrites {
+    static func path(_ i: InboxItem, _ tail: String) -> String { "/repositories/\(i.place)/pullrequests/\(i.number ?? 0)/\(tail)" }
+
+    /// The request an action makes. Merges never delete the source branch.
+    static func request(_ a: InboxPRAction, _ i: InboxItem) -> (method: String, path: String, body: [String: Any]?)? {
+        func merge(_ strategy: String) -> (String, String, [String: Any]?) {
+            ("POST", path(i, "merge"), ["type": "pullrequest", "merge_strategy": strategy, "close_source_branch": false])
+        }
+        switch a {
+        case .approve: return ("POST", path(i, "approve"), nil)
+        case .unapprove: return ("DELETE", path(i, "approve"), nil)
+        case .requestChanges: return ("POST", path(i, "request-changes"), nil)
+        case .undoRequestChanges: return ("DELETE", path(i, "request-changes"), nil)
+        case .merge: return merge("merge_commit")
+        case .squash: return merge("squash")
+        case .fastForward: return merge("fast_forward")
+        case .decline: return ("POST", path(i, "decline"), nil)
+        case .rebase, .ready, .draft, .close, .reopen: return nil
+        }
+    }
+
+    static func perform(_ a: InboxPRAction, _ i: InboxItem) throws -> String {
+        guard let r = request(a, i) else { throw InboxError("Bitbucket can't \(a.title.lowercased()).") }
+        do { _ = try BitbucketClient.request(r.path, method: r.method, body: r.body) }
+        catch let e as BitbucketHTTPError where e.code == 403 { throw writeRefused(e) }
+        return ""
+    }
+
+    static func comment(_ i: InboxItem, _ text: String) throws {
+        do { _ = try BitbucketClient.request(path(i, "comments"), method: "POST", body: ["content": ["raw": text]]) }
+        catch let e as BitbucketHTTPError where e.code == 403 { throw writeRefused(e) }
+    }
+
+    static func writeRefused(_ e: BitbucketHTTPError) -> InboxError {
+        InboxError("Bitbucket refused (403): the token needs write:pullrequest:bitbucket to approve, comment, merge or decline." + (e.message.isEmpty ? "" : " " + e.message))
     }
 }
 
@@ -637,6 +695,47 @@ final class BitbucketInbox {
             if let e = BitbucketClient.ended(o) { out[i.id] = e }
         }
         return out
+    }
+
+    // MARK: Pipelines
+
+    /// A Pipelines build's number from its status link (…/pipelines/results/318…, …#!/results/318).
+    static func buildNumber(_ url: String) -> Int? {
+        guard let r = url.range(of: #"results/(\d+)"#, options: .regularExpression) else { return nil }
+        return Int(url[r].split(separator: "/").last ?? "")
+    }
+
+    /// Reads a step log's tail (`BitbucketClient.request` with a Range; tests swap it).
+    var stepLog: (String) throws -> String = { path in
+        String(decoding: try BitbucketClient.request(path, accept: "*/*", range: "bytes=-60000", logRedirect: true), as: UTF8.self)
+    }
+
+    /// The failed steps' logs of a failed Pipelines build (Fix with agent's evidence). Needs read:pipeline:bitbucket;
+    /// other builds (not Pipelines) have no log here.
+    func pipelineLog(_ i: InboxItem, _ c: InboxItem.FailedCheck) throws -> String {
+        guard let n = Self.buildNumber(c.url), c.url.contains("pipelines") || c.url.contains("addon/pipelines") else {
+            throw InboxError("not a Pipelines build")
+        }
+        let base = "/repositories/\(i.place)/pipelines"
+        var query = "?sort=-created_on&pagelen=30"
+        if let h = i.head { query += "&target.commit.hash=" + BitbucketClient.enc(h) }
+        let list = try values(base + query, pages: 1)
+        guard let p = list.first(where: { ($0["build_number"] as? Int) == n }), let uuid = p["uuid"] as? String else {
+            throw InboxError("build \(n) not found")
+        }
+        let steps = try values("\(base)/\(BitbucketClient.encPath(uuid))/steps?pagelen=50", pages: 1)
+        let failed = steps.filter { s in
+            let result = ((s["state"] as? [String: Any])?["result"] as? [String: Any])?["name"] as? String ?? ""
+            return ["FAILED", "ERROR"].contains(result.uppercased())
+        }
+        var out: [String] = []
+        for s in failed.prefix(2) {
+            guard let su = s["uuid"] as? String else { continue }
+            let log = try stepLog("\(base)/\(BitbucketClient.encPath(uuid))/steps/\(BitbucketClient.encPath(su))/log")
+            out.append((failed.count > 1 ? "== \(s["name"] as? String ?? "step") ==\n" : "") + log)
+        }
+        guard !out.isEmpty else { throw InboxError("no failed step") }
+        return out.joined(separator: "\n")
     }
 
     /// The pull request's unified diff.

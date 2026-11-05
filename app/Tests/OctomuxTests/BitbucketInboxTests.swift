@@ -483,4 +483,114 @@ final class BitbucketInboxTests: XCTestCase {
         let text = InboxStore.linkedPrompt(store.linkedNotices["s1"]!, source: InboxSource.of(id: i.id)!.name)
         XCTAssertTrue(text.contains("<work-item-update source=\"Bitbucket\">"))
     }
+
+    // MARK: Changes (B3)
+
+    func testWriteRequests() {
+        let i = bbItem()
+        XCTAssertEqual(BitbucketWrites.request(.approve, i)?.method, "POST")
+        XCTAssertEqual(BitbucketWrites.request(.approve, i)?.path, "/repositories/acme/api/pullrequests/7/approve")
+        XCTAssertEqual(BitbucketWrites.request(.unapprove, i)?.method, "DELETE")
+        XCTAssertEqual(BitbucketWrites.request(.requestChanges, i)?.path, "/repositories/acme/api/pullrequests/7/request-changes")
+        XCTAssertEqual(BitbucketWrites.request(.undoRequestChanges, i)?.method, "DELETE")
+        XCTAssertEqual(BitbucketWrites.request(.decline, i)?.path, "/repositories/acme/api/pullrequests/7/decline")
+        for (a, strategy) in [(InboxPRAction.merge, "merge_commit"), (.squash, "squash"), (.fastForward, "fast_forward")] {
+            let r = BitbucketWrites.request(a, i)
+            XCTAssertEqual(r?.path, "/repositories/acme/api/pullrequests/7/merge")
+            XCTAssertEqual(r?.body?["merge_strategy"] as? String, strategy)
+            XCTAssertEqual(r?.body?["close_source_branch"] as? Bool, false)        // the branch stays
+        }
+        XCTAssertNil(BitbucketWrites.request(.rebase, i))
+        XCTAssertNil(BitbucketWrites.request(.reopen, i))
+    }
+
+    func testAvailableBitbucketActions() {
+        var i = bbItem()
+        XCTAssertEqual(InboxPRAction.available(i), [.approve, .requestChanges, .merge, .squash, .fastForward, .decline])
+        i.youApproved = true; i.youRequestedChanges = true
+        XCTAssertEqual(InboxPRAction.available(i), [.unapprove, .undoRequestChanges, .merge, .squash, .fastForward, .decline])
+        let mine = bbItem(.mine)
+        var own = BitbucketClient.item(pr(9, author: "acc-me", draft: true), reason: .mine, me: "acc-me")!
+        XCTAssertEqual(InboxPRAction.available(own), [.decline])                     // your own draft: no review, no merge
+        own.ended = .init(label: "Declined", at: Date())
+        XCTAssertEqual(InboxPRAction.available(own), [])
+        XCTAssertFalse(InboxPRAction.available(mine).isEmpty)
+        for a in InboxPRAction.available(i) {
+            let c = a.confirmation(i)
+            XCTAssertTrue(c.title.contains("#7"), a.rawValue)
+            XCTAssertFalse(c.button.isEmpty)
+        }
+        XCTAssertTrue(InboxPRAction.decline.confirmation(i).message.contains("can't reopen"))
+        // GitHub keeps its own list.
+        XCTAssertFalse(InboxPRAction.available(InboxItem(id: "gh:o/r#1", source: .github, kind: .pr, key: "#1", place: "o/r", title: "t",
+                                                         author: "a", assignee: nil, status: "Open", statusTone: "done", reason: .review,
+                                                         updated: Date(), body: "", url: "", number: 1)).contains(.approve))
+    }
+
+    func testActionsGoThroughBitbucketAfterAYes() {
+        let actions = InboxActions()
+        var asked: [String] = [], answer = true, called: [String] = [], changed = 0
+        actions.confirm = { t, _, _, done in asked.append(t); done(answer) }
+        actions.background = { $0() }; actions.onMain = { $0() }
+        actions.run = { _ in XCTFail("gh ran for Bitbucket"); return "" }
+        actions.bitbucket = { a, i in called.append("\(a.rawValue) \(i.id)"); return "" }
+        actions.changed = { _ in changed += 1 }
+        let i = bbItem()
+        answer = false
+        actions.perform(.approve, on: i)
+        XCTAssertEqual(called, [])
+        answer = true
+        actions.perform(.approve, on: i)
+        XCTAssertEqual(called, ["approve bb:acme/api#7"])
+        XCTAssertEqual(actions.results[i.id]?.ok, true)
+        XCTAssertEqual(changed, 1)
+        actions.perform(.unapprove, on: i)                       // not offered while you haven't approved
+        XCTAssertEqual(called.count, 1)
+        actions.bitbucket = { _, _ in throw InboxError("Bitbucket refused (403)") }
+        actions.perform(.decline, on: i)
+        XCTAssertEqual(actions.results[i.id]?.ok, false)
+        XCTAssertEqual(asked.count, 3)
+    }
+
+    func testBuildNumber() {
+        XCTAssertEqual(BitbucketInbox.buildNumber("https://bitbucket.org/acme/api/pipelines/results/318"), 318)
+        XCTAssertEqual(BitbucketInbox.buildNumber("https://bitbucket.org/acme/api/addon/pipelines/home#!/results/42"), 42)
+        XCTAssertNil(BitbucketInbox.buildNumber("https://ci.example.com/job/7"))
+    }
+
+    func testPipelineLog() throws {
+        let (bb, _, f) = store()
+        f.handlers.append { p in
+            if p.hasPrefix("/repositories/acme/api/pipelines?") {
+                XCTAssertTrue(p.contains("target.commit.hash=h1"))
+                return self.page([["build_number": 317, "uuid": "{p-317}"], ["build_number": 318, "uuid": "{p-318}"]])
+            }
+            if p.hasPrefix("/repositories/acme/api/pipelines/%7Bp-318%7D/steps?") {
+                return self.page([
+                    ["uuid": "{s-1}", "name": "build", "state": ["result": ["name": "SUCCESSFUL"]]],
+                    ["uuid": "{s-2}", "name": "test", "state": ["result": ["name": "FAILED"]]],
+                ])
+            }
+            return nil
+        }
+        var logs: [String] = []
+        bb.stepLog = { p in logs.append(p); return "FAIL x.test.ts\tExpected 1" }
+        let i = bbItem(failed: [.init(name: "Pipeline #318", url: "https://bitbucket.org/acme/api/pipelines/results/318")])
+        XCTAssertEqual(try bb.pipelineLog(i, i.failedCheckDetails[0]), "FAIL x.test.ts\tExpected 1")
+        XCTAssertEqual(logs, ["/repositories/acme/api/pipelines/%7Bp-318%7D/steps/%7Bs-2%7D/log"])
+        XCTAssertThrowsError(try bb.pipelineLog(i, .init(name: "Jenkins", url: "https://ci.example.com/job/7")))
+        // A Pipelines log is plain lines: tabs stay.
+        XCTAssertEqual(InboxCI.clean("a\tb\nError: c", fields: false), "a\tb\nError: c")
+        XCTAssertEqual(InboxCI.collect(i, log: { _, _ in "" }, bitbucketLog: { bb2, c in try bb.pipelineLog(bb2, c) }).first?.text, "FAIL x.test.ts\tExpected 1")
+    }
+
+    func testCommentsGoThroughTheWriter() {
+        let (store, _) = quietStore()
+        var wrote: [String] = []
+        store.commentWriter = { i, t in wrote.append("\(i.source.rawValue): \(t)") }
+        let done = expectation(description: "posted")
+        store.postComment(bbItem(), "Looks good") { err in XCTAssertNil(err); done.fulfill() }
+        wait(for: [done], timeout: 2)
+        XCTAssertEqual(wrote, ["bitbucket: Looks good"])
+    }
 }

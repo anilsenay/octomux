@@ -17,10 +17,11 @@ enum InboxCI {
     /// `gh run view --log-failed` lines are "job<TAB>step<TAB>2024-05-01T10:00:00.1234567Z text": keeps the text,
     /// drops ANSI colors and the runner's group markers, and keeps the end (where the failure is) plus earlier lines
     /// that name an error.
-    static func clean(_ raw: String, limit: Int = maxPerCheck) -> String {
+    /// `fields`: gh's job/step columns come first (a Pipelines log is plain lines).
+    static func clean(_ raw: String, limit: Int = maxPerCheck, fields: Bool = true) -> String {
         var lines: [String] = []
         for l in raw.split(separator: "\n", omittingEmptySubsequences: false) {
-            var t = String(l.split(separator: "\t", maxSplits: 2, omittingEmptySubsequences: false).last ?? l[...])
+            var t = fields ? String(l.split(separator: "\t", maxSplits: 2, omittingEmptySubsequences: false).last ?? l[...]) : String(l)
             if let r = t.range(of: #"^\d{4}-\d\d-\d\dT[\d:.]+Z ?"#, options: .regularExpression) { t.removeSubrange(r) }
             t = t.replacingOccurrences(of: "\u{1b}\\[[0-9;]*m", with: "", options: .regularExpression)
             if t.hasPrefix("##[group]") || t.hasPrefix("##[endgroup]") { continue }
@@ -49,7 +50,7 @@ enum InboxCI {
         for c in item.failedCheckDetails.prefix(6) {
             var text = ""
             if let repo = item.repo, let job = jobId(c.url), let raw = try? log(repo, job) { text = clean(raw) }
-            if item.source == .bitbucket, let read = bitbucketLog, let raw = try? read(item, c) { text = clean(raw) }
+            if item.source == .bitbucket, let read = bitbucketLog, let raw = try? read(item, c) { text = clean(raw, fields: false) }
             if text.isEmpty {
                 text = [c.title, c.summary].compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }.joined(separator: "\n")
                 text = String(text.prefix(maxPerCheck))

@@ -632,7 +632,7 @@ struct InboxDetail: View {
                     if !item.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { InboxMarkdown(text: item.body, item: item) }
                     else { Text("No description.").font(T.body).foregroundStyle(T.text3) }
                     InboxActivityView(item: item)
-                    if item.source != .bitbucket { commentBox }
+                    commentBox
                 }
             }
             .padding(.horizontal, 28).padding(.vertical, 22)
@@ -803,13 +803,19 @@ struct InboxDetail: View {
             let can = InboxPRAction.available(item)
             if !can.isEmpty {
                 Menu {
-                    let merges = can.filter { [.merge, .squash, .rebase].contains($0) }
+                    let reviews = can.filter(\.isReview)
+                    if !reviews.isEmpty {
+                        Section("Your review") {
+                            ForEach(reviews) { a in Button(a.title) { prActions.perform(a, on: item) } }
+                        }
+                    }
+                    let merges = can.filter(\.isMerge)
                     if !merges.isEmpty {
                         Section("Merge\(item.base.map { " into " + $0 } ?? "")") {
                             ForEach(merges) { a in Button(a.title) { prActions.perform(a, on: item) } }
                         }
                     }
-                    ForEach(can.filter { ![.merge, .squash, .rebase].contains($0) }) { a in
+                    ForEach(can.filter { !$0.isMerge && !$0.isReview }) { a in
                         Button(a.title) { prActions.perform(a, on: item) }
                     }
                 } label: {
@@ -824,7 +830,7 @@ struct InboxDetail: View {
                 }
                 .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().pointerCursor()
                 .disabled(prActions.busy.contains(item.id))
-                .help("Merge, mark ready, convert to draft, close or reopen (asks first)")
+                .help(item.source == .bitbucket ? "Approve, request changes, merge or decline (asks first)" : "Merge, mark ready, convert to draft, close or reopen (asks first)")
             }
           }
             Spacer(minLength: 0)
@@ -979,6 +985,17 @@ struct InboxDetail: View {
     private func post() {
         let text = comment.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+        // On Bitbucket a comment is a write like the others: asked first.
+        if item.source == .bitbucket {
+            InboxActions.shared.confirm("Comment on \(item.key)?", "Posts your comment on “\(item.title)” in \(item.place) on Bitbucket, as you.", "Comment") { yes in
+                if yes { send(text) }
+            }
+        } else {
+            send(text)
+        }
+    }
+
+    private func send(_ text: String) {
         posting = true; postError = nil
         store.postComment(item, text) { err in
             posting = false
@@ -1490,7 +1507,7 @@ struct InboxSettings: View {
         } else {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Bitbucket").font(.system(size: T.k * 13, weight: .medium))
-                Text("Bitbucket Cloud: an Atlassian API token with scopes for Bitbucket, from id.atlassian.com → Security → API tokens → Create API token with scopes. It needs read:user, read:workspace, read:repository and read:pullrequest (all :bitbucket). The token goes to your Keychain.")
+                Text("Bitbucket Cloud: an Atlassian API token with scopes for Bitbucket, from id.atlassian.com → Security → API tokens → Create API token with scopes. It needs read:user, read:workspace, read:repository and read:pullrequest (all :bitbucket); add write:pullrequest to approve, comment, merge or decline from here, and read:pipeline so Fix with agent can read failed Pipelines logs. The token goes to your Keychain.")
                     .font(.system(size: T.k * 11.5)).foregroundStyle(T.text2).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
                 HStack(spacing: 8) {
                     SecureField("API token", text: $bbToken, prompt: Text("API token")).textFieldStyle(.roundedBorder)
