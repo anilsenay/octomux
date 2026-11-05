@@ -53,7 +53,10 @@ extension InboxReviewResult.Finding {
 struct InboxReviewRun: Codable, Equatable {
     enum State: String, Codable { case queued, preparing, working, done, failed, skipped }
     var itemId: String
+    /// The project the review's session belongs to; its worktree comes from it unless `clone` is set.
     var projectId: String
+    /// A downloaded clone (ReviewClones) the worktree comes from, when no local project is a clone of the repo.
+    var clone: String?
     var profileId: String?
     var path: String?
     var head: String?
@@ -75,7 +78,7 @@ extension InboxPrefs {
 }
 
 final class InboxReviews: ObservableObject {
-    static let shared = InboxReviews()
+    static let shared: InboxReviews = { let r = InboxReviews(); r.cleanClones = { ReviewClones.prune(busy: $0) }; return r }()
 
     /// Reviews running at once; the rest wait in line.
     static let maxRunning = 2
@@ -91,7 +94,9 @@ final class InboxReviews: ObservableObject {
 
     // The world (tests and the debug fixture swap these).
     struct Prepared { var path: String; var head: String; var base: String; var lines: Int }
-    var prepare: (InboxItem, Project, _ existing: String?) throws -> Prepared = InboxReviews.prepareWorktree
+    /// `clone`: the downloaded clone's folder and the local projects to learn the clone URL's form from; nil: the
+    /// project's own checkout.
+    var prepare: (InboxItem, Project, _ clone: (dir: String, projectPaths: [String])?, _ existing: String?) throws -> Prepared = InboxReviews.prepareWorktree
     var launch: (_ run: InboxReviewRun, _ prompt: String, _ select: Bool, _ done: @escaping (String?) -> Void) -> Void = InboxReviews.launchAgent
     /// The session's answer so far: the result once the agent wrote it; `stopped` when its program is gone.
     var read: (_ sessionId: String) -> (result: InboxReviewResult?, stopped: Bool, needsInput: Bool) = InboxReviews.readSession
@@ -124,13 +129,15 @@ final class InboxReviews: ObservableObject {
     /// Queues a review of the pull request in `project` (it starts when fewer than `maxRunning` run).
     /// Returns why it can't, or nil.
     @discardableResult
-    func start(_ i: InboxItem, in project: Project, profileId: String?, auto: Bool) -> String? {
+    func start(_ i: InboxItem, in project: Project, clone: String? = nil, profileId: String?, auto: Bool) -> String? {
         guard i.kind == .pr, i.source.isCodeHost, i.number != nil else { return "Only pull requests can be reviewed in a worktree." }
         if let r = runs[i.id], r.isActive { return "A review of \(i.key) is already \(r.state == .queued ? "waiting" : "running")." }
         if i.source == .bitbucket, (i.branch ?? "").isEmpty { return "Bitbucket didn't say which branch \(i.key) is on." }
         let old = runs[i.id]
         asked[i.id] = i
-        runs[i.id] = InboxReviewRun(itemId: i.id, projectId: project.id, profileId: profileId, path: old?.path, head: nil, base: nil,
+        // The same place as last time keeps its worktree; another one makes its own.
+        let keep = old.map { $0.clone == clone && ($0.clone != nil || $0.projectId == project.id) } ?? false
+        runs[i.id] = InboxReviewRun(itemId: i.id, projectId: project.id, clone: clone, profileId: profileId, path: keep ? old?.path : nil, head: nil, base: nil,
                                     sessionId: nil, state: .queued, startedAt: now().timeIntervalSince1970, finishedAt: nil, auto: auto,
                                     note: nil, result: nil)
         save()
@@ -139,7 +146,18 @@ final class InboxReviews: ObservableObject {
     }
 
     /// Starts the oldest waiting reviews while there is room.
+    private var pruned = false
+    /// Removes downloaded clones no review used for a while, except busy ones (the app's instance only: tests
+    /// never touch the real folder).
+    var cleanClones: ((Set<String>) -> Void)?
+    func pruneClones() {
+        guard let clean = cleanClones else { return }
+        let busy = Set(runs.values.filter(\.isActive).compactMap(\.clone))
+        background { clean(busy) }
+    }
+
     func pump() {
+        if !pruned { pruned = true; pruneClones() }
         let running = runs.values.filter { $0.state == .preparing || $0.state == .working }.count
         guard running < Self.maxRunning else { return }
         let next = runs.values.filter { $0.state == .queued }.sorted { $0.startedAt < $1.startedAt }.prefix(Self.maxRunning - running)
@@ -152,18 +170,20 @@ final class InboxReviews: ObservableObject {
             fail(id, "The pull request or its project is gone."); return
         }
         r.state = .preparing
+        r.note = r.clone.map { ReviewClones.exists($0) ? nil : "Downloading \(i.place) (only what the review needs; once)…" } ?? nil
         runs[id] = r
         save()
         let prepare = self.prepare, existing = r.path
+        let clone = r.clone.map { (dir: $0, projectPaths: AppModel.shared.projects.map(\.path)) }
         background { [weak self] in
-            let res = Result { try prepare(i, p, existing) }
+            let res = Result { try prepare(i, p, clone, existing) }
             self?.onMain {
                 guard let self, var r = self.runs[id], r.state == .preparing else { return }
                 switch res {
                 case .failure(let e):
                     self.fail(id, "\(e)")
                 case .success(let prep):
-                    r.path = prep.path; r.head = prep.head; r.base = prep.base
+                    r.path = prep.path; r.head = prep.head; r.base = prep.base; r.note = nil
                     if r.auto, prep.lines > Self.maxAutoLines {
                         r.state = .skipped
                         r.note = "It changes \(prep.lines) lines; automatic reviews stop at \(Self.maxAutoLines). Start one by hand to review it anyway."
@@ -302,15 +322,21 @@ final class InboxReviews: ObservableObject {
 
     /// Fetches the pull request's head and base, checks the head out detached in the review worktree (made once per
     /// pull request, moved to the new head when it is clean), and counts the changed lines.
-    static func prepareWorktree(_ i: InboxItem, _ project: Project, _ existing: String?) throws -> Prepared {
-        let dir = project.path
+    static func prepareWorktree(_ i: InboxItem, _ project: Project, _ clone: (dir: String, projectPaths: [String])?, _ existing: String?) throws -> Prepared {
+        let dir = clone?.dir ?? project.path
         guard let branchBase = i.base, !branchBase.isEmpty else { throw InboxError("The pull request has no base branch.") }
+        if let clone {
+            let remotes = clone.projectPaths.compactMap { GitInfo.git(["remote", "get-url", "origin"], in: $0)?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            try ReviewClones.ensure(i, remotes: remotes, dir: clone.dir)
+        }
         func git(_ args: [String], in d: String = dir) throws {
-            let (ok, err) = Worktrees.gitWithError(args, in: d)
+            // A downloaded clone's git never waits for a password and skips LFS files.
+            let (ok, err) = clone != nil ? { let r = ReviewClones.git(args, in: d); return (r.ok, r.err) }() : Worktrees.gitWithError(args, in: d)
             if !ok { throw InboxError("git \(args.prefix(2).joined(separator: " ")) failed: \(err.trimmingCharacters(in: .whitespacesAndNewlines))") }
         }
         // The base first (it moves origin/<base>), then the head into FETCH_HEAD.
-        try git(["fetch", "--no-tags", "origin", branchBase])
+        // An explicit refspec: a downloaded clone tracks only its default branch, and the base may be another.
+        try git(["fetch", "--no-tags", "origin", "+refs/heads/\(branchBase):refs/remotes/origin/\(branchBase)"])
         switch i.source {
         case .github: try git(["fetch", "--no-tags", "origin", "pull/\(i.number ?? 0)/head"])
         default: try git(["fetch", "--no-tags", "origin", i.branch ?? ""])
@@ -322,7 +348,7 @@ final class InboxReviews: ObservableObject {
         let stat = GitInfo.git(["diff", "--shortstat", "\(base)...\(head)"], in: dir) ?? ""
         let lines = Self.changedLines(stat)
         let slug = "review-\(i.source.rawValue)-\(i.place.split(separator: "/").last ?? "")-\(i.number ?? 0)"
-        let path = existing ?? Worktrees.defaultPath(project: dir, branch: slug)
+        let path = existing ?? (clone != nil ? ReviewClones.worktree(for: i, clone: dir) : Worktrees.defaultPath(project: dir, branch: slug))
         if FileManager.default.fileExists(atPath: path) {
             let dirty = (GitInfo.git(["status", "--porcelain"], in: path) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             guard dirty.isEmpty else { throw InboxError("The review worktree has changes of its own; remove it or clean it first.") }
@@ -331,7 +357,7 @@ final class InboxReviews: ObservableObject {
             try? FileManager.default.createDirectory(atPath: (path as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
             try git(["worktree", "add", "--detach", path, head])
         }
-        Worktrees.shared.refresh(dir)
+        if clone == nil { Worktrees.shared.refresh(dir) }
         return Prepared(path: path, head: head, base: base, lines: lines)
     }
 
@@ -426,7 +452,7 @@ final class InboxReviews: ObservableObject {
     /// Closes the review's sessions and removes its worktree when nothing in it changed. Returns why it stayed, or nil.
     static func removeWorktreeNow(_ r: InboxReviewRun) -> String? {
         let model = AppModel.shared
-        guard let path = r.path, let project = model.project(r.projectId) else { return nil }
+        guard let path = r.path, let repo = r.clone ?? model.project(r.projectId)?.path else { return nil }
         guard FileManager.default.fileExists(atPath: path) else { return nil }
         if model.state.sessions.contains(where: { $0.worktree == path && $0.state == .running && $0.activity == .working }) {
             return "an agent is still working there"
@@ -434,8 +460,8 @@ final class InboxReviews: ObservableObject {
         let dirty = (GitInfo.git(["status", "--porcelain"], in: path) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard dirty.isEmpty else { return "it has changes" }
         for s in model.state.sessions where s.worktree == path { model.remove(s.id, confirm: false) }
-        if case .failure(let e) = Worktrees.remove(project: project.path, path: path, force: false) { return e.message }
-        Worktrees.shared.refresh(project.path)
+        if case .failure(let e) = Worktrees.remove(project: repo, path: path, force: false) { return e.message }
+        if r.clone == nil { Worktrees.shared.refresh(repo) }
         return nil
     }
 }

@@ -927,11 +927,22 @@ struct InboxDetail: View {
     }
 
     private func reviewInWorktree() {
-        guard let p = reviewProject else {
-            model.lastError = "No local project is a clone of \(item.place). Add one as a project (⌘⇧O) to review its pull requests in the background."
+        if let p = reviewProject {
+            if let why = reviews.start(item, in: p, profileId: nil, auto: false) { model.lastError = why }
             return
         }
-        if let why = reviews.start(item, in: p, profileId: nil, auto: false) { model.lastError = why }
+        // No local clone: download one (asked the first time for a repo). Its session sits in the picked project.
+        guard let host = project ?? model.currentProject ?? model.projects.first else { model.lastError = "Add a project first (⌘⇧O)."; return }
+        let dir = ReviewClones.dir(for: item)
+        if !ReviewClones.exists(dir) {
+            let a = NSAlert()
+            a.messageText = "Download \(item.place) to review it?"
+            a.informativeText = "No local project is a clone of \(item.place). Octomux downloads only what the review needs (the history without file contents, and the files of the pull request's head; no Git LFS files), with your own git access. It stays for reviews of this repo and goes after \(Int(ReviewClones.maxIdleDays)) days without one, or from Settings → Inbox."
+            a.addButton(withTitle: "Download and Review")
+            a.addButton(withTitle: "Cancel")
+            guard a.runModal() == .alertFirstButtonReturn else { return }
+        }
+        if let why = reviews.start(item, in: host, clone: dir, profileId: nil, auto: false) { model.lastError = why }
     }
 
     /// The agent's review from its worktree: progress, then its summary and findings (a finding's file opens in Code).
@@ -966,7 +977,7 @@ struct InboxDetail: View {
                 }
                 switch r.state {
                 case .queued: progress("Waiting for another review to finish.")
-                case .preparing: progress("Fetching the pull request and checking it out in its worktree…")
+                case .preparing: progress(r.note ?? "Fetching the pull request and checking it out in its worktree…")
                 case .working: progress(r.note ?? "The agent is reviewing it (read-only).")
                 case .failed, .skipped:
                     Text(r.note ?? "It didn't run.").font(.system(size: T.k * 12)).foregroundStyle(T.amber).fixedSize(horizontal: false, vertical: true)
@@ -1325,7 +1336,9 @@ struct InboxDetail: View {
     private var reviewButton: some View {
         let background = reviewMode != "chat"
         let bgNote = reviewProject.map { "Read-only, in a worktree of \($0.name) at the pull request's head. Findings show here; nothing is posted." }
-            ?? "Needs a local clone of \(item.place): add one as a project."
+            ?? (ReviewClones.exists(ReviewClones.dir(for: item))
+                ? "Read-only, in a worktree of the downloaded copy of \(item.place). Findings show here; nothing is posted."
+                : "No local clone of \(item.place): downloads only what the review needs (asks first). Findings show here; nothing is posted.")
         return splitButton(reviewActive ? "Reviewing…" : "Review", icon: "eye",
                            primary: reviewFirst && store.linkedSession(item) == nil,
                            disabled: background && reviewActive,
@@ -2110,6 +2123,7 @@ struct InboxSettings: View {
                     Text("A new tab").tag("tab"); Text("A new worktree").tag("worktree"); Text("Ask each time").tag("ask")
                 }.labelsHidden().fixedSize()
             }
+            InboxCloneSetting()
             SettingRow("Agent in a new worktree", desc: "In a new tab you pick it on the new-session screen.") {
                 Picker("", selection: $profileId) {
                     Text("The last one used").tag("")
@@ -3109,5 +3123,37 @@ struct InboxRuleEditor: View {
             }
         }
         .padding(18).frame(width: 460)
+    }
+}
+
+/// Settings → Inbox: the clones downloaded for background reviews, their size, and a way to remove them.
+struct InboxCloneSetting: View {
+    @ObservedObject var reviews = InboxReviews.shared
+    @State private var size: Int64?
+    @State private var count = 0
+    var body: some View {
+        SettingRow("Downloaded for reviews", desc: "Repos with no local clone, downloaded for a background review (only what it needs). One goes after \(Int(ReviewClones.maxIdleDays)) days without a review.") {
+            HStack(spacing: 8) {
+                Text(size.map { count == 0 ? "None" : "\(count) repo\(count == 1 ? "" : "s") · " + ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) } ?? "…")
+                    .font(.system(size: T.k * 12)).foregroundStyle(T.text2)
+                Button("Remove All") {
+                    let busy = Set(reviews.runs.values.filter(\.isActive).compactMap(\.clone))
+                    DispatchQueue.global(qos: .userInitiated).async {
+                        ReviewClones.prune(busy: busy, all: true)
+                        DispatchQueue.main.async { measure() }
+                    }
+                }
+                .buttonStyle(SecondaryButtonStyle()).disabled(count == 0)
+                .help("Removes them and their review worktrees (not the ones a review is using now). Findings stay.")
+            }
+        }
+        .onAppear { measure() }
+    }
+
+    private func measure() {
+        DispatchQueue.global(qos: .utility).async {
+            let n = ReviewClones.all().count, b = ReviewClones.size()
+            DispatchQueue.main.async { count = n; size = b }
+        }
     }
 }

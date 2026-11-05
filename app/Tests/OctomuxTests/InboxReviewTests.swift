@@ -84,7 +84,7 @@ final class InboxReviewTests: XCTestCase {
         let project = Project(id: "p1", workspaceId: "w", name: "r", path: "/tmp/r", color: "#fff", icon: ProjectIcon(kind: "letter", value: "R"), sort: 0, archived: false)
         m.project = { _ in project }
         m.background = { $0() }; m.onMain = { $0() }
-        m.prepare = { i, _, existing in rec.prepared.append(i.id); return .init(path: existing ?? "/tmp/r.worktrees/review-\(i.number!)", head: "h\(i.number!)", base: "origin/main", lines: lines) }
+        m.prepare = { i, _, _, existing in rec.prepared.append(i.id); return .init(path: existing ?? "/tmp/r.worktrees/review-\(i.number!)", head: "h\(i.number!)", base: "origin/main", lines: lines) }
         m.launch = { r, prompt, select, done in rec.launched.append((r.itemId, select)); rec.prompts.append(prompt); done("s-\(r.itemId)") }
         m.read = { sid in (rec.answers[sid], rec.stopped.contains(sid), false) }
         m.removeWorktree = { r in rec.removed.append(r.itemId); return rec.keep }

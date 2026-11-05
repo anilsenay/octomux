@@ -103,6 +103,11 @@
     (Summarize, the Pull Request menu). A review request puts Review first; your own pull request and issues
     put Work on it first. A review in a chat asks first in a project that isn't a clone of the repo (Return
     cancels). The detail header's counts wrap as whole labels in a narrow window.
+  - A background review of a repo you have no local clone of downloads one (asked first): a partial clone, so
+    only the history without file contents and the files of the pull request's head come down, no Git LFS
+    files, with your own git access (it fails rather than asking for a password). It stays for later reviews
+    of that repo and goes after 7 days without one; Settings → Inbox shows their size and removes them.
+    Automations still review only in local clones.
   - The background review's Claude loads only your own settings and MCP servers: a pull request that adds hooks to
     its .claude settings or servers to its .mcp.json can no longer run them during the review.
   - While a source is loading for the first time after launch, the list says so ("Loading Bitbucket…") instead
