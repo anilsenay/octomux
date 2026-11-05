@@ -102,9 +102,9 @@
     "No local clone" rather than falling back to the open project. The second row holds what needs no code
     (Summarize, the Pull Request menu). A review request puts Review first; your own pull request and issues
     put Work on it first. A review in a chat asks first in a project that isn't a clone of the repo (Return
-    cancels). "Choose a Clone on This Mac…" in the picker adds a folder you pick as a project, in the
-    workspace you pick (it says so if the folder is another repo's), and uses it for that repo. "Clone into a
-    Folder…" clones the repo (folder and workspace picked in one dialog; the last folder is remembered) and
+    cancels). "Use an Existing Folder…" in the picker adds a folder you pick as a project, in the
+    workspace you pick (it says so if the folder is another repo's), and uses it for that repo. "Clone
+    Repository…" clones the repo (folder and workspace picked in one dialog; the last folder is remembered) and
     does the same once it is done, with "Cloning…" in the picker meanwhile. Clones in
     other workspaces count too. The detail header's counts wrap as whole labels in a narrow window.
   - A background review of a repo you have no local clone of downloads one (asked first): a partial clone, so

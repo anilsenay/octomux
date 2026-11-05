@@ -1403,8 +1403,8 @@ struct InboxDetail: View {
                         }
                     }
                     Divider()
-                    Button("Clone into a Folder…") { InboxStart.cloneRepo(item, model: model) }
-                    Button("Choose a Clone on This Mac…") { InboxStart.addClone(item, model: model) }
+                    Button("Clone Repository…") { InboxStart.cloneRepo(item, model: model) }
+                    Button("Use an Existing Folder…") { InboxStart.addClone(item, model: model) }
                 } else {
                     ForEach(model.projects) { p in Button(p.name) { store.choose(p, for: item) } }
                 }
@@ -1437,7 +1437,7 @@ struct InboxDetail: View {
     private func pickerHelp(other: Bool, repo: Bool) -> String {
         if let dest = store.cloning[item.place] { return "Cloning \(item.place) into \((dest as NSString).abbreviatingWithTildeInPath)…" }
         if other { return "\(project?.name ?? "") is a clone of another repo, not \(item.place): an agent there won't see this pull request's code" }
-        if project == nil && repo { return "No local project is a clone of \(item.place). Pick one, clone it, or choose your clone on this Mac." }
+        if project == nil && repo { return "No local project is a clone of \(item.place). Pick one, clone the repo, or use a folder you already have it in." }
         return "Where Work on it, Review in a chat and Ask run (remembered for \(item.place))"
     }
 
@@ -1699,7 +1699,7 @@ enum InboxStart {
     static func addClone(_ item: InboxItem, model: AppModel) {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true; panel.canChooseFiles = false; panel.allowsMultipleSelection = false
-        panel.message = "Choose your clone of \(item.place)"
+        panel.message = "Choose the folder you already have \(item.place) in"
         panel.prompt = "Choose"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         let path = url.standardizedFileURL.path
@@ -1777,7 +1777,7 @@ enum InboxStart {
 
     static func noProject(_ item: InboxItem) -> String {
         InboxStore.repoKey(item) == nil ? "Add a project first (⌘⇧O)."
-            : "No local project is a clone of \(item.place). Pick a project in the detail, or choose your clone on this Mac there."
+            : "No local project is a clone of \(item.place). Pick a project in the detail, or clone the repo or use a folder you already have it in from there."
     }
 
     /// Why `project` isn't a checkout of the pull request's repo ("is a checkout of …" / "has no origin remote"),
