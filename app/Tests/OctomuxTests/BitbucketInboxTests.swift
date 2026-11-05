@@ -741,4 +741,14 @@ final class BitbucketInboxTests: XCTestCase {
         XCTAssertNil(InboxStart.otherRepo(gh, remote: "https://github.com/O/R.git"))
         XCTAssertEqual(InboxStart.otherRepo(gh, remote: "git@github.com:o/x.git"), "is a checkout of o/x")
     }
+
+    func testCheckoutOfThePullRequestsRepo() {
+        let store = InboxStore(defaults: UserDefaults(suiteName: "bb-checkout-\(UUID())")!)
+        let i = bbItem()   // acme/api
+        let p = Project(id: "p", workspaceId: "w", name: "api", path: "/src/api", color: "#fff", icon: ProjectIcon(kind: "folder"), sort: 0, archived: false)
+        XCTAssertNil(store.isCheckout(p, of: i))   // not looked at yet: unknown, no warning
+        store.fixtureMapRepo(InboxStore.bitbucketKey("acme/api"), to: "p")
+        XCTAssertEqual(store.isCheckout(p, of: i), true)
+        XCTAssertTrue(InboxStart.noProject(i).contains("No local project is a clone of acme/api"))
+    }
 }

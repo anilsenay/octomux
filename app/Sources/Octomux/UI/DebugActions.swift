@@ -429,7 +429,7 @@ enum DebugActions {
                     let task = InboxStart.Task(rawValue: p["task"] as? String ?? "work") ?? .work
                     DispatchQueue.main.async { InboxStart.begin(item, mode: p["mode"] as? String ?? "tab", task: task, model: m) }
                 } else if let v = p["value"] as? String, let item = InboxStore.shared.items.first(where: { $0.id == v }),
-                   let proj = m.project(p["project"] as? String ?? "") ?? InboxStore.shared.project(for: item) ?? m.currentProject {
+                   let proj = m.project(p["project"] as? String ?? "") ?? InboxStore.shared.workProject(for: item) {
                     let task = InboxStart.Task(rawValue: p["task"] as? String ?? "work") ?? .work
                     if task == .fix {
                         InboxStore.shared.startFix(item, in: proj, worktree: (p["mode"] as? String) == "worktree", model: m)

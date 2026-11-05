@@ -128,7 +128,7 @@ enum InboxPrefs {
     static let nAssigned = "octomux.inbox.n.assigned"
     static let nUpdates = "octomux.inbox.n.updates"            // changes on your own items (yours / assigned / review)
     static let jiraFilters = "octomux.inbox.jira.filters"      // starred filters shown: id → "name\njql"
-    static let jiraTemplate = "octomux.inbox.jira.template"    // what "Send to agent" asks for a Jira issue ({key} {title} …)
+    static let jiraTemplate = "octomux.inbox.jira.template"    // what "Work on it" asks for a Jira issue ({key} {title} …)
     static let jiraMuted = "octomux.inbox.jira.muted"          // belled project → unix seconds its bell is quiet until (0: until resumed)
     static let jiraWatched = "octomux.inbox.jira.watched"      // project keys whose every change notifies (the bell)
     static let nProjects = "octomux.inbox.n.projects"          // how a belled project's changes notify: sound | banner
@@ -143,6 +143,7 @@ enum InboxPrefs {
     static let asks = "octomux.inbox.asks"                     // item id → its read-only Ask session
     static let fixes = "octomux.inbox.fixes"                   // item id → unix seconds "Fix with agent" started
     static let linkedSeen = "octomux.inbox.linkedSeen"         // item id → unix seconds its linked session last caught up
+    static let reviewMode = "octomux.inbox.reviewMode"         // Review button: "background" | "chat"
     static let placeProject = "octomux.inbox.placeProject"     // repo / Jira project → Octomux project id
     static let snoozed = "octomux.inbox.snoozed"               // item id → [until, snoozed at] (unix seconds)
 
@@ -792,14 +793,17 @@ final class InboxStore: ObservableObject {
         let local = m.projects.filter { !m.host(forPath: $0.path).0.isRemote }.map { ($0.id, $0.path) }
         DispatchQueue.global(qos: .utility).async {
             // Which local project is which GitHub repo (git runs here, never while a view is drawn).
-            var repos: [String: String] = [:]
+            var repos: [String: String] = [:], own: [String: String] = [:]
             for (id, path) in local {
-                if let r = GitInfo.git(["remote", "get-url", "origin"], in: path).flatMap(PullRequest.githubRepo) { repos[r.lowercased()] = repos[r.lowercased()] ?? id }
+                if let r = GitInfo.git(["remote", "get-url", "origin"], in: path).flatMap(PullRequest.githubRepo) { repos[r.lowercased()] = repos[r.lowercased()] ?? id; own[id] = r.lowercased() }
             }
             let r = Result { try GitHubInbox.fetch() }
             DispatchQueue.main.async {
                 // The debug fixture's own map stays (a fetch started before it loaded ends after).
-                if !self.frozen { self.repoProjects = self.repoProjects.filter { $0.key.hasPrefix("bitbucket.org/") }.merging(repos) { _, b in b } }
+                if !self.frozen {
+                    self.repoProjects = self.repoProjects.filter { $0.key.hasPrefix("bitbucket.org/") }.merging(repos) { _, b in b }
+                    self.projectRepos = self.projectRepos.filter { $0.value.hasPrefix("bitbucket.org/") }.merging(own) { _, b in b }
+                }
                 if case .success(let v) = r { self.githubLogin = v.login }
                 self.apply(.github, r.map(\.items))
             }
@@ -815,17 +819,21 @@ final class InboxStore: ObservableObject {
         let local = m.projects.filter { !m.host(forPath: $0.path).0.isRemote }.map { ($0.id, $0.path) }
         let review = InboxPrefs.bool(InboxPrefs.bbReview, true), mine = InboxPrefs.bool(InboxPrefs.bbMine, true)
         DispatchQueue.global(qos: .utility).async {
-            var repos: [String: String] = [:]
+            var repos: [String: String] = [:], own: [String: String] = [:]
             for (id, path) in local {
                 if let r = GitInfo.git(["remote", "get-url", "origin"], in: path).flatMap(BitbucketClient.repo(fromRemote:)) {
                     repos[Self.bitbucketKey(r)] = repos[Self.bitbucketKey(r)] ?? id
+                    own[id] = Self.bitbucketKey(r)
                 }
             }
             BitbucketInbox.shared.localRepos = Set(repos.keys.map { String($0.dropFirst(Self.bitbucketKey("").count)) })
             BitbucketInbox.shared.skippedRepos = Set(self.hidden.map { $0.lowercased() })
             let r = Result { try BitbucketInbox.shared.fetch(review: review, mine: mine, force: force) }
             DispatchQueue.main.async {
-                if !self.frozen { self.repoProjects.merge(repos) { _, b in b } }
+                if !self.frozen {
+                    self.repoProjects.merge(repos) { _, b in b }
+                    self.projectRepos = self.projectRepos.filter { !$0.value.hasPrefix("bitbucket.org/") }.merging(own) { _, b in b }
+                }
                 self.apply(.bitbucket, r)
             }
         }
@@ -1111,6 +1119,27 @@ final class InboxStore: ObservableObject {
 
     /// The Octomux project an item's agent works in: the last one picked for its repo / Jira project, else the
     /// project whose origin is that GitHub repo.
+    /// Where an agent works on the item: the project picked for its repo, else a checkout of its repo; a Jira issue
+    /// (no repo) falls back to the open project. A pull request with no checkout has none: nothing starts in an
+    /// unrelated repo by accident.
+    func workProject(for i: InboxItem) -> Project? {
+        if let p = project(for: i) { return p }
+        return Self.repoKey(i) == nil ? AppModel.shared.currentProject : nil
+    }
+
+    /// Local projects that are checkouts of the item's repo, and whether a project is known to be another repo's
+    /// (nil: not known, e.g. on a remote host or no Inbox fetch has looked yet).
+    func checkouts(of i: InboxItem) -> [Project] {
+        guard let key = Self.repoKey(i) else { return [] }
+        return AppModel.shared.projects.filter { projectRepos[$0.id] == key || repoProjects[key] == $0.id }
+    }
+    func isCheckout(_ p: Project, of i: InboxItem) -> Bool? {
+        guard let key = Self.repoKey(i) else { return nil }
+        if repoProjects[key] == p.id { return true }
+        guard let have = projectRepos[p.id] else { return nil }
+        return have == key
+    }
+
     func project(for i: InboxItem) -> Project? {
         let m = AppModel.shared
         let chosen = defaults.dictionary(forKey: InboxPrefs.placeProject) as? [String: String] ?? [:]
@@ -1128,6 +1157,8 @@ final class InboxStore: ObservableObject {
 
     /// Repo (GitHub: lowercased owner/name; Bitbucket: `bitbucketKey`) → the local project whose origin it is; filled by `refresh`.
     @Published private(set) var repoProjects: [String: String] = [:]
+    /// Each local project's repo (repoProjects' key form), for the ones that are GitHub or Bitbucket checkouts.
+    @Published private(set) var projectRepos: [String: String] = [:]
 }
 
 private extension Int { var nonZero: Int? { self == 0 ? nil : self } }

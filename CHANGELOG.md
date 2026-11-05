@@ -10,9 +10,9 @@
   and **Jira Cloud** (site, email and an API token, with or without scopes, kept in your Keychain).
   - Folders by why something is there and where it comes from (collapsible to icons); filters by source,
     time and text; hide repos and projects; read and unread marks; comments to read and write.
-  - **Send to agent** opens a new tab with the item as the prompt, or starts the agent in a new worktree on the
-    item's branch; **Review with agent** for review requests, **Fix with agent** when checks failed. The session
-    stays linked to the item (Go to session).
+  - **Work on it** opens a new tab with the item as the prompt, or starts the agent in a new worktree on the
+    item's branch; **Review** a pull request in the background or in a chat; **Fix with agent** when checks
+    failed. The session stays linked to the item (Go to session).
   - Notifications for review requests, failed checks, new assignments and changes to your things; ring the
     bell on a Jira project to hear about every change there, by anyone: a sound only (no banner) unless you
     choose banners. Checked every 1–10 minutes.
@@ -68,7 +68,7 @@
     (comments, inline comments with their file and line, approvals, changes asked for, pushes, merge/decline),
     the Code tab and the builds; declined and superseded pull requests stay a while like merged ones. Settings →
     Inbox picks the workspaces and repos, and can look in every repo instead.
-  - **Agents on Bitbucket pull requests**: Send to agent, Review with agent, Fix with agent and Ask work on them
+  - **Agents on Bitbucket pull requests**: Work on it, Review, Fix with agent and Ask work on them
     too; the branch comes through git with your own credentials (the token never goes to git), and Fix starts
     from what the failed builds reported. Linked sessions hear about new comments, approvals and pushes,
     notifications say who did what ("#7: Ann approved"), and automations can pick Bitbucket as their source.
@@ -88,7 +88,7 @@
     next to Mark unread.
   - Settings → Inbox lists the Bitbucket repos read for review requests too, with how many items each holds;
     an unticked one is no longer read.
-  - **Review in Worktree** (pull requests on GitHub and Bitbucket): the pull request's head is checked out in a
+  - **Review in the background** (pull requests on GitHub and Bitbucket): the pull request's head is checked out in a
     worktree of its own (detached: no branch of yours is made or moved; setup scripts skipped) and an agent that
     may only read (Claude: reading and git diff/log/show only, no edits or writes; Codex: read-only sandbox) reviews
     it there. Its summary, risk and findings (each with its file and line, which opens in the Code tab) show in the
@@ -96,14 +96,19 @@
     worktree goes when the pull request is merged, declined or closed (when nothing in it changed). An automation
     can do it for new review requests ("Review it in a worktree"): drafts, ones you approved and ones over 3,000
     changed lines are skipped, and it doesn't take over the window.
-  - Review with agent asks first when the project it would start in isn't a checkout of the pull request's repo
-    (Return cancels). The detail header's counts wrap as whole labels in a narrow window.
-  - Review in Worktree's Claude loads only your own settings and MCP servers: a pull request that adds hooks to
+  - The detail's buttons in two rows. The first holds what reads or changes code: Review (in the background or in a
+    chat; the arrow picks, the button does your default), Work on it and Ask, all "in" the project picked
+    beside them. That picker offers the pull request's clones first, marks another repo's project, and says
+    "No local clone" rather than falling back to the open project. The second row holds what needs no code
+    (Summarize, the Pull Request menu). A review request puts Review first; your own pull request and issues
+    put Work on it first. A review in a chat asks first in a project that isn't a clone of the repo (Return
+    cancels). The detail header's counts wrap as whole labels in a narrow window.
+  - The background review's Claude loads only your own settings and MCP servers: a pull request that adds hooks to
     its .claude settings or servers to its .mcp.json can no longer run them during the review.
   - While a source is loading for the first time after launch, the list says so ("Loading Bitbucket…") instead
     of showing nothing or "Nothing matches.".
   - **Bitbucket tasks and reviewers**: a pull request shows how many open tasks it has (the reviewers' to-dos), and
-    its detail lists them; a click marks one resolved or opens it again (asked first). Send to agent and Fix with
+    its detail lists them; a click marks one resolved or opens it again (asked first). Work on it and Fix with
     agent hand the open ones to the agent. The detail lists the reviewers with where each one's review stands.
   - **Summarize** (✨ in the detail): your own agent CLI (the one picked for commit messages; no tools, nothing
     kept) reads the item and its history and says where it stands, what happened and what waits on whom, you
@@ -121,7 +126,7 @@
   - Fixed: old items you had read (last updated two months ago or more) could come back unread after a relaunch
     when the other source loaded first.
   - Settings → Inbox: connections, Jira projects, GitHub repositories, what shows up, notifications, and what
-    Send to agent opens.
+    Work on it opens.
 
 ## 0.2.0
 

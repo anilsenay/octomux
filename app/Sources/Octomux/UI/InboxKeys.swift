@@ -8,7 +8,7 @@ enum InboxKeys {
     /// The shortcut list (Help popover and tooltips).
     static let help: [(keys: String, what: String)] = [
         ("↓ / j", "Next item"), ("↑ / k", "Previous item"), ("Return", "Open the first item"), ("Esc", "Close the item"),
-        ("u", "Mark read / unread"), ("s", "Send to agent"), ("a", "Ask about it (read-only)"), ("o", "Open on the website"), ("z", "Snooze until tomorrow"), ("r", "Refresh"), ("/", "Filter"),
+        ("u", "Mark read / unread"), ("s", "Work on it"), ("a", "Ask about it (read-only)"), ("o", "Open on the website"), ("z", "Snooze until tomorrow"), ("r", "Refresh"), ("/", "Filter"),
     ]
 
     /// A key press (no ⌘ / ⌃ / ⌥: those stay app shortcuts) → what it does in the Inbox.

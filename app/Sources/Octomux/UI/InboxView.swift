@@ -758,6 +758,7 @@ struct InboxDetail: View {
     @ObservedObject var reviews = InboxReviews.shared
     let item: InboxItem
     @AppStorage(InboxPrefs.startMode) private var startMode = "tab"
+    @AppStorage(InboxPrefs.reviewMode) private var reviewMode = "background"
     @State private var comment = ""
     @State private var posting = false
     @State private var postError: String?
@@ -769,7 +770,7 @@ struct InboxDetail: View {
     @State private var descriptionDraft = ""
     @State private var pickingAssignee = false
 
-    private var project: Project? { store.project(for: item) ?? model.currentProject }
+    private var project: Project? { store.workProject(for: item) }
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -919,9 +920,15 @@ struct InboxDetail: View {
         }
     }
 
+    /// The clone a background review works from: the picked project when it is one, else any clone of the repo.
+    private var reviewProject: Project? {
+        if let p = project, store.isCheckout(p, of: item) == true { return p }
+        return store.checkouts(of: item).first
+    }
+
     private func reviewInWorktree() {
-        guard let p = store.checkoutProject(for: item) else {
-            model.lastError = "No local project is a checkout of \(item.place). Add it as a project to review its pull requests in a worktree."
+        guard let p = reviewProject else {
+            model.lastError = "No local project is a clone of \(item.place). Add one as a project (⌘⇧O) to review its pull requests in the background."
             return
         }
         if let why = reviews.start(item, in: p, profileId: nil, auto: false) { model.lastError = why }
@@ -1250,37 +1257,143 @@ struct InboxDetail: View {
         }
     }
 
+    private var reviewActive: Bool { reviews.run(item.id)?.isActive == true }
+    /// A review request puts Review first; your own pull request and an issue put Work on it first.
+    private var reviewFirst: Bool { item.kind == .pr && item.reason == .review }
+    private var canReview: Bool { item.kind == .pr && item.source.isCodeHost && item.ended == nil }
+
     private var actions: some View {
-        // Wraps when the detail is narrow (a pull request has more buttons than a narrow pane fits).
         HStack(alignment: .top, spacing: 8) {
-          FlowLayout(spacing: 8, lineSpacing: 8) {
-            if let s = store.linkedSession(item) {
-                Button("Go to session") { model.selectSession(s.id) }.buttonStyle(PrimaryButtonStyle()).fixedSize()
-            }
-            // The button does the saved default; the arrow offers the other way.
-            HStack(spacing: 0) {
-                let title = startMode == "worktree" ? "Send to agent in a worktree" : "Send to agent"
-                if store.linkedSession(item) == nil {
-                    Button(title) { start(startMode == "ask" ? nil : startMode, .work) }.buttonStyle(PrimaryButtonStyle()).fixedSize()
-                } else {
-                    Button(title) { start(startMode == "ask" ? nil : startMode, .work) }.buttonStyle(SecondaryButtonStyle()).fixedSize()
-                }
-                Menu {
-                    Button("In a new tab of \(project?.name ?? "the project")") { start("tab", .work) }
-                    Button("In a new worktree (branch \(branchName))") { start("worktree", .work) }
-                    Divider()
-                    Picker("The button does", selection: $startMode) {
-                        Text("New tab").tag("tab"); Text("New worktree").tag("worktree"); Text("Ask each time").tag("ask")
+            VStack(alignment: .leading, spacing: 8) {
+                // What reads or changes code: all of it runs in the project on the right.
+                FlowLayout(spacing: 8, lineSpacing: 8) {
+                    if let s = store.linkedSession(item) {
+                        Button("Go to session") { model.selectSession(s.id) }.buttonStyle(PrimaryButtonStyle()).fixedSize()
                     }
-                } label: { Image(systemName: "chevron.down").font(.system(size: T.k * 10, weight: .semibold)) }
-                .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().frame(width: 22, height: 28).pointerCursor()
+                    if reviewFirst {
+                        if canReview { reviewButton }
+                        if item.ended == nil { workButton }
+                    } else {
+                        if item.ended == nil { workButton }
+                        if canReview { reviewButton }
+                    }
+                    Button { InboxStart.ask(item, model: model) } label: {
+                        Label(store.askSession(item) == nil ? "Ask" : "Continue asking", systemImage: "questionmark.bubble")
+                    }
+                    .buttonStyle(SecondaryButtonStyle()).fixedSize()
+                    .help("A read-only chat about this \(item.kind == .pr ? "pull request" : "issue") (a): the agent reads the code but changes nothing")
+                    projectPicker
+                }
+                // What needs no code.
+                FlowLayout(spacing: 8, lineSpacing: 8) {
+                    if item.source == .jira, item.ended == nil, item.assignee != "You" {
+                        Button { jiraActions.assignToMe(item) } label: { Label("Assign to Me", systemImage: "person.crop.circle.badge.plus") }
+                            .buttonStyle(SecondaryButtonStyle()).fixedSize().disabled(jiraActions.busy.contains(item.id))
+                    }
+                    Button { store.summarize(item) } label: {
+                        Label(store.summarizing.contains(item.id) ? "Summarizing…" : "Summarize", systemImage: "sparkles")
+                    }
+                    .buttonStyle(SecondaryButtonStyle()).fixedSize().disabled(store.summarizing.contains(item.id))
+                    .help("Your agent reads the item and its history and says where it stands, what happened and what waits for whom (no tools; nothing is changed)")
+                    prMenu
+                }
             }
+            Spacer(minLength: 0)
+            InboxSnoozeMenu(item: item)
+            Button { if let u = URL(string: item.url) { NSWorkspace.shared.open(u) } } label: { Image(systemName: "arrow.up.forward.square") }
+                .buttonStyle(IconButtonStyle(size: 26)).help("Open in \(item.source.name) (o)")
+            Button { store.markUnread(item) } label: { Image(systemName: "envelope.badge") }
+                .buttonStyle(IconButtonStyle(size: 26)).help("Mark unread (u)")
+        }
+    }
+
+    /// A button that does the saved default, with an arrow for the other ways.
+    private func splitButton<M: View>(_ title: String, icon: String?, primary: Bool, disabled: Bool = false, help: String,
+                                      action: @escaping () -> Void, @ViewBuilder menu: () -> M) -> some View {
+        HStack(spacing: 0) {
+            let label = Group { if let icon { Label(title, systemImage: icon) } else { Text(title) } }
+            Group {
+                if primary { Button(action: action) { label }.buttonStyle(PrimaryButtonStyle()) }
+                else { Button(action: action) { label }.buttonStyle(SecondaryButtonStyle()) }
+            }
+            .fixedSize().disabled(disabled).help(help)
+            Menu { menu() } label: { Image(systemName: "chevron.down").font(.system(size: T.k * 10, weight: .semibold)) }
+                .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().frame(width: 22, height: 28).pointerCursor()
+        }
+    }
+
+    private var reviewButton: some View {
+        let background = reviewMode != "chat"
+        let bgNote = reviewProject.map { "Read-only, in a worktree of \($0.name) at the pull request's head. Findings show here; nothing is posted." }
+            ?? "Needs a local clone of \(item.place): add one as a project."
+        return splitButton(reviewActive ? "Reviewing…" : "Review", icon: "eye",
+                           primary: reviewFirst && store.linkedSession(item) == nil,
+                           disabled: background && reviewActive,
+                           help: background ? "Reviews it in the background: " + bgNote : "Opens a chat in \(project?.name ?? "the project") and reviews it with you there",
+                           action: { background ? reviewInWorktree() : start("tab", .review) }) {
+            Button { reviewInWorktree() } label: { Text("In the background"); Text(bgNote) }
+                .disabled(reviewActive)
+            Button { start("tab", .review) } label: {
+                Text("In a chat")
+                Text(project.map { "Opens a tab in \($0.name) and reviews it with you there." } ?? "Pick a project first.")
+            }
+            Divider()
+            Picker("The button does", selection: $reviewMode) {
+                Text("Review in the background").tag("background"); Text("Review in a chat").tag("chat")
+            }
+        }
+    }
+
+    private var workButton: some View {
+        let ask = startMode == "ask"
+        let what = item.kind == .pr
+            ? "The agent checks out the pull request's branch and works on it (its comments and tasks come with it)"
+            : "The agent works on the \(item.source == .jira ? "Jira issue" : "issue")"
+        return splitButton(startMode == "worktree" ? "Work on it in a worktree" : "Work on it", icon: nil,
+                           primary: !reviewFirst && store.linkedSession(item) == nil,
+                           help: what + (project.map { ", in \(ask ? "" : startMode == "worktree" ? "a new worktree of " : "a new tab of ")\($0.name) (s)" } ?? " (s)"),
+                           action: { start(ask ? nil : startMode, .work) }) {
+            Button("In a new tab of \(project?.name ?? "the project")") { start("tab", .work) }
+            Button("In a new worktree (branch \(branchName))") { start("worktree", .work) }
+            Divider()
+            Picker("The button does", selection: $startMode) {
+                Text("New tab").tag("tab"); Text("New worktree").tag("worktree"); Text("Ask each time").tag("ask")
+            }
+        }
+    }
+
+    /// Where the agent works. A pull request's clones come first; another repo's project is marked.
+    private var projectPicker: some View {
+        let repo = InboxStore.repoKey(item) != nil
+        let clones = store.checkouts(of: item)
+        let other = project.map { store.isCheckout($0, of: item) == false } ?? false
+        return HStack(spacing: 6) {
+            Text("in").font(.system(size: T.k * 12)).foregroundStyle(T.text3)
             Menu {
-                ForEach(model.projects) { p in Button(p.name) { store.choose(p, for: item) } }
+                if repo {
+                    Section(clones.isEmpty ? "No local clone of \(item.place)" : "Clones of \(item.place)") {
+                        ForEach(clones) { p in Button(p.name) { store.choose(p, for: item) } }
+                    }
+                    Section("Other projects") {
+                        ForEach(model.projects.filter { p in !clones.contains { $0.id == p.id } }) { p in
+                            Button(store.isCheckout(p, of: item) == false ? "\(p.name) (another repo)" : p.name) { store.choose(p, for: item) }
+                        }
+                    }
+                    Divider()
+                    Button("Add a Clone as a Project…") { model.addProject() }
+                } else {
+                    ForEach(model.projects) { p in Button(p.name) { store.choose(p, for: item) } }
+                }
             } label: {
                 HStack(spacing: 6) {
-                    if let p = project { ProjectIconView(project: p, size: 13) }
-                    Text(project?.name ?? "Pick a project").font(.system(size: T.k * 12.5, weight: .medium))
+                    if let p = project {
+                        ProjectIconView(project: p, size: 13)
+                        Text(p.name).font(.system(size: T.k * 12.5, weight: .medium))
+                        if other { Image(systemName: "exclamationmark.triangle.fill").font(.system(size: T.k * 10)).foregroundStyle(T.amber) }
+                    } else {
+                        Image(systemName: "exclamationmark.triangle.fill").font(.system(size: T.k * 10)).foregroundStyle(T.amber)
+                        Text(repo ? "No local clone" : "Pick a project").font(.system(size: T.k * 12.5, weight: .medium))
+                    }
                     Image(systemName: "chevron.down").font(.system(size: T.k * 9, weight: .semibold)).foregroundStyle(T.text3)
                 }
                 .padding(.horizontal, 10).frame(height: 28)
@@ -1288,69 +1401,45 @@ struct InboxDetail: View {
                 .contentShape(Rectangle())
             }
             .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().pointerCursor()
-            .help("The project the agent works in (remembered for \(item.place))")
-            if item.kind == .pr && item.reason == .review && item.ended == nil {
-                Button("Review with agent") { start("tab", .review) }.buttonStyle(SecondaryButtonStyle()).fixedSize()
-            }
-            if item.kind == .pr, item.source.isCodeHost, item.ended == nil {
-                let active = reviews.run(item.id)?.isActive == true
-                Button { reviewInWorktree() } label: { Label(active ? "Reviewing…" : "Review in Worktree", systemImage: "eye.square") }
-                    .buttonStyle(SecondaryButtonStyle()).fixedSize().disabled(active)
-                    .help("Checks the pull request out in a worktree of its own and has an agent that may only read review it there. Its findings show here; nothing is posted.")
-            }
-            if item.source == .jira, item.ended == nil, item.assignee != "You" {
-                Button { jiraActions.assignToMe(item) } label: { Label("Assign to Me", systemImage: "person.crop.circle.badge.plus") }
-                    .buttonStyle(SecondaryButtonStyle()).fixedSize().disabled(jiraActions.busy.contains(item.id))
-            }
-            Button { store.summarize(item) } label: {
-                Label(store.summarizing.contains(item.id) ? "Summarizing…" : "Summarize", systemImage: "sparkles")
-            }
-            .buttonStyle(SecondaryButtonStyle()).fixedSize().disabled(store.summarizing.contains(item.id))
-            .help("Your agent reads the item and its history and says where it stands, what happened and what waits for whom (no tools; nothing is changed)")
-            Button { InboxStart.ask(item, model: model) } label: {
-                Label(store.askSession(item) == nil ? "Ask" : "Continue asking", systemImage: "questionmark.bubble")
-            }
-            .buttonStyle(SecondaryButtonStyle()).fixedSize()
-            .help("A read-only chat about this \(item.kind == .pr ? "pull request" : "issue") (a): the agent reads the code but changes nothing")
-            let can = InboxPRAction.available(item)
-            if !can.isEmpty {
-                Menu {
-                    let reviews = can.filter(\.isReview)
-                    if !reviews.isEmpty {
-                        Section("Your review") {
-                            ForEach(reviews) { a in Button(a.title) { prActions.perform(a, on: item) } }
-                        }
+            .help(other ? "\(project?.name ?? "") is a clone of another repo, not \(item.place): an agent there won't see this pull request's code"
+                  : project == nil && repo ? "No local project is a clone of \(item.place). Pick one or add a clone as a project."
+                  : "Where Work on it, Review in a chat and Ask run (remembered for \(item.place))")
+        }
+        .fixedSize()
+    }
+
+    @ViewBuilder private var prMenu: some View {
+        let can = InboxPRAction.available(item)
+        if !can.isEmpty {
+            Menu {
+                let reviews = can.filter(\.isReview)
+                if !reviews.isEmpty {
+                    Section("Your review") {
+                        ForEach(reviews) { a in Button(a.title) { prActions.perform(a, on: item) } }
                     }
-                    let merges = can.filter(\.isMerge)
-                    if !merges.isEmpty {
-                        Section("Merge\(item.base.map { " into " + $0 } ?? "")") {
-                            ForEach(merges) { a in Button(a.title) { prActions.perform(a, on: item) } }
-                        }
-                    }
-                    ForEach(can.filter { !$0.isMerge && !$0.isReview }) { a in
-                        Button(a.title) { prActions.perform(a, on: item) }
-                    }
-                } label: {
-                    HStack(spacing: 5) {
-                        if prActions.busy.contains(item.id) { ProgressView().controlSize(.small) }
-                        Text("Pull Request").font(.system(size: T.k * 12.5, weight: .medium))
-                        Image(systemName: "chevron.down").font(.system(size: T.k * 9, weight: .semibold)).foregroundStyle(T.text3)
-                    }
-                    .padding(.horizontal, 10).frame(height: 28)
-                    .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(T.border))
-                    .contentShape(Rectangle())
                 }
-                .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().pointerCursor()
-                .disabled(prActions.busy.contains(item.id))
-                .help(item.source == .bitbucket ? "Approve, request changes, merge or decline (asks first)" : "Merge, mark ready, convert to draft, close or reopen (asks first)")
+                let merges = can.filter(\.isMerge)
+                if !merges.isEmpty {
+                    Section("Merge\(item.base.map { " into " + $0 } ?? "")") {
+                        ForEach(merges) { a in Button(a.title) { prActions.perform(a, on: item) } }
+                    }
+                }
+                ForEach(can.filter { !$0.isMerge && !$0.isReview }) { a in
+                    Button(a.title) { prActions.perform(a, on: item) }
+                }
+            } label: {
+                HStack(spacing: 5) {
+                    if prActions.busy.contains(item.id) { ProgressView().controlSize(.small) }
+                    Text("Pull Request").font(.system(size: T.k * 12.5, weight: .medium))
+                    Image(systemName: "chevron.down").font(.system(size: T.k * 9, weight: .semibold)).foregroundStyle(T.text3)
+                }
+                .padding(.horizontal, 10).frame(height: 28)
+                .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(T.border))
+                .contentShape(Rectangle())
             }
-          }
-            Spacer(minLength: 0)
-            InboxSnoozeMenu(item: item)
-            Button { if let u = URL(string: item.url) { NSWorkspace.shared.open(u) } } label: { Image(systemName: "arrow.up.forward.square") }
-                .buttonStyle(IconButtonStyle(size: 26)).help("Open in \(item.source.name) (o)")
-            Button { store.markUnread(item) } label: { Image(systemName: "envelope.badge") }
-                .buttonStyle(IconButtonStyle(size: 26)).help("Mark unread (u)")
+            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().pointerCursor()
+            .disabled(prActions.busy.contains(item.id))
+            .help(item.source == .bitbucket ? "Approve, request changes, merge or decline (asks first)" : "Merge, mark ready, convert to draft, close or reopen (asks first)")
         }
     }
 
@@ -1540,7 +1629,7 @@ enum InboxStart {
     /// Starts `task` on the item in its project: `mode` "tab" / "worktree", or nil to ask which.
     static func begin(_ item: InboxItem, mode: String?, task: Task, model: AppModel) {
         let store = InboxStore.shared
-        let project = store.project(for: item) ?? model.currentProject
+        let project = store.workProject(for: item)
         guard let mode else {
             let a = NSAlert()
             a.messageText = "Start \(item.key) where?"
@@ -1555,7 +1644,7 @@ enum InboxStart {
             }
             return
         }
-        guard let project else { model.lastError = "Add a project first (⌘⇧O)."; return }
+        guard let project else { model.lastError = noProject(item); return }
         if task == .review, let other = otherRepo(item, project: project, model: model) {
             let a = NSAlert()
             a.messageText = "\(project.name) isn't a checkout of \(item.place)"
@@ -1570,6 +1659,11 @@ enum InboxStart {
         } else {
             start(item, in: project, worktree: mode == "worktree", task: task, model: model)
         }
+    }
+
+    static func noProject(_ item: InboxItem) -> String {
+        InboxStore.repoKey(item) == nil ? "Add a project first (⌘⇧O)."
+            : "No local project is a clone of \(item.place). Pick a project in the detail, or add a clone as a project (⌘⇧O)."
     }
 
     /// Why `project` isn't a checkout of the pull request's repo ("is a checkout of …" / "has no origin remote"),
@@ -1625,7 +1719,7 @@ enum InboxStart {
     static func ask(_ item: InboxItem, model: AppModel) {
         let store = InboxStore.shared
         if let s = store.askSession(item) { model.selectSession(s.id); return }
-        guard let project = store.project(for: item) ?? model.currentProject else { model.lastError = "Add a project first (⌘⇧O)."; return }
+        guard let project = store.workProject(for: item) else { model.lastError = noProject(item); return }
         model.openNewChat(projectId: project.id, draft: askPrompt(item))
         if let doc = model.activeDocId { NewChatDraft.asks[doc] = item.id }
     }
@@ -2011,7 +2105,7 @@ struct InboxSettings: View {
             InboxRulesSetting()
         }
         SettingsGroup("Starting work") {
-            SettingRow("Send to agent opens", desc: "The arrow next to the button always offers the other way. A tab shows the prompt first; a worktree starts the agent right away.") {
+            SettingRow("Work on it opens", desc: "The arrow next to the button always offers the other way. A tab shows the prompt first; a worktree starts the agent right away.") {
                 Picker("", selection: $startMode) {
                     Text("A new tab").tag("tab"); Text("A new worktree").tag("worktree"); Text("Ask each time").tag("ask")
                 }.labelsHidden().fixedSize()

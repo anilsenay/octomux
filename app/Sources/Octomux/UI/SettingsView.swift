@@ -576,7 +576,7 @@ enum SettingsIndex {
             e(.inbox, "What shows up", "inbox review requests mentions bitbucket jira issues starred saved filters jql"),
             e(.inbox, "Notifications", "inbox review requested ci failed assigned check every poll mute bell sound banner snooze"),
             e(.inbox, "Automations", "inbox automation rule start agent automatically new pull request issue review"),
-            e(.inbox, "Starting work", "send to agent worktree tab prompt template branch jira"),
+            e(.inbox, "Starting work", "work on it send to agent review background chat worktree tab prompt template branch jira"),
             e(.projects, "Project", "rename name folder path color icon emoji mascot image"),
             e(.projects, "Worktree folder", "worktrees root location directory"),
             e(.projects, "Delete the branch with its worktree", "remove worktree branch cleanup"),
