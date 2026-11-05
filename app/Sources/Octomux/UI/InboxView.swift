@@ -953,9 +953,15 @@ struct InboxDetail: View {
         return store.checkouts(of: item).first
     }
 
-    private func reviewInWorktree() {
+    /// The pull request moved past the commit the review looked at.
+    private func hasNewCommits(_ r: InboxReviewRun) -> Bool {
+        guard r.state == .done, let h = r.head, let now = item.head else { return false }
+        return !InboxReviews.sameCommit(h, now)
+    }
+
+    private func reviewInWorktree(again: Bool = true) {
         if let p = reviewProject {
-            if let why = reviews.start(item, in: p, profileId: nil, auto: false) { model.lastError = why }
+            if let why = reviews.start(item, in: p, profileId: nil, auto: false, again: again) { model.lastError = why }
             return
         }
         // No local clone: download one (asked the first time for a repo). Its session sits in the picked project.
@@ -969,7 +975,7 @@ struct InboxDetail: View {
             a.addButton(withTitle: "Cancel")
             guard a.runModal() == .alertFirstButtonReturn else { return }
         }
-        if let why = reviews.start(item, in: host, clone: dir, profileId: nil, auto: false) { model.lastError = why }
+        if let why = reviews.start(item, in: host, clone: dir, profileId: nil, auto: false, again: again) { model.lastError = why }
     }
 
     /// The agent's review from its worktree: progress, then its summary and findings (a finding's file opens in Code).
@@ -986,7 +992,7 @@ struct InboxDetail: View {
                             .foregroundStyle(risk == "high" ? T.red : risk == "medium" ? T.amber : T.green)
                             .padding(.horizontal, 6).frame(height: 16)
                             .background(Capsule().fill((risk == "high" ? T.red : risk == "medium" ? T.amber : T.green).opacity(0.14)))
-                        if let h = r.head, h != item.head, item.head != nil {
+                        if hasNewCommits(r) {
                             Text("· new commits since").font(.system(size: T.k * 11.5)).foregroundStyle(T.amber)
                         }
                     }
@@ -995,7 +1001,15 @@ struct InboxDetail: View {
                         Button("Go to session") { model.selectSession(sid) }.buttonStyle(.link).font(T.caption)
                     }
                     if !r.isActive {
-                        Button("Review Again") { reviewInWorktree() }.buttonStyle(.link).font(T.caption)
+                        // Again: what changed since the last review (its findings checked too); All: the whole change.
+                        let builds = (r.state == .done && r.result != nil) || r.previous != nil
+                        Button(hasNewCommits(r) ? "Review New Commits" : "Review Again") { reviewInWorktree() }
+                            .buttonStyle(.link).font(T.caption)
+                            .help(builds ? "Reviews what changed since the last review and checks its findings again" : "Reviews the pull request again")
+                        if builds {
+                            Button("Review All") { reviewInWorktree(again: false) }.buttonStyle(.link).font(T.caption)
+                                .help("Reviews the whole pull request again, from scratch")
+                        }
                         Button { if let why = reviews.discard(item.id) { model.lastError = "The worktree stayed: \(why)" } } label: {
                             Image(systemName: "trash").font(.system(size: T.k * 10))
                         }
@@ -1015,8 +1029,19 @@ struct InboxDetail: View {
                     Text(r.note ?? "It didn't run.").font(.system(size: T.k * 12)).foregroundStyle(T.amber).fixedSize(horizontal: false, vertical: true)
                 case .done:
                     if let res = r.result {
+                        if let note = r.note { Text(note).font(.system(size: T.k * 11.5)).foregroundStyle(T.text3) }
                         if !res.summary.isEmpty { Text(res.summary).font(.system(size: T.k * 12.5)).foregroundStyle(T.text).fixedSize(horizontal: false, vertical: true).textSelection(.enabled) }
+                        let new = res.findings.filter { $0.status == "new" }.count
+                        if !res.fixed.isEmpty || new > 0 {
+                            Text("Since the last review: \(res.fixed.count) fixed · \(new) new").font(.system(size: T.k * 11.5, weight: .medium)).foregroundStyle(T.text2)
+                        }
                         ForEach(res.findings) { f in finding(f) }
+                        ForEach(res.fixed, id: \.self) { t in
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                Image(systemName: "checkmark.circle.fill").font(.system(size: T.k * 10.5)).foregroundStyle(T.green).frame(width: 14)
+                                Text(t).font(.system(size: T.k * 12)).foregroundStyle(T.text3).strikethrough().fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
                     }
                 }
             }
@@ -1046,6 +1071,10 @@ struct InboxDetail: View {
             Image(systemName: icon).font(.system(size: T.k * 10.5)).foregroundStyle(color).frame(width: 14)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
+                    if f.status == "new" {
+                        Text("new").font(.system(size: T.k * 9.5, weight: .bold)).foregroundStyle(T.accent)
+                            .padding(.horizontal, 5).frame(height: 15).background(Capsule().fill(T.accent.opacity(0.15)))
+                    }
                     Text(f.title).font(.system(size: T.k * 12.5, weight: .semibold)).fixedSize(horizontal: false, vertical: true)
                     if !f.file.isEmpty {
                         Button {

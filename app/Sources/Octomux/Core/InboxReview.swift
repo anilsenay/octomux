@@ -13,11 +13,15 @@ struct InboxReviewResult: Codable, Equatable {
         var severity: String          // issue | suggestion | nit | question
         var title: String
         var detail: String
+        /// A review of new commits: "new", or "open" for an earlier finding that still stands. Nil otherwise.
+        var status: String? = nil
         var id: String { "\(file):\(line ?? 0):\(title)" }
     }
     var summary: String
     var risk: String                  // low | medium | high
     var findings: [Finding]
+    /// A review of new commits: the earlier findings (their titles) that are fixed now.
+    var fixed: [String] = []
 
     /// "2 issues, 1 suggestion".
     var tally: String {
@@ -27,18 +31,21 @@ struct InboxReviewResult: Codable, Equatable {
         return parts.isEmpty ? "no findings" : parts.joined(separator: ", ")
     }
 
-    private enum K: String, CodingKey { case summary, risk, findings }
-    init(summary: String, risk: String, findings: [Finding]) { self.summary = summary; self.risk = risk; self.findings = findings }
+    private enum K: String, CodingKey { case summary, risk, findings, fixed }
+    init(summary: String, risk: String, findings: [Finding], fixed: [String] = []) {
+        self.summary = summary; self.risk = risk; self.findings = findings; self.fixed = fixed
+    }
     init(from d: Decoder) throws {
         let c = try d.container(keyedBy: K.self)
         summary = (try? c.decode(String.self, forKey: .summary)) ?? ""
         risk = (try? c.decode(String.self, forKey: .risk)) ?? "unknown"
         findings = (try? c.decode([Finding].self, forKey: .findings)) ?? []
+        fixed = ((try? c.decode([String].self, forKey: .fixed)) ?? []).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
     }
 }
 
 extension InboxReviewResult.Finding {
-    private enum K: String, CodingKey { case file, line, severity, title, detail }
+    private enum K: String, CodingKey { case file, line, severity, title, detail, status }
     init(from d: Decoder) throws {
         let c = try d.container(keyedBy: K.self)
         file = (try? c.decode(String.self, forKey: .file)) ?? ""
@@ -46,6 +53,7 @@ extension InboxReviewResult.Finding {
         severity = ((try? c.decode(String.self, forKey: .severity)) ?? "suggestion").lowercased()
         title = (try? c.decode(String.self, forKey: .title)) ?? ""
         detail = (try? c.decode(String.self, forKey: .detail)) ?? ""
+        status = (try? c.decode(String.self, forKey: .status))?.lowercased()
     }
 }
 
@@ -70,6 +78,9 @@ struct InboxReviewRun: Codable, Equatable {
     /// Why it failed or was skipped, or what it waits for.
     var note: String?
     var result: InboxReviewResult?
+    /// Reviewing again: the commit the last review looked at, and what it found (the new commits are reviewed).
+    var since: String? = nil
+    var previous: InboxReviewResult? = nil
     var isActive: Bool { state == .queued || state == .preparing || state == .working }
 }
 
@@ -97,6 +108,17 @@ final class InboxReviews: ObservableObject {
     /// `clone`: the downloaded clone's folder and the local projects to learn the clone URL's form from; nil: the
     /// project's own checkout.
     var prepare: (InboxItem, Project, _ clone: (dir: String, projectPaths: [String], job: GitJob?)?, _ existing: String?) throws -> Prepared = InboxReviews.prepareWorktree
+    /// Whether commit `a` is an ancestor of `b`, in a checkout (tests swap it).
+    var isAncestor: (_ a: String, _ b: String, _ dir: String) -> Bool = { a, b, dir in
+        Worktrees.gitWithError(["merge-base", "--is-ancestor", a, b], in: dir).0
+    }
+
+    /// The same commit, one hash perhaps short (Bitbucket lists 12 characters).
+    static func sameCommit(_ a: String?, _ b: String?) -> Bool {
+        guard let a, let b, a.count >= 7, b.count >= 7 else { return false }
+        return a.hasPrefix(b) || b.hasPrefix(a)
+    }
+
     /// Downloads in progress (a review's first one of a repo), to cancel.
     private var jobs: [String: GitJob] = [:]
 
@@ -138,7 +160,8 @@ final class InboxReviews: ObservableObject {
     /// Queues a review of the pull request in `project` (it starts when fewer than `maxRunning` run).
     /// Returns why it can't, or nil.
     @discardableResult
-    func start(_ i: InboxItem, in project: Project, clone: String? = nil, profileId: String?, auto: Bool) -> String? {
+    /// `again`: after a finished review, look at what changed since it (false: the whole change again).
+    func start(_ i: InboxItem, in project: Project, clone: String? = nil, profileId: String?, auto: Bool, again: Bool = true) -> String? {
         guard i.kind == .pr, i.source.isCodeHost, i.number != nil else { return "Only pull requests can be reviewed in a worktree." }
         if let r = runs[i.id], r.isActive { return "A review of \(i.key) is already \(r.state == .queued ? "waiting" : "running")." }
         if i.source == .bitbucket, (i.branch ?? "").isEmpty { return "Bitbucket didn't say which branch \(i.key) is on." }
@@ -149,6 +172,11 @@ final class InboxReviews: ObservableObject {
         runs[i.id] = InboxReviewRun(itemId: i.id, projectId: project.id, clone: clone, profileId: profileId, path: keep ? old?.path : nil, head: nil, base: nil,
                                     sessionId: nil, state: .queued, startedAt: now().timeIntervalSince1970, finishedAt: nil, auto: auto,
                                     note: nil, result: nil)
+        // What the next review builds on: the last finished one (a failed or cancelled try keeps what it built on).
+        if again, keep, let o = old {
+            let (h, res) = o.state == .done ? (o.head, o.result) : (o.since, o.previous)
+            if let h, let res { runs[i.id]?.since = h; runs[i.id]?.previous = res }
+        }
         save()
         pump()
         return nil
@@ -205,10 +233,20 @@ final class InboxReviews: ObservableObject {
                         self.pump()
                         return
                     }
+                    // Nothing new since the last review: it stands.
+                    if let since = r.since, Self.sameCommit(since, prep.head), let prev = r.previous {
+                        r.state = .done; r.result = prev; r.since = nil; r.previous = nil
+                        r.note = "No new commits since the last review."
+                        r.finishedAt = self.now().timeIntervalSince1970
+                        self.runs[id] = r; self.save(); self.pump()
+                        return
+                    }
+                    // A rebase or force push: no new commits on top of the old ones, so the whole change is read again.
+                    let onTop = r.since.map { self.isAncestor($0, prep.head, prep.path) } ?? false
                     r.state = .working
                     self.runs[id] = r; self.save()
                     self.startWatching()
-                    let prompt = Self.prompt(i, base: prep.base, head: prep.head)
+                    let prompt = Self.prompt(i, base: prep.base, head: prep.head, since: r.since, onTop: onTop, previous: r.previous)
                     self.launch(r, prompt, !r.auto) { [weak self] sid in
                         guard let self else { return }
                         guard let sid else { self.fail(id, "The agent didn't start (is Claude Code or Codex set up?)."); return }
@@ -288,21 +326,48 @@ final class InboxReviews: ObservableObject {
 
     // MARK: The real world
 
-    static func prompt(_ i: InboxItem, base: String, head: String) -> String {
+    static func prompt(_ i: InboxItem, base: String, head: String, since: String? = nil, onTop: Bool = false, previous: InboxReviewResult? = nil) -> String {
         let n = i.number ?? 0
         let body = i.body.trimmingCharacters(in: .whitespacesAndNewlines)
         let cut = body.count > 8000 ? String(body.prefix(8000)) + "\n[…cut]" : body
         let tasks = (InboxStore.shared.prTasks[i.id] ?? []).filter { !$0.resolved }
+        let earlier = previous.map { p in
+            p.findings.isEmpty ? "(none)" : p.findings.prefix(40).map { f in
+                "- [\(f.severity)] \(f.title)" + (f.file.isEmpty ? "" : " (\(f.file)\(f.line.map { ":\($0)" } ?? ""))") + (f.detail.isEmpty ? "" : ": " + String(f.detail.prefix(400)))
+            }.joined(separator: "\n")
+        }
+        let what: String
+        if let since, let earlier, onTop {
+            what = """
+            It was reviewed before at commit \(String(since.prefix(12))); new commits came on top since. Review what they change: `git log \(since)..HEAD` and `git diff \(since)..HEAD`, reading the rest of the change (`git diff \(base)...HEAD`) or any file when you need the context. Check each earlier finding (below) against the code now.
+
+            Earlier findings:
+            \(earlier)
+            """
+        } else if let earlier {
+            what = """
+            It was reviewed before at an older version; the branch was rebased or force-pushed since, so review the whole change again. Check each earlier finding (below) against the code now.
+
+            Earlier findings:
+            \(earlier)
+            """
+        } else {
+            what = ""
+        }
+        let again = previous != nil
+        let example = again
+            ? #"{"summary": "two or three sentences on what changed and whether it is ready now", "risk": "low", "fixed": ["title of an earlier finding that is fixed now"], "findings": [{"file": "path/in/repo.ext", "line": 42, "severity": "issue", "title": "short", "detail": "what is wrong and what to do", "status": "new"}]}"#
+            : #"{"summary": "two or three sentences on what it does and whether it is ready", "risk": "low", "findings": [{"file": "path/in/repo.ext", "line": 42, "severity": "issue", "title": "short", "detail": "what is wrong and what to do"}]}"#
         return """
         Review pull request \(i.key) of \(i.place) on \(i.source.name). This folder is a checkout of its head (commit \(String(head.prefix(12)))); its base is `\(base)`. See the change with `git diff \(base)...HEAD` and `git log \(base)..HEAD`, and read any file you need. Don't change anything: no edits, no commits, no commands that write.
-
+        \(what.isEmpty ? "" : "\n" + what + "\n")
         Look for bugs, missed cases, security and data risks, and anything that will hurt later; skip style the project doesn't care about. Write in the language the pull request is written in.
 
         End your answer with exactly one ```json block, like this:
         ```json
-        {"summary": "two or three sentences on what it does and whether it is ready", "risk": "low", "findings": [{"file": "path/in/repo.ext", "line": 42, "severity": "issue", "title": "short", "detail": "what is wrong and what to do"}]}
+        \(example)
         ```
-        risk: low | medium | high. severity: issue | suggestion | question | nit. line: a line in the new version of the file (leave it out when it is about the whole file). Leave out findings that aren't worth a reviewer's time; an empty list is fine.
+        risk: low | medium | high. severity: issue | suggestion | question | nit. line: a line in the new version of the file (leave it out when it is about the whole file). Leave out findings that aren't worth a reviewer's time; an empty list is fine.\(again ? " fixed: the titles of earlier findings that are fixed now, each exactly as written above (the title alone, without its file or severity). findings: earlier ones that still stand (status \"open\", same title) and new ones (status \"new\")." : "")
 
         <work-item source="\(i.source.name)">
         \(i.key) \(i.title)

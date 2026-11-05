@@ -121,6 +121,12 @@
     sources only) and says it is updating them; the first fetch replaces them and nothing rings for the kept
     ones. A source loading with nothing kept says so ("Loading Bitbucket…") instead of showing nothing or
     "Nothing matches.".
+  - **Review New Commits**: after a background review, the next one looks at what changed since (the new
+    commits on top, with the rest of the change for context) and checks the earlier findings: the card says
+    what was fixed (struck through) and marks new findings. A rebase or force push gets the whole change
+    reviewed again, still checking the earlier findings; no new commits keeps the last review. Review All
+    starts from scratch. GitHub pull requests now carry their head commit too, so "new commits since" shows
+    for them, and it no longer shows for every Bitbucket review (a short and a full hash of the same commit).
   - **Bitbucket tasks and reviewers**: a pull request shows how many open tasks it has (the reviewers' to-dos), and
     its detail lists them; a click marks one resolved or opens it again (asked first). Work on it and Fix with
     agent hand the open ones to the agent. The detail lists the reviewers with where each one's review stands.

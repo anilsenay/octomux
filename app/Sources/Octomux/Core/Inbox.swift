@@ -1297,7 +1297,7 @@ enum GitHubInbox {
     }
 
     static let prFields = """
-    number title url updatedAt isDraft state headRefName baseRefName body comments { totalCount }
+    number title url updatedAt isDraft state headRefName headRefOid baseRefName body comments { totalCount }
     repository { nameWithOwner } author { login } assignees(first: 3) { nodes { login } }
     commits(last: 1) { nodes { commit { statusCheckRollup { state
       contexts(first: 80) { nodes { __typename ... on CheckRun { name conclusion status detailsUrl title summary } ... on StatusContext { context state targetUrl description } } } } } } }
@@ -1361,6 +1361,7 @@ enum GitHubInbox {
             updated: InboxDates.iso(n["updatedAt"] as? String) ?? Date(), body: n["body"] as? String ?? "", url: url,
             branch: n["headRefName"] as? String, number: number, base: n["baseRefName"] as? String)
         item.commentCount = (n["comments"] as? [String: Any])?["totalCount"] as? Int
+        if isPR { item.head = n["headRefOid"] as? String }
         if isPR, let rollup = ((((n["commits"] as? [String: Any])?["nodes"] as? [[String: Any]])?.first?["commit"] as? [String: Any])?["statusCheckRollup"] as? [String: Any]) {
             var passed = 0, failed = 0, pending = 0
             var failedNames: [String] = []

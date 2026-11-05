@@ -84,7 +84,8 @@ final class InboxReviewTests: XCTestCase {
         let project = Project(id: "p1", workspaceId: "w", name: "r", path: "/tmp/r", color: "#fff", icon: ProjectIcon(kind: "letter", value: "R"), sort: 0, archived: false)
         m.project = { _ in project }
         m.background = { $0() }; m.onMain = { $0() }
-        m.prepare = { i, _, _, existing in rec.prepared.append(i.id); return .init(path: existing ?? "/tmp/r.worktrees/review-\(i.number!)", head: "h\(i.number!)", base: "origin/main", lines: lines) }
+        m.prepare = { i, _, _, existing in rec.prepared.append(i.id); return .init(path: existing ?? "/tmp/r.worktrees/review-\(i.number!)", head: rec.head ?? "h\(i.number!)", base: "origin/main", lines: lines) }
+        m.isAncestor = { a, b, _ in rec.ancestry.contains("\(a)>\(b)") }
         m.launch = { r, prompt, select, done in rec.launched.append((r.itemId, select)); rec.prompts.append(prompt); done("s-\(r.itemId)") }
         m.read = { sid in (rec.answers[sid], rec.stopped.contains(sid), false) }
         m.removeWorktree = { r in rec.removed.append(r.itemId); return rec.keep }
@@ -95,6 +96,53 @@ final class InboxReviewTests: XCTestCase {
     final class Recorder {
         var prepared: [String] = [], launched: [(String, Bool)] = [], prompts: [String] = [], removed: [String] = [], notes: [String] = []
         var answers: [String: InboxReviewResult] = [:], stopped: Set<String> = [], keep: String? = nil
+        var head: String? = nil, ancestry: Set<String> = []
+    }
+
+    func testAgainReviewsTheNewCommitsAndChecksEarlierFindings() {
+        let (m, rec) = manager()
+        let p = Project(id: "p1", workspaceId: "w", name: "r", path: "/tmp/r", color: "#fff", icon: ProjectIcon(kind: "letter", value: "R"), sort: 0, archived: false)
+        rec.head = "aaaaaaaa1111"
+        m.start(pr(1), in: p, profileId: nil, auto: false)
+        rec.answers["s-gh:o/r#1"] = InboxReviews.parse(answer)
+        m.check()
+        let first = m.run("gh:o/r#1")!.result!
+        XCTAssertFalse(first.findings.isEmpty)
+
+        // Nothing new (Bitbucket's short hash of the same commit): the last review stands, no agent runs.
+        rec.head = "aaaaaaaa1111ffff"
+        XCTAssertTrue(InboxReviews.sameCommit("aaaaaaaa1111", "aaaaaaaa1111ffff"))
+        m.start(pr(1), in: p, profileId: nil, auto: false)
+        XCTAssertEqual(m.run("gh:o/r#1")?.state, .done)
+        XCTAssertEqual(m.run("gh:o/r#1")?.note, "No new commits since the last review.")
+        XCTAssertEqual(rec.launched.count, 1)
+
+        // New commits on top: only those are reviewed, with the earlier findings to check.
+        rec.head = "bbbbbbbb2222"; rec.ancestry = ["aaaaaaaa1111ffff>bbbbbbbb2222"]
+        m.start(pr(1), in: p, profileId: nil, auto: false)
+        let prompt = rec.prompts.last!
+        XCTAssertTrue(prompt.contains("git diff aaaaaaaa1111ffff..HEAD"))
+        XCTAssertTrue(prompt.contains("Earlier findings:\n- [" + first.findings[0].severity + "] " + first.findings[0].title))
+        XCTAssertTrue(prompt.contains("\"fixed\""))
+        rec.answers["s-gh:o/r#1"] = InboxReviews.parse("""
+        ```json
+        {"summary": "Better now.", "risk": "low", "fixed": ["\(first.findings[0].title)", " "], "findings": [{"file": "a.swift", "line": 3, "severity": "nit", "title": "Typo", "detail": "x", "status": "NEW"}]}
+        ```
+        """)
+        m.check()
+        let second = m.run("gh:o/r#1")!.result!
+        XCTAssertEqual(second.fixed, [first.findings[0].title])
+        XCTAssertEqual(second.findings.first?.status, "new")
+
+        // A rebase: the whole change again, the earlier findings still checked.
+        rec.head = "cccccccc3333"; rec.ancestry = []
+        m.start(pr(1), in: p, profileId: nil, auto: false)
+        XCTAssertTrue(rec.prompts.last!.contains("rebased or force-pushed"))
+        XCTAssertFalse(rec.prompts.last!.contains("..HEAD`, reading"))
+        // Review All: from scratch.
+        m.cancel("gh:o/r#1"); rec.stopped.insert("s-gh:o/r#1"); m.check()
+        m.start(pr(1), in: p, profileId: nil, auto: false, again: false)
+        XCTAssertFalse(rec.prompts.last!.contains("Earlier findings"))
     }
 
     func testTwoAtATimeThenTheNext() {
