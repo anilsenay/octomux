@@ -62,6 +62,19 @@ struct InboxView: View {
     /// The Snoozed folder is open (it lists what is out of the list for now).
     @State private var showSnoozed = false
 
+    /// Shown sources still on their first fetch since launch.
+    private var loadingHere: [InboxSource] {
+        InboxSource.allCases.filter { store.loading.contains($0) && (source == nil || source == $0) }
+    }
+
+    private var loadingLine: some View {
+        HStack(spacing: 6) {
+            ProgressView().controlSize(.small)
+            Text("Loading \(ListFormatter.localizedString(byJoining: loadingHere.map(\.name)))…")
+        }
+        .font(T.caption).foregroundStyle(T.text3)
+    }
+
     private var visible: [InboxItem] {
         let since = days == 0 ? Date.distantPast : Date().addingTimeInterval(-Double(days) * 86400)
         if showSnoozed {
@@ -324,6 +337,7 @@ struct InboxView: View {
             ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 2) {
+                    if !loadingHere.isEmpty, !visible.isEmpty { loadingLine.padding(.vertical, 6) }
                     ForEach(visible) { i in
                         InboxRow(item: i, selected: store.selectedId == i.id, unread: store.isUnread(i), linked: store.linkedSession(i) != nil) {
                             store.select(store.selectedId == i.id ? nil : i.id)   // a second click closes it
@@ -334,6 +348,8 @@ struct InboxView: View {
                         Text("Nothing is snoozed.").font(T.body).foregroundStyle(T.text3).padding(.top, 40)
                     } else if visible.isEmpty, reasonFilter == .project {
                         InboxProjectsOff()
+                    } else if visible.isEmpty, !loadingHere.isEmpty {
+                        loadingLine.padding(.top, 40)
                     } else if visible.isEmpty {
                         Text(store.refreshing && store.items.isEmpty ? "Loading…" : store.items.isEmpty ? "Nothing waits for you." : "Nothing matches.")
                             .font(T.body).foregroundStyle(T.text3).padding(.top, 40)

@@ -174,6 +174,8 @@ final class InboxStore: ObservableObject {
     }
     @Published var selectedId: String?
     @Published private(set) var refreshing = false
+    /// Sources fetching for the first time since launch (nothing of theirs is listed yet).
+    @Published private(set) var loading: Set<InboxSource> = []
     @Published private(set) var lastRefresh: Date?
     @Published private(set) var errors: [InboxSource: String] = [:]
     /// Each opened item's history (comments, changes, commits, reviews), oldest first.
@@ -767,7 +769,7 @@ final class InboxStore: ObservableObject {
         let on: [InboxSource: Bool] = Dictionary(uniqueKeysWithValues: InboxSource.allCases.map { ($0, isOn($0)) })
         // A source turned off leaves.
         for (s, v) in on where !v && fetched.contains(where: { $0.source == s }) {
-            fetched.removeAll { $0.source == s }; errors[s] = nil; primed.remove(s)
+            fetched.removeAll { $0.source == s }; errors[s] = nil; primed.remove(s); loading.remove(s)
             endedItems = endedItems.filter { $0.value.source != s }
             publish()
         }
@@ -776,6 +778,7 @@ final class InboxStore: ObservableObject {
             if inFlight.contains(s) { if widened { pending.insert(s) }; continue }
             inFlight.insert(s)
             refreshing = true
+            if !primed.contains(s) { loading.insert(s) }
             switch s {
             case .github: fetchGitHub()
             case .bitbucket: fetchBitbucket(force: forceNext.remove(.bitbucket) != nil || widened)
@@ -856,6 +859,7 @@ final class InboxStore: ObservableObject {
     func apply(_ source: InboxSource, _ result: Result<[InboxItem], Error>) {
         inFlight.remove(source)
         refreshing = !inFlight.isEmpty
+        loading.remove(source)
         if frozen { return }                 // the debug fixture: a fetch started before it is dropped
         lastRefresh = Date()
         let found: [InboxItem]
