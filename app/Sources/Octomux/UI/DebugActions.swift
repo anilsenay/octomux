@@ -276,6 +276,15 @@ enum DebugActions {
                 else if v.hasPrefix("create:") {
                     ja.create(project: "SHOP", type: .init(id: "10001", name: "Task"), summary: String(v.dropFirst(7)), description: "", mine: true) { _ in }
                 }
+            case "inbox_mute":        // value: project key; "minutes" (absent: until resumed), "off", "watch", "unwatch", "pick"
+                if let k = p["value"] as? String {
+                    if (p["watch"] as? Bool) == true { JiraClient.setWatched(k, true) }
+                    if (p["unwatch"] as? Bool) == true { JiraClient.setWatched(k, false) }
+                    if (p["off"] as? Bool) == true { InboxMute.shared.unmute([k]) }
+                    else if (p["pick"] as? Bool) == true { InboxMute.shared.picking = [k] }
+                    else if let m = p["minutes"] as? Int { InboxMute.shared.mute([k], until: Date().addingTimeInterval(Double(m) * 60)) }
+                    else if (p["forever"] as? Bool) == true { InboxMute.shared.mute([k], until: nil) }
+                }
             case "inbox_confirm":     // answers the confirmation sheet on screen
                 if let a = InboxConfirm.current, let w = a.window.sheetParent {
                     w.endSheet(a.window, returnCode: (p["value"] as? Bool) == true ? .alertFirstButtonReturn : .alertSecondButtonReturn)

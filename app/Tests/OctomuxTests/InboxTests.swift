@@ -1133,3 +1133,59 @@ final class InboxJiraActionTests: XCTestCase {
         XCTAssertEqual(chimes, 1)
     }
 }
+
+/// Muting a belled project for a while.
+final class InboxMuteTests: XCTestCase {
+    override func tearDown() {
+        UserDefaults.standard.removeObject(forKey: InboxPrefs.jiraMuted)
+        UserDefaults.standard.removeObject(forKey: InboxPrefs.jiraWatched)
+    }
+
+    func testMuteWindows() {
+        UserDefaults.standard.set("SHOP,DC", forKey: InboxPrefs.jiraWatched)
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        XCTAssertTrue(JiraClient.rings("SHOP", now: now))
+        JiraClient.mute(["SHOP"], until: now.addingTimeInterval(3600), now: now)
+        XCTAssertFalse(JiraClient.rings("SHOP", now: now))
+        XCTAssertTrue(JiraClient.rings("DC", now: now))
+        XCTAssertTrue(JiraClient.rings("SHOP", now: now.addingTimeInterval(3601)))          // the hour is over
+        JiraClient.mute(["DC"], until: nil, now: now)
+        XCTAssertEqual(JiraClient.mutedUntil("DC", now: now.addingTimeInterval(9e6)), .distantFuture)
+        JiraClient.unmute(["DC"])
+        XCTAssertTrue(JiraClient.rings("DC", now: now))
+        XCTAssertFalse(JiraClient.rings("OTHER", now: now))                                 // no bell at all
+    }
+
+    func testWording() {
+        var cal = Calendar(identifier: .gregorian); cal.timeZone = TimeZone(identifier: "UTC")!
+        let now = cal.date(from: DateComponents(year: 2026, month: 11, day: 5, hour: 13))!
+        let t = InboxMute.tomorrowMorning(now, calendar: cal)
+        XCTAssertEqual(cal.dateComponents([.day, .hour, .minute], from: t), DateComponents(day: 6, hour: 9, minute: 0))
+        XCTAssertTrue(InboxMute.describe(now.addingTimeInterval(3600), now: now, calendar: cal).hasPrefix("until "))
+        XCTAssertTrue(InboxMute.describe(t, now: now, calendar: cal).hasPrefix("until tomorrow"))
+        XCTAssertEqual(InboxMute.describe(.distantFuture, now: now, calendar: cal), "until you turn it back on")
+    }
+
+    func testMutedBellIsQuiet() {
+        let suite = "octomux-inbox-mute-\(UUID().uuidString)"
+        defer { UserDefaults().removePersistentDomain(forName: suite) }
+        let store = InboxStore(defaults: UserDefaults(suiteName: suite)!)
+        var chimes = 0
+        store.deliver = { _ in }; store.chime = { chimes += 1 }
+        store.loadActivity = { _ in throw InboxError("offline") }
+        store.background = { $0() }; store.onMain = { $0() }
+        func i(_ t: Double) -> InboxItem {
+            InboxItem(id: "jira:SHOP-1", source: .jira, kind: .issue, key: "SHOP-1", place: "Shop", title: "x", author: "a", assignee: "Bob",
+                      status: "To Do", statusTone: "todo", reason: .project, updated: Date(timeIntervalSince1970: t), body: "", url: "")
+        }
+        UserDefaults.standard.set("SHOP", forKey: InboxPrefs.jiraWatched)
+        store.apply(.jira, .success([i(1000)]))
+        JiraClient.mute(["SHOP"], until: Date().addingTimeInterval(3600))
+        store.apply(.jira, .success([i(2000)]))
+        XCTAssertEqual(chimes, 0)
+        XCTAssertTrue(store.isUnread(store.items[0]))                   // still waits in the Inbox
+        JiraClient.unmute(["SHOP"])
+        store.apply(.jira, .success([i(3000)]))
+        XCTAssertEqual(chimes, 1)
+    }
+}

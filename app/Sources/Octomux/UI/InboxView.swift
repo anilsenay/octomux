@@ -50,6 +50,8 @@ struct InboxView: View {
     @State private var days = 0     // 0: any time
     @State private var query = ""
     @FocusState private var filterFocused: Bool
+    @ObservedObject private var mutes = InboxMute.shared
+    private var settingsOpen: Bool { SettingsWindow.window?.isKeyWindow == true }
     @State private var showKeys = false
 
     private var visible: [InboxItem] {
@@ -89,6 +91,7 @@ struct InboxView: View {
         }
         .background(CanvasBackground())
         .background(InboxKeyCatcher { handle($0) })
+        .sheet(isPresented: Binding(get: { mutes.picking != nil && !settingsOpen }, set: { if !$0 { mutes.picking = nil } })) { InboxMuteDatePicker() }
         .onAppear { if store.lastRefresh == nil || Date().timeIntervalSince(store.lastRefresh!) > 60 { store.refresh() } }
     }
 
@@ -351,6 +354,8 @@ struct InboxFolderRow: View {
     let bell: String?
     let action: () -> Void
     @AppStorage(InboxPrefs.jiraWatched) private var watchedRaw = ""
+    @ObservedObject private var mutes = InboxMute.shared
+    private var muteTick: Int { mutes.tick }
     @State private var hover = false
 
     private var watched: Bool { bell.map { Set(watchedRaw.split(separator: ",").map(String.init)).contains($0) } ?? false }
@@ -369,15 +374,20 @@ struct InboxFolderRow: View {
                     Text(title).font(.system(size: T.k * 12.5, weight: selected ? .semibold : .regular)).foregroundStyle(T.text).lineLimit(1)
                     Spacer(minLength: 2)
                     if let key = bell, watched || hover {
+                        let muted = watched ? JiraClient.mutedUntil(key) : nil
                         Button {
                             JiraClient.setWatched(key, !watched)
+                            if watched { JiraClient.unmute([key]) }
                             store.refresh(widened: true)
                         } label: {
-                            Image(systemName: watched ? "bell.fill" : "bell").font(.system(size: T.k * 10))
-                                .foregroundStyle(watched ? T.accent : T.text3)
+                            Image(systemName: muted != nil ? "bell.slash.fill" : watched ? "bell.fill" : "bell").font(.system(size: T.k * 10))
+                                .foregroundStyle(muted != nil ? T.text3 : watched ? T.accent : T.text3)
                         }
                         .buttonStyle(IconButtonStyle(size: 18))
-                        .help(watched ? "Notifying on every change in \(title). Click to stop." : "Notify on every change in \(title), by anyone")
+                        .help(muted.map { "Muted \(InboxMute.describe($0)). Right-click to change." }
+                              ?? (watched ? "Notifying on every change in \(title). Click to stop; right-click to mute for a while." : "Notify on every change in \(title), by anyone"))
+                        .contextMenu { if watched { InboxMuteMenu(keys: [key], muted: muted) } }
+                        .id(muteTick)
                     }
                     Text("\(count)").font(T.caption).foregroundStyle(unread > 0 ? T.accent : T.text3)
                 }
@@ -1142,6 +1152,7 @@ struct InboxSettings: View {
     @AppStorage(InboxPrefs.jiraWatched) private var watchedRaw = ""
     @AppStorage(InboxPrefs.nProjects) private var nProjects = "sound"
     @AppStorage(InboxPrefs.jiraTemplate) private var jiraTemplate = ""
+    @ObservedObject private var mutes = InboxMute.shared
     @State private var ghStatus: String?
     @State private var ghError: String?
     @State private var checking = false
@@ -1225,17 +1236,35 @@ struct InboxSettings: View {
                         // One chip per project with the bell on; ✕ silences it.
                         ForEach(watched.sorted(), id: \.self) { key in
                             let name = store.jiraProjects.first { $0.key == key }?.name ?? key
+                            let muted = { _ = mutes.tick; return JiraClient.mutedUntil(key) }()
                             HStack(spacing: 5) {
-                                Image(systemName: "bell.fill").font(.system(size: T.k * 9)).foregroundStyle(T.accent)
+                                Image(systemName: muted == nil ? "bell.fill" : "bell.slash.fill").font(.system(size: T.k * 9))
+                                    .foregroundStyle(muted == nil ? T.accent : T.text3)
+                                    .help(muted.map { "Muted \(InboxMute.describe($0))" } ?? "Rings; right-click to mute for a while")
                                 Text(name).font(.system(size: T.k * 12, weight: .medium)).lineLimit(1)
                                 Button { setWatch(key, false) } label: { Image(systemName: "xmark").font(.system(size: T.k * 8, weight: .bold)) }
                                     .buttonStyle(IconButtonStyle(size: 16)).help("Stop notifying on every change in \(name)")
                             }
                             .padding(.leading, 8).padding(.trailing, 3).frame(height: 24)
-                            .background(Capsule().fill(T.accent.opacity(0.12)))
-                            .overlay(Capsule().stroke(T.accent.opacity(0.3)))
+                            .background(Capsule().fill(T.accent.opacity(muted == nil ? 0.12 : 0.04)))
+                            .overlay(Capsule().stroke(T.accent.opacity(muted == nil ? 0.3 : 0.15)))
                             .fixedSize()
+                            .contextMenu { InboxMuteMenu(keys: [key], muted: muted) }
                         }
+                        if !watched.isEmpty {
+                            let all = watched.sorted()
+                            let anyMuted = { _ = mutes.tick; return all.contains { JiraClient.mutedUntil($0) != nil } }()
+                            Menu { InboxMuteMenu(keys: all, muted: anyMuted ? .distantFuture : nil) } label: {
+                                Label("Mute", systemImage: "bell.slash").font(.system(size: T.k * 12, weight: .medium)).foregroundStyle(T.text2)
+                                    .padding(.horizontal, 8).frame(height: 24)
+                                    .overlay(Capsule().stroke(T.border))
+                                    .contentShape(Capsule())
+                            }
+                            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().pointerCursor()
+                            .help("Quiet every bell for a while")
+                        }
+                        Color.clear.frame(width: 0, height: 0).sheet(isPresented: Binding(get: { mutes.picking != nil && SettingsWindow.window?.isKeyWindow == true },
+                                                               set: { if !$0 { mutes.picking = nil } })) { InboxMuteDatePicker() }
                         Menu {
                             ForEach(choices, id: \.id) { p in Button("\(p.name)  \(p.key)") { setWatch(p.key, true) } }
                             if choices.isEmpty { Text(store.jiraProjects.isEmpty ? "Loading projects…" : "Every ticked project is on") }
@@ -1886,5 +1915,68 @@ struct JiraFiltersSetting: View {
                 }
             }
         }
+    }
+}
+
+/// Muting bells for a while: the choices, their wording, and a nudge for views to redraw when it changes.
+final class InboxMute: ObservableObject {
+    static let shared = InboxMute()
+    @Published private(set) var tick = 0
+    @Published var picking: [String]? = nil          // keys whose "Until…" date is being picked
+
+    func mute(_ keys: [String], until: Date?) { JiraClient.mute(keys, until: until); tick += 1 }
+    func unmute(_ keys: [String]) { JiraClient.unmute(keys); tick += 1 }
+
+    /// 9:00 the next morning.
+    static func tomorrowMorning(_ now: Date = Date(), calendar: Calendar = .current) -> Date {
+        let next = calendar.date(byAdding: .day, value: 1, to: now)!
+        return calendar.date(bySettingHour: 9, minute: 0, second: 0, of: next)!
+    }
+
+    /// "until 14:30", "until tomorrow 09:00", "until Mon 12 Nov", "until you turn it back on".
+    static func describe(_ d: Date, now: Date = Date(), calendar: Calendar = .current) -> String {
+        if d == .distantFuture { return "until you turn it back on" }
+        let time = d.formatted(date: .omitted, time: .shortened)
+        if calendar.isDate(d, inSameDayAs: now) { return "until \(time)" }
+        if let t = calendar.date(byAdding: .day, value: 1, to: now), calendar.isDate(d, inSameDayAs: t) { return "until tomorrow \(time)" }
+        return "until " + d.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated)) + " " + time
+    }
+}
+
+/// The mute choices for one bell or all of them.
+struct InboxMuteMenu: View {
+    @ObservedObject var mutes = InboxMute.shared
+    let keys: [String]
+    let muted: Date?
+
+    var body: some View {
+        if let muted { Text("Muted \(InboxMute.describe(muted))") }
+        Button("Mute for 1 Hour") { mutes.mute(keys, until: Date().addingTimeInterval(3600)) }
+        Button("Mute Until Tomorrow 09:00") { mutes.mute(keys, until: InboxMute.tomorrowMorning()) }
+        Button("Mute Until…") { mutes.picking = keys }
+        Button("Mute Until I Turn It Back On") { mutes.mute(keys, until: nil) }
+        if muted != nil {
+            Divider()
+            Button("Unmute") { mutes.unmute(keys) }
+        }
+    }
+}
+
+/// Picking the date a mute ends.
+struct InboxMuteDatePicker: View {
+    @ObservedObject var mutes = InboxMute.shared
+    @State private var date = Date().addingTimeInterval(3 * 3600)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Mute \((mutes.picking ?? []).joined(separator: ", ")) until").font(.system(size: T.k * 13, weight: .semibold))
+            DatePicker("", selection: $date, in: Date()..., displayedComponents: [.date, .hourAndMinute]).labelsHidden().datePickerStyle(.graphical)
+            HStack {
+                Spacer()
+                Button("Cancel") { mutes.picking = nil }.keyboardShortcut(.cancelAction)
+                Button("Mute") { if let k = mutes.picking { mutes.mute(k, until: date) }; mutes.picking = nil }.keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(16).frame(width: 300)
     }
 }

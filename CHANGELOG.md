@@ -51,6 +51,9 @@
     filters can bring their open issues in (Settings → Inbox → What shows up), under From your filters. What
     the agent is asked for a Jira issue is a template in Settings ({key}, {title}, {status}, {project}, {url},
     {assignee}).
+  - **Mute a bell for a while**: right-click a project's bell (in the Inbox or in Settings) to quiet it for an
+    hour, until tomorrow 09:00, until a date you pick, or until you turn it back on; Settings can mute every bell
+    at once. A muted bell shows struck through; its changes still wait unread in the Inbox.
   - Settings → Inbox: connections, Jira projects, GitHub repositories, what shows up, notifications, and what
     Send to agent opens.
 

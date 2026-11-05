@@ -79,6 +79,7 @@ enum InboxPrefs {
     static let nUpdates = "octomux.inbox.n.updates"            // changes on your own items (yours / assigned / review)
     static let jiraFilters = "octomux.inbox.jira.filters"      // starred filters shown: id → "name\njql"
     static let jiraTemplate = "octomux.inbox.jira.template"    // what "Send to agent" asks for a Jira issue ({key} {title} …)
+    static let jiraMuted = "octomux.inbox.jira.muted"          // belled project → unix seconds its bell is quiet until (0: until resumed)
     static let jiraWatched = "octomux.inbox.jira.watched"      // project keys whose every change notifies (the bell)
     static let nProjects = "octomux.inbox.n.projects"          // how a belled project's changes notify: sound | banner
     static let startMode = "octomux.inbox.start"               // tab | worktree | ask
@@ -320,7 +321,7 @@ final class InboxStore: ObservableObject {
                     }
                     // Merged or closed from here: no news.
                     if self.readOnNextRefresh.remove(i.id) != nil { self.markRead(copy); continue }
-                    let relevant = i.reason.isOthers ? JiraClient.watched.contains(i.projectKey) : InboxPrefs.bool(InboxPrefs.nUpdates, true)
+                    let relevant = i.reason.isOthers ? JiraClient.rings(i.projectKey) : InboxPrefs.bool(InboxPrefs.nUpdates, true)
                     if relevant || self.links[i.id] != nil, self.isUnread(copy) { lines.append("\(i.key) \(what)") }
                 }
                 self.publish()
@@ -647,7 +648,7 @@ final class InboxStore: ObservableObject {
                 lines.append(Line(title: "Review requested: \(i.key)", body: i.title))
             } else if isNew, i.reason == .assigned, InboxPrefs.bool(InboxPrefs.nAssigned, true) {
                 lines.append(Line(title: "Assigned to you: \(i.key)", body: i.title))
-            } else if i.reason.isOthers, isNew || changed, JiraClient.watched.contains(i.projectKey) {
+            } else if i.reason.isOthers, isNew || changed, JiraClient.rings(i.projectKey) {
                 let l = Line(title: isNew ? "New in \(i.place): \(i.key)" : change(i), body: i.title, item: isNew ? nil : i, since: before)
                 if projectBanner { lines.append(l) } else { quiet.append(l) }
             } else if !i.reason.isOthers, changed, InboxPrefs.bool(InboxPrefs.nUpdates, true) {
@@ -1178,6 +1179,29 @@ enum JiraClient {
     static var watched: Set<String> {
         Set((UserDefaults.standard.string(forKey: InboxPrefs.jiraWatched) ?? "").split(separator: ",").map(String.init))
     }
+
+    /// When a belled project's bell is quiet until: a date, .distantFuture until resumed, nil when it rings.
+    static func mutedUntil(_ key: String, now: Date = Date()) -> Date? {
+        guard let v = (UserDefaults.standard.dictionary(forKey: InboxPrefs.jiraMuted) as? [String: Double])?[key] else { return nil }
+        if v == 0 { return .distantFuture }
+        return v > now.timeIntervalSince1970 ? Date(timeIntervalSince1970: v) : nil
+    }
+
+    /// Mutes a project's bell until `until` (nil: until resumed); `unmute` lets it ring again.
+    static func mute(_ keys: [String], until: Date?, now: Date = Date()) {
+        var m = (UserDefaults.standard.dictionary(forKey: InboxPrefs.jiraMuted) as? [String: Double] ?? [:])
+            .filter { $0.value == 0 || $0.value > now.timeIntervalSince1970 }     // expired ones go
+        for k in keys { m[k] = until.map { $0.timeIntervalSince1970 } ?? 0 }
+        UserDefaults.standard.set(m, forKey: InboxPrefs.jiraMuted)
+    }
+    static func unmute(_ keys: [String]) {
+        var m = UserDefaults.standard.dictionary(forKey: InboxPrefs.jiraMuted) as? [String: Double] ?? [:]
+        for k in keys { m[k] = nil }
+        UserDefaults.standard.set(m, forKey: InboxPrefs.jiraMuted)
+    }
+
+    /// The project's bell is on and not muted right now.
+    static func rings(_ key: String, now: Date = Date()) -> Bool { watched.contains(key) && mutedUntil(key, now: now) == nil }
 
     static func setWatched(_ key: String, _ on: Bool) {
         var w = watched
