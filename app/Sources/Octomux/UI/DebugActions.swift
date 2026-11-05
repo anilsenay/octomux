@@ -105,6 +105,16 @@ enum DebugActions {
             let o = try JSONSerialization.jsonObject(with: JiraClient.request("/rest/api/3/search/jql", method: "POST", body: body)) as? [String: Any]
             return ((o?["issues"] as? [[String: Any]]) ?? []).compactMap { $0["key"] as? String }
         }
+        // A pull request's diff read the way the Code tab does (read-only; counts only).
+        d.register("inbox_probe_diff") { p in
+            let repo = p["repo"] as? String ?? "", n = p["number"] as? Int ?? 0
+            let item = InboxItem(id: "gh:\(repo)#\(n)", source: .github, kind: .pr, key: "#\(n)", place: repo, title: "", author: "",
+                                 assignee: nil, status: "", statusTone: "", reason: .mention, updated: Date(), body: "", url: "", number: n)
+            let raw = try InboxDiff.fetch(item)
+            let files = InboxDiff.parse(raw)
+            return ["files": files.count, "added": files.reduce(0) { $0 + $1.added }, "removed": files.reduce(0) { $0 + $1.removed },
+                    "statuses": Dictionary(grouping: files, by: \.status).mapValues(\.count), "binary": files.filter(\.binary).count]
+        }
         d.register("ui_action") { p in
             let name = p["name"] as? String ?? ""
             let id = p["id"] as? String
@@ -238,6 +248,7 @@ enum DebugActions {
                     }
                 }
             case "inbox_fake_merge": InboxFixture.mergePR()
+            case "inbox_tab": InboxStore.shared.detailTab = p["value"] as? String ?? "overview"
             case "inbox_tell_agent": if let sid = m.focusedSessionId { InboxStore.shared.tellAgent(session: sid) }
             case "inbox_fake_link":   // links a fixture item (value) to the focused session, caught up `minutes` ago
                 if let v = p["value"] as? String, let sid = m.focusedSessionId {

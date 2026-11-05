@@ -875,3 +875,84 @@ final class InboxMediaTests: XCTestCase {
         XCTAssertEqual(asked.count, 1)
     }
 }
+
+/// Parsing `gh pr diff`.
+final class InboxDiffTests: XCTestCase {
+    let sample = """
+    diff --git a/src/a.ts b/src/a.ts
+    index 1..2 100644
+    --- a/src/a.ts
+    +++ b/src/a.ts
+    @@ -10,4 +10,5 @@ function x() {
+     keep
+    -old line
+    +new line
+    +another
+     keep 2
+    @@ -40,2 +41,2 @@
+    -- not a header
+    +--- also not a header
+     tail
+    \\ No newline at end of file
+    diff --git a/old name.txt b/new name.txt
+    similarity index 90%
+    rename from old name.txt
+    rename to new name.txt
+    index 3..4 100644
+    --- a/old name.txt
+    +++ b/new name.txt
+    @@ -1 +1 @@
+    -a
+    +b
+    diff --git a/gone.txt b/gone.txt
+    deleted file mode 100644
+    index 5..0000000
+    --- a/gone.txt
+    +++ /dev/null
+    @@ -1,2 +0,0 @@
+    -x
+    -y
+    diff --git a/img.png b/img.png
+    index 6..7 100644
+    Binary files a/img.png and b/img.png differ
+
+    """
+
+    func testParse() {
+        let f = InboxDiff.parse(sample)
+        XCTAssertEqual(f.map(\.path), ["src/a.ts", "new name.txt", "gone.txt", "img.png"])
+        XCTAssertEqual(f.map(\.status), ["M", "R", "D", "M"])
+        XCTAssertEqual(f[1].oldPath, "old name.txt")
+        XCTAssertTrue(f[3].binary)
+        XCTAssertEqual(f[0].hunks.count, 2)
+        XCTAssertEqual(f[0].added, 3); XCTAssertEqual(f[0].removed, 2)
+        let h = f[0].hunks[0]
+        XCTAssertEqual(h.header, "@@ -10,4 +10,5 @@ function x() {")
+        XCTAssertEqual(h.lines.map(\.old), [10, 11, nil, nil, 12])
+        XCTAssertEqual(h.lines.map(\.new), [10, nil, 11, 12, 13])
+        let h2 = f[0].hunks[1]
+        XCTAssertEqual(h2.lines.map(\.text), ["- not a header", "--- also not a header", "tail", "No newline at end of file"])
+        XCTAssertEqual(h2.lines.last?.kind, .note)
+        XCTAssertEqual(f[2].removed, 2)
+        XCTAssertEqual(InboxDiff.parse(""), [])
+    }
+
+    func testStoreLoadsOncePerVersion() {
+        let suite = "octomux-inbox-diff-\(UUID().uuidString)"
+        defer { UserDefaults().removePersistentDomain(forName: suite) }
+        let store = InboxStore(defaults: UserDefaults(suiteName: suite)!)
+        var calls = 0
+        store.loadDiff = { _ in calls += 1; return self.sample }
+        let pr = InboxItem(id: "gh:o/r#1", source: .github, kind: .pr, key: "#1", place: "o/r", title: "T", author: "a", assignee: nil,
+                           status: "Open", statusTone: "done", reason: .mine, updated: Date(timeIntervalSince1970: 5), body: "", url: "", number: 1)
+        store.loadDiffIfNeeded(pr)
+        let e = expectation(description: "loaded")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { e.fulfill() }
+        wait(for: [e], timeout: 2)
+        if case .success(let f)? = store.diff(pr) { XCTAssertEqual(f.count, 4) } else { XCTFail("no diff") }
+        store.loadDiffIfNeeded(pr)
+        XCTAssertEqual(calls, 1)
+        var newer = pr; newer.updated = Date(timeIntervalSince1970: 9)
+        XCTAssertNil(store.diff(newer))                              // a new push: read again
+    }
+}

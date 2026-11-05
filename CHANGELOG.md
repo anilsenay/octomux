@@ -41,6 +41,8 @@
   - **Images** in descriptions and comments: GitHub's own images (loaded without any credentials) and Jira
     attachments (from your Jira only). Images from other sites aren't loaded, since they could tell the sender you
     opened the item; they show as a link. Jira requests no longer follow a redirect to another host.
+  - **Code tab** on a pull request: its changed files with their counts, each one's changes with line numbers
+    (small files open, big ones closed; long ones show the first 400 lines until you ask for all).
   - Settings → Inbox: connections, Jira projects, GitHub repositories, what shows up, notifications, and what
     Send to agent opens.
 

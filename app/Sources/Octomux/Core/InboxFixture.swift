@@ -66,6 +66,43 @@ enum InboxFixture {
             ], note: "The history isn't available (Jira answered 403). Showing comments only."),
         ]
         fixtureItems = [pr, issue, quiet]
+        InboxStore.shared.loadDiff = { _ in
+            """
+            diff --git a/src/checkout/retry.ts b/src/checkout/retry.ts
+            new file mode 100644
+            index 0000000..3b18e51
+            --- /dev/null
+            +++ b/src/checkout/retry.ts
+            @@ -0,0 +1,9 @@
+            +export class RetryPolicy {
+            +  constructor(private readonly max = 1) {}
+            +
+            +  shouldRetry(attempt: number, error: PaymentError): boolean {
+            +    if (attempt > this.max) return false;
+            +    return error.code === "gateway_timeout";
+            +  }
+            +}
+            +
+            diff --git a/src/checkout/pay.ts b/src/checkout/pay.ts
+            index 7a1c2d0..9e4f5b1 100644
+            --- a/src/checkout/pay.ts
+            +++ b/src/checkout/pay.ts
+            @@ -12,7 +12,12 @@ export async function pay(order: Order) {
+               const gateway = gatewayFor(order.currency);
+            -  return gateway.charge(order.total);
+            +  const policy = new RetryPolicy(config.payments.maxRetries);
+            +  for (let attempt = 1; ; attempt++) {
+            +    try { return await gateway.charge(order.total); }
+            +    catch (e) { if (!policy.shouldRetry(attempt, e)) throw e; log.warn("retrying payment", { attempt }); }
+            +  }
+             }
+             
+             export function refund(order: Order) {
+            diff --git a/assets/logo.png b/assets/logo.png
+            index 1111111..2222222 100644
+            Binary files a/assets/logo.png and b/assets/logo.png differ
+            """
+        }
         // Made-up images: a drawn picture for allowed places (nothing is downloaded).
         InboxImages.shared.forget()
         InboxImages.shared.fetch = { origin, _ in

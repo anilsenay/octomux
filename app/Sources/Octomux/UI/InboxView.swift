@@ -559,11 +559,15 @@ struct InboxDetail: View {
                 else if item.kind == .pr, item.checks != nil { checks }
                 if let s = store.linkedSession(item) { linked(s) }
                 sinceCard
-                Hairline()
-                if !item.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { InboxMarkdown(text: item.body, item: item) }
-                else { Text("No description.").font(T.body).foregroundStyle(T.text3) }
-                InboxActivityView(item: item)
-                commentBox
+                if item.kind == .pr { tabs } else { Hairline() }
+                if item.kind == .pr && store.detailTab == "code" {
+                    InboxPRCode(item: item)
+                } else {
+                    if !item.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { InboxMarkdown(text: item.body, item: item) }
+                    else { Text("No description.").font(T.body).foregroundStyle(T.text3) }
+                    InboxActivityView(item: item)
+                    commentBox
+                }
             }
             .padding(.horizontal, 28).padding(.vertical, 22)
             .frame(maxWidth: 820, alignment: .leading)
@@ -746,6 +750,33 @@ struct InboxDetail: View {
         .padding(.horizontal, 12).padding(.vertical, 8)
         .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(T.accent.opacity(0.07)))
         .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(T.accent.opacity(0.25)))
+    }
+
+    /// Overview | Code, for a pull request.
+    private var tabs: some View {
+        let counts: String = {
+            if case .success(let f)? = store.diff(item) {
+                return " \(f.count)"
+            }
+            return ""
+        }()
+        return HStack(spacing: 18) {
+            ForEach([("overview", "Overview"), ("code", "Code" + counts)], id: \.0) { id, title in
+                Button { store.detailTab = id } label: {
+                    VStack(spacing: 6) {
+                        Text(title).font(.system(size: T.k * 12.5, weight: store.detailTab == id ? .semibold : .medium))
+                            .foregroundStyle(store.detailTab == id ? T.text : T.text3)
+                        Rectangle().fill(store.detailTab == id ? T.accent : .clear).frame(height: 2)
+                    }
+                    .fixedSize()
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+            Spacer()
+        }
+        .overlay(alignment: .bottom) { Rectangle().fill(T.border).frame(height: 1) }
+        .onAppear { store.loadDiffIfNeeded(item) }
     }
 
     /// "Since you looked": what changed after the item was last read, in one line.
@@ -1523,5 +1554,110 @@ struct InboxImageView: View {
     private func open() {
         let target = ref.url.hasPrefix(InboxMedia.jiraScheme) ? item?.url : ref.url
         if let t = target, let u = URL(string: t) { NSWorkspace.shared.open(u) }
+    }
+}
+
+/// A pull request's changes: files with their counts, each one's hunks with line numbers.
+struct InboxPRCode: View {
+    @ObservedObject var store = InboxStore.shared
+    let item: InboxItem
+    @State private var open: Set<String> = []
+    @State private var closed: Set<String> = []
+    @State private var full: Set<String> = []
+    static let shownLines = 400
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            switch store.diff(item) {
+            case .success(let files):
+                let added = files.reduce(0) { $0 + $1.added }, removed = files.reduce(0) { $0 + $1.removed }
+                HStack(spacing: 8) {
+                    Text("\(files.count) file\(files.count == 1 ? "" : "s") changed").font(.system(size: T.k * 12, weight: .semibold))
+                    Text("+\(added)").font(T.mono(11.5)).foregroundStyle(T.green)
+                    Text("−\(removed)").font(T.mono(11.5)).foregroundStyle(T.red)
+                    Spacer()
+                    Button(allOpen(files) ? "Collapse all" : "Expand all") {
+                        if allOpen(files) { closed = Set(files.map(\.id)); open = [] } else { open = Set(files.map(\.id)); closed = [] }
+                    }.buttonStyle(.link).font(T.caption)
+                }
+                if files.isEmpty { Text("No file changes.").font(T.caption).foregroundStyle(T.text3) }
+                ForEach(files) { f in fileView(f, files: files) }
+            case .failure(let e):
+                Label("Couldn't read the changes: \(e.description)", systemImage: "exclamationmark.triangle")
+                    .font(T.caption).foregroundStyle(T.amber).fixedSize(horizontal: false, vertical: true)
+            case nil:
+                Text("Loading the changes…").font(T.caption).foregroundStyle(T.text3)
+            }
+        }
+        .onAppear { store.loadDiffIfNeeded(item) }
+    }
+
+    /// Small changes open by default; big ones start closed.
+    private func isOpen(_ f: InboxDiff.File, _ files: [InboxDiff.File]) -> Bool {
+        if open.contains(f.id) { return true }
+        if closed.contains(f.id) { return false }
+        let total = files.reduce(0) { $0 + $1.lineCount }
+        return !f.binary && (total <= 1500 || f.lineCount <= 120)
+    }
+    private func allOpen(_ files: [InboxDiff.File]) -> Bool { files.filter { !$0.binary }.allSatisfy { isOpen($0, files) } }
+
+    private func fileView(_ f: InboxDiff.File, files: [InboxDiff.File]) -> some View {
+        let expanded = isOpen(f, files)
+        return VStack(alignment: .leading, spacing: 0) {
+            Button {
+                if expanded { closed.insert(f.id); open.remove(f.id) } else { open.insert(f.id); closed.remove(f.id) }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: expanded ? "chevron.down" : "chevron.right").font(.system(size: T.k * 9, weight: .semibold)).foregroundStyle(T.text3).frame(width: 10)
+                    Text(f.status).font(T.mono(10.5)).foregroundStyle(statusColor(f.status)).frame(width: 12)
+                    Text(f.oldPath.map { "\($0) → \(f.path)" } ?? f.path).font(T.mono(11.5)).foregroundStyle(T.text).lineLimit(1).truncationMode(.middle)
+                    Spacer(minLength: 6)
+                    if f.binary { Text("binary").font(T.caption).foregroundStyle(T.text3) }
+                    else {
+                        Text("+\(f.added)").font(T.mono(11)).foregroundStyle(T.green)
+                        Text("−\(f.removed)").font(T.mono(11)).foregroundStyle(T.red)
+                    }
+                }
+                .padding(.horizontal, 10).frame(height: 30)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            if expanded && !f.binary {
+                Rectangle().fill(T.border).frame(height: 1)
+                let lines = f.hunks.flatMap { h in [InboxDiff.Line(kind: .note, old: nil, new: nil, text: h.header)] + h.lines }
+                let shown = full.contains(f.id) ? lines : Array(lines.prefix(Self.shownLines))
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(shown.enumerated()), id: \.offset) { _, l in lineView(l) }
+                }
+                if shown.count < lines.count {
+                    Button("Show all \(lines.count) lines") { full.insert(f.id) }.buttonStyle(.link).font(T.caption).padding(8)
+                }
+            }
+        }
+        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(T.frame.opacity(0.45)))
+        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(T.border))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private func lineView(_ l: InboxDiff.Line) -> some View {
+        let bg: Color = l.kind == .added ? T.green.opacity(0.13) : l.kind == .removed ? T.red.opacity(0.13) : .clear
+        let sign = l.kind == .added ? "+" : l.kind == .removed ? "−" : " "
+        return HStack(alignment: .top, spacing: 0) {
+            Text(l.old.map(String.init) ?? "").frame(width: 38, alignment: .trailing)
+            Text(l.new.map(String.init) ?? "").frame(width: 38, alignment: .trailing)
+            Text(l.kind == .note ? "" : sign).frame(width: 18)
+            Text(l.text.isEmpty ? " " : l.text).foregroundStyle(l.kind == .note ? T.text3 : T.text)
+                .lineLimit(1).truncationMode(.tail)
+            Spacer(minLength: 0)
+        }
+        .font(T.mono(11))
+        .foregroundStyle(T.text3)
+        .padding(.vertical, 1)
+        .background(l.kind == .note ? T.accent.opacity(0.06) : bg)
+        .textSelection(.enabled)
+    }
+
+    private func statusColor(_ s: String) -> Color {
+        switch s { case "A": return T.green; case "D": return T.red; case "R": return T.blue; default: return T.amber }
     }
 }

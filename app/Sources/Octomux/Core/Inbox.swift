@@ -229,6 +229,37 @@ final class InboxStore: ObservableObject {
     /// Looks at the linked items in the list again (after a link, and for the debug fixture).
     func recheckLinked() { checkLinked(items) }
 
+    // MARK: Pull request diffs
+
+    /// The pull request detail's tab: overview | code.
+    @Published var detailTab = "overview"
+
+    /// Item id → its parsed diff as of `updated` (or why it couldn't be read).
+    @Published private(set) var diffs: [String: (updated: Date, files: Result<[InboxDiff.File], InboxError>)] = [:]
+    /// Reads a PR's unified diff (gh; the fixture swaps it).
+    var loadDiff: (InboxItem) throws -> String = InboxDiff.fetch
+
+    func diff(_ i: InboxItem) -> Result<[InboxDiff.File], InboxError>? {
+        guard let d = diffs[i.id], d.updated == i.updated else { return nil }
+        return d.files
+    }
+
+    /// Loads the diff once per version of the PR (from onAppear).
+    func loadDiffIfNeeded(_ i: InboxItem) {
+        guard i.kind == .pr, diff(i) == nil, !diffLoading.contains(i.id) else { return }
+        diffLoading.insert(i.id)
+        let load = loadDiff
+        DispatchQueue.global(qos: .userInitiated).async {
+            let r: Result<[InboxDiff.File], InboxError>
+            do { r = .success(InboxDiff.parse(try load(i))) } catch { r = .failure(InboxError("\(error)")) }
+            DispatchQueue.main.async {
+                self.diffLoading.remove(i.id)
+                self.diffs[i.id] = (i.updated, r)
+            }
+        }
+    }
+    private var diffLoading: Set<String> = []
+
     // MARK: Merged, closed, done
 
     /// Items that left the open searches because they were merged, closed or done.
