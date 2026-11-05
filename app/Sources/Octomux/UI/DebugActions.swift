@@ -129,6 +129,23 @@ enum DebugActions {
             return ["files": files.count, "added": files.reduce(0) { $0 + $1.added }, "removed": files.reduce(0) { $0 + $1.removed },
                     "statuses": Dictionary(grouping: files, by: \.status).mapValues(\.count), "binary": files.filter(\.binary).count]
         }
+        // Runs Fix with agent's evidence collection on one real check (read-only: gh run view --log-failed).
+        d.register("inbox_probe_ci") { p in
+            let repo = p["repo"] as? String ?? "", url = p["url"] as? String ?? "", name = p["name"] as? String ?? "check"
+            var item = InboxItem(id: "gh:\(repo)#0", source: .github, kind: .pr, key: "#0", place: repo, title: "", author: "",
+                                 assignee: nil, status: "", statusTone: "", reason: .mine, updated: Date(), body: "", url: "", number: 0)
+            item.failedCheckDetails = [.init(name: name, url: url)]
+            let raw = (InboxCI.jobId(url)).flatMap { try? InboxCI.ghLog(repo, $0) } ?? ""
+            let block = InboxCI.block(InboxCI.collect(item, log: InboxCI.ghLog))
+            let lines: [String] = block.split(separator: "\n").map(String.init)
+            let errors: [String] = Array(lines.filter { $0.range(of: #"(?i)\berror\b|failed"#, options: .regularExpression) != nil }.prefix(8))
+            let stamped: Bool = block.range(of: #"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d+Z"#, options: .regularExpression) != nil
+            var out: [String: Any] = ["raw_chars": raw.count, "block_chars": block.count, "max": InboxCI.maxTotal]
+            out["block_tail"] = Array(lines.suffix(14))
+            out["error_lines"] = errors
+            out["has_timestamps"] = stamped
+            return out
+        }
         d.register("ui_action") { p in
             let name = p["name"] as? String ?? ""
             let id = p["id"] as? String
