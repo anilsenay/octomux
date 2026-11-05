@@ -759,6 +759,7 @@ struct InboxDetail: View {
                     }
                 }
                 related
+                summaryCard
                 if let until = store.snoozedUntil(item.id) {
                     HStack(spacing: 8) {
                         Image(systemName: "moon.zzz").foregroundStyle(InboxSnoozeMenu.tint)
@@ -884,6 +885,36 @@ struct InboxDetail: View {
                 if item.kind == .pr, item.reason == .review, item.ended == nil, item.source == .bitbucket || store.activity[item.id] != nil { yourReview }
             }
             .font(.system(size: T.k * 11.5))
+        }
+    }
+
+    /// The agent's summary of the item (or why it couldn't write one), marked when the item changed since.
+    @ViewBuilder private var summaryCard: some View {
+        if store.summarizing.contains(item.id) && store.summaries[item.id] == nil {
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text("Your agent is reading the item and its history…").font(.system(size: T.k * 12)).foregroundStyle(T.text3)
+            }
+        } else if let s = store.summaries[item.id] {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    Image(systemName: "sparkles").foregroundStyle(T.accent)
+                    Text("Summary").font(.system(size: T.k * 12, weight: .semibold))
+                    if s.updated < item.updated {
+                        Text("· out of date: it changed since").font(.system(size: T.k * 11.5)).foregroundStyle(T.amber)
+                    }
+                    Spacer()
+                    if store.summarizing.contains(item.id) { ProgressView().controlSize(.small) }
+                    else { Button("Summarize Again") { store.summarize(item) }.buttonStyle(.link).font(T.caption) }
+                    Button { store.dismissSummary(item.id) } label: { Image(systemName: "xmark").font(.system(size: T.k * 8, weight: .bold)) }
+                        .buttonStyle(IconButtonStyle(size: 18)).help("Close the summary")
+                }
+                if let t = s.text { InboxMarkdown(text: t, size: 12.5, item: item) }
+                if let e = s.error { Text("Couldn't summarize: \(e)").font(.system(size: T.k * 12)).foregroundStyle(T.amber).fixedSize(horizontal: false, vertical: true) }
+            }
+            .padding(12)
+            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(T.accent.opacity(0.06)))
+            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(T.accent.opacity(0.25)))
         }
     }
 
@@ -1079,6 +1110,11 @@ struct InboxDetail: View {
                 Button { jiraActions.assignToMe(item) } label: { Label("Assign to Me", systemImage: "person.crop.circle.badge.plus") }
                     .buttonStyle(SecondaryButtonStyle()).fixedSize().disabled(jiraActions.busy.contains(item.id))
             }
+            Button { store.summarize(item) } label: {
+                Label(store.summarizing.contains(item.id) ? "Summarizing…" : "Summarize", systemImage: "sparkles")
+            }
+            .buttonStyle(SecondaryButtonStyle()).fixedSize().disabled(store.summarizing.contains(item.id))
+            .help("Your agent reads the item and its history and says where it stands, what happened and what waits for whom (no tools; nothing is changed)")
             Button { InboxStart.ask(item, model: model) } label: {
                 Label(store.askSession(item) == nil ? "Ask" : "Continue asking", systemImage: "questionmark.bubble")
             }

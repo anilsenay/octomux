@@ -88,6 +88,9 @@
     next to Mark unread.
   - Settings → Inbox lists the Bitbucket repos read for review requests too, with how many items each holds;
     an unticked one is no longer read.
+  - **Summarize** (✨ in the detail): your own agent CLI (the one picked for commit messages; no tools, nothing
+    kept) reads the item and its history and says where it stands, what happened and what waits on whom, you
+    first, in the item's language. The card says when the item changed since; Summarize Again redoes it.
   - **More Jira changes from the Inbox**, each asked first: assign an issue to anyone (search by name) or unassign it
     (the assignee is a menu), change its priority (a chip next to the status, with the priorities its screen
     allows), rename it (the pencil by the title) and edit a plain description. A description with formatting

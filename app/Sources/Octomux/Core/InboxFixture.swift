@@ -140,6 +140,21 @@ enum InboxFixture {
             return ""
         }
         InboxStore.shared.commentWriter = { i, text in ran.append("comment \(i.id) \(text)") }
+        // A made-up agent: no CLI runs.
+        InboxStore.summarizer = { prompt, _ in
+            Thread.sleep(forTimeInterval: 0.6)
+            ran.append("summarize \(prompt.count) chars")
+            return """
+            **Now:** Open, review requested from you; one approval, one request for changes; the build fails.
+
+            **What happened:**
+            - Eli asked for changes: the last item should take the rounding remainder.
+            - Dana pushed a fix 20 minutes ago; Max approved after it.
+            - Pipeline #318 fails in the test step.
+
+            **Waiting on:** You — a review. Dana — the failing build.
+            """
+        }
         InboxStore.shared.bitbucketLog = { _, c in
             guard c.name == "Pipeline #318" else { throw InboxError("no such build") }
             return """

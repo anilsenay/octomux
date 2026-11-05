@@ -367,6 +367,35 @@ final class InboxStore: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { self.refresh() }
     }
 
+    // MARK: Summaries
+
+    struct Summary: Equatable { let updated: Date; let text: String?; let error: String? }
+    /// Item id → its last summary (memory only), and the ones being written.
+    @Published private(set) var summaries: [String: Summary] = [:]
+    @Published private(set) var summarizing: Set<String> = []
+
+    /// Asks your agent CLI for a summary of the item and its history (read off the main queue).
+    func summarize(_ i: InboxItem) {
+        guard !summarizing.contains(i.id) else { return }
+        summarizing.insert(i.id)
+        let load = loadActivity, run = Self.summarizer, project = project(for: i)?.id, cached = activity[i.id]
+        let mine: YourReview? = i.reason == .review && (i.source == .bitbucket || cached != nil) ? yourReview(i) : nil
+        background { [weak self] in
+            let events = cached?.events ?? (try? load(i))?.events ?? []
+            let r = Result { try run(InboxSummary.prompt(i, events: events, yourReview: mine), project) }
+            self?.onMain {
+                guard let self else { return }
+                self.summarizing.remove(i.id)
+                switch r {
+                case .success(let t): self.summaries[i.id] = Summary(updated: i.updated, text: t, error: nil)
+                case .failure(let e): self.summaries[i.id] = Summary(updated: i.updated, text: nil, error: e.localizedDescription)
+                }
+            }
+        }
+    }
+
+    func dismissSummary(_ id: String) { summaries[id] = nil }
+
     // MARK: Reviews
 
     /// Who asked you to review a pull request (from its history, when it says so).

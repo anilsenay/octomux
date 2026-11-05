@@ -342,6 +342,8 @@ enum DebugActions {
             case "inbox_fake_merge": InboxFixture.mergePR()
             case "inbox_fake_bb_decline": InboxFixture.declineBitbucket()
             case "inbox_fake_bb_new": InboxFixture.newBitbucketPR()
+            case "inbox_summarize":   // the open item's summary (the fixture's agent answers with a made-up one)
+                if let item = InboxStore.shared.items.first(where: { $0.id == InboxStore.shared.selectedId }) { InboxStore.shared.summarize(item) }
             case "inbox_snooze":      // snoozes the open item for `minutes` (default 60)
                 if let item = InboxStore.shared.items.first(where: { $0.id == InboxStore.shared.selectedId }) {
                     InboxStore.shared.snooze(item, until: Date().addingTimeInterval(Double((p["minutes"] as? Int) ?? 60) * 60))
