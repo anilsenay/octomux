@@ -796,6 +796,9 @@ struct InboxDetail: View {
     @State private var editingDescription = false
     @State private var descriptionDraft = ""
     @State private var pickingAssignee = false
+    /// Findings picked to post (nil: the default pick, issues and suggestions not posted yet).
+    @State private var picked: Set<String>?
+    @State private var postSheet: [InboxReviewPost.Comment]?
 
     private var project: Project? { store.workProject(for: item) }
 
@@ -982,40 +985,46 @@ struct InboxDetail: View {
     @ViewBuilder private var agentReviewCard: some View {
         if let r = reviews.run(item.id) {
             VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 6) {
-                    Image(systemName: "eye.square").foregroundStyle(T.accent)
-                    Text("Agent review").font(.system(size: T.k * 12.5, weight: .semibold))
+                // What it found, then what you can do with it (a row of its own: a narrow detail fits both).
+                FlowLayout(spacing: 6, lineSpacing: 4) {
+                    Label("Agent review", systemImage: "eye.square").font(.system(size: T.k * 12.5, weight: .semibold))
+                        .labelStyle(.titleAndIcon).foregroundStyle(T.text).fixedSize()
                     if let res = r.result, r.state == .done {
-                        Text("· \(res.tally)").font(.system(size: T.k * 12)).foregroundStyle(T.text2)
+                        Text("· \(res.tally)").font(.system(size: T.k * 12)).foregroundStyle(T.text2).fixedSize()
                         let risk = res.risk.lowercased()
                         Text("risk \(risk)").font(.system(size: T.k * 10.5, weight: .semibold))
                             .foregroundStyle(risk == "high" ? T.red : risk == "medium" ? T.amber : T.green)
                             .padding(.horizontal, 6).frame(height: 16)
                             .background(Capsule().fill((risk == "high" ? T.red : risk == "medium" ? T.amber : T.green).opacity(0.14)))
+                            .fixedSize()
                         if hasNewCommits(r) {
-                            Text("· new commits since").font(.system(size: T.k * 11.5)).foregroundStyle(T.amber)
+                            Text("· new commits since").font(.system(size: T.k * 11.5)).foregroundStyle(T.amber).fixedSize()
                         }
                     }
-                    Spacer()
+                }
+                if !r.isActive || r.sessionId.flatMap(model.session) != nil { HStack(spacing: 10) {
                     if let sid = r.sessionId, model.session(sid) != nil {
-                        Button("Go to session") { model.selectSession(sid) }.buttonStyle(.link).font(T.caption)
+                        Button("Go to session") { model.selectSession(sid) }.buttonStyle(.link).font(T.caption).fixedSize()
                     }
                     if !r.isActive {
                         // Again: what changed since the last review (its findings checked too); All: the whole change.
                         let builds = (r.state == .done && r.result != nil) || r.previous != nil
                         Button(hasNewCommits(r) ? "Review New Commits" : "Review Again") { reviewInWorktree() }
-                            .buttonStyle(.link).font(T.caption)
+                            .buttonStyle(.link).font(T.caption).fixedSize()
                             .help(builds ? "Reviews what changed since the last review and checks its findings again" : "Reviews the pull request again")
                         if builds {
-                            Button("Review All") { reviewInWorktree(again: false) }.buttonStyle(.link).font(T.caption)
+                            Button("Review All") { reviewInWorktree(again: false) }.buttonStyle(.link).font(T.caption).fixedSize()
                                 .help("Reviews the whole pull request again, from scratch")
                         }
+                    }
+                    Spacer(minLength: 0)
+                    if !r.isActive {
                         Button { if let why = reviews.discard(item.id) { model.lastError = "The worktree stayed: \(why)" } } label: {
                             Image(systemName: "trash").font(.system(size: T.k * 10))
                         }
                         .buttonStyle(IconButtonStyle(size: 20)).help("Forget this review and remove its worktree (when nothing in it changed)")
                     }
-                }
+                } }
                 switch r.state {
                 case .queued: progress("Waiting for another review to finish.")
                 case .preparing:
@@ -1035,7 +1044,9 @@ struct InboxDetail: View {
                         if !res.fixed.isEmpty || new > 0 {
                             Text("Since the last review: \(res.fixed.count) fixed · \(new) new").font(.system(size: T.k * 11.5, weight: .medium)).foregroundStyle(T.text2)
                         }
-                        ForEach(res.findings) { f in finding(f) }
+                        let canPost = item.kind == .pr && item.source.isCodeHost && item.ended == nil
+                        ForEach(res.findings) { f in finding(f, run: canPost ? r : nil) }
+                        if canPost, res.findings.contains(where: { r.posted?[$0.id] == nil }) { postBar(r, res) }
                         ForEach(res.fixed, id: \.self) { t in
                             HStack(alignment: .firstTextBaseline, spacing: 8) {
                                 Image(systemName: "checkmark.circle.fill").font(.system(size: T.k * 10.5)).foregroundStyle(T.green).frame(width: 14)
@@ -1058,7 +1069,68 @@ struct InboxDetail: View {
         }
     }
 
-    private func finding(_ f: InboxReviewResult.Finding) -> some View {
+    private func pickedIds(_ r: InboxReviewRun, _ res: InboxReviewResult) -> Set<String> {
+        let open = res.findings.filter { r.posted?[$0.id] == nil }
+        return picked.map { $0.intersection(open.map(\.id)) } ?? Set(open.filter(InboxReviewPost.picked).map(\.id))
+    }
+
+    /// Bitbucket anchors comments to the pull request as it is now: one that moved past the review isn't posted to.
+    private func postBlocked(_ r: InboxReviewRun) -> String? {
+        guard item.source == .bitbucket, let h = r.head, let now = item.head, !InboxReviews.sameCommit(h, now) else { return nil }
+        return "New commits came since this review, so its lines may have moved. Review New Commits first, then post."
+    }
+
+    private func postBar(_ r: InboxReviewRun, _ res: InboxReviewResult) -> some View {
+        let n = pickedIds(r, res).count
+        let blocked = postBlocked(r)
+        return VStack(alignment: .leading, spacing: 6) {
+            if let blocked { Text(blocked).font(.system(size: T.k * 11.5)).foregroundStyle(T.amber).fixedSize(horizontal: false, vertical: true) }
+            HStack(spacing: 8) {
+                Spacer()
+                if reviews.posting.contains(item.id) { ProgressView().controlSize(.small) }
+                Button(n == 0 ? "Post Comments…" : "Post \(n) Comment\(n == 1 ? "" : "s")…") {
+                    postSheet = reviews.comments(item.id, picked: pickedIds(r, res))
+                }
+                .buttonStyle(SecondaryButtonStyle()).fixedSize()
+                .disabled(n == 0 || blocked != nil || reviews.posting.contains(item.id))
+                .help("Shows the comments to post on \(item.place) \(item.key) first; nothing goes until you confirm")
+            }
+        }
+        .padding(.top, 2)
+        .onChange(of: reviews.previewRequest) { _, id in
+            guard id == item.id else { return }
+            reviews.previewRequest = nil
+            postSheet = reviews.comments(item.id, picked: pickedIds(r, res))
+        }
+        .sheet(isPresented: Binding(get: { postSheet != nil }, set: { if !$0 { postSheet = nil } })) {
+            InboxPostSheet(item: item, run: r, comments: postSheet ?? [], summary: res.summary) { plan in
+                postSheet = nil
+                confirmPost(plan)
+            } cancel: { postSheet = nil }
+        }
+    }
+
+    private func confirmPost(_ plan: InboxReviewPost.Plan) {
+        let inline = plan.comments.filter(\.inline).count, inText = plan.comments.count - inline
+        var parts: [String] = []
+        if inline > 0 { parts.append("\(inline) comment\(inline == 1 ? "" : "s") on their lines") }
+        if inText > 0 || (plan.summary?.isEmpty == false) {
+            parts.append(inText > 0 ? "\(inText) in the review's text" : "the summary as the review's text")
+        }
+        if plan.verdict != .comment { parts.append(plan.verdict == .approve ? "your approval" : "your request for changes") }
+        InboxConfirm.ask("Post to \(item.place) \(item.key)?",
+                         "Posts " + ListFormatter.localizedString(byJoining: parts) + ", as you. Others see it at once.",
+                         "Post") { yes in
+            guard yes else { return }
+            reviews.post(item, plan) { err in
+                if let err { model.lastError = "Posting the review: \(err)" }
+                picked = nil
+                store.loadActivity(item)
+            }
+        }
+    }
+
+    private func finding(_ f: InboxReviewResult.Finding, run: InboxReviewRun? = nil) -> some View {
         let (icon, color): (String, Color) = {
             switch f.severity {
             case "issue": return ("exclamationmark.triangle.fill", T.red)
@@ -1067,10 +1139,27 @@ struct InboxDetail: View {
             default: return ("lightbulb", T.amber)
             }
         }()
+        let postedURL = run?.posted?[f.id]
         return HStack(alignment: .firstTextBaseline, spacing: 8) {
+            if let r = run, let res = r.result, postedURL == nil {
+                let on = pickedIds(r, res).contains(f.id)
+                Toggle("", isOn: Binding(get: { on }, set: { v in
+                    var s = pickedIds(r, res)
+                    if v { s.insert(f.id) } else { s.remove(f.id) }
+                    picked = s
+                }))
+                .toggleStyle(.checkbox).labelsHidden().controlSize(.small)
+                .help(on ? "Posted when you post the comments" : "Not posted")
+            }
             Image(systemName: icon).font(.system(size: T.k * 10.5)).foregroundStyle(color).frame(width: 14)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
+                    if let u = postedURL {
+                        Button { if let url = URL(string: u) { NSWorkspace.shared.open(url) } } label: {
+                            Label("posted", systemImage: "checkmark").font(.system(size: T.k * 9.5, weight: .bold)).labelStyle(InboxTightLabel())
+                        }
+                        .buttonStyle(.plain).foregroundStyle(T.green).help("Posted to \(item.source.name); click to open it")
+                    }
                     if f.status == "new" {
                         Text("new").font(.system(size: T.k * 9.5, weight: .bold)).foregroundStyle(T.accent)
                             .padding(.horizontal, 5).frame(height: 15).background(Capsule().fill(T.accent.opacity(0.15)))
@@ -3352,5 +3441,82 @@ struct InboxColumnHandle: View {
             .onTapGesture(count: 2) { width = reset }
             .offset(x: 4)
             .help("Drag to resize; double-click for the default width")
+    }
+}
+
+/// What will be posted, before it is: each comment (editable), where it goes, the summary and the verdict.
+struct InboxPostSheet: View {
+    let item: InboxItem
+    let run: InboxReviewRun
+    @State var comments: [InboxReviewPost.Comment]
+    let summary: String
+    let post: (InboxReviewPost.Plan) -> Void
+    let cancel: () -> Void
+    @State private var withSummary = false
+    @State private var verdict: InboxReviewPost.Verdict = .comment
+
+    init(item: InboxItem, run: InboxReviewRun, comments: [InboxReviewPost.Comment], summary: String,
+         post: @escaping (InboxReviewPost.Plan) -> Void, cancel: @escaping () -> Void) {
+        self.item = item; self.run = run; self._comments = State(initialValue: comments); self.summary = summary
+        self.post = post; self.cancel = cancel
+    }
+
+    /// You can't approve or ask for changes on your own pull request.
+    private var canVerdict: Bool { item.author != "You" }
+
+    private var moved: Bool {
+        guard let h = run.head, let now = item.head else { return false }
+        return !InboxReviews.sameCommit(h, now)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Post to \(item.place) \(item.key)").font(.system(size: T.k * 15, weight: .semibold))
+            if moved {
+                Text("New commits came since this review: the comments go on the commit it read (\(String((run.head ?? "").prefix(8)))).")
+                    .font(.system(size: T.k * 11.5)).foregroundStyle(T.amber).fixedSize(horizontal: false, vertical: true)
+            }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(comments.indices, id: \.self) { k in
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack(spacing: 6) {
+                                Text(comments[k].path.isEmpty ? "General" : comments[k].path + (comments[k].line.map { ":\($0)" } ?? ""))
+                                    .font(T.mono(11)).foregroundStyle(T.text2)
+                                Text(comments[k].inline ? "on its line" : "in the review's text (the line isn't in the change)")
+                                    .font(.system(size: T.k * 10.5)).foregroundStyle(comments[k].inline ? T.text3 : T.amber)
+                            }
+                            TextEditor(text: $comments[k].body)
+                                .font(.system(size: T.k * 12.5)).frame(minHeight: 64, maxHeight: 140)
+                                .scrollContentBackground(.hidden).padding(6)
+                                .background(RoundedRectangle(cornerRadius: 6).fill(T.frame.opacity(0.6)))
+                                .overlay(RoundedRectangle(cornerRadius: 6).stroke(T.border))
+                        }
+                    }
+                }
+                .padding(.trailing, 4)
+            }
+            .frame(maxHeight: 380)
+            Toggle("Add the review's summary as the review's text", isOn: $withSummary).disabled(summary.isEmpty)
+            if canVerdict {
+                Picker("Verdict", selection: $verdict) {
+                    ForEach(InboxReviewPost.Verdict.allCases) { v in Text(v.title).tag(v) }
+                }
+                .pickerStyle(.segmented)
+            }
+            HStack {
+                Spacer()
+                Button("Cancel", action: cancel).keyboardShortcut(.cancelAction)
+                Button("Post…") {
+                    let cleaned = comments.map { c -> InboxReviewPost.Comment in var c = c; c.body = c.body.trimmingCharacters(in: .whitespacesAndNewlines); return c }
+                        .filter { !$0.body.isEmpty }
+                    post(.init(comments: cleaned, summary: withSummary ? summary : nil, verdict: canVerdict ? verdict : .comment, commit: run.head ?? ""))
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(comments.allSatisfy { $0.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } && !withSummary && verdict == .comment)
+            }
+        }
+        .padding(18)
+        .frame(width: 560)
     }
 }

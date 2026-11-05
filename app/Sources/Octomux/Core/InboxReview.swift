@@ -81,6 +81,8 @@ struct InboxReviewRun: Codable, Equatable {
     /// Reviewing again: the commit the last review looked at, and what it found (the new commits are reviewed).
     var since: String? = nil
     var previous: InboxReviewResult? = nil
+    /// Findings posted to the pull request (finding id → the comment's or the review's link).
+    var posted: [String: String]? = nil
     var isActive: Bool { state == .queued || state == .preparing || state == .working }
 }
 
@@ -108,6 +110,52 @@ final class InboxReviews: ObservableObject {
     /// `clone`: the downloaded clone's folder and the local projects to learn the clone URL's form from; nil: the
     /// project's own checkout.
     var prepare: (InboxItem, Project, _ clone: (dir: String, projectPaths: [String], job: GitJob?)?, _ existing: String?) throws -> Prepared = InboxReviews.prepareWorktree
+    // MARK: Posting findings
+
+    @Published private(set) var posting: Set<String> = []
+    /// Debug: opens the open item's post preview (its card watches this).
+    @Published var previewRequest: String?
+
+    /// The review's diff (base...head in its worktree), to know which lines a comment can sit on; nil when the
+    /// worktree is gone (tests swap it).
+    var diffFor: (InboxReviewRun) -> String? = { r in
+        guard let p = r.path, let b = r.base, let h = r.head, FileManager.default.fileExists(atPath: p) else { return nil }
+        return GitInfo.git(["diff", "--no-color", "--no-ext-diff", "\(b)...\(h)"], in: p)
+    }
+
+    /// Network (the debug fixture and tests swap it): posts the plan, reporting each finding posted with its link.
+    var poster: (InboxItem, InboxReviewPost.Plan, (String, String) -> Void) throws -> Void = { i, plan, posted in
+        switch i.source {
+        case .github: for (k, v) in try InboxReviewPost.postGitHub(i, plan) { posted(k, v) }
+        case .bitbucket: try InboxReviewPost.postBitbucket(i, plan, posted: posted)
+        case .jira: throw InboxError("Jira issues have no review.")
+        }
+    }
+
+    /// The comments the picked findings make (on their lines when the change shows them).
+    func comments(_ id: String, picked: Set<String>) -> [InboxReviewPost.Comment] {
+        guard let r = runs[id], let res = r.result else { return [] }
+        let lines = diffFor(r).map(InboxReviewPost.commentable(diff:))
+        return InboxReviewPost.comments(res.findings.filter { picked.contains($0.id) && r.posted?[$0.id] == nil }, lines: lines)
+    }
+
+    /// Posts in the background; `done` gets why it failed (what went before a failure stays marked posted).
+    func post(_ i: InboxItem, _ plan: InboxReviewPost.Plan, done: @escaping (String?) -> Void) {
+        guard !posting.contains(i.id) else { return }
+        posting.insert(i.id)
+        let send = poster
+        background { [weak self] in
+            var err: String?
+            do {
+                try send(i, plan) { fid, url in self?.onMain { self?.runs[i.id]?.posted = (self?.runs[i.id]?.posted ?? [:]).merging([fid: url]) { _, b in b }; self?.save() } }
+            } catch { err = "\(error)" }
+            self?.onMain {
+                self?.posting.remove(i.id)
+                done(err)
+            }
+        }
+    }
+
     /// Whether commit `a` is an ancestor of `b`, in a checkout (tests swap it).
     var isAncestor: (_ a: String, _ b: String, _ dir: String) -> Bool = { a, b, dir in
         Worktrees.gitWithError(["merge-base", "--is-ancestor", a, b], in: dir).0
@@ -177,6 +225,8 @@ final class InboxReviews: ObservableObject {
             let (h, res) = o.state == .done ? (o.head, o.result) : (o.since, o.previous)
             if let h, let res { runs[i.id]?.since = h; runs[i.id]?.previous = res }
         }
+        // What was posted stays posted (a finding that still stands keeps its id).
+        if keep { runs[i.id]?.posted = old?.posted }
         save()
         pump()
         return nil

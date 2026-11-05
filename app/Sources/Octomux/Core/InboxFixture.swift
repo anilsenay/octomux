@@ -143,6 +143,21 @@ enum InboxFixture {
             return ""
         }
         InboxStore.shared.commentWriter = { i, text in ran.append("comment \(i.id) \(text)") }
+        // Posting a review: what GitHub or Bitbucket would be sent, recorded only.
+        InboxReviews.shared.poster = { i, plan, posted in
+            switch i.source {
+            case .github:
+                let body = String(decoding: (try? JSONSerialization.data(withJSONObject: InboxReviewPost.githubReview(plan), options: [.sortedKeys])) ?? Data(), as: UTF8.self)
+                ran.append("review \(i.id) \(body)")
+                for c in plan.comments { posted(c.findingId, i.url + "#pullrequestreview-1") }
+            default:
+                try InboxReviewPost.postBitbucket(i, plan, request: { path, method, body in
+                    let b = body.flatMap { try? JSONSerialization.data(withJSONObject: $0, options: [.sortedKeys]) }.map { String(decoding: $0, as: UTF8.self) } ?? ""
+                    ran.append("bitbucket \(method) \(path) \(b)")
+                    return Data(#"{"links": {"html": {"href": "https://bitbucket.org/x#comment-1"}}}"#.utf8)
+                }, posted: posted)
+            }
+        }
         InboxStore.shared.taskLoader = { i in
             i.id != "bb:acme/payments-api#7" ? [] : [
                 .init(id: 11, text: "Give the last item the rounding remainder", resolved: false, creator: "Eli"),
@@ -165,7 +180,7 @@ enum InboxFixture {
             guard let t = reviewStarted[sid], Date().timeIntervalSince(t) > 3 else { return (nil, false, false) }
             return (InboxReviewResult(summary: "Retries a timed-out payment once. The retry cap is read from config, but the test still expects two attempts.",
                                       risk: "medium", findings: [
-                .init(file: "src/checkout/pay.ts", line: 14, severity: "issue", title: "A declined card is retried too",
+                .init(file: "src/checkout/pay.ts", line: 1, severity: "issue", title: "A declined card is retried too",
                       detail: "shouldRetry only checks the code on the second call; check it before the first retry as well."),
                 .init(file: "src/checkout/retry.ts", line: 2, severity: "suggestion", title: "Default max to the config value", detail: "Avoid a second default here."),
                 .init(file: "src/checkout/pay.ts", line: 17, severity: "nit", title: "Log the order id once", detail: ""),

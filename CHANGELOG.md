@@ -123,6 +123,14 @@
     sources only) and says it is updating them; the first fetch replaces them and nothing rings for the kept
     ones. A source loading with nothing kept says so ("Loading Bitbucket…") instead of showing nothing or
     "Nothing matches.".
+  - **Post a review's findings**: each finding on the Agent review card has a box (issues and suggestions are
+    ticked to start with; questions and nits wait for you). Post Comments… shows every comment first, editable,
+    with where it goes: on its line when the change shows that line, else in the review's text. Add the
+    review's summary if you like (off to start with) and pick a verdict (comment only, approve, request
+    changes; not on your own pull request); nothing goes until you confirm. GitHub gets one review anchored to
+    the commit that was reviewed; Bitbucket gets a comment each and then the verdict, and is not posted to
+    once new commits came since the review (Review New Commits first). Posted findings are marked with a link
+    and not offered again; one that still stands after Review New Commits stays marked.
   - **Review New Commits**: after a background review, the next one looks at what changed since (the new
     commits on top, with the rest of the change for context) and checks the earlier findings: the card says
     what was fixed (struck through) and marks new findings. A rebase or force push gets the whole change

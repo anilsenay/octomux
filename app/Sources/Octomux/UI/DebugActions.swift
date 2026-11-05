@@ -61,7 +61,7 @@ enum DebugActions {
                 },
                 "activity_errors": st.activityErrors,
                 "bitbucket_requests_last_hour": BitbucketInbox.shared.requestsLastHour,
-                "reviews": InboxReviews.shared.runs.mapValues { ["state": $0.state.rawValue, "path": $0.path ?? NSNull(), "head": $0.head ?? NSNull(),
+                "reviews": InboxReviews.shared.runs.mapValues { ["state": $0.state.rawValue, "path": $0.path ?? NSNull(), "head": $0.head ?? NSNull(), "posted": $0.posted ?? [:],
                                                                   "session": $0.sessionId ?? NSNull(), "note": $0.note ?? NSNull(),
                                                                   "findings": $0.result?.findings.count ?? -1] as [String: Any] },
             ] as [String: Any]
@@ -358,6 +358,16 @@ enum DebugActions {
                     } else { m.lastError = "no checkout project for \(item.place)" }
                 }
             case "inbox_review_discard": if let id = InboxStore.shared.selectedId { m.lastError = InboxReviews.shared.discard(id) }
+            case "inbox_review_preview": InboxReviews.shared.previewRequest = InboxStore.shared.selectedId   // the card's Post Comments…
+            case "inbox_review_post":  // posts the open item's review as the preview would (default pick; past the confirmation); "verdict", "summary": true
+                if let item = InboxStore.shared.items.first(where: { $0.id == InboxStore.shared.selectedId }),
+                   let r = InboxReviews.shared.run(item.id), let res = r.result {
+                    let ids = Set(res.findings.filter(InboxReviewPost.picked).map(\.id))
+                    let plan = InboxReviewPost.Plan(comments: InboxReviews.shared.comments(item.id, picked: ids),
+                                                    summary: (p["summary"] as? Bool) == true ? res.summary : nil,
+                                                    verdict: InboxReviewPost.Verdict(rawValue: p["verdict"] as? String ?? "") ?? .comment, commit: r.head ?? "")
+                    InboxReviews.shared.post(item, plan) { err in if let err { m.lastError = err } }
+                }
             case "inbox_summarize":   // the open item's summary (the fixture's agent answers with a made-up one)
                 if let item = InboxStore.shared.items.first(where: { $0.id == InboxStore.shared.selectedId }) { InboxStore.shared.summarize(item) }
             case "inbox_snooze":      // snoozes the open item for `minutes` (default 60)
