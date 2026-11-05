@@ -43,6 +43,9 @@
     opened the item; they show as a link. Jira requests no longer follow a redirect to another host.
   - **Code tab** on a pull request: its changed files with their counts, each one's changes with line numbers
     (small files open, big ones closed; long ones show the first 400 lines until you ask for all).
+  - **Pull Request menu** in the detail: merge (merge commit, squash or rebase, into the named base branch), mark
+    ready, convert to draft, close or reopen, through the GitHub CLI. Each one asks first, saying exactly what will
+    happen; the branch is never deleted. A merge or close made here is no news in your notifications.
   - Settings → Inbox: connections, Jira projects, GitHub repositories, what shows up, notifications, and what
     Send to agent opens.
 

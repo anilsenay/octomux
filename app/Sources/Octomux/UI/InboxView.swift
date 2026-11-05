@@ -542,6 +542,7 @@ struct InboxStatusDot: View {
 struct InboxDetail: View {
     @EnvironmentObject var model: AppModel
     @ObservedObject var store = InboxStore.shared
+    @ObservedObject var prActions = InboxActions.shared
     let item: InboxItem
     @AppStorage(InboxPrefs.startMode) private var startMode = "tab"
     @State private var comment = ""
@@ -555,6 +556,15 @@ struct InboxDetail: View {
             VStack(alignment: .leading, spacing: 14) {
                 header
                 actions
+                if let r = prActions.results[item.id] {
+                    HStack(spacing: 8) {
+                        Image(systemName: r.ok ? "checkmark.circle.fill" : "exclamationmark.triangle.fill").foregroundStyle(r.ok ? T.green : T.amber)
+                        Text(r.text).font(.system(size: T.k * 12)).foregroundStyle(T.text2).lineLimit(3).textSelection(.enabled)
+                        Spacer(minLength: 0)
+                        Button { prActions.clear(item) } label: { Image(systemName: "xmark").font(.system(size: T.k * 8, weight: .bold)) }
+                            .buttonStyle(IconButtonStyle(size: 18))
+                    }
+                }
                 if let e = item.ended { endedLine(e) }
                 else if item.kind == .pr, item.checks != nil { checks }
                 if let s = store.linkedSession(item) { linked(s) }
@@ -665,6 +675,32 @@ struct InboxDetail: View {
                 Label("Open in \(item.source.name)", systemImage: "arrow.up.forward.square")
             }
             .buttonStyle(SecondaryButtonStyle()).fixedSize()
+            let can = InboxPRAction.available(item)
+            if !can.isEmpty {
+                Menu {
+                    let merges = can.filter { [.merge, .squash, .rebase].contains($0) }
+                    if !merges.isEmpty {
+                        Section("Merge\(item.base.map { " into " + $0 } ?? "")") {
+                            ForEach(merges) { a in Button(a.title) { prActions.perform(a, on: item) } }
+                        }
+                    }
+                    ForEach(can.filter { ![.merge, .squash, .rebase].contains($0) }) { a in
+                        Button(a.title) { prActions.perform(a, on: item) }
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        if prActions.busy.contains(item.id) { ProgressView().controlSize(.small) }
+                        Text("Pull Request").font(.system(size: T.k * 12.5, weight: .medium))
+                        Image(systemName: "chevron.down").font(.system(size: T.k * 9, weight: .semibold)).foregroundStyle(T.text3)
+                    }
+                    .padding(.horizontal, 10).frame(height: 28)
+                    .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(T.border))
+                    .contentShape(Rectangle())
+                }
+                .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().pointerCursor()
+                .disabled(prActions.busy.contains(item.id))
+                .help("Merge, mark ready, convert to draft, close or reopen (asks first)")
+            }
           }
             Spacer(minLength: 0)
             Button { store.markUnread(item) } label: { Image(systemName: "envelope.badge") }

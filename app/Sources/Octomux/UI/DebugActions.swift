@@ -47,6 +47,8 @@ enum DebugActions {
                 "errors": Dictionary(uniqueKeysWithValues: st.errors.map { ($0.key.rawValue, $0.value) }),
                 "last_refresh": st.lastRefresh.map { ISO8601DateFormatter().string(from: $0) } ?? NSNull(),
                 "selected": st.selectedId ?? NSNull(),
+                "fixture_ran": InboxFixture.ran,
+                "pr_results": InboxActions.shared.results.mapValues { ["ok": $0.ok, "text": $0.text] as [String: Any] },
                 "unread": st.items.filter(st.isUnread).map(\.id),
                 "first_ids": Dictionary(grouping: st.items, by: { $0.source.rawValue }).mapValues { $0.prefix(3).map(\.id) },
                 // Opened items: how many events of each kind, and why history is missing (no contents).
@@ -249,6 +251,15 @@ enum DebugActions {
                 }
             case "inbox_fake_merge": InboxFixture.mergePR()
             case "inbox_tab": InboxStore.shared.detailTab = p["value"] as? String ?? "overview"
+            case "inbox_pr_action":   // value: merge | squash | rebase | ready | draft | close | reopen, on the open item
+                if let v = p["value"] as? String, let a = InboxPRAction(rawValue: v),
+                   let item = InboxStore.shared.items.first(where: { $0.id == InboxStore.shared.selectedId }) {
+                    InboxActions.shared.perform(a, on: item)
+                }
+            case "inbox_confirm":     // answers the confirmation sheet on screen
+                if let a = InboxConfirm.current, let w = a.window.sheetParent {
+                    w.endSheet(a.window, returnCode: (p["value"] as? Bool) == true ? .alertFirstButtonReturn : .alertSecondButtonReturn)
+                }
             case "inbox_tell_agent": if let sid = m.focusedSessionId { InboxStore.shared.tellAgent(session: sid) }
             case "inbox_fake_link":   // links a fixture item (value) to the focused session, caught up `minutes` ago
                 if let v = p["value"] as? String, let sid = m.focusedSessionId {

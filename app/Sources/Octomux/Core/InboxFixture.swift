@@ -4,6 +4,8 @@ import Foundation
 /// Made-up Inbox items and history for the debug fixture (`ui_action inbox_fake`): no account is read or written.
 enum InboxFixture {
     static var fixtureItems: [InboxItem] = []
+    /// Commands the fixture's write actions would have run.
+    static var ran: [String] = []
 
     /// A refresh in which the pull request is gone from the open searches because it was merged.
     static func mergePR() {
@@ -20,7 +22,7 @@ enum InboxFixture {
         var pr = InboxItem(id: "gh:octo/storefront#42", source: .github, kind: .pr, key: "#42", place: "octo/storefront",
                            title: "Checkout: retry failed payments once", author: "ann", assignee: nil, status: "Open", statusTone: "done",
                            reason: .review, updated: at(5), body: "Retries a declined payment once when the gateway times out.\n\n- adds `RetryPolicy`\n- logs the second attempt\n\n![Retry flow](https://user-images.githubusercontent.com/1/retry-flow.png)\n\n<img src=\"https://tracker.example.com/pixel.gif\" width=\"1\">",
-                           url: "https://github.com/octo/storefront/pull/42", branch: "ann/payment-retry", number: 42)
+                           url: "https://github.com/octo/storefront/pull/42", branch: "ann/payment-retry", number: 42, base: "main")
         pr.checks = .failing; pr.checkCounts = (5, 2, 0); pr.failedChecks = ["test (ubuntu-latest)", "Vercel"]
         pr.failedCheckDetails = [
             .init(name: "test (ubuntu-latest)", url: "https://github.com/octo/storefront/actions/runs/111/job/222", title: "Process completed with exit code 1"),
@@ -66,6 +68,9 @@ enum InboxFixture {
             ], note: "The history isn't available (Jira answered 403). Showing comments only."),
         ]
         fixtureItems = [pr, issue, quiet]
+        // Writes go nowhere: the commands are only recorded.
+        ran = []
+        InboxActions.shared.run = { args in ran.append(args.joined(separator: " ")); return "" }
         InboxStore.shared.loadDiff = { _ in
             """
             diff --git a/src/checkout/retry.ts b/src/checkout/retry.ts

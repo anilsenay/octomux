@@ -45,6 +45,9 @@ struct InboxItem: Identifiable, Equatable {
     let url: String
     var branch: String? = nil
     var number: Int? = nil
+    /// A pull request's target branch.
+    var base: String? = nil
+    var isDraft: Bool { kind == .pr && status == "Draft" }
 
     static func == (a: InboxItem, b: InboxItem) -> Bool {
         a.id == b.id && a.updated == b.updated && a.reason == b.reason && a.checks == b.checks && a.status == b.status && a.ended == b.ended
@@ -229,6 +232,12 @@ final class InboxStore: ObservableObject {
     /// Looks at the linked items in the list again (after a link, and for the debug fixture).
     func recheckLinked() { checkLinked(items) }
 
+    /// A change made from the Inbox (a comment, a merge…): what the next refresh sees of the item is no news.
+    func ownChange(_ i: InboxItem) {
+        readOnNextRefresh.insert(i.id)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { self.refresh() }
+    }
+
     // MARK: Pull request diffs
 
     /// The pull request detail's tab: overview | code.
@@ -303,6 +312,8 @@ final class InboxStore: ObservableObject {
                         self.linkedNotices[sid] = LinkedNotice(itemId: i.id, key: i.key, title: i.title,
                                                                events: [InboxEvent(kind: .change, actor: i.key, date: e.at, summary: what, field: "status")])
                     }
+                    // Merged or closed from here: no news.
+                    if self.readOnNextRefresh.remove(i.id) != nil { self.markRead(copy); continue }
                     let relevant = i.reason == .project ? JiraClient.watched.contains(i.projectKey) : InboxPrefs.bool(InboxPrefs.nUpdates, true)
                     if relevant || self.links[i.id] != nil, self.isUnread(copy) { lines.append("\(i.key) \(what)") }
                 }
@@ -786,7 +797,7 @@ enum GitHubInbox {
     }
 
     static let prFields = """
-    number title url updatedAt isDraft state headRefName body
+    number title url updatedAt isDraft state headRefName baseRefName body
     repository { nameWithOwner } author { login } assignees(first: 3) { nodes { login } }
     commits(last: 1) { nodes { commit { statusCheckRollup { state
       contexts(first: 80) { nodes { __typename ... on CheckRun { name conclusion status detailsUrl title summary } ... on StatusContext { context state targetUrl description } } } } } } }
@@ -848,7 +859,7 @@ enum GitHubInbox {
             assignee: assignees.first.map { $0 == me ? "You" : $0 },
             status: draft ? "Draft" : "Open", statusTone: draft ? "todo" : "done", reason: reason,
             updated: InboxDates.iso(n["updatedAt"] as? String) ?? Date(), body: n["body"] as? String ?? "", url: url,
-            branch: n["headRefName"] as? String, number: number)
+            branch: n["headRefName"] as? String, number: number, base: n["baseRefName"] as? String)
         if isPR, let rollup = ((((n["commits"] as? [String: Any])?["nodes"] as? [[String: Any]])?.first?["commit"] as? [String: Any])?["statusCheckRollup"] as? [String: Any]) {
             var passed = 0, failed = 0, pending = 0
             var failedNames: [String] = []

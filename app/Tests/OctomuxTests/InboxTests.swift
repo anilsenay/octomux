@@ -728,6 +728,16 @@ final class InboxEndedTests: XCTestCase {
         XCTAssertNotNil(store.items.first)                           // linked: kept a week
     }
 
+    func testYourOwnMergeIsNoNews() {
+        store.apply(.github, .success([pr(1)]))
+        store.ownChange(store.items[0])
+        states = ["gh:o/r#1": .init(label: "Merged", merged: true, at: Date())]
+        store.apply(.github, .success([]))
+        XCTAssertEqual(rung, [])
+        XCTAssertFalse(store.isUnread(store.items[0]))
+        XCTAssertEqual(store.items[0].ended?.label, "Merged")
+    }
+
     func testScopeChangeDoesNotAsk() {
         store.apply(.github, .success([pr(1)]))
         store.widen()
@@ -954,5 +964,69 @@ final class InboxDiffTests: XCTestCase {
         XCTAssertEqual(calls, 1)
         var newer = pr; newer.updated = Date(timeIntervalSince1970: 9)
         XCTAssertNil(store.diff(newer))                              // a new push: read again
+    }
+}
+
+/// Pull request actions: what is offered, the exact gh command, the confirmation, and that nothing runs unconfirmed.
+final class InboxPRActionTests: XCTestCase {
+    private func pr(draft: Bool = false, ended: InboxItem.Ended? = nil) -> InboxItem {
+        var i = InboxItem(id: "gh:o/r#7", source: .github, kind: .pr, key: "#7", place: "o/r", title: "Add retry", author: "you", assignee: nil,
+                          status: draft ? "Draft" : "Open", statusTone: "done", reason: .mine, updated: Date(), body: "", url: "",
+                          branch: "feat/retry", number: 7, base: "main")
+        i.ended = ended
+        return i
+    }
+
+    func testAvailable() {
+        XCTAssertEqual(InboxPRAction.available(pr()), [.merge, .squash, .rebase, .draft, .close])
+        XCTAssertEqual(InboxPRAction.available(pr(draft: true)), [.ready, .close])
+        XCTAssertEqual(InboxPRAction.available(pr(ended: .init(label: "Closed", at: Date()))), [.reopen])
+        XCTAssertEqual(InboxPRAction.available(pr(ended: .init(label: "Merged", merged: true, at: Date()))), [])
+        let issue = InboxItem(id: "jira:DC-1", source: .jira, kind: .issue, key: "DC-1", place: "D", title: "t", author: "a", assignee: nil,
+                              status: "To Do", statusTone: "todo", reason: .assigned, updated: Date(), body: "", url: "")
+        XCTAssertEqual(InboxPRAction.available(issue), [])
+    }
+
+    func testCommands() {
+        let i = pr()
+        XCTAssertEqual(InboxPRAction.merge.args(i), ["gh", "pr", "merge", "7", "--repo", "o/r", "--merge"])
+        XCTAssertEqual(InboxPRAction.squash.args(i), ["gh", "pr", "merge", "7", "--repo", "o/r", "--squash"])
+        XCTAssertEqual(InboxPRAction.rebase.args(i), ["gh", "pr", "merge", "7", "--repo", "o/r", "--rebase"])
+        XCTAssertEqual(InboxPRAction.draft.args(i), ["gh", "pr", "ready", "7", "--repo", "o/r", "--undo"])
+        XCTAssertEqual(InboxPRAction.close.args(i), ["gh", "pr", "close", "7", "--repo", "o/r"])
+        XCTAssertFalse(InboxPRAction.allCases.flatMap { $0.args(i) }.contains("--delete-branch"))
+        let c = InboxPRAction.squash.confirmation(i)
+        XCTAssertEqual(c.title, "Squash and merge #7 into main?")
+        XCTAssertTrue(c.message.contains("o/r") && c.message.contains("feat/retry stays"))
+    }
+
+    func testNothingRunsUnconfirmed() {
+        let a = InboxActions()
+        var ran: [[String]] = [], changed = 0
+        a.run = { ran.append($0); return "" }
+        a.background = { $0() }; a.onMain = { $0() }
+        a.changed = { _ in changed += 1 }
+        a.confirm = { _, _, _, done in done(false) }
+        a.perform(.merge, on: pr())
+        XCTAssertEqual(ran, [])
+        a.confirm = { _, _, _, done in done(true) }
+        a.perform(.close, on: pr(draft: true))
+        XCTAssertEqual(ran, [["gh", "pr", "close", "7", "--repo", "o/r"]])
+        XCTAssertEqual(a.results["gh:o/r#7"]?.ok, true)
+        XCTAssertEqual(changed, 1)
+        a.perform(.merge, on: pr(draft: true))                        // a draft can't be merged from here
+        XCTAssertEqual(ran.count, 1)
+    }
+
+    func testFailureIsShown() {
+        let a = InboxActions()
+        a.run = { _ in throw InboxError("Pull request is not mergeable: the base branch policy prohibits the merge.") }
+        a.background = { $0() }; a.onMain = { $0() }
+        a.changed = { _ in XCTFail("no change") }
+        a.confirm = { _, _, _, done in done(true) }
+        a.perform(.merge, on: pr())
+        XCTAssertEqual(a.results["gh:o/r#7"]?.ok, false)
+        XCTAssertTrue(a.results["gh:o/r#7"]?.text.contains("not mergeable") == true)
+        XCTAssertTrue(a.busy.isEmpty)
     }
 }
