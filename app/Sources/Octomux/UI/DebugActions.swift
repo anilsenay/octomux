@@ -136,6 +136,17 @@ enum DebugActions {
                 if let v = p["value"] as? String {
                     if p["preview"] as? Bool == true { m.openDoc(.file(v), preview: true) } else { m.openFile(v, line: p["line"] as? Int) }
                 }
+            case "open_inbox": m.openInbox()
+            case "inbox_refresh": InboxStore.shared.refresh()
+            case "inbox_start":   // value: item id; "mode": tab | worktree; "task": work | review | fix; "project": id
+                if let v = p["value"] as? String, let item = InboxStore.shared.items.first(where: { $0.id == v }),
+                   let proj = m.project(p["project"] as? String ?? "") ?? InboxStore.shared.project(for: item) ?? m.currentProject {
+                    InboxStart.start(item, in: proj, worktree: (p["mode"] as? String) == "worktree",
+                                     task: InboxStart.Task(rawValue: p["task"] as? String ?? "work") ?? .work, model: m)
+                }
+            case "inbox_links": NSLog("inbox links: \(InboxStore.shared.links)")
+            case "inbox_hide": if let v = p["value"] as? String { InboxStore.shared.setHidden(v, (p["on"] as? Bool) ?? true) }
+            case "inbox_select": if let v = p["value"] as? String { InboxStore.shared.select(v) }
             case "open_changes": m.openChanges(scrollTo: p["value"] as? String)
             case "open_commit": if let v = p["value"] as? String { m.openCommit(v, subject: p["subject"] as? String ?? "") }
             case "doc_js": if let d = m.activeDoc, let v = p["value"] as? String { DocHost.shared.controller(for: d).web.evaluateJavaScript(v) }
@@ -169,6 +180,7 @@ enum DebugActions {
                     let text = p["value"] as? String ?? "hello"
                     m.newSession(profileId: prof?.id, projectId: pid, prompt: text, chat: true) { id in
                         ChatFirstMessage.set(id, text)
+                        if let doc, let item = NewChatDraft.links.removeValue(forKey: doc) { InboxStore.shared.link(item, session: id) }
                         if let doc { m.closeDoc(doc) }
                     }
                 }

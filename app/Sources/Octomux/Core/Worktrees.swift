@@ -156,7 +156,7 @@ final class Worktrees: ObservableObject {
 }
 
 extension AppModel {
-    func newWorktree(project: Project, branch: String, open profileId: String?, prompt: String? = nil) {
+    func newWorktree(project: Project, branch: String, open profileId: String?, prompt: String? = nil, done: ((String) -> Void)? = nil) {
         let b = branch.trimmingCharacters(in: .whitespaces)
         guard !b.isEmpty else { return }
         DispatchQueue.global(qos: .userInitiated).async {
@@ -168,9 +168,9 @@ extension AppModel {
                     let task = prompt?.trimmingCharacters(in: .whitespacesAndNewlines)
                     if let profileId, let task, !task.isEmpty, let kind = self.profile(profileId)?.kind {
                         self.newSession(profileId: profileId, projectId: project.id, worktree: path, prompt: task, chat: true,
-                                        extraArgs: ChatLaunchOptions.load(kind).args(kind)) { ChatFirstMessage.set($0, task) }
+                                        extraArgs: ChatLaunchOptions.load(kind).args(kind)) { ChatFirstMessage.set($0, task); done?($0) }
                     } else {
-                        self.newSession(profileId: profileId, projectId: project.id, worktree: path)
+                        self.newSession(profileId: profileId, projectId: project.id, worktree: path, done: done)
                     }
                 case .failure(let e): self.lastError = "git worktree add failed: \(e)"
                 }

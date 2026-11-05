@@ -3,7 +3,7 @@ import SwiftUI
 
 enum SettingsSection: String, CaseIterable, Identifiable {
     case general = "General", appearance = "Appearance", terminal = "Terminal", notifications = "Notifications", keyboard = "Keyboard"
-    case agents = "Agents", mcp = "MCP", prompts = "Prompts", workspaces = "Workspaces", projects = "Projects", sessions = "Sessions", hosts = "Hosts"
+    case agents = "Agents", mcp = "MCP", prompts = "Prompts", inbox = "Inbox", workspaces = "Workspaces", projects = "Projects", sessions = "Sessions", hosts = "Hosts"
     case features = "Features", advanced = "Advanced"
     var id: String { rawValue }
     /// Its sections are listed under it in the sidebar. Not for pages whose sections come from data loaded after
@@ -17,6 +17,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .sessions: return "cpu"
         case .mcp: return "point.3.connected.trianglepath.dotted"
         case .prompts: return "text.bubble"
+        case .inbox: return "tray"
         case .projects: return "folder"
         case .appearance: return "paintbrush"
         case .terminal: return "terminal"
@@ -37,6 +38,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .keyboard: return "Every shortcut Octomux handles. Keys not bound here go straight to the terminal program."
         case .agents: return "The agents in the + menu, how they start, and how Octomux follows their state."
         case .workspaces: return "Workspaces group projects. Switch with the dots under the sidebar, a two-finger swipe on it, or ⌃1…⌃9."
+        case .inbox: return "Where your pull requests, reviews and issues come from, what tells you about them, and how you start on one."
         case .prompts: return "Prompts you send often, for every project, a workspace or one project."
         case .mcp: return "The MCP servers your agents start with, as their own config files set them up."
         case .projects: return "A project's name, folder, color and icon, where its worktrees go, and the scripts they run."
@@ -52,7 +54,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     /// Sidebar groups, in order.
     static let groups: [(title: String, items: [SettingsSection])] = [
         ("App", [.general, .appearance, .terminal, .notifications, .keyboard]),
-        ("Work", [.agents, .mcp, .prompts, .workspaces, .projects, .sessions, .hosts]),
+        ("Work", [.agents, .mcp, .prompts, .inbox, .workspaces, .projects, .sessions, .hosts]),
         ("Advanced", [.features, .advanced]),
     ]
 }
@@ -173,6 +175,7 @@ struct SettingsView: View {
         case .notifications: NotificationSettings()
         case .mcp: MCPSettings()
         case .prompts: PromptsSettings()
+        case .inbox: InboxSettings()
         case .projects: ProjectSettings()
         case .sessions: SessionsSettings()
         case .hosts: HostsSettings()
@@ -569,6 +572,9 @@ enum SettingsIndex {
             e(.workspaces, "Archived projects", "unarchive"),
             e(.prompts, "Prompts", "templates snippets saved prompts commands placeholders"),
             e(.mcp, "MCP servers", "model context protocol tools servers claude codex mcp.json config"),
+            e(.inbox, "Connections", "github gh jira linear gitlab token account pull requests issues"),
+            e(.inbox, "Notifications", "inbox review requested ci failed assigned check every poll mute"),
+            e(.inbox, "Starting work", "send to agent worktree tab prompt template branch"),
             e(.projects, "Project", "rename name folder path color icon emoji mascot image"),
             e(.projects, "Worktree folder", "worktrees root location directory"),
             e(.projects, "Delete the branch with its worktree", "remove worktree branch cleanup"),

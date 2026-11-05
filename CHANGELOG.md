@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+- **Inbox** (sidebar, above the projects): pull requests that wait for your review, your pull requests with their
+  checks, and issues assigned to you, from **GitHub** (through the GitHub CLI, so Octomux keeps no GitHub token)
+  and **Jira Cloud** (site, email and an API token, with or without scopes, kept in your Keychain).
+  - Folders by why something is there and where it comes from (collapsible to icons); filters by source,
+    time and text; hide repos and projects; read and unread marks; comments to read and write.
+  - **Send to agent** opens a new tab with the item as the prompt, or starts the agent in a new worktree on the
+    item's branch; **Review with agent** for review requests, **Fix with agent** when checks failed. The session
+    stays linked to the item (Go to session).
+  - Notifications for review requests, failed checks, new assignments and changes to your things; ring the
+    bell on a Jira project to hear about every change there, by anyone. Checked every 1–10 minutes.
+  - Settings → Inbox: connections, Jira projects, GitHub repositories, what shows up, notifications, and what
+    Send to agent opens.
+
 ## 0.2.0
 
 Highlights:

@@ -400,7 +400,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
             content.title = n.title
             content.body = n.body
             if sound { content.sound = name.map { UNNotificationSound(named: UNNotificationSoundName($0)) } ?? .default }
-            content.userInfo = ["session_id": n.sessionId]
+            content.userInfo = ["session_id": n.sessionId, "kind": n.kind]
             let req = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
             UNUserNotificationCenter.current().add(req)
         }
@@ -467,7 +467,12 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
 
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
                                 withCompletionHandler completionHandler: @escaping () -> Void) {
-        if let id = response.notification.request.content.userInfo["session_id"] as? String {
+        if response.notification.request.content.userInfo["kind"] as? String == "inbox" {
+            DispatchQueue.main.async {
+                NSApp.activate(ignoringOtherApps: true)
+                AppModel.shared.openInbox()
+            }
+        } else if let id = response.notification.request.content.userInfo["session_id"] as? String {
             DispatchQueue.main.async {
                 NSApp.activate(ignoringOtherApps: true)
                 AppModel.shared.selectSession(id)

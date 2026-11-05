@@ -9,6 +9,7 @@ struct DocTab: Codable, Identifiable, Equatable {
         case changes
         case commit(String, String)  // hash, subject
         case newChat                 // start screen of a chat session (no agent running yet)
+        case inbox                   // pull requests, reviews and issues (InboxView)
     }
     var id: String
     var projectId: String
@@ -25,6 +26,7 @@ struct DocTab: Codable, Identifiable, Equatable {
         case .changes: return "Changes"
         case .commit(let h, let subject): return subject.isEmpty ? String(h.prefix(7)) : subject
         case .newChat: return "New session"
+        case .inbox: return "Inbox"
         }
     }
 
@@ -34,6 +36,7 @@ struct DocTab: Codable, Identifiable, Equatable {
         case .changes: return "plusminus"
         case .commit: return "clock.arrow.circlepath"
         case .newChat: return "bubble.left.and.text.bubble.right"
+        case .inbox: return "tray"
         }
     }
 
@@ -96,6 +99,7 @@ extension AppModel {
     }
 
     func openFile(_ rel: String, line: Int? = nil) { openDoc(.file(rel), line: line) }
+    func openInbox() { openDoc(.inbox, workPath: currentProject?.path) }
     func openChanges(scrollTo: String? = nil) { openDoc(.changes, scrollTo: scrollTo) }
     func openCommit(_ hash: String, subject: String) { openDoc(.commit(hash, subject)) }
 

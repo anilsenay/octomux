@@ -201,6 +201,7 @@ struct NewChatView: View {
         model.newSession(profileId: profile.id, projectId: project.id, worktree: worktree, prompt: message, chat: true,
                          extraArgs: options.args(kind, images: images)) { id in
             ChatFirstMessage.set(id, text)
+            if let item = NewChatDraft.links.removeValue(forKey: docId) { InboxStore.shared.link(item, session: id) }
             // The new tab takes the start screen's place.
             if let i = model.docTabs.firstIndex(where: { $0.id == docId }) { model.docTabs.remove(at: i) }
             if model.activeDocId == docId { model.activeDocId = nil }
@@ -357,4 +358,6 @@ struct SendButton: View {
 /// Text a new chat's composer starts with, by doc id (set when the doc is opened, taken on appear).
 enum NewChatDraft {
     static var pending: [String: String] = [:]
+    /// Start screen opened from an Inbox item: doc id → item id, linked to the session once it starts.
+    static var links: [String: String] = [:]
 }

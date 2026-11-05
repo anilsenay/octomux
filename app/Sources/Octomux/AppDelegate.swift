@@ -31,6 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         GlobalHotKey.shared.action = { QuickComposer.shared.toggle() }
         GlobalHotKey.shared.apply()
         AppModel.shared.start()
+        if InboxStore.shared.anyConnected { InboxStore.shared.start() }
         Updater.shared.start()
         openMainWindow()
         installSwipeMonitor()

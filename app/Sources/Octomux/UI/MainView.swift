@@ -599,6 +599,7 @@ struct DocChip: View {
         case .changes: return "Uncommitted changes"
         case .commit(let h, let s): return "\(h.prefix(8)) \(s)"
         case .newChat: return "New chat session"
+        case .inbox: return "Pull requests, reviews and issues"
         }
     }
 }

@@ -117,6 +117,12 @@ final class TerminalHost {
             renderedTabId = nil
             renderedLayout = nil
             container.subviews.forEach { $0.removeFromSuperview() }
+            if case .inbox = doc.kind {
+                let pane = PaneView(sessionId: "")
+                pane.setContent(NSHostingView(rootView: InboxView().environmentObject(model)))
+                container.setRoot(pane)
+                return
+            }
             if case .newChat = doc.kind {
                 let pane = PaneView(sessionId: "")
                 pane.setContent(NSHostingView(rootView: NewChatView(docId: doc.id).environmentObject(model)))

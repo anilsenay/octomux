@@ -188,7 +188,7 @@ final class DocController: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         case .file(let rel): loadFile(rel, force: false, line: nil)
         case .changes: loadChanges()
         case .commit(let h, let subject): loadCommit(h, subject)
-        case .newChat: break
+        case .newChat, .inbox: break
         }
     }
 

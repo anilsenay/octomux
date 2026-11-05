@@ -12,6 +12,7 @@ struct SidebarView: View {
         GeometryReader { geo in
         VStack(spacing: 0) {
             header
+            InboxSidebarRow()
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 1) {
                     ForEach(Array(model.projects.enumerated()), id: \.element.id) { i, p in
