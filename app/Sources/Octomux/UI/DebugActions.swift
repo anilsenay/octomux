@@ -46,6 +46,8 @@ enum DebugActions {
                 "counts": Dictionary(grouping: st.items, by: { $0.source.rawValue }).mapValues(\.count),
                 "errors": Dictionary(uniqueKeysWithValues: st.errors.map { ($0.key.rawValue, $0.value) }),
                 "last_refresh": st.lastRefresh.map { ISO8601DateFormatter().string(from: $0) } ?? NSNull(),
+                "selected": st.selectedId ?? NSNull(),
+                "unread": st.items.filter(st.isUnread).map(\.id),
                 "first_ids": Dictionary(grouping: st.items, by: { $0.source.rawValue }).mapValues { $0.prefix(3).map(\.id) },
                 // Opened items: how many events of each kind, and why history is missing (no contents).
                 "activity": st.activity.mapValues { a in
@@ -185,6 +187,18 @@ enum DebugActions {
             case "open_inbox": m.openInbox()
             case "inbox_refresh": InboxStore.shared.refresh()
             case "inbox_fake": InboxFixture.load()
+            case "key_event":   // posts a key press to the key window, through the event queue (local monitors see it)
+                if let win = NSApp.keyWindow ?? NSApp.mainWindow {
+                    let chars = p["chars"] as? String ?? ""
+                    let code = UInt16(p["code"] as? Int ?? 0)
+                    for type in [NSEvent.EventType.keyDown, .keyUp] {
+                        if let e = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                                    windowNumber: win.windowNumber, context: nil, characters: chars,
+                                                    charactersIgnoringModifiers: chars, isARepeat: false, keyCode: code) {
+                            NSApp.postEvent(e, atStart: false)
+                        }
+                    }
+                }
             case "inbox_fake_merge": InboxFixture.mergePR()
             case "inbox_tell_agent": if let sid = m.focusedSessionId { InboxStore.shared.tellAgent(session: sid) }
             case "inbox_fake_link":   // links a fixture item (value) to the focused session, caught up `minutes` ago

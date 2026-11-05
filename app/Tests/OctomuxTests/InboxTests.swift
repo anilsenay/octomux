@@ -750,3 +750,36 @@ final class InboxEndedTests: XCTestCase {
         XCTAssertNil(e["jira:DC-2"])
     }
 }
+
+/// The Inbox keyboard.
+final class InboxKeysTests: XCTestCase {
+    func testKeys() {
+        func a(_ c: String, _ code: UInt16 = 0, _ m: NSEvent.ModifierFlags = []) -> InboxKeys.Action? { InboxKeys.action(characters: c, keyCode: code, modifiers: m) }
+        XCTAssertEqual(a("", 125), .next)
+        XCTAssertEqual(a("", 126), .previous)
+        XCTAssertEqual(a("j"), .next)
+        XCTAssertEqual(a("k"), .previous)
+        XCTAssertEqual(a("\r", 36), .open)
+        XCTAssertEqual(a("", 53), .close)
+        XCTAssertEqual(a("u"), .toggleRead)
+        XCTAssertEqual(a("s"), .send)
+        XCTAssertEqual(a("o"), .openInBrowser)
+        XCTAssertEqual(a("r"), .refresh)
+        XCTAssertEqual(a("/"), .filter)
+        XCTAssertEqual(a("J", 0, .shift), nil)                     // only the plain letters
+        XCTAssertNil(a("r", 0, .command))                           // ⌘R and friends stay app shortcuts
+        XCTAssertNil(a("", 125, .option))
+        XCTAssertNil(a("x"))
+    }
+
+    func testStep() {
+        let ids = ["a", "b", "c"]
+        XCTAssertEqual(InboxKeys.step(ids, from: nil, by: 1), "a")
+        XCTAssertEqual(InboxKeys.step(ids, from: nil, by: -1), "c")
+        XCTAssertEqual(InboxKeys.step(ids, from: "a", by: 1), "b")
+        XCTAssertEqual(InboxKeys.step(ids, from: "c", by: 1), "c")     // stops at the end
+        XCTAssertEqual(InboxKeys.step(ids, from: "a", by: -1), "a")
+        XCTAssertEqual(InboxKeys.step(ids, from: "gone", by: 1), "a")  // filtered away: starts over
+        XCTAssertNil(InboxKeys.step([], from: nil, by: 1))
+    }
+}

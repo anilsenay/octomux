@@ -49,6 +49,8 @@ struct InboxView: View {
     @State private var place: String? = nil
     @State private var days = 0     // 0: any time
     @State private var query = ""
+    @FocusState private var filterFocused: Bool
+    @State private var showKeys = false
 
     private var visible: [InboxItem] {
         let since = days == 0 ? Date.distantPast : Date().addingTimeInterval(-Double(days) * 86400)
@@ -86,7 +88,37 @@ struct InboxView: View {
             }
         }
         .background(CanvasBackground())
+        .background(InboxKeyCatcher { handle($0) })
         .onAppear { if store.lastRefresh == nil || Date().timeIntervalSince(store.lastRefresh!) > 60 { store.refresh() } }
+    }
+
+    /// A key from InboxKeyCatcher; false lets it through.
+    private func handle(_ a: InboxKeys.Action) -> Bool {
+        let ids = visible.map(\.id)
+        let current = store.items.first { $0.id == store.selectedId }
+        switch a {
+        case .next, .previous:
+            guard let id = InboxKeys.step(ids, from: store.selectedId, by: a == .next ? 1 : -1) else { return false }
+            store.select(id)
+        case .open:
+            guard current == nil, let first = ids.first else { return false }
+            store.select(first)
+        case .close:
+            guard current != nil else { return false }
+            store.select(nil)
+        case .toggleRead:
+            guard let c = current else { return false }
+            if store.isUnread(c) { store.markRead(c) } else { store.markUnread(c) }
+        case .send:
+            guard let c = current, c.ended == nil else { return false }
+            InboxStart.begin(c, mode: InboxStart.defaultMode, task: .work, model: model)
+        case .openInBrowser:
+            guard let c = current, let u = URL(string: c.url) else { return false }
+            NSWorkspace.shared.open(u)
+        case .refresh: store.refresh()
+        case .filter: filterFocused = true
+        }
+        return true
     }
 
     private var connected: [InboxSource] { InboxSource.allCases.filter { $0 == .github ? store.githubOn : store.jiraOn } }
@@ -221,7 +253,25 @@ struct InboxView: View {
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass").font(.system(size: T.k * 11)).foregroundStyle(T.text3)
                 TextField("Filter inbox", text: $query).textFieldStyle(.plain).font(.system(size: T.k * 12.5))
+                    .focused($filterFocused)
+                    // Esc clears the filter, a second one leaves the field (the list keys work again).
+                    .onExitCommand {
+                        if !query.isEmpty { query = "" } else { filterFocused = false; NSApp.keyWindow?.makeFirstResponder(nil) }
+                    }
                 filterMenu
+                Button { showKeys.toggle() } label: { Image(systemName: "keyboard") }
+                    .buttonStyle(IconButtonStyle(size: 22)).help("Keyboard shortcuts")
+                    .popover(isPresented: $showKeys, arrowEdge: .bottom) {
+                        Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 6) {
+                            ForEach(InboxKeys.help, id: \.keys) { k in
+                                GridRow {
+                                    Text(k.keys).font(T.mono(11.5)).foregroundStyle(T.text)
+                                    Text(k.what).font(.system(size: T.k * 12)).foregroundStyle(T.text2)
+                                }
+                            }
+                        }
+                        .padding(14)
+                    }
                 Button { store.markAllRead() } label: { Image(systemName: "checkmark.circle") }
                     .buttonStyle(IconButtonStyle(size: 22)).help("Mark all read")
                 Button { store.refresh() } label: {
@@ -233,12 +283,14 @@ struct InboxView: View {
             }
             .padding(.horizontal, 10).frame(height: 34)
             Hairline()
+            ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 2) {
                     ForEach(visible) { i in
                         InboxRow(item: i, selected: store.selectedId == i.id, unread: store.isUnread(i), linked: store.linkedSession(i) != nil) {
                             store.select(store.selectedId == i.id ? nil : i.id)   // a second click closes it
                         }
+                        .id(i.id)
                     }
                     if visible.isEmpty, reasonFilter == .project {
                         InboxProjectsOff()
@@ -248,6 +300,9 @@ struct InboxView: View {
                     }
                 }
                 .padding(6)
+            }
+            // Keys move the selection: keep it in view.
+            .onChange(of: store.selectedId) { _, id in if let id { withAnimation(.easeOut(duration: 0.12)) { proxy.scrollTo(id) } } }
             }
         }
     }
@@ -737,16 +792,28 @@ struct InboxDetail: View {
     private var branchName: String { InboxStart.branch(item) }
 
     private func start(_ mode: String?, _ task: Task) {
+        InboxStart.begin(item, mode: mode, task: task, model: model)
+    }
+}
+
+/// Starting an agent on an Inbox item: the prompt, the branch, and where it runs.
+enum InboxStart {
+    enum Task: String { case work, review, fix }
+
+    /// Starts `task` on the item in its project: `mode` "tab" / "worktree", or nil to ask which.
+    static func begin(_ item: InboxItem, mode: String?, task: Task, model: AppModel) {
+        let store = InboxStore.shared
+        let project = store.project(for: item) ?? model.currentProject
         guard let mode else {
             let a = NSAlert()
             a.messageText = "Start \(item.key) where?"
-            a.informativeText = "A new tab works in \(project?.name ?? "the project") as it is. A new worktree gets its own checkout on branch \(branchName)."
+            a.informativeText = "A new tab works in \(project?.name ?? "the project") as it is. A new worktree gets its own checkout on branch \(branch(item))."
             a.addButton(withTitle: "New Tab")
             a.addButton(withTitle: "New Worktree")
             a.addButton(withTitle: "Cancel")
             switch a.runModal() {
-            case .alertFirstButtonReturn: start("tab", task)
-            case .alertSecondButtonReturn: start("worktree", task)
+            case .alertFirstButtonReturn: begin(item, mode: "tab", task: task, model: model)
+            case .alertSecondButtonReturn: begin(item, mode: "worktree", task: task, model: model)
             default: break
             }
             return
@@ -755,14 +822,15 @@ struct InboxDetail: View {
         if task == .fix {
             store.startFix(item, in: project, worktree: mode == "worktree", model: model)
         } else {
-            InboxStart.start(item, in: project, worktree: mode == "worktree", task: task, model: model)
+            start(item, in: project, worktree: mode == "worktree", task: task, model: model)
         }
     }
-}
 
-/// Starting an agent on an Inbox item: the prompt, the branch, and where it runs.
-enum InboxStart {
-    enum Task: String { case work, review, fix }
+    /// The button's saved default ("tab", "worktree", or "ask" → nil).
+    static var defaultMode: String? {
+        let m = UserDefaults.standard.string(forKey: InboxPrefs.startMode) ?? "tab"
+        return m == "ask" ? nil : m
+    }
 
     /// A PR's own branch; else the issue's key and a few words of its title.
     static func branch(_ item: InboxItem) -> String {

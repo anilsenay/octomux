@@ -32,6 +32,9 @@
     merged, closed or finished stays in the list with that label for three days (a week when an agent worked on
     it), with a notification and a note in its linked session. Items that only left a search (a review request
     withdrawn) still go quietly.
+  - **Keyboard**: ↑ ↓ (or k j) move through the list, Return opens the first item, Esc closes it, u marks it read or
+    unread, s sends it to an agent, o opens it on the website, r refreshes, / filters (Esc clears, Esc again
+    leaves the field). The keyboard button lists them.
   - Settings → Inbox: connections, Jira projects, GitHub repositories, what shows up, notifications, and what
     Send to agent opens.
 
