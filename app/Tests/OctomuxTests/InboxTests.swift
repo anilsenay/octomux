@@ -1189,3 +1189,96 @@ final class InboxMuteTests: XCTestCase {
         XCTAssertEqual(chimes, 1)
     }
 }
+
+/// Automations: rules are off until confirmed, run on new items only, once each, a few per check.
+final class InboxAutomationTests: XCTestCase {
+    private var suite = ""
+    private var auto: InboxAutomations!
+    private var started: [String] = []
+    private var said: [String] = []
+
+    override func setUp() {
+        suite = "octomux-inbox-auto-\(UUID().uuidString)"
+        auto = InboxAutomations(defaults: UserDefaults(suiteName: suite)!)
+        started = []; said = []
+        auto.start = { [unowned self] i, r in self.started.append("\(r.name):\(i.key)"); return nil }
+        auto.notify = { [unowned self] t, _ in self.said.append(t) }
+    }
+    override func tearDown() { UserDefaults().removePersistentDomain(forName: suite) }
+
+    private func pr(_ n: Int, reason: InboxItem.Reason = .review, repo: String = "octo/storefront") -> InboxItem {
+        InboxItem(id: "gh:\(repo)#\(n)", source: .github, kind: .pr, key: "#\(n)", place: repo, title: "PR \(n)", author: "a", assignee: nil,
+                  status: "Open", statusTone: "done", reason: reason, updated: Date(), body: "", url: "", number: n)
+    }
+
+    func testMatching() {
+        let r = InboxRule(name: "r", source: "github", kind: "pr", reason: InboxItem.Reason.review.rawValue, place: "store")
+        XCTAssertTrue(r.matches(pr(1)))
+        XCTAssertFalse(r.matches(pr(1, reason: .mine)))
+        XCTAssertFalse(r.matches(pr(1, repo: "octo/web")))
+        var ended = pr(1); ended.ended = .init(label: "Merged", merged: true, at: Date())
+        XCTAssertFalse(r.matches(ended))
+        let issue = InboxItem(id: "jira:A-1", source: .jira, kind: .issue, key: "A-1", place: "A", title: "t", author: "a", assignee: nil,
+                              status: "To Do", statusTone: "todo", reason: .assigned, updated: Date(), body: "", url: "")
+        XCTAssertFalse(InboxRule(name: "any", action: .review).matches(issue))     // reviews are for pull requests
+        XCTAssertTrue(InboxRule(name: "any", action: .work).matches(issue))
+        XCTAssertEqual(r.summary, "New pull requests from GitHub (review requested) in “store” → review it (read-only)")
+    }
+
+    func testOffUntilConfirmed() {
+        auto.upsert(InboxRule(name: "R", enabled: true, action: .review))          // saved off, whatever it says
+        XCTAssertFalse(auto.rules[0].enabled)
+        auto.handle([pr(1)])
+        XCTAssertEqual(started, [])
+        auto.confirm = { _, _, _, done in done(false) }
+        auto.setEnabled(auto.rules[0].id, true)
+        XCTAssertFalse(auto.rules[0].enabled)
+        auto.confirm = { _, _, _, done in done(true) }
+        auto.setEnabled(auto.rules[0].id, true)
+        XCTAssertTrue(auto.rules[0].enabled)
+        auto.handle([pr(1)])
+        XCTAssertEqual(started, ["R:#1"])
+        XCTAssertEqual(said, ["Started an agent on #1"])
+    }
+
+    func testOncePerItemAndCapped() {
+        auto.confirm = { _, _, _, done in done(true) }
+        auto.upsert(InboxRule(name: "R", action: .review)); auto.setEnabled(auto.rules[0].id, true)
+        auto.handle([pr(1)]); auto.handle([pr(1)])
+        XCTAssertEqual(started, ["R:#1"])
+        auto.handle((2...8).map { pr($0) })
+        XCTAssertEqual(started.count, 1 + InboxAutomations.maxPerRefresh)
+        // Kept across launches.
+        let again = InboxAutomations(defaults: UserDefaults(suiteName: suite)!)
+        again.start = { [unowned self] i, r in self.started.append("again:\(i.key)"); return nil }
+        again.notify = { _, _ in }
+        again.handle([pr(1)])
+        XCTAssertFalse(started.contains("again:#1"))
+    }
+
+    func testCouldNotStartIsSaid() {
+        auto.confirm = { _, _, _, done in done(true) }
+        auto.upsert(InboxRule(name: "R", action: .work)); auto.setEnabled(auto.rules[0].id, true)
+        auto.start = { _, _ in "No project is set for octo/storefront." }
+        auto.handle([pr(1)])
+        XCTAssertEqual(said, ["“R” didn't start: #1"])
+    }
+
+    func testStoreHandsOnlyNewItems() {
+        let s = "octomux-inbox-appeared-\(UUID().uuidString)"
+        defer { UserDefaults().removePersistentDomain(forName: s) }
+        let store = InboxStore(defaults: UserDefaults(suiteName: s)!)
+        var got: [[String]] = []
+        store.appeared = { got.append($0.map(\.key)) }
+        store.deliver = { _ in }; store.chime = {}
+        store.loadActivity = { _ in throw InboxError("offline") }
+        store.background = { $0() }; store.onMain = { $0() }
+        store.apply(.github, .success([pr(1)]))                 // first fetch: what is there is not new
+        store.apply(.github, .success([pr(1), pr(2)]))
+        store.widen()
+        store.apply(.github, .success([pr(1), pr(2), pr(3)]))   // brought in by a scope change
+        store.setHidden("octo/web", true)
+        store.apply(.github, .success([pr(1), pr(2), pr(3), pr(4, repo: "octo/web")]))
+        XCTAssertEqual(got, [["#2"]])
+    }
+}

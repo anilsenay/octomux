@@ -7,6 +7,16 @@ enum InboxFixture {
     /// Commands the fixture's write actions would have run.
     static var ran: [String] = []
 
+    /// A refresh that brings a new review request (#43) in.
+    static func newPR() {
+        let pr = InboxItem(id: "gh:octo/storefront#43", source: .github, kind: .pr, key: "#43", place: "octo/storefront",
+                           title: "Cart: keep the coupon after login", author: "bob", assignee: nil, status: "Open", statusTone: "done",
+                           reason: .review, updated: Date(), body: "Keeps the applied coupon when a guest signs in.",
+                           url: "https://github.com/octo/storefront/pull/43", branch: "bob/coupon-login", number: 43, base: "main")
+        fixtureItems.append(pr)
+        InboxStore.shared.fixtureApply(.github, fixtureItems.filter { $0.source == .github })
+    }
+
     /// A refresh in which the pull request is gone from the open searches because it was merged.
     static func mergePR() {
         let store = InboxStore.shared

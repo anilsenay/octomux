@@ -88,6 +88,8 @@ enum InboxPrefs {
     static let hidden = "octomux.inbox.hidden"                 // repos / Jira projects kept out of the Inbox
     static let seen = "octomux.inbox.seen"                     // item id → updated (unix seconds) when last read
     static let links = "octomux.inbox.links"                   // item id → session id
+    static let rules = "octomux.inbox.rules"                   // automations (JSON [InboxRule])
+    static let ruleRuns = "octomux.inbox.ruleRuns"             // "rule id|item id" already started
     static let asks = "octomux.inbox.asks"                     // item id → its read-only Ask session
     static let fixes = "octomux.inbox.fixes"                   // item id → unix seconds "Fix with agent" started
     static let linkedSeen = "octomux.inbox.linkedSeen"         // item id → unix seconds its linked session last caught up
@@ -147,6 +149,8 @@ final class InboxStore: ObservableObject {
     var onMain: (@escaping () -> Void) -> Void = { DispatchQueue.main.async(execute: $0) }
     /// Debug fixture: fixed items, no fetching.
     var frozen = false
+    /// Items that just came in (not the first fetch, a widened one or hidden places): the automations look at them.
+    var appeared: ([InboxItem]) -> Void = { InboxAutomations.shared.handle($0) }
     private var timer: Timer?
     private var lastFetch = Date.distantPast
     /// What the last refresh saw (id → updated), to tell new and changed items apart for notifications.
@@ -587,7 +591,9 @@ final class InboxStore: ObservableObject {
         if !ownSeen.isEmpty { setSeen(ownSeen) }
         fetched = next
         checkLinked(mine)
+        let new = primed.contains(source) ? mine.filter { known[$0.id] == nil && !hidden.contains($0.place) } : []
         notify(mine.filter { !hidden.contains($0.place) }, sources: [source])
+        if !new.isEmpty { appeared(new) }
         // Hidden ones count as seen by the notifier too: showing a repo again does not ring for all of it.
         for i in mine where hidden.contains(i.place) { known[i.id] = i.updated.timeIntervalSince1970; knownStatus[i.id] = i.status }
         primed.insert(source)

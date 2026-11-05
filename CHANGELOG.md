@@ -54,6 +54,10 @@
   - **Mute a bell for a while**: right-click a project's bell (in the Inbox or in Settings) to quiet it for an
     hour, until tomorrow 09:00, until a date you pick, or until you turn it back on; Settings can mute every bell
     at once. A muted bell shows struck through; its changes still wait unread in the Inbox.
+  - **Automations** (Settings → Inbox → Automations): rules that start an agent by themselves when a matching
+    item comes in (from, what, why, where), either reviewing a pull request read-only or working on the item in
+    a new worktree, in the item's own project and without switching to it. Rules are off until you turn them on
+    (and confirm); each item starts at most once per rule, at most three per check, and only new arrivals count.
   - Settings → Inbox: connections, Jira projects, GitHub repositories, what shows up, notifications, and what
     Send to agent opens.
 

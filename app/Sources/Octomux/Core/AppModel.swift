@@ -607,7 +607,8 @@ final class AppModel: ObservableObject {
     }
 
     /// Creates a terminal (profileId nil) or agent session. With `split`, it joins the focused pane's tab.
-    func newSession(profileId: String?, projectId: String? = nil, split: SplitDir? = nil, command: String? = nil, title: String? = nil, placement: Placement = .tab, worktree: String? = nil, resume: String? = nil, prompt: String? = nil, chat: Bool = false, extraArgs: [String] = [], done: ((String) -> Void)? = nil) {
+    /// `select: false` starts it without switching to it (Inbox automations run in the background).
+    func newSession(profileId: String?, projectId: String? = nil, split: SplitDir? = nil, command: String? = nil, title: String? = nil, placement: Placement = .tab, worktree: String? = nil, resume: String? = nil, prompt: String? = nil, chat: Bool = false, extraArgs: [String] = [], select: Bool = true, done: ((String) -> Void)? = nil) {
         guard ensureManageable() else { return }
         guard let pid = projectId ?? currentProject?.id else {
             lastError = "Add a project first (⌘⇧O)."
@@ -653,6 +654,7 @@ final class AppModel: ObservableObject {
                     if !set.contains(id) { set.append(id); UserDefaults.standard.set(set, forKey: "octomux.chat") }
                 }
                 done?(id)
+                guard select else { return }
                 if let tid = d["tab_id"] as? String {
                     self.activeTabId = tid
                     self.selectedProjectId = pid

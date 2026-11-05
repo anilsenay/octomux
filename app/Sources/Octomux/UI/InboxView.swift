@@ -1025,12 +1025,14 @@ enum InboxStart {
 
     /// A new tab shows the prompt on the new-session screen first; a worktree starts the agent in it right away.
     /// Either way the session is linked to the item.
-    static func start(_ item: InboxItem, in project: Project, worktree: Bool, task: Task, model: AppModel, evidence: String = "") {
+    static func start(_ item: InboxItem, in project: Project, worktree: Bool, task: Task, model: AppModel, evidence: String = "",
+                      select: Bool = true, profile: String? = nil) {
         InboxStore.shared.choose(project, for: item)
         let text = prompt(item, task, evidence: evidence)
         let itemId = item.id
         if worktree {
-            let profileId = UserDefaults.standard.string(forKey: InboxPrefs.profile).flatMap { model.profile($0)?.id }
+            let profileId = profile.flatMap { model.profile($0)?.id }
+                ?? UserDefaults.standard.string(forKey: InboxPrefs.profile).flatMap { model.profile($0)?.id }
                 ?? UserDefaults.standard.string(forKey: "octomux.chatProfile").flatMap { model.profile($0)?.id }
                 ?? model.enabledProfiles.first(where: { $0.kind == .claude || $0.kind == .codex })?.id
             // A PR's own branch only in a checkout of its repo; elsewhere a new branch named after it.
@@ -1043,7 +1045,7 @@ enum InboxStart {
                     _ = GitInfo.git(["fetch", "origin", "\(b):\(b)"], in: project.path)
                 }
                 DispatchQueue.main.async {
-                    model.newWorktree(project: project, branch: branch, open: profileId, prompt: text) { InboxStore.shared.link(itemId, session: $0) }
+                    model.newWorktree(project: project, branch: branch, open: profileId, prompt: text, select: select) { InboxStore.shared.link(itemId, session: $0) }
                 }
             }
         } else {
@@ -1282,6 +1284,9 @@ struct InboxSettings: View {
                     projectStylePicker
                 }
             }
+        }
+        SettingsGroup("Automations", desc: "Start an agent by itself when a matching item comes into the Inbox. Rules are off until you turn them on; each item starts at most once per rule, and at most \(InboxAutomations.maxPerRefresh) start per check.") {
+            InboxRulesSetting()
         }
         SettingsGroup("Starting work") {
             SettingRow("Send to agent opens", desc: "The arrow next to the button always offers the other way. A tab shows the prompt first; a worktree starts the agent right away.") {
@@ -1978,5 +1983,100 @@ struct InboxMuteDatePicker: View {
             }
         }
         .padding(16).frame(width: 300)
+    }
+}
+
+/// Settings: the automation rules, each with its switch.
+struct InboxRulesSetting: View {
+    @ObservedObject var auto = InboxAutomations.shared
+    @State private var editing: InboxRule?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(auto.rules) { r in
+                HStack(spacing: 10) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(r.name).font(.system(size: T.k * 13, weight: .medium))
+                        Text(r.summary).font(.system(size: T.k * 11.5)).foregroundStyle(T.text2).fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 8)
+                    Button("Edit") { editing = r }.buttonStyle(.link).font(T.caption)
+                    Button { auto.remove(r.id) } label: { Image(systemName: "trash") }.buttonStyle(IconButtonStyle(size: 22)).help("Delete the rule")
+                    Toggle("", isOn: Binding(get: { r.enabled }, set: { auto.setEnabled(r.id, $0) })).labelsHidden().toggleStyle(.switch)
+                }
+                .padding(.horizontal, 14).padding(.vertical, 10)
+                Hairline()
+            }
+            HStack {
+                if auto.rules.isEmpty {
+                    Text("No rules yet. For example: review pull requests that ask for your review, read-only, as soon as they come in.")
+                        .font(.system(size: T.k * 12)).foregroundStyle(T.text3).fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+                Button("Add Rule…") { editing = InboxRule(name: "Review requests", source: "github", kind: "pr", reason: InboxItem.Reason.review.rawValue) }
+                    .buttonStyle(SecondaryButtonStyle())
+            }
+            .padding(.horizontal, 14).padding(.vertical, 11)
+        }
+        .sheet(item: $editing) { r in InboxRuleEditor(rule: r) { editing = nil } }
+    }
+}
+
+/// Adding or changing a rule (it is saved off; the switch turns it on).
+struct InboxRuleEditor: View {
+    @EnvironmentObject var model: AppModel
+    @State var rule: InboxRule
+    let close: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(InboxAutomations.shared.rules.contains { $0.id == rule.id } ? "Edit rule" : "New rule").font(.system(size: T.k * 15, weight: .semibold))
+            TextField("Name", text: $rule.name).textFieldStyle(.roundedBorder)
+            Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 8) {
+                GridRow {
+                    Text("From").foregroundStyle(T.text2)
+                    Picker("", selection: $rule.source) { Text("GitHub or Jira").tag(String?.none); Text("GitHub").tag(String?("github")); Text("Jira").tag(String?("jira")) }.labelsHidden()
+                }
+                GridRow {
+                    Text("What").foregroundStyle(T.text2)
+                    Picker("", selection: $rule.kind) { Text("Anything").tag(String?.none); Text("Pull requests").tag(String?("pr")); Text("Issues").tag(String?("issue")) }.labelsHidden()
+                }
+                GridRow {
+                    Text("Why").foregroundStyle(T.text2)
+                    Picker("", selection: $rule.reason) {
+                        Text("Any reason").tag(String?.none)
+                        ForEach(InboxItem.Reason.allCases, id: \.self) { r in Text(r.rawValue).tag(String?(r.rawValue)) }
+                    }.labelsHidden()
+                }
+                GridRow {
+                    Text("Where").foregroundStyle(T.text2)
+                    TextField("Any repo or project (part of its name)", text: $rule.place).textFieldStyle(.roundedBorder)
+                }
+                GridRow {
+                    Text("Then").foregroundStyle(T.text2)
+                    Picker("", selection: $rule.action) { ForEach(InboxRule.Action.allCases, id: \.self) { a in Text(a.title).tag(a) } }.labelsHidden()
+                }
+                GridRow {
+                    Text("Agent").foregroundStyle(T.text2)
+                    Picker("", selection: $rule.profileId) {
+                        Text("The Inbox's agent").tag(String?.none)
+                        ForEach(model.enabledProfiles.filter { $0.kind == .claude || $0.kind == .codex }) { p in Text(p.name).tag(String?(p.id)) }
+                    }.labelsHidden()
+                }
+            }
+            .font(.system(size: T.k * 12.5))
+            Text(rule.action == .review
+                 ? "Reviews run read-only (Claude's plan mode, Codex's read-only sandbox) in the item's project, and only for pull requests."
+                 : "Work runs in a new worktree of the item's project with your usual agent permissions.")
+                .font(T.caption).foregroundStyle(T.text3).fixedSize(horizontal: false, vertical: true)
+            Text(rule.summary).font(.system(size: T.k * 12, weight: .medium)).foregroundStyle(T.text2)
+            HStack {
+                Spacer()
+                Button("Cancel") { close() }.keyboardShortcut(.cancelAction)
+                Button("Save") { InboxAutomations.shared.upsert(rule); close() }
+                    .keyboardShortcut(.defaultAction).disabled(rule.name.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+        .padding(18).frame(width: 460)
     }
 }

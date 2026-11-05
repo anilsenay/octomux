@@ -48,6 +48,9 @@ enum DebugActions {
                 "last_refresh": st.lastRefresh.map { ISO8601DateFormatter().string(from: $0) } ?? NSNull(),
                 "selected": st.selectedId ?? NSNull(),
                 "fixture_ran": InboxFixture.ran,
+                "rules": InboxAutomations.shared.rules.map { ["name": $0.name, "enabled": $0.enabled] as [String: Any] },
+                "focused_session": AppModel.shared.focusedSessionId ?? NSNull(),
+                "links": st.links,
                 "pr_results": InboxActions.shared.results.mapValues { ["ok": $0.ok, "text": $0.text] as [String: Any] },
                 "unread": st.items.filter(st.isUnread).map(\.id),
                 "first_ids": Dictionary(grouping: st.items, by: { $0.source.rawValue }).mapValues { $0.prefix(3).map(\.id) },
@@ -285,6 +288,13 @@ enum DebugActions {
                     else if let m = p["minutes"] as? Int { InboxMute.shared.mute([k], until: Date().addingTimeInterval(Double(m) * 60)) }
                     else if (p["forever"] as? Bool) == true { InboxMute.shared.mute([k], until: nil) }
                 }
+            case "inbox_rule_add":    // adds a rule ("action": review | work) and asks to turn it on
+                let r = InboxRule(name: p["value"] as? String ?? "Review requests", source: "github", kind: "pr",
+                                  reason: InboxItem.Reason.review.rawValue, action: InboxRule.Action(rawValue: p["action"] as? String ?? "review") ?? .review)
+                InboxAutomations.shared.upsert(r)
+                InboxAutomations.shared.setEnabled(r.id, true)
+            case "inbox_rules_clear": for r in InboxAutomations.shared.rules { InboxAutomations.shared.remove(r.id) }
+            case "inbox_fake_new_pr": InboxFixture.newPR()
             case "inbox_confirm":     // answers the confirmation sheet on screen
                 if let a = InboxConfirm.current, let w = a.window.sheetParent {
                     w.endSheet(a.window, returnCode: (p["value"] as? Bool) == true ? .alertFirstButtonReturn : .alertSecondButtonReturn)
