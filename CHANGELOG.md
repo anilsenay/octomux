@@ -35,6 +35,9 @@
   - **Keyboard**: ↑ ↓ (or k j) move through the list, Return opens the first item, Esc closes it, u marks it read or
     unread, s sends it to an agent, o opens it on the website, r refreshes, / filters (Esc clears, Esc again
     leaves the field). The keyboard button lists them.
+  - **Ask** (button, or the a key): a chat about the item that only reads: the agent starts with the item as
+    reference data and your question at the end, in Claude's plan mode or Codex's read-only sandbox, apart from
+    any session working on the item. Continue asking goes back to it.
   - Settings → Inbox: connections, Jira projects, GitHub repositories, what shows up, notifications, and what
     Send to agent opens.
 

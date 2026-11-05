@@ -3,12 +3,12 @@ import SwiftUI
 
 /// The Inbox's keyboard: moving through the list and acting on the open item, like a mail app.
 enum InboxKeys {
-    enum Action: Equatable { case next, previous, open, close, toggleRead, send, openInBrowser, refresh, filter }
+    enum Action: Equatable { case next, previous, open, close, toggleRead, send, ask, openInBrowser, refresh, filter }
 
     /// The shortcut list (Help popover and tooltips).
     static let help: [(keys: String, what: String)] = [
         ("↓ / j", "Next item"), ("↑ / k", "Previous item"), ("Return", "Open the first item"), ("Esc", "Close the item"),
-        ("u", "Mark read / unread"), ("s", "Send to agent"), ("o", "Open on the website"), ("r", "Refresh"), ("/", "Filter"),
+        ("u", "Mark read / unread"), ("s", "Send to agent"), ("a", "Ask about it (read-only)"), ("o", "Open on the website"), ("r", "Refresh"), ("/", "Filter"),
     ]
 
     /// A key press (no ⌘ / ⌃ / ⌥: those stay app shortcuts) → what it does in the Inbox.
@@ -26,6 +26,7 @@ enum InboxKeys {
         case "k": return .previous
         case "u": return .toggleRead
         case "s": return .send
+        case "a": return .ask
         case "o": return .openInBrowser
         case "r": return .refresh
         case "/": return .filter

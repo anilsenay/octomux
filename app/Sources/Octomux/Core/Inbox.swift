@@ -80,6 +80,7 @@ enum InboxPrefs {
     static let hidden = "octomux.inbox.hidden"                 // repos / Jira projects kept out of the Inbox
     static let seen = "octomux.inbox.seen"                     // item id → updated (unix seconds) when last read
     static let links = "octomux.inbox.links"                   // item id → session id
+    static let asks = "octomux.inbox.asks"                     // item id → its read-only Ask session
     static let fixes = "octomux.inbox.fixes"                   // item id → unix seconds "Fix with agent" started
     static let linkedSeen = "octomux.inbox.linkedSeen"         // item id → unix seconds its linked session last caught up
     static let placeProject = "octomux.inbox.placeProject"     // repo / Jira project → Octomux project id
@@ -156,7 +157,16 @@ final class InboxStore: ObservableObject {
         seen = defaults.dictionary(forKey: InboxPrefs.seen) as? [String: Double] ?? [:]
         links = defaults.dictionary(forKey: InboxPrefs.links) as? [String: String] ?? [:]
         fixes = defaults.dictionary(forKey: InboxPrefs.fixes) as? [String: Double] ?? [:]
+        asks = defaults.dictionary(forKey: InboxPrefs.asks) as? [String: String] ?? [:]
     }
+
+    /// Item id → the session answering questions about it (Ask), apart from the one working on it.
+    @Published private(set) var asks: [String: String] = [:]
+    func setAsk(_ itemId: String, session: String) {
+        asks[itemId] = session
+        defaults.set(asks, forKey: InboxPrefs.asks)
+    }
+    func askSession(_ i: InboxItem) -> Session? { asks[i.id].flatMap { AppModel.shared.session($0) } }
 
     var githubOn: Bool { InboxPrefs.bool(InboxPrefs.githubOn, false) }
     var jiraOn: Bool { JiraClient.configured }

@@ -105,7 +105,10 @@ struct NewChatView: View {
                 .onPasteCommand(of: [.png, .tiff, .fileURL]) { _ in files += AttachmentChips.pasted() }
             HStack(spacing: 2) {
                 modelChip(flags: flags)
-                if flags {
+                if NewChatDraft.asks[docId] != nil {
+                    ContextChip(icon: "eye", text: "Read only", open: .constant(false),
+                                help: "Asking about an Inbox item: the agent reads but changes nothing (Claude: plan mode; Codex: read-only sandbox)", tint: T.accent)
+                } else if flags {
                     let perm = ChatLaunchOptions.permissions(kind).first { $0.id == options.permission }
                     ContextChip(icon: perm?.warn == true ? "exclamationmark.shield" : "lock", text: perm?.title ?? "CLI settings",
                                 open: $pickingPermission, help: perm?.detail ?? "Permission mode", tint: perm?.warn == true ? T.amber : nil)
@@ -198,10 +201,15 @@ struct NewChatView: View {
         let kind = profile.kind
         let message = AttachmentChips.message(text, files: files, kind: kind)
         let images = kind == .codex ? files.filter(AttachmentChips.isImage).map(\.path) : []
+        let ask = NewChatDraft.asks[docId]
+        var opts = options
+        if ask != nil { opts.permission = nil }       // replaced by the read-only flags
+        let args = opts.args(kind, images: images) + (ask != nil ? ChatLaunchOptions.readOnlyArgs(kind) : [])
         model.newSession(profileId: profile.id, projectId: project.id, worktree: worktree, prompt: message, chat: true,
-                         extraArgs: options.args(kind, images: images)) { id in
+                         extraArgs: args) { id in
             ChatFirstMessage.set(id, text)
             if let item = NewChatDraft.links.removeValue(forKey: docId) { InboxStore.shared.link(item, session: id) }
+            if let item = NewChatDraft.asks.removeValue(forKey: docId) { InboxStore.shared.setAsk(item, session: id) }
             // The new tab takes the start screen's place.
             if let i = model.docTabs.firstIndex(where: { $0.id == docId }) { model.docTabs.remove(at: i) }
             if model.activeDocId == docId { model.activeDocId = nil }
@@ -360,4 +368,6 @@ enum NewChatDraft {
     static var pending: [String: String] = [:]
     /// Start screen opened from an Inbox item: doc id → item id, linked to the session once it starts.
     static var links: [String: String] = [:]
+    /// Start screen opened by Ask on an Inbox item: doc id → item id. Such a session runs read-only.
+    static var asks: [String: String] = [:]
 }

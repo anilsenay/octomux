@@ -54,6 +54,15 @@ struct ChatLaunchOptions: Codable, Equatable {
         }
     }
 
+    /// Flags that keep an agent from changing anything (Ask on an Inbox item).
+    static func readOnlyArgs(_ kind: AgentKind) -> [String] {
+        switch kind {
+        case .claude: return ["--permission-mode", "plan"]
+        case .codex: return ["--sandbox", "read-only"]
+        default: return []
+        }
+    }
+
     static func label(_ effort: String) -> String { effort == "xhigh" ? "X-High" : effort.prefix(1).uppercased() + effort.dropFirst() }
 
     /// The CLI flags for these choices, plus image attachments where the CLI takes them as flags.

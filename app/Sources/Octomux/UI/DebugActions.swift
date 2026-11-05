@@ -249,10 +249,13 @@ enum DebugActions {
                 if let pid = m.currentProject?.id {
                     let prof = m.enabledProfiles(forProject: pid).first { $0.kind == .claude }
                     let doc = m.activeDocId
-                    let text = p["value"] as? String ?? "hello"
-                    m.newSession(profileId: prof?.id, projectId: pid, prompt: text, chat: true) { id in
+                    let text = p["value"] as? String ?? NewChatDraft.pending[doc ?? ""] ?? "hello"
+                    let ask = doc.flatMap { NewChatDraft.asks[$0] }
+                    m.newSession(profileId: prof?.id, projectId: pid, prompt: text, chat: true,
+                                 extraArgs: ask != nil ? ChatLaunchOptions.readOnlyArgs(.claude) : []) { id in
                         ChatFirstMessage.set(id, text)
                         if let doc, let item = NewChatDraft.links.removeValue(forKey: doc) { InboxStore.shared.link(item, session: id) }
+                        if let doc, let item = NewChatDraft.asks.removeValue(forKey: doc) { InboxStore.shared.setAsk(item, session: id) }
                         if let doc { m.closeDoc(doc) }
                     }
                 }
