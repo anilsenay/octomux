@@ -119,7 +119,7 @@ final class ReviewCloneTests: XCTestCase {
         XCTAssertEqual(try String(contentsOfFile: dest + "/f.txt", encoding: .utf8), "x\n")
         XCTAssertNil(ReviewClones.git(["config", "remote.origin.partialclonefilter"], in: dest).out.nilIfEmpty)   // a full clone
         // The default folder: the last one used, else where most projects are.
-        let d = UserDefaults(suiteName: "clone-\(UUID())")!
+        let d = scratchDefaults("clone-\(UUID())")
         XCTAssertEqual(RepoClone.defaultParent(projects: ["/c/a", "/c/b", "/d/e"], defaults: d), "/c")
         d.set(t.path, forKey: RepoClone.parentKey)
         XCTAssertEqual(RepoClone.defaultParent(projects: ["/c/a"], defaults: d), t.path)

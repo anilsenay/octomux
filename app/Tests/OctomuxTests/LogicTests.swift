@@ -227,7 +227,7 @@ final class DefaultsMigrationTests: XCTestCase {
     func testCopiesWithoutOverwriting() {
         // One fixed suite, emptied before and after (a fresh name per run left a plist behind each time).
         let name = "octomux.tests.defaultsMigration"
-        let d = UserDefaults(suiteName: name)!
+        let d = scratchDefaults(name)
         d.removePersistentDomain(forName: name)
         defer {
             d.removePersistentDomain(forName: name)

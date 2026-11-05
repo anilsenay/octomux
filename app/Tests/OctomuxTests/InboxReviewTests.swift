@@ -75,7 +75,7 @@ final class InboxReviewTests: XCTestCase {
 
     private func manager(lines: Int = 100) -> (InboxReviews, Recorder) {
         let name = "reviews-\(UUID().uuidString)"
-        let d = UserDefaults(suiteName: name)!
+        let d = scratchDefaults(name)
         addTeardownBlock { d.removePersistentDomain(forName: name) }
         let m = InboxReviews(defaults: d)
         let rec = Recorder()

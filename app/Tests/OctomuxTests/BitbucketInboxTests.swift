@@ -181,7 +181,7 @@ final class BitbucketInboxTests: XCTestCase {
 
     private func store() -> (BitbucketInbox, UserDefaults, Fake) {
         let name = "bb-\(UUID().uuidString)"
-        let d = UserDefaults(suiteName: name)!
+        let d = scratchDefaults(name)
         addTeardownBlock { d.removePersistentDomain(forName: name) }
         let bb = BitbucketInbox()
         bb.defaults = d
@@ -375,7 +375,7 @@ final class BitbucketInboxTests: XCTestCase {
 
     func testStoreAppliesBitbucketItemsAndReadMarks() {
         let name = "bbstore-\(UUID().uuidString)"
-        let d = UserDefaults(suiteName: name)!
+        let d = scratchDefaults(name)
         addTeardownBlock { d.removePersistentDomain(forName: name) }
         let store = InboxStore(defaults: d)
         store.deliver = { _ in }; store.chime = {}
@@ -448,7 +448,7 @@ final class BitbucketInboxTests: XCTestCase {
 
     private func quietStore() -> (InboxStore, () -> [AppNotification]) {
         let name = "bbstore-\(UUID().uuidString)"
-        let d = UserDefaults(suiteName: name)!
+        let d = scratchDefaults(name)
         addTeardownBlock { d.removePersistentDomain(forName: name) }
         let store = InboxStore(defaults: d)
         var sent: [AppNotification] = []
@@ -743,7 +743,7 @@ final class BitbucketInboxTests: XCTestCase {
     }
 
     func testCheckoutOfThePullRequestsRepo() {
-        let store = InboxStore(defaults: UserDefaults(suiteName: "bb-checkout-\(UUID())")!)
+        let store = InboxStore(defaults: scratchDefaults("bb-checkout-\(UUID())"))
         let i = bbItem()   // acme/api
         let p = Project(id: "p", workspaceId: "w", name: "api", path: "/src/api", color: "#fff", icon: ProjectIcon(kind: "folder"), sort: 0, archived: false)
         XCTAssertNil(store.isCheckout(p, of: i))   // not looked at yet: unknown, no warning

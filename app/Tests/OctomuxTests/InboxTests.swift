@@ -151,7 +151,7 @@ final class InboxStoreTests: XCTestCase {
 
     override func setUp() {
         suite = "octomux-inbox-test-\(UUID().uuidString)"
-        store = InboxStore(defaults: UserDefaults(suiteName: suite)!)
+        store = InboxStore(defaults: scratchDefaults(suite))
         rung = []
         store.deliver = { [unowned self] n in self.rung.append(n.title) }
         chimes = 0
@@ -220,7 +220,7 @@ final class InboxStoreTests: XCTestCase {
         store.markAllRead()
         XCTAssertEqual(store.unreadCount, 0)
         // Kept across launches.
-        let again = InboxStore(defaults: UserDefaults(suiteName: suite)!)
+        let again = InboxStore(defaults: scratchDefaults(suite))
         XCTAssertFalse(again.isUnread(store.items[0]))
     }
 
@@ -421,7 +421,7 @@ final class InboxNoticeTests: XCTestCase {
 
     override func setUp() {
         suite = "octomux-inbox-notice-\(UUID().uuidString)"
-        store = InboxStore(defaults: UserDefaults(suiteName: suite)!)
+        store = InboxStore(defaults: scratchDefaults(suite))
         rung = []
         history = [:]
         store.deliver = { [unowned self] n in self.rung.append(n.title) }
@@ -483,7 +483,7 @@ final class InboxLinkedTests: XCTestCase {
 
     override func setUp() {
         suite = "octomux-inbox-linked-\(UUID().uuidString)"
-        store = InboxStore(defaults: UserDefaults(suiteName: suite)!)
+        store = InboxStore(defaults: scratchDefaults(suite))
         history = []
         store.deliver = { _ in }
         store.chime = {}
@@ -533,7 +533,7 @@ final class InboxLinkedTests: XCTestCase {
     func testOlderLinksStartFromNow() {
         store.apply(.github, .success([pr(at: 1000)]))
         // A link stored before linked news existed (no catch-up time).
-        let d = UserDefaults(suiteName: suite)!
+        let d = scratchDefaults(suite)
         d.set(["gh:o/r#5": "s1"], forKey: InboxPrefs.links)
         let again = InboxStore(defaults: d)
         again.loadActivity = { [unowned self] _ in InboxActivity(events: self.history) }
@@ -622,7 +622,7 @@ final class InboxCITests: XCTestCase {
     func testFixProgress() {
         let suite = "octomux-inbox-fix-\(UUID().uuidString)"
         defer { UserDefaults().removePersistentDomain(forName: suite) }
-        let store = InboxStore(defaults: UserDefaults(suiteName: suite)!)
+        let store = InboxStore(defaults: scratchDefaults(suite))
         store.background = { $0() }
         store.onMain = { $0() }
         var item = InboxItem(id: "gh:o/r#4", source: .github, kind: .pr, key: "#4", place: "o/r", title: "T", author: "a", assignee: nil,
@@ -662,7 +662,7 @@ final class InboxEndedTests: XCTestCase {
 
     override func setUp() {
         suite = "octomux-inbox-ended-\(UUID().uuidString)"
-        store = InboxStore(defaults: UserDefaults(suiteName: suite)!)
+        store = InboxStore(defaults: scratchDefaults(suite))
         rung = []; states = [:]; asked = []
         store.deliver = { [unowned self] n in self.rung.append(n.title) }
         store.chime = {}
@@ -816,7 +816,7 @@ final class InboxAskTests: XCTestCase {
     func testAskSessionIsSeparateFromTheWorkLink() {
         let suite = "octomux-inbox-ask-\(UUID().uuidString)"
         defer { UserDefaults().removePersistentDomain(forName: suite) }
-        let d = UserDefaults(suiteName: suite)!
+        let d = scratchDefaults(suite)
         let store = InboxStore(defaults: d)
         store.link("jira:DC-1", session: "work")
         store.setAsk("jira:DC-1", session: "ask")
@@ -951,7 +951,7 @@ final class InboxDiffTests: XCTestCase {
     func testStoreLoadsOncePerVersion() {
         let suite = "octomux-inbox-diff-\(UUID().uuidString)"
         defer { UserDefaults().removePersistentDomain(forName: suite) }
-        let store = InboxStore(defaults: UserDefaults(suiteName: suite)!)
+        let store = InboxStore(defaults: scratchDefaults(suite))
         var calls = 0
         store.loadDiff = { _ in calls += 1; return self.sample }
         let pr = InboxItem(id: "gh:o/r#1", source: .github, kind: .pr, key: "#1", place: "o/r", title: "T", author: "a", assignee: nil,
@@ -1117,7 +1117,7 @@ final class InboxJiraActionTests: XCTestCase {
     func testFilterItemsFollowTheBell() {
         let suite = "octomux-inbox-filter-\(UUID().uuidString)"
         defer { UserDefaults().removePersistentDomain(forName: suite); UserDefaults.standard.removeObject(forKey: InboxPrefs.jiraWatched) }
-        let store = InboxStore(defaults: UserDefaults(suiteName: suite)!)
+        let store = InboxStore(defaults: scratchDefaults(suite))
         var rung: [String] = [], chimes = 0
         store.deliver = { rung.append($0.title) }; store.chime = { chimes += 1 }
         store.loadActivity = { _ in throw InboxError("offline") }
@@ -1170,7 +1170,7 @@ final class InboxMuteTests: XCTestCase {
     func testMutedBellIsQuiet() {
         let suite = "octomux-inbox-mute-\(UUID().uuidString)"
         defer { UserDefaults().removePersistentDomain(forName: suite) }
-        let store = InboxStore(defaults: UserDefaults(suiteName: suite)!)
+        let store = InboxStore(defaults: scratchDefaults(suite))
         var chimes = 0
         store.deliver = { _ in }; store.chime = { chimes += 1 }
         store.loadActivity = { _ in throw InboxError("offline") }
@@ -1200,7 +1200,7 @@ final class InboxAutomationTests: XCTestCase {
 
     override func setUp() {
         suite = "octomux-inbox-auto-\(UUID().uuidString)"
-        auto = InboxAutomations(defaults: UserDefaults(suiteName: suite)!)
+        auto = InboxAutomations(defaults: scratchDefaults(suite))
         started = []; said = []
         auto.start = { [unowned self] i, r in self.started.append("\(r.name):\(i.key)"); return nil }
         auto.notify = { [unowned self] t, _ in self.said.append(t) }
@@ -1250,7 +1250,7 @@ final class InboxAutomationTests: XCTestCase {
         auto.handle((2...8).map { pr($0) })
         XCTAssertEqual(started.count, 1 + InboxAutomations.maxPerRefresh)
         // Kept across launches.
-        let again = InboxAutomations(defaults: UserDefaults(suiteName: suite)!)
+        let again = InboxAutomations(defaults: scratchDefaults(suite))
         again.start = { [unowned self] i, r in self.started.append("again:\(i.key)"); return nil }
         again.notify = { _, _ in }
         again.handle([pr(1)])
@@ -1268,7 +1268,7 @@ final class InboxAutomationTests: XCTestCase {
     func testStoreHandsOnlyNewItems() {
         let s = "octomux-inbox-appeared-\(UUID().uuidString)"
         defer { UserDefaults().removePersistentDomain(forName: s) }
-        let store = InboxStore(defaults: UserDefaults(suiteName: s)!)
+        let store = InboxStore(defaults: scratchDefaults(s))
         var got: [[String]] = []
         store.appeared = { got.append($0.map(\.key)) }
         store.deliver = { _ in }; store.chime = {}
@@ -1289,7 +1289,7 @@ final class InboxReadAcrossLaunchTests: XCTestCase {
     func testOldReadItemsStayReadWhenAnotherSourceLoadsFirst() {
         let suite = "octomux-inbox-relaunch-\(UUID().uuidString)"
         defer { UserDefaults().removePersistentDomain(forName: suite) }
-        let d = UserDefaults(suiteName: suite)!
+        let d = scratchDefaults(suite)
         let old = Date().addingTimeInterval(-4 * 365 * 86400)          // updated four years ago
         let gh = InboxItem(id: "gh:o/r#4", source: .github, kind: .issue, key: "#4", place: "o/r", title: "t", author: "a", assignee: "You",
                            status: "Open", statusTone: "done", reason: .assigned, updated: old, body: "", url: "", number: 4)
@@ -1321,7 +1321,7 @@ final class InboxReadAcrossLaunchTests: XCTestCase {
 
     private func snoozeStore() -> (InboxStore, () -> [AppNotification], (TimeInterval) -> Void) {
         let name = "snooze-\(UUID().uuidString)"
-        let d = UserDefaults(suiteName: name)!
+        let d = scratchDefaults(name)
         addTeardownBlock { d.removePersistentDomain(forName: name) }
         let store = InboxStore(defaults: d)
         var sent: [AppNotification] = []
@@ -1461,7 +1461,7 @@ final class InboxReadAcrossLaunchTests: XCTestCase {
 
     func testSummarizeStoresTheAnswerAndMarksItStale() {
         let name = "summary-\(UUID().uuidString)"
-        let d = UserDefaults(suiteName: name)!
+        let d = scratchDefaults(name)
         addTeardownBlock { d.removePersistentDomain(forName: name) }
         let store = InboxStore(defaults: d)
         store.background = { $0() }; store.onMain = { $0() }; store.deliver = { _ in }; store.appeared = { _ in }
