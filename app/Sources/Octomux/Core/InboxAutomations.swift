@@ -10,7 +10,7 @@ struct InboxRule: Codable, Equatable, Identifiable {
         var title: String {
             switch self {
             case .review: return "Review it (read-only)"
-            case .reviewWorktree: return "Review it in a worktree (read-only)"
+            case .reviewWorktree: return "Review it in a worktree (read-only), and its new commits"
             case .work: return "Work on it in a new worktree"
             }
         }
@@ -110,6 +110,34 @@ final class InboxAutomations: ObservableObject {
                     notify("Started an agent on \(item.key)", "\(r.name): \(item.title)")
                 }
                 break            // one rule per item
+            }
+        }
+    }
+
+    /// Starts the review of what changed (tests swap it); returns why it couldn't, or nil.
+    var restart: (InboxItem, InboxReviewRun, InboxRule) -> String? = { item, run, r in
+        guard let p = AppModel.shared.project(run.projectId) else { return "Its project is gone." }
+        return InboxReviews.shared.start(item, in: p, clone: run.clone, profileId: r.profileId ?? run.profileId, auto: true, again: true)
+    }
+
+    /// Pull requests an automation reviewed that got new commits since: what changed is reviewed, once per new head,
+    /// while a rule that reviews them is on. Reviews you started yourself are left to you.
+    func followUp(_ items: [InboxItem], run: (String) -> InboxReviewRun? = { InboxReviews.shared.run($0) }) {
+        var started = 0
+        for item in items where started < Self.maxPerRefresh {
+            guard let last = run(item.id), last.auto, last.state == .done, let h = last.head, let now = item.head,
+                  !InboxReviews.sameCommit(h, now), item.ended == nil, !item.isDraft,
+                  let r = rules.first(where: { $0.enabled && $0.action == .reviewWorktree && $0.matches(item) }) else { continue }
+            let key = r.id + "|" + item.id + "@" + now
+            guard !runs.contains(key) else { continue }
+            runs.append(key)
+            if runs.count > 500 { runs.removeFirst(runs.count - 500) }
+            defaults.set(runs, forKey: InboxPrefs.ruleRuns)
+            if let why = restart(item, last, r) {
+                if !why.isEmpty { notify("“\(r.name)” didn't review the new commits: \(item.key)", why) }
+            } else {
+                started += 1
+                notify("Reviewing new commits on \(item.key)", "\(r.name): \(item.title)")
             }
         }
     }

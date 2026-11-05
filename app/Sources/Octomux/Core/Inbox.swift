@@ -160,7 +160,12 @@ enum InboxPrefs {
 // MARK: - Store
 
 final class InboxStore: ObservableObject {
-    static let shared: InboxStore = { let s = InboxStore(); s.cacheFile = Paths.home.appendingPathComponent("inbox-cache.json"); return s }()
+    static let shared: InboxStore = {
+        let s = InboxStore()
+        s.cacheFile = Paths.home.appendingPathComponent("inbox-cache.json")
+        s.fetchedItems = { InboxAutomations.shared.followUp($0) }
+        return s
+    }()
 
     /// What the Inbox shows: everything fetched but the hidden repos and projects.
     @Published private(set) var items: [InboxItem] = []
@@ -216,6 +221,8 @@ final class InboxStore: ObservableObject {
     var frozen = false
     /// Items that just came in (not the first fetch, a widened one or hidden places): the automations look at them.
     var appeared: ([InboxItem]) -> Void = { InboxAutomations.shared.handle($0) }
+    /// Items as fetched, for automations that follow their new commits (the app's store only; tests: nil).
+    var fetchedItems: (([InboxItem]) -> Void)?
     private var timer: Timer?
     private var lastFetch = Date.distantPast
     /// What the last refresh saw (id → updated), to tell new and changed items apart for notifications.
@@ -951,6 +958,7 @@ final class InboxStore: ObservableObject {
         let new = primed.contains(source) ? mine.filter { known[$0.id] == nil && !hidden.contains($0.place) } : []
         notify(mine.filter { !hidden.contains($0.place) }, sources: [source])
         if !new.isEmpty { appeared(new) }
+        fetchedItems?(mine.filter { !hidden.contains($0.place) })
         // Hidden ones count as seen by the notifier too: showing a repo again does not ring for all of it.
         for i in mine where hidden.contains(i.place) { known[i.id] = i.updated.timeIntervalSince1970; knownStatus[i.id] = i.status }
         primed.insert(source)

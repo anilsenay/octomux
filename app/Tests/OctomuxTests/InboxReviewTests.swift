@@ -207,9 +207,41 @@ final class InboxReviewTests: XCTestCase {
         XCTAssertEqual(rec.launched.first?.1, false)            // an automation's doesn't come to the front
     }
 
+    func testAnAutomationsReviewFollowsNewCommitsOncePerHead() {
+        let a = InboxAutomations(defaults: scratchDefaults("followup-\(UUID())"))
+        var rule = InboxRule(name: "Reviews", kind: "pr", action: .reviewWorktree); rule.enabled = true
+        a.upsert(rule)
+        // upsert keeps new rules off; turn it on the way the confirmation would.
+        a.confirm = { _, _, _, done in done(true) }
+        a.setEnabled(a.rules[0].id, true)
+        var notes: [String] = [], restarted: [String] = []
+        a.notify = { t, _ in notes.append(t) }
+        a.restart = { i, _, _ in restarted.append(i.id + "@" + (i.head ?? "")); return nil }
+        func run(auto: Bool, head: String, state: InboxReviewRun.State = .done) -> InboxReviewRun {
+            InboxReviewRun(itemId: "gh:o/r#1", projectId: "p1", profileId: nil, path: "/w", head: head, base: "origin/main", sessionId: nil,
+                           state: state, startedAt: 0, finishedAt: 1, auto: auto, note: nil, result: nil)
+        }
+        var i = pr(1); i.head = "aaaaaaaa1111"
+        a.followUp([i], run: { _ in run(auto: true, head: "aaaaaaaa1111ffff") })        // the same commit
+        XCTAssertTrue(restarted.isEmpty)
+        i.head = "bbbbbbbb2222"
+        a.followUp([i], run: { _ in run(auto: false, head: "aaaaaaaa1111") })            // you started that one
+        XCTAssertTrue(restarted.isEmpty)
+        a.followUp([i], run: { _ in run(auto: true, head: "aaaaaaaa1111", state: .working) })   // still at it
+        XCTAssertTrue(restarted.isEmpty)
+        a.followUp([i], run: { _ in run(auto: true, head: "aaaaaaaa1111") })
+        a.followUp([i], run: { _ in run(auto: true, head: "aaaaaaaa1111") })             // once per head
+        XCTAssertEqual(restarted, ["gh:o/r#1@bbbbbbbb2222"])
+        XCTAssertEqual(notes, ["Reviewing new commits on #1"])
+        a.setEnabled(a.rules[0].id, false)
+        i.head = "cccccccc3333"
+        a.followUp([i], run: { _ in run(auto: true, head: "bbbbbbbb2222") })             // the rule is off
+        XCTAssertEqual(restarted.count, 1)
+    }
+
     func testRuleAction() {
         let r = InboxRule(name: "r", source: "bitbucket", kind: "pr", action: .reviewWorktree)
-        XCTAssertEqual(r.action.title, "Review it in a worktree (read-only)")
+        XCTAssertEqual(r.action.title, "Review it in a worktree (read-only), and its new commits")
         var issue = pr(1); issue = InboxItem(id: "gh:o/r#9", source: .github, kind: .issue, key: "#9", place: "o/r", title: "t", author: "a", assignee: nil,
                                              status: "Open", statusTone: "done", reason: .assigned, updated: Date(), body: "", url: "")
         XCTAssertFalse(InboxRule(name: "x", action: .reviewWorktree).matches(issue))

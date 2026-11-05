@@ -95,7 +95,8 @@
     item's Agent review card, with a notification when it is ready. Nothing is posted. Two run at a time; the
     worktree goes when the pull request is merged, declined or closed (when nothing in it changed). An automation
     can do it for new review requests ("Review it in a worktree"): drafts, ones you approved and ones over 3,000
-    changed lines are skipped, and it doesn't take over the window.
+    changed lines are skipped, and it doesn't take over the window. When such a pull request gets new commits,
+    the rule reviews what changed (once per new head, while it is on); reviews you started stay yours to repeat.
   - The detail's buttons in two rows. The first holds what reads or changes code: Review (in the background or in a
     chat; the arrow picks, the button does your default), Work on it and Ask, all "in" the project picked
     beside them. That picker offers the pull request's clones first, marks another repo's project, and says
