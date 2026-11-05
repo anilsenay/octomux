@@ -98,6 +98,8 @@
     changed lines are skipped, and it doesn't take over the window.
   - Review with agent asks first when the project it would start in isn't a checkout of the pull request's repo
     (Return cancels). The detail header's counts wrap as whole labels in a narrow window.
+  - Review in Worktree's Claude loads only your own settings and MCP servers: a pull request that adds hooks to
+    its .claude settings or servers to its .mcp.json can no longer run them during the review.
   - While a source is loading for the first time after launch, the list says so ("Loading Bitbucket…") instead
     of showing nothing or "Nothing matches.".
   - **Bitbucket tasks and reviewers**: a pull request shows how many open tasks it has (the reviewers' to-dos), and

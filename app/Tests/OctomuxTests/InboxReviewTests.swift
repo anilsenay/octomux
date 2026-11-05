@@ -57,8 +57,9 @@ final class InboxReviewTests: XCTestCase {
         XCTAssertEqual(InboxReviews.changedLines(" 1 file changed, 1 deletion(-)"), 1)
         XCTAssertEqual(InboxReviews.changedLines(""), 0)
         let claude = InboxReviews.agentArgs(.claude)
-        XCTAssertEqual(Array(claude.prefix(3)), ["--permission-mode", "default", "--settings"])
-        let settings = try! JSONSerialization.jsonObject(with: Data(claude[3].utf8)) as! [String: Any]
+        // The pull request's own .claude settings (hooks) and .mcp.json don't load.
+        XCTAssertEqual(Array(claude.prefix(6)), ["--permission-mode", "default", "--setting-sources", "user", "--strict-mcp-config", "--settings"])
+        let settings = try! JSONSerialization.jsonObject(with: Data(claude[6].utf8)) as! [String: Any]
         let perms = settings["permissions"] as! [String: [String]]
         XCTAssertTrue(perms["deny"]!.contains("Edit") && perms["deny"]!.contains("Write"))
         XCTAssertTrue(perms["allow"]!.contains("Bash(git diff:*)"))

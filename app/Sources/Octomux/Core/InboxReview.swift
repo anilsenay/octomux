@@ -290,7 +290,9 @@ final class InboxReviews: ObservableObject {
                 "deny": ["Edit", "Write", "NotebookEdit", "WebFetch", "WebSearch"],
             ]]
             let json = String(decoding: (try? JSONSerialization.data(withJSONObject: settings, options: [.sortedKeys])) ?? Data(), as: UTF8.self)
-            return ["--permission-mode", "default", "--settings", json]
+            // The checkout is the pull request's code: its .claude/settings*.json could add hooks (commands that run
+            // whatever the tool permissions say) and its .mcp.json servers. Only your own settings and servers load.
+            return ["--permission-mode", "default", "--setting-sources", "user", "--strict-mcp-config", "--settings", json]
         case .codex:
             return ["--sandbox", "read-only", "--ask-for-approval", "never"]
         default:
