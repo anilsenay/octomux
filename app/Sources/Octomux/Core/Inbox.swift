@@ -2,13 +2,31 @@ import AppKit
 import Foundation
 import Security
 
-// The Inbox: pull requests, reviews and issues from GitHub (through the gh CLI, so Octomux keeps no GitHub token)
-// and Jira Cloud (site + email + API token, the token in the Keychain). Polled while the app runs.
+// The Inbox: pull requests, reviews and issues from GitHub (through the gh CLI, so Octomux keeps no GitHub token),
+// Bitbucket Cloud and Jira Cloud (API tokens in the Keychain). Polled while the app runs.
 
 enum InboxSource: String, CaseIterable, Identifiable, Codable {
-    case github, jira
+    case github, bitbucket, jira
     var id: String { rawValue }
-    var name: String { self == .github ? "GitHub" : "Jira" }
+    var name: String {
+        switch self {
+        case .github: return "GitHub"
+        case .bitbucket: return "Bitbucket"
+        case .jira: return "Jira"
+        }
+    }
+    /// The start of its items' ids.
+    var idPrefix: String {
+        switch self {
+        case .github: return "gh:"
+        case .bitbucket: return "bb:"
+        case .jira: return "jira:"
+        }
+    }
+    /// The source an item id belongs to.
+    static func of(id: String) -> InboxSource? { allCases.first { id.hasPrefix($0.idPrefix) } }
+    /// Git hosts (pull requests and code); Jira holds issues only.
+    var isCodeHost: Bool { self != .jira }
 }
 
 struct InboxItem: Identifiable, Equatable {
@@ -22,7 +40,7 @@ struct InboxItem: Identifiable, Equatable {
     }
     enum Checks: String { case passing, failing, pending }
 
-    let id: String            // "gh:owner/repo#12", "jira:DC-4162"
+    let id: String            // "gh:owner/repo#12", "bb:workspace/repo#7", "jira:DC-4162"
     let source: InboxSource
     let kind: Kind
     let key: String           // "#12", "DC-4162"
@@ -49,6 +67,12 @@ struct InboxItem: Identifiable, Equatable {
     var number: Int? = nil
     /// A pull request's target branch.
     var base: String? = nil
+    /// Bitbucket: the head commit (build statuses are read again when it moves) and the reviews so far.
+    var head: String? = nil
+    var approvals = 0
+    var changesRequested = 0
+    var youApproved = false
+    var youRequestedChanges = false
     var isDraft: Bool { kind == .pr && status == "Draft" }
 
     static func == (a: InboxItem, b: InboxItem) -> Bool {
@@ -57,8 +81,10 @@ struct InboxItem: Identifiable, Equatable {
     var kindName: String { kind == .pr ? "Pull request" : "Issue" }
     /// Jira: the project key ("DC" of DC-12).
     var projectKey: String { String(key.split(separator: "-").first ?? "") }
-    /// GitHub: the repo. Jira: none.
+    /// GitHub: the repo (for gh). Bitbucket and Jira: none.
     var repo: String? { source == .github ? place : nil }
+    /// The repo on its code host (GitHub or Bitbucket), nil for Jira.
+    var codeRepo: String? { source.isCodeHost ? place : nil }
 }
 
 enum InboxPrefs {
@@ -142,7 +168,11 @@ final class InboxStore: ObservableObject {
     /// Reads an item's history (network; tests and the debug fixture swap it).
     lazy var loadActivity: (InboxItem) throws -> InboxActivity = { [weak self] i in
         let me = self?.githubLogin
-        return i.source == .github ? try GitHubInbox.activity(i, me: me) : try JiraClient.activity(i.key)
+        switch i.source {
+        case .github: return try GitHubInbox.activity(i, me: me)
+        case .bitbucket: return try BitbucketInbox.shared.activity(i)
+        case .jira: return try JiraClient.activity(i.key)
+        }
     }
     /// Where history is read for notifications, and where the result comes back (tests run both inline).
     var background: (@escaping () -> Void) -> Void = { DispatchQueue.global(qos: .utility).async(execute: $0) }
@@ -182,7 +212,18 @@ final class InboxStore: ObservableObject {
 
     var githubOn: Bool { InboxPrefs.bool(InboxPrefs.githubOn, false) }
     var jiraOn: Bool { JiraClient.configured }
-    var anyConnected: Bool { githubOn || jiraOn }
+    var bitbucketOn: Bool { BitbucketClient.configured }
+    var anyConnected: Bool { InboxSource.allCases.contains(where: isOn) }
+    /// Debug fixture: sources shown as connected without an account.
+    var fixtureOn: Set<InboxSource> = []
+    func isOn(_ s: InboxSource) -> Bool {
+        if fixtureOn.contains(s) { return true }
+        switch s {
+        case .github: return githubOn
+        case .bitbucket: return bitbucketOn
+        case .jira: return jiraOn
+        }
+    }
 
     func isUnread(_ i: InboxItem) -> Bool { (seen[i.id] ?? 0) < i.updated.timeIntervalSince1970 }
     var unreadCount: Int { items.filter(isUnread).count }
@@ -227,7 +268,7 @@ final class InboxStore: ObservableObject {
     /// (pruning them against another source's list made old read items come back unread after a relaunch).
     private func pruneSeen(live: Set<String>) {
         let cutoff = Date().timeIntervalSince1970 - 60 * 86400
-        let judged = primed.map { $0 == .github ? "gh:" : "jira:" }
+        let judged = primed.map(\.idPrefix)
         let kept = seen.filter { e in
             !judged.contains { e.key.hasPrefix($0) } || live.contains(e.key) || e.value > cutoff || e.value == 0
         }
@@ -262,7 +303,9 @@ final class InboxStore: ObservableObject {
     /// Item id → its parsed diff as of `updated` (or why it couldn't be read).
     @Published private(set) var diffs: [String: (updated: Date, files: Result<[InboxDiff.File], InboxError>)] = [:]
     /// Reads a PR's unified diff (gh; the fixture swaps it).
-    var loadDiff: (InboxItem) throws -> String = InboxDiff.fetch
+    var loadDiff: (InboxItem) throws -> String = { i in
+        i.source == .bitbucket ? try BitbucketInbox.shared.diff(i) : try InboxDiff.fetch(i)
+    }
 
     func diff(_ i: InboxItem) -> Result<[InboxDiff.File], InboxError>? {
         guard let d = diffs[i.id], d.updated == i.updated else { return nil }
@@ -295,8 +338,9 @@ final class InboxStore: ObservableObject {
     /// Asks GitHub / Jira which of these ended (network; tests swap it).
     var endedState: ([InboxItem]) throws -> [String: InboxItem.Ended] = { list in
         var out: [String: InboxItem.Ended] = [:]
-        let gh = list.filter { $0.source == .github }, jira = list.filter { $0.source == .jira }
+        let gh = list.filter { $0.source == .github }, jira = list.filter { $0.source == .jira }, bb = list.filter { $0.source == .bitbucket }
         if !gh.isEmpty { out.merge((try? GitHubInbox.ended(gh)) ?? [:]) { a, _ in a } }
+        if !bb.isEmpty { out.merge((try? BitbucketInbox.shared.ended(bb)) ?? [:]) { a, _ in a } }
         if !jira.isEmpty { out.merge((try? JiraClient.ended(jira)) ?? [:]) { a, _ in a } }
         return out
     }
@@ -323,7 +367,7 @@ final class InboxStore: ObservableObject {
                     copy.ended = e
                     copy.updated = max(i.updated, e.at)
                     self.endedItems[i.id] = copy
-                    let what = e.merged ? "was merged" : e.label == "Closed" ? "was closed" : "moved to \(e.label)"
+                    let what = e.merged ? "was merged" : ["Closed", "Declined", "Superseded"].contains(e.label) ? "was \(e.label.lowercased())" : "moved to \(e.label)"
                     if let sid = self.links[i.id] {
                         self.linkedNotices[sid] = LinkedNotice(itemId: i.id, key: i.key, title: i.title,
                                                                events: [InboxEvent(kind: .change, actor: i.key, date: e.at, summary: what, field: "status")])
@@ -467,7 +511,7 @@ final class InboxStore: ObservableObject {
     /// Pastes the news into the session (not sent: the user reads it over and presses Return), and clears it.
     func tellAgent(session sid: String) {
         guard let n = linkedNotices[sid] else { return }
-        AppModel.shared.sendToSession(sid, text: Self.linkedPrompt(n, source: n.itemId.hasPrefix("gh:") ? "GitHub" : "Jira"), submit: false)
+        AppModel.shared.sendToSession(sid, text: Self.linkedPrompt(n, source: InboxSource.of(id: n.itemId)?.name ?? "Inbox"), submit: false)
         dismissLinked(session: sid)
     }
 
@@ -505,7 +549,7 @@ final class InboxStore: ObservableObject {
         if frozen { return }
         if widened { widen() }
         lastFetch = Date()
-        let on: [InboxSource: Bool] = [.github: githubOn, .jira: jiraOn]
+        let on: [InboxSource: Bool] = Dictionary(uniqueKeysWithValues: InboxSource.allCases.map { ($0, isOn($0)) })
         // A source turned off leaves.
         for (s, v) in on where !v && fetched.contains(where: { $0.source == s }) {
             fetched.removeAll { $0.source == s }; errors[s] = nil; primed.remove(s)
@@ -517,7 +561,11 @@ final class InboxStore: ObservableObject {
             if inFlight.contains(s) { if widened { pending.insert(s) }; continue }
             inFlight.insert(s)
             refreshing = true
-            if s == .github { fetchGitHub() } else { fetchJira() }
+            switch s {
+            case .github: fetchGitHub()
+            case .bitbucket: fetchBitbucket(force: forceNext.remove(.bitbucket) != nil || widened)
+            case .jira: fetchJira()
+            }
         }
     }
 
@@ -532,10 +580,45 @@ final class InboxStore: ObservableObject {
             }
             let r = Result { try GitHubInbox.fetch() }
             DispatchQueue.main.async {
-                self.repoProjects = repos
+                self.repoProjects = self.repoProjects.filter { $0.key.hasPrefix("bitbucket.org/") }.merging(repos) { _, b in b }
                 if case .success(let v) = r { self.githubLogin = v.login }
                 self.apply(.github, r.map(\.items))
             }
+        }
+    }
+
+    /// The next Bitbucket refresh scans for review requests now (the user pressed refresh).
+    private var forceNext: Set<InboxSource> = []
+    func refreshNow() { forceNext.insert(.bitbucket); refresh() }
+
+    private func fetchBitbucket(force: Bool) {
+        let m = AppModel.shared
+        let local = m.projects.filter { !m.host(forPath: $0.path).0.isRemote }.map { ($0.id, $0.path) }
+        let review = InboxPrefs.bool(InboxPrefs.bbReview, true), mine = InboxPrefs.bool(InboxPrefs.bbMine, true)
+        DispatchQueue.global(qos: .utility).async {
+            var repos: [String: String] = [:]
+            for (id, path) in local {
+                if let r = GitInfo.git(["remote", "get-url", "origin"], in: path).flatMap(BitbucketClient.repo(fromRemote:)) {
+                    repos[Self.bitbucketKey(r)] = repos[Self.bitbucketKey(r)] ?? id
+                }
+            }
+            BitbucketInbox.shared.localRepos = Set(repos.keys.map { String($0.dropFirst(Self.bitbucketKey("").count)) })
+            let r = Result { try BitbucketInbox.shared.fetch(review: review, mine: mine, force: force) }
+            DispatchQueue.main.async {
+                self.repoProjects.merge(repos) { _, b in b }
+                self.apply(.bitbucket, r)
+            }
+        }
+    }
+
+    /// repoProjects' key for a Bitbucket repo (kept apart from GitHub's owner/repo).
+    static func bitbucketKey(_ repo: String) -> String { "bitbucket.org/" + repo.lowercased() }
+    /// repoProjects' key for an item's repo.
+    static func repoKey(_ i: InboxItem) -> String? {
+        switch i.source {
+        case .github: return i.place.lowercased()
+        case .bitbucket: return bitbucketKey(i.place)
+        case .jira: return nil
         }
     }
 
@@ -578,7 +661,7 @@ final class InboxStore: ObservableObject {
         next.sort { $0.updated > $1.updated }
         let mine = next.filter { $0.source == source }
         // First successful fetch of a source ever: what is there now counts as read.
-        if !primed.contains(source), !seen.keys.contains(where: { $0.hasPrefix(source == .github ? "gh:" : "jira:") }) {
+        if !primed.contains(source), !seen.keys.contains(where: { $0.hasPrefix(source.idPrefix) }) {
             setSeen(Dictionary(uniqueKeysWithValues: mine.map { ($0.id, $0.updated.timeIntervalSince1970) }))
         }
         // Brought in by a change of what is fetched: read, and no news.
@@ -748,7 +831,7 @@ final class InboxStore: ObservableObject {
         let m = AppModel.shared
         let chosen = defaults.dictionary(forKey: InboxPrefs.placeProject) as? [String: String] ?? [:]
         if let id = chosen[i.place], let p = m.project(id) { return p }
-        if let repo = i.repo, let id = repoProjects[repo.lowercased()], let p = m.project(id) { return p }
+        if let key = Self.repoKey(i), let id = repoProjects[key], let p = m.project(id) { return p }
         return nil
     }
 
@@ -759,7 +842,7 @@ final class InboxStore: ObservableObject {
         objectWillChange.send()
     }
 
-    /// GitHub repo (lowercased owner/name) → the local project whose origin it is; filled by `refresh`.
+    /// Repo (GitHub: lowercased owner/name; Bitbucket: `bitbucketKey`) → the local project whose origin it is; filled by `refresh`.
     @Published private(set) var repoProjects: [String: String] = [:]
 }
 

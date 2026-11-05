@@ -60,6 +60,7 @@ enum DebugActions {
                      "note": a.note ?? NSNull()] as [String: Any]
                 },
                 "activity_errors": st.activityErrors,
+                "bitbucket_requests_last_hour": BitbucketInbox.shared.requestsLastHour,
             ] as [String: Any]
         }
         // Reads one GitHub item's history (read-only) and returns how many events of each kind it has.
@@ -144,6 +145,62 @@ enum DebugActions {
             out["block_tail"] = Array(lines.suffix(14))
             out["error_lines"] = errors
             out["has_timestamps"] = stamped
+            return out
+        }
+        // Bitbucket, read-only: answers the four open questions of the Bitbucket Inbox with the connected token (counts
+        // only, nothing about the pull requests themselves). Turns on the fallbacks the answers call for.
+        //   1. Does the token work on its own (Bearer)?  2. Does Bitbucket filter pull requests by reviewer?
+        //   3. Does a repo's "updated" date move when a pull request is opened?  4. Does the workspace list take the account id or the uuid?
+        d.register("inbox_probe_bitbucket") { p in
+            guard BitbucketClient.configured, let tok = BitbucketClient.token else { return ["error": "Bitbucket is not connected"] }
+            let bb = BitbucketInbox.shared
+            var out: [String: Any] = [:]
+            func code(_ e: Error) -> Any { (e as? BitbucketHTTPError)?.code ?? "\(e)" }
+            // 1
+            do { _ = try BitbucketClient.request("/user", auth: .bearer, token: tok); out["1_bearer"] = "works" } catch { out["1_bearer"] = code(error) }
+            out["auth_in_use"] = UserDefaults.standard.string(forKey: InboxPrefs.bbAuth) ?? ""
+            let me = try bb.loadMe()
+            let ws = try bb.listWorkspaces()
+            out["workspaces"] = ws.count
+            guard let first = (p["workspace"] as? String) ?? ws.first else { return out }
+            // 4
+            var forms: [String: Any] = [:]
+            for (form, who) in [("account", me.accountId), ("uuid", me.uuid)] {
+                do { forms[form] = try bb.values("/workspaces/\(BitbucketClient.encPath(first))/pullrequests/\(BitbucketClient.encPath(who))?state=OPEN&pagelen=10", pages: 1).count }
+                catch { forms[form] = code(error) }
+            }
+            out["4_user_forms"] = forms
+            // 2 and 3, on the workspace's most recently updated repos
+            let repoRows = try bb.values("/repositories/\(BitbucketClient.encPath(first))?role=member&pagelen=\(min(10, (p["repos"] as? Int) ?? 6))&sort=-updated_on&fields=values.full_name,values.updated_on", pages: 1)
+            var same = 0, serverMissed = 0, serverExtra = 0, filterErrors: [String: Int] = [:]
+            var bumped = 0, notBumped = 0
+            for r in repoRows {
+                guard let repo = r["full_name"] as? String else { continue }
+                let base = "/repositories/\(repo)/pullrequests"
+                guard let open = try? bb.values("\(base)?state=OPEN&pagelen=50&fields=\(BitbucketClient.prFields)", pages: 2) else { continue }
+                let client = Set(open.filter { BitbucketClient.isReviewer($0, me: me.accountId) }.compactMap { $0["id"] as? Int })
+                let q = "state=\"OPEN\" AND reviewers.account_id=\"\(me.accountId)\""
+                do {
+                    let server = Set(try bb.values("\(base)?pagelen=50&q=\(BitbucketClient.enc(q))", pages: 2).compactMap { $0["id"] as? Int })
+                    if server == client { same += 1 }
+                    serverMissed += client.subtracting(server).count
+                    serverExtra += server.subtracting(client).count
+                } catch { filterErrors["\(code(error))", default: 0] += 1 }
+                // A pull request opened in the last 14 days: is the repo's date at or after it?
+                let repoUpdated = InboxDates.iso(r["updated_on"] as? String) ?? .distantPast
+                for pr in open {
+                    guard let c = InboxDates.iso(pr["created_on"] as? String), Date().timeIntervalSince(c) < 14 * 86400 else { continue }
+                    if repoUpdated >= c.addingTimeInterval(-5) { bumped += 1 } else { notBumped += 1 }
+                }
+            }
+            out["2_reviewer_filter"] = ["repos": repoRows.count, "same": same, "missed_by_filter": serverMissed, "extra_from_filter": serverExtra, "errors": filterErrors] as [String: Any]
+            out["3_repo_date_moves"] = ["prs_checked": bumped + notBumped, "repo_date_after_pr": bumped, "repo_date_before_pr": notBumped]
+            // The fallbacks the answers call for.
+            var applied: [String] = []
+            if serverMissed > 0 || !filterErrors.isEmpty { UserDefaults.standard.set("client", forKey: InboxPrefs.bbReviewFilter); applied.append("reviewer filter off (repos read whole)") }
+            if notBumped > 0 { UserDefaults.standard.set(true, forKey: InboxPrefs.bbSweepAll); applied.append("look in every repo") }
+            out["applied"] = applied
+            out["requests_last_hour"] = bb.requestsLastHour
             return out
         }
         d.register("ui_action") { p in
@@ -279,6 +336,7 @@ enum DebugActions {
                     }
                 }
             case "inbox_fake_merge": InboxFixture.mergePR()
+            case "inbox_fake_bb_decline": InboxFixture.declineBitbucket()
             case "inbox_tab": InboxStore.shared.detailTab = p["value"] as? String ?? "overview"
             case "inbox_pr_action":   // value: merge | squash | rebase | ready | draft | close | reopen, on the open item
                 if let v = p["value"] as? String, let a = InboxPRAction(rawValue: v),

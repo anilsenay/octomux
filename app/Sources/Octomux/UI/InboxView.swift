@@ -2,7 +2,13 @@ import AppKit
 import SwiftUI
 
 extension InboxSource {
-    var color: Color { self == .github ? T.text : Color(hex: "#2684FF") }
+    var color: Color {
+        switch self {
+        case .github: return T.text
+        case .bitbucket: return Color(hex: "#3D8BFF")
+        case .jira: return Color(hex: "#2684FF")
+        }
+    }
 }
 
 // MARK: - Sidebar entry
@@ -127,7 +133,7 @@ struct InboxView: View {
         return true
     }
 
-    private var connected: [InboxSource] { InboxSource.allCases.filter { $0 == .github ? store.githubOn : store.jiraOn } }
+    private var connected: [InboxSource] { InboxSource.allCases.filter { store.isOn($0) } }
 
     private var topBar: some View {
         HStack(spacing: 6) {
@@ -136,7 +142,7 @@ struct InboxView: View {
                 Chip(selected: source == s, action: {
                     source = s
                     if let p = place, !store.items.contains(where: { $0.place == p && $0.source == s }) { place = nil }
-                    if s == .github && reasonFilter == .project { reasonFilter = nil }
+                    if s != .jira && reasonFilter == .project { reasonFilter = nil }
                 }) {
                     BrandMark(key: s.rawValue, color: s.color, size: 11)
                     Text(s.name)
@@ -197,7 +203,7 @@ struct InboxView: View {
                     .help("Everything the Inbox fetched · \(pool.count)")
                 header("WHY")
                 // "In your projects" stays listed while Jira is connected: it is where the other people's issues go.
-                ForEach(InboxItem.Reason.allCases.filter { r in pool.contains { $0.reason == r } || (r == .project && store.jiraOn && source != .github) }, id: \.self) { r in
+                ForEach(InboxItem.Reason.allCases.filter { r in pool.contains { $0.reason == r } || (r == .project && store.jiraOn && (source == nil || source == .jira)) }, id: \.self) { r in
                     let n = pool.filter { $0.reason == r }.count
                     folderRow(r, r.rawValue, icon(r), n, selected: reasonFilter == r) {
                         reasonFilter = reasonFilter == r ? nil : r
@@ -286,7 +292,7 @@ struct InboxView: View {
                     }
                 Button { store.markAllRead() } label: { Image(systemName: "checkmark.circle") }
                     .buttonStyle(IconButtonStyle(size: 22)).help("Mark all read")
-                Button { store.refresh() } label: {
+                Button { store.refreshNow() } label: {
                     Image(systemName: "arrow.clockwise").rotationEffect(.degrees(store.refreshing ? 360 : 0))
                         .animation(store.refreshing ? .linear(duration: 0.9).repeatForever(autoreverses: false) : .default, value: store.refreshing)
                 }
@@ -446,6 +452,10 @@ struct InboxConnectCard: View {
                 }
                 .buttonStyle(PrimaryButtonStyle()).disabled(checking)
                 Button { SettingsWindow.show(section: .inbox) } label: {
+                    HStack(spacing: 6) { BrandMark(key: "bitbucket", color: InboxSource.bitbucket.color, size: 12); Text("Connect Bitbucket…") }
+                }
+                .buttonStyle(SecondaryButtonStyle())
+                Button { SettingsWindow.show(section: .inbox) } label: {
                     HStack(spacing: 6) { BrandMark(key: "jira", color: Color(hex: "#2684FF"), size: 12); Text("Connect Jira…") }
                 }
                 .buttonStyle(SecondaryButtonStyle())
@@ -518,6 +528,7 @@ struct InboxRow: View {
                     Text("·").foregroundStyle(T.text3)
                     Text(item.place).font(.system(size: T.k * 10.5)).foregroundStyle(T.text3).lineLimit(1)
                     Spacer()
+                    if item.source == .bitbucket, item.ended == nil { InboxReviewTally(item: item) }
                     if linked { Image(systemName: "sparkles").font(.system(size: T.k * 9.5)).foregroundStyle(T.text3).help("Has a session") }
                 }
             }
@@ -550,6 +561,33 @@ struct InboxStatusDot: View {
         case .pending: Image(systemName: "clock.fill").font(.system(size: T.k * 9.5)).foregroundStyle(T.amber).help("Checks running")
         case nil: EmptyView()
         }
+    }
+}
+
+/// A Bitbucket pull request's reviews so far: approvals, and changes asked for.
+struct InboxReviewTally: View {
+    let item: InboxItem
+    var long = false
+    var body: some View {
+        HStack(spacing: 6) {
+            if item.approvals > 0 {
+                Label(long ? "\(item.approvals) approved" : "\(item.approvals)", systemImage: "checkmark")
+                    .foregroundStyle(item.youApproved ? T.green : T.text3)
+            }
+            if item.changesRequested > 0 {
+                Label(long ? "\(item.changesRequested) asked for changes" : "\(item.changesRequested)", systemImage: "exclamationmark.bubble")
+                    .foregroundStyle(T.amber)
+            }
+        }
+        .font(.system(size: T.k * 10.5, weight: .medium))
+        .labelStyle(InboxTightLabel())
+        .help("\(item.approvals) approved\(item.youApproved ? " (you too)" : ""), \(item.changesRequested) asked for changes")
+    }
+}
+
+struct InboxTightLabel: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 2) { configuration.icon.font(.system(size: T.k * 8.5, weight: .bold)); configuration.title }
     }
 }
 
@@ -593,7 +631,7 @@ struct InboxDetail: View {
                     if !item.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { InboxMarkdown(text: item.body, item: item) }
                     else { Text("No description.").font(T.body).foregroundStyle(T.text3) }
                     InboxActivityView(item: item)
-                    commentBox
+                    if item.source != .bitbucket { commentBox }
                 }
             }
             .padding(.horizontal, 28).padding(.vertical, 22)
@@ -642,12 +680,17 @@ struct InboxDetail: View {
             HStack(spacing: 6) {
                 Text(item.author)
                 Text("·")
-                Text(item.assignee.map { "Assigned to \($0)" } ?? "Unassigned")
-                Text("·")
+                if item.source != .bitbucket {
+                    Text(item.assignee.map { "Assigned to \($0)" } ?? "Unassigned")
+                    Text("·")
+                }
                 Text("Updated ") + Text(item.updated, format: .relative(presentation: .named))
                 if let b = item.branch { Text("·"); Text(b).font(T.mono(11)).lineLimit(1) }
             }
             .font(.system(size: T.k * 11.5)).foregroundStyle(T.text3)
+            if item.source == .bitbucket, item.ended == nil, item.approvals + item.changesRequested > 0 {
+                InboxReviewTally(item: item, long: true).font(.system(size: T.k * 11.5))
+            }
         }
     }
 
@@ -996,6 +1039,22 @@ enum InboxStart {
     static func prompt(_ item: InboxItem, _ task: Task, evidence: String = "") -> String {
         let n = item.number ?? 0
         let what: String
+        if item.source == .bitbucket {
+            // No CLI for Bitbucket: the branch comes through git with the user's own credentials.
+            let br = item.branch ?? "", base = item.base ?? "main"
+            let checkout = "`git fetch origin \(br) && git checkout \(br)`"
+            switch task {
+            case .review:
+                what = "Review pull request \(item.key) of \(item.place) on Bitbucket (branch `\(br)` into `\(base)`). Read its changes with `git fetch origin \(br) \(base)` and `git diff origin/\(base)...origin/\(br)`. Don't check it out or change files; tell me what you would change and why."
+            case .fix:
+                let failed = item.failedChecks.isEmpty ? "" : " (\(item.failedChecks.prefix(6).joined(separator: ", ")))"
+                what = "The builds of pull request \(item.key)\(failed) failed. Make sure you are on its branch `\(br)` (\(checkout) if not)"
+                    + (evidence.isEmpty ? ", find why they failed (the build links are below) and fix it." : ". What the failed builds reported is below; start from it, find why and fix it.")
+                    + " Don't commit or push."
+            case .work:
+                what = "Work on pull request \(item.key) of \(item.place) on Bitbucket (branch `\(br)`; \(checkout) if you are not on it)."
+            }
+        } else {
         switch task {
         case .review:
             what = "Review pull request \(item.key) of \(item.place). Read it with `gh pr view \(n) --repo \(item.place)` and `gh pr diff \(n) --repo \(item.place)`. Don't check it out or change files; tell me what you would change and why."
@@ -1009,6 +1068,7 @@ enum InboxStart {
             what = item.kind == .pr
                 ? "Work on pull request \(item.key) of \(item.place) (branch `\(item.branch ?? "")`; `gh pr checkout \(n)` if you are not on it)."
                 : item.source == .jira ? jiraAsk(item) : "Work on this \(item.source.name) issue."
+        }
         }
         let trimmed = item.body.trimmingCharacters(in: .whitespacesAndNewlines)
         let body = trimmed.count > 12000 ? String(trimmed.prefix(12000)) + "\n[…cut]" : trimmed
@@ -1036,7 +1096,7 @@ enum InboxStart {
                 ?? UserDefaults.standard.string(forKey: "octomux.chatProfile").flatMap { model.profile($0)?.id }
                 ?? model.enabledProfiles.first(where: { $0.kind == .claude || $0.kind == .codex })?.id
             // A PR's own branch only in a checkout of its repo; elsewhere a new branch named after it.
-            let ownRepo = item.repo.map { InboxStore.shared.repoProjects[$0.lowercased()] == project.id } ?? false
+            let ownRepo = InboxStore.repoKey(item).map { InboxStore.shared.repoProjects[$0] == project.id } ?? false
             let pr = item.kind == .pr && ownRepo ? item.branch : nil
             let branch = pr ?? (item.kind == .pr ? "pr-\(item.number ?? 0)-" + branch(item).replacingOccurrences(of: "/", with: "-") : branch(item))
             DispatchQueue.global(qos: .userInitiated).async {
@@ -1165,6 +1225,18 @@ struct InboxSettings: View {
     @State private var jiraError: String?
     @State private var jiraConnected = JiraClient.configured
     @State private var projectsError: String?
+    @AppStorage(InboxPrefs.bbReview) private var bbReview = true
+    @AppStorage(InboxPrefs.bbMine) private var bbMine = true
+    @AppStorage(InboxPrefs.bbSkipped) private var bbSkipped = ""
+    @AppStorage(InboxPrefs.bbSweepAll) private var bbSweepAll = false
+    @State private var bbConnected = BitbucketClient.configured
+    @State private var bbToken = ""
+    @State private var bbEmail = BitbucketClient.email ?? ""
+    @State private var bbBusy = false
+    @State private var bbError: String?
+    @State private var bbAskEmail = BitbucketClient.email != nil
+    @State private var bbWorkspaces: [String] = BitbucketInbox.shared.workspaces
+    @State private var bbWorkspacesError: String?
 
     var body: some View {
         SettingsGroup("Connections", desc: "Linear and GitLab come later.") {
@@ -1182,7 +1254,8 @@ struct InboxSettings: View {
                     }
                 }
             }
-            if githubOn { githubRepoList }
+            if githubOn { repoList(.github) }
+            bitbucketRows
             if jiraConnected {
                 SettingRow("Jira", desc: "\(JiraClient.site ?? "") · \(JiraClient.email ?? ""). The API token is in your Keychain.") {
                     Button("Disconnect") { JiraClient.disconnect(); jiraConnected = false; token = ""; store.jiraProjects = []; store.refresh() }
@@ -1209,12 +1282,17 @@ struct InboxSettings: View {
         .onAppear {
             if githubOn, ghStatus == nil { checkGitHub(enable: false) }
             if jiraConnected, store.jiraProjects.isEmpty { loadProjects() }
+            if bbConnected, bbWorkspaces.isEmpty { loadWorkspaces() }
         }
         SettingsGroup("What shows up") {
             SettingRow("Review requests", desc: "GitHub pull requests that wait for your review.") { toggle($ghReview) }
             SettingRow("Your pull requests", desc: "Your open ones, with their checks.") { toggle($ghMine) }
             SettingRow("Assigned to you", desc: "GitHub issues and pull requests assigned to you.") { toggle($ghAssigned) }
             SettingRow("Mentions", desc: "Open issues and pull requests where someone @-mentions you.") { toggle($ghMention) }
+            if bbConnected {
+                SettingRow("Bitbucket review requests", desc: "Open pull requests that list you as a reviewer. One you approved leaves until new commits come.") { toggle($bbReview) }
+                SettingRow("Your Bitbucket pull requests", desc: "Your open ones, with their builds.") { toggle($bbMine) }
+            }
             SettingRow("Jira issues", desc: "Open issues of the projects ticked above (all projects when none is ticked).") {
                 Picker("", selection: $jiraScope) {
                     Text("Assigned to me").tag("assigned"); Text("All open ones").tag("all")
@@ -1319,12 +1397,99 @@ struct InboxSettings: View {
         Toggle("", isOn: b).labelsHidden().toggleStyle(.switch).onChange(of: b.wrappedValue) { if refresh { store.refresh(widened: true) } }
     }
 
+    /// Bitbucket: connected (who, workspaces, repos, how many requests it used) or the token form.
+    @ViewBuilder private var bitbucketRows: some View {
+        if bbConnected {
+            let me = BitbucketClient.savedMe
+            SettingRow("Bitbucket", desc: "Signed in as \(me?.name ?? "you")\(BitbucketClient.email.map { " (\($0))" } ?? ""). The API token is in your Keychain and goes only to api.bitbucket.org.") {
+                Button("Disconnect") {
+                    BitbucketClient.disconnect(); bbConnected = false; bbToken = ""; bbWorkspaces = []; store.refresh()
+                }
+                .buttonStyle(SecondaryButtonStyle())
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Workspaces").font(.system(size: T.k * 13, weight: .medium))
+                    Text("Unticked workspaces are not read at all.").font(.system(size: T.k * 11.5)).foregroundStyle(T.text2)
+                    Spacer()
+                    Button("Refresh Workspaces") { loadWorkspaces() }.buttonStyle(SecondaryButtonStyle())
+                }
+                if let bbWorkspacesError { Text(bbWorkspacesError).font(T.caption).foregroundStyle(T.red) }
+                if bbWorkspaces.isEmpty && bbWorkspacesError == nil { Text("Loading…").font(T.caption).foregroundStyle(T.text3) }
+                let skipped = Set(bbSkipped.split(separator: ",").map(String.init))
+                LazyVGrid(columns: [GridItem(.flexible(), alignment: .leading), GridItem(.flexible(), alignment: .leading)], alignment: .leading, spacing: 6) {
+                    ForEach(bbWorkspaces, id: \.self) { w in
+                        Toggle(isOn: Binding(get: { !skipped.contains(w) }, set: { on in
+                            var s = skipped
+                            if on { s.remove(w) } else { s.insert(w) }
+                            bbSkipped = s.sorted().joined(separator: ",")
+                            store.refresh(widened: true)
+                        })) { Text(w).lineLimit(1) }
+                        .toggleStyle(.checkbox)
+                    }
+                }
+            }
+            .padding(.horizontal, 14).padding(.vertical, 11)
+            repoList(.bitbucket)
+            SettingRow("Look for review requests in every repo",
+                       desc: "Off: repos updated in the last 14 days and the ones of your projects, every 10 minutes; repos holding one of your pull requests on every check. On: every repo of the workspace, which spends more of Bitbucket's hourly allowance. \(BitbucketInbox.shared.requestsLastHour) requests in the last hour (Bitbucket allows about 1,000).") {
+                toggle($bbSweepAll)
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Bitbucket").font(.system(size: T.k * 13, weight: .medium))
+                Text("Bitbucket Cloud: an Atlassian API token with scopes for Bitbucket, from id.atlassian.com → Security → API tokens → Create API token with scopes. It needs read:user, read:workspace, read:repository and read:pullrequest (all :bitbucket). The token goes to your Keychain.")
+                    .font(.system(size: T.k * 11.5)).foregroundStyle(T.text2).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                HStack(spacing: 8) {
+                    SecureField("API token", text: $bbToken, prompt: Text("API token")).textFieldStyle(.roundedBorder)
+                    if bbAskEmail { TextField("Email", text: $bbEmail, prompt: Text("you@company.com")).textFieldStyle(.roundedBorder) }
+                    Button(bbBusy ? "Connecting…" : "Connect") { connectBitbucket() }.buttonStyle(PrimaryButtonStyle())
+                        .disabled(bbBusy || bbToken.isEmpty || (bbAskEmail && bbEmail.isEmpty))
+                }
+                if let bbError { Text(bbError).font(.system(size: T.k * 12)).foregroundStyle(T.red).fixedSize(horizontal: false, vertical: true) }
+            }
+            .padding(.horizontal, 14).padding(.vertical, 11)
+        }
+    }
+
+    private func connectBitbucket() {
+        bbBusy = true; bbError = nil
+        let (t, e) = (bbToken, bbAskEmail ? bbEmail : "")
+        DispatchQueue.global().async {
+            do {
+                _ = try BitbucketClient.connect(token: t, email: e)
+                DispatchQueue.main.async {
+                    bbBusy = false; bbConnected = true; bbToken = ""
+                    loadWorkspaces(); store.start(); store.refreshNow()
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    bbBusy = false
+                    if error is BitbucketClient.NeedsEmail { bbAskEmail = true }
+                    bbError = "\(error)"
+                }
+            }
+        }
+    }
+
+    private func loadWorkspaces() {
+        bbWorkspacesError = nil
+        DispatchQueue.global().async {
+            do {
+                let w = try BitbucketInbox.shared.listWorkspaces()
+                DispatchQueue.main.async { bbWorkspaces = w }
+            } catch {
+                DispatchQueue.main.async { bbWorkspacesError = "\(error)" }
+            }
+        }
+    }
+
     /// Repos the Inbox found, ticked = shown. Unticking hides one (it is still fetched, so it can come back read).
-    private var githubRepoList: some View {
-        let repos = store.places.filter { $0.source == .github }.map(\.place)
+    private func repoList(_ source: InboxSource) -> some View {
+        let repos = store.places.filter { $0.source == source }.map(\.place)
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("Repositories").font(.system(size: T.k * 13, weight: .medium))
+                Text(source == .github ? "Repositories" : "\(source.name) repositories").font(.system(size: T.k * 13, weight: .medium))
                 Text(repos.isEmpty ? "The repos of your pull requests and issues show up here after the first refresh." : "Unticked repos stay out of the Inbox. Right-click one under Where in the Inbox to hide it too.")
                     .font(.system(size: T.k * 11.5)).foregroundStyle(T.text2)
             }

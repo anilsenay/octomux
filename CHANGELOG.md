@@ -58,6 +58,16 @@
     item comes in (from, what, why, where), either reviewing a pull request read-only or working on the item in
     a new worktree, in the item's own project and without switching to it. Rules are off until you turn them on
     (and confirm); each item starts at most once per rule, at most three per check, and only new arrivals count.
+  - **Bitbucket Cloud**: pull requests that wait for your review and your own ones, with their builds and how many
+    approved or asked for changes, next to GitHub's. Connect with an Atlassian API token with Bitbucket scopes
+    (read:user, read:workspace, read:repository, read:pullrequest); it is kept in your Keychain and sent only to
+    api.bitbucket.org. Bitbucket can't list your review requests across a workspace, so the repos updated in the
+    last two weeks (and those of your projects) are checked every 10 minutes, and repos holding one of your pull
+    requests on every check, within Bitbucket's hourly allowance (it slows down when Bitbucket asks). A review
+    request you approved leaves the list until new commits come. The detail has the description, Activity
+    (comments, inline comments with their file and line, approvals, changes asked for, pushes, merge/decline),
+    the Code tab and the builds; declined and superseded pull requests stay a while like merged ones. Settings →
+    Inbox picks the workspaces and repos, and can look in every repo instead.
   - Fixed: old items you had read (last updated two months ago or more) could come back unread after a relaunch
     when the other source loaded first.
   - Settings → Inbox: connections, Jira projects, GitHub repositories, what shows up, notifications, and what

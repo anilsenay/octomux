@@ -26,6 +26,15 @@ enum InboxFixture {
         store.fixtureApply(.github, fixtureItems.filter { $0.source == .github && $0.kind != .pr })
     }
 
+    /// A refresh in which the Bitbucket review request is gone because it was declined.
+    static func declineBitbucket() {
+        let store = InboxStore.shared
+        store.endedState = { list in
+            Dictionary(uniqueKeysWithValues: list.filter { $0.source == .bitbucket }.map { ($0.id, InboxItem.Ended(label: "Declined", at: Date())) })
+        }
+        store.fixtureApply(.bitbucket, fixtureItems.filter { $0.source == .bitbucket && $0.reason != .review })
+    }
+
     static func load(now: Date = Date()) {
         let t = now.timeIntervalSince1970
         func at(_ minutesAgo: Double) -> Date { Date(timeIntervalSince1970: t - minutesAgo * 60) }
@@ -57,7 +66,32 @@ enum InboxFixture {
         let quiet = InboxItem(id: "jira:SHOP-3", source: .jira, kind: .issue, key: "SHOP-3", place: "Shop", title: "Update the size guide",
                               author: "Bob", assignee: "Bob", status: "To Do", statusTone: "todo", reason: .project, updated: at(300),
                               body: "", url: "https://example.atlassian.net/browse/SHOP-3")
+        // Bitbucket: a review request with a failed build, and your own draft with a passing one.
+        var bbReview = InboxItem(id: "bb:acme/payments-api#7", source: .bitbucket, kind: .pr, key: "#7", place: "acme/payments-api",
+                                 title: "Refunds: split partial refunds per item", author: "Dana", assignee: nil, status: "Open", statusTone: "done",
+                                 reason: .review, updated: at(3), body: "Splits a partial refund across the order's items.\n\n- adds `RefundSplitter`\n- SHOP-7 follow-up",
+                                 url: "https://bitbucket.org/acme/payments-api/pull-requests/7", branch: "feature/SHOP-7-refund-split", number: 7, base: "develop")
+        bbReview.head = "a1b2c3d4e5f6"; bbReview.approvals = 1; bbReview.changesRequested = 1
+        bbReview.checks = .failing; bbReview.checkCounts = (1, 1, 0); bbReview.failedChecks = ["Pipeline #318"]
+        bbReview.failedCheckDetails = [.init(name: "Pipeline #318", url: "https://bitbucket.org/acme/payments-api/pipelines/results/318", title: "Tests failed in step test")]
+        var bbMine = InboxItem(id: "bb:acme/web-shop#21", source: .bitbucket, kind: .pr, key: "#21", place: "acme/web-shop",
+                               title: "Basket: show the delivery estimate", author: "You", assignee: nil, status: "Draft", statusTone: "todo",
+                               reason: .mine, updated: at(45), body: "Shows the estimate under the basket total.",
+                               url: "https://bitbucket.org/acme/web-shop/pull-requests/21", branch: "basket-estimate", number: 21, base: "main")
+        bbMine.head = "0f9e8d7c6b5a"; bbMine.approvals = 2; bbMine.checks = .passing; bbMine.checkCounts = (2, 0, 0)
         let history: [String: InboxActivity] = [
+            bbReview.id: InboxActivity(events: [
+                InboxEvent(kind: .change, actor: "Dana", date: at(240), summary: "opened it", field: "opened"),
+                InboxEvent(kind: .comment, actor: "Eli", date: at(120), summary: "commented", detail: "On `src/refunds/split.ts:42`:\n\nRounding: should the last item take the remainder?"),
+                InboxEvent(kind: .review, actor: "Eli", date: at(110), summary: "requested changes", field: "review"),
+                InboxEvent(kind: .commits, actor: "Dana", date: at(20), summary: "pushed new commits", detail: "a1b2c3d"),
+                InboxEvent(kind: .review, actor: "Max", date: at(3), summary: "approved", field: "review"),
+            ]),
+            bbMine.id: InboxActivity(events: [
+                InboxEvent(kind: .change, actor: "You", date: at(300), summary: "opened it", field: "opened"),
+                InboxEvent(kind: .review, actor: "Dana", date: at(60), summary: "approved", field: "review"),
+                InboxEvent(kind: .review, actor: "Eli", date: at(45), summary: "approved", field: "review"),
+            ]),
             pr.id: InboxActivity(events: [
                 InboxEvent(kind: .commits, actor: "ann", date: at(180), summary: "pushed a commit", detail: "Add RetryPolicy"),
                 InboxEvent(kind: .commits, actor: "ann", date: at(175), summary: "pushed a commit", detail: "Log the second attempt"),
@@ -77,7 +111,8 @@ enum InboxFixture {
                 InboxEvent(kind: .comment, actor: "Bob", date: at(300), summary: "commented", detail: "Waiting for the new measurements."),
             ], note: "The history isn't available (Jira answered 403). Showing comments only."),
         ]
-        fixtureItems = [pr, issue, quiet]
+        fixtureItems = [pr, bbReview, bbMine, issue, quiet]
+        InboxStore.shared.fixtureOn = Set(InboxSource.allCases)
         // Writes go nowhere: the commands are only recorded.
         ran = []
         InboxActions.shared.run = { args in ran.append(args.joined(separator: " ")); return "" }
@@ -147,6 +182,7 @@ enum InboxFixture {
             return NSBitmapImageRep(data: img.tiffRepresentation!)!.representation(using: .png, properties: [:])!
         }
         // Read up to an hour ago on the PR and the issue, so both have something new.
-        InboxStore.shared.loadFixture([pr, issue, quiet], seen: [pr.id: t - 3600, issue.id: t - 3600, quiet.id: t], activity: history)
+        InboxStore.shared.loadFixture([pr, bbReview, bbMine, issue, quiet],
+                                      seen: [pr.id: t - 3600, bbReview.id: t - 3600, bbMine.id: t, issue.id: t - 3600, quiet.id: t], activity: history)
     }
 }
