@@ -134,12 +134,19 @@ enum InboxConfirm {
     /// The sheet on screen (the debug fixture answers it).
     static weak var current: NSAlert?
 
-    static func ask(_ title: String, _ message: String, _ button: String, _ done: @escaping (Bool) -> Void) {
+    /// Changes others see (a merge, a post, a status) are confirmed with a click: Return does nothing here, so one
+    /// pressed for something else can't confirm it; Escape cancels.
+    static func alert(_ title: String, _ message: String, _ button: String) -> NSAlert {
         let a = NSAlert()
         a.messageText = title
         a.informativeText = message
-        a.addButton(withTitle: button)
-        a.addButton(withTitle: "Cancel")
+        a.addButton(withTitle: button).keyEquivalent = ""
+        a.addButton(withTitle: "Cancel").keyEquivalent = "\u{1b}"
+        return a
+    }
+
+    static func ask(_ title: String, _ message: String, _ button: String, _ done: @escaping (Bool) -> Void) {
+        let a = alert(title, message, button)
         // A sheet on our window even while the app is in the background (no main window then); never a blocking modal.
         let win = NSApp.mainWindow ?? NSApp.keyWindow ?? NSApp.windows.first { $0.isVisible && $0.canBecomeMain && $0.attachedSheet == nil }
         guard let win else { done(false); return }

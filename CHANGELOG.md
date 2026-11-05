@@ -123,6 +123,8 @@
     sources only) and says it is updating them; the first fetch replaces them and nothing rings for the kept
     ones. A source loading with nothing kept says so ("Loading Bitbucket…") instead of showing nothing or
     "Nothing matches.".
+  - Confirmations of changes others see (merge, decline, approve, posting a review, Jira changes) take a click:
+    Return no longer confirms them, Escape cancels.
   - **Post a review's findings**: each finding on the Agent review card has a box (issues and suggestions are
     ticked to start with; questions and nits wait for you). Post Comments… shows every comment first, editable,
     with where it goes: on its line when the change shows that line, else in the review's text. Add the

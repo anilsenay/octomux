@@ -119,3 +119,12 @@ final class ReviewPostTests: XCTestCase {
         XCTAssertTrue(m.comments(i.id, picked: Set(res.findings.map(\.id))).map(\.findingId) == [res.findings[1].id])   // the posted one isn't offered
     }
 }
+
+final class InboxConfirmTests: XCTestCase {
+    func testReturnDoesNotConfirmAChangeOthersSee() {
+        let a = InboxConfirm.alert("Merge #5?", "Merges it.", "Merge")
+        XCTAssertEqual(a.buttons.map(\.title), ["Merge", "Cancel"])
+        XCTAssertEqual(a.buttons[0].keyEquivalent, "")        // no default button
+        XCTAssertEqual(a.buttons[1].keyEquivalent, "\u{1b}")  // Escape cancels
+    }
+}
