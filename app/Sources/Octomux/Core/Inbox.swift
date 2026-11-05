@@ -1155,6 +1155,34 @@ final class InboxStore: ObservableObject {
         return nil
     }
 
+    /// Repos being cloned from the project picker (place → destination).
+    @Published private(set) var cloning: [String: String] = [:]
+
+    /// Clones the item's repo into `dest`, adds it as a project in `workspaceId` and uses it for the repo.
+    func cloneRepo(_ i: InboxItem, into dest: String, workspaceId: String, model: AppModel = .shared) {
+        guard cloning[i.place] == nil else { return }
+        cloning[i.place] = dest
+        let paths = model.state.projects.map(\.path)
+        DispatchQueue.global(qos: .userInitiated).async {
+            let remotes = paths.compactMap { GitInfo.git(["remote", "get-url", "origin"], in: $0)?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            let r = Result { try RepoClone.clone(i, remotes: remotes, into: dest) }
+            DispatchQueue.main.async {
+                switch r {
+                case .failure(let e):
+                    self.cloning[i.place] = nil
+                    model.lastError = "\(e)"
+                case .success:
+                    model.addProject(path: dest, workspaceId: workspaceId, select: false) { id in
+                        DispatchQueue.main.async {
+                            self.cloning[i.place] = nil
+                            if let id { self.added(id, cloneOf: i) }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     /// A project just added for the item's repo: it is that repo's clone (known before the next refresh looks).
     func added(_ projectId: String, cloneOf i: InboxItem) {
         if let key = Self.repoKey(i) { projectRepos[projectId] = key; if repoProjects[key] == nil { repoProjects[key] = projectId } }

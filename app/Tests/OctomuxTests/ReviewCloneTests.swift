@@ -95,4 +95,35 @@ final class ReviewCloneTests: XCTestCase {
         let again = try InboxReviews.prepareWorktree(item, p, (dir: clone, projectPaths: []), prep.path)
         XCTAssertEqual(again.path, prep.path)
     }
+
+    func testFullCloneIntoAFolder() throws {
+        let t = temp(), fm = FileManager.default
+        let src = t.appendingPathComponent("src")
+        try fm.createDirectory(at: src, withIntermediateDirectories: true)
+        for a in [["init", "-q", "-b", "main"], ["config", "user.email", "t@example.com"], ["config", "user.name", "t"]] { XCTAssertTrue(ReviewClones.git(a, in: src.path).ok) }
+        try "x\n".write(to: src.appendingPathComponent("f.txt"), atomically: true, encoding: .utf8)
+        XCTAssertTrue(ReviewClones.git(["add", "."], in: src.path).ok); XCTAssertTrue(ReviewClones.git(["commit", "-qm", "c"], in: src.path).ok)
+        let i = pr(.bitbucket, "acme/src")
+        // A non-empty folder or a file is refused; an empty folder is fine.
+        let full = t.appendingPathComponent("full"); try fm.createDirectory(at: full, withIntermediateDirectories: true)
+        fm.createFile(atPath: full.appendingPathComponent("x").path, contents: Data())
+        XCTAssertNotNil(RepoClone.problem(full.path))
+        XCTAssertNotNil(RepoClone.problem(full.appendingPathComponent("x").path))
+        let empty = t.appendingPathComponent("empty"); try fm.createDirectory(at: empty, withIntermediateDirectories: true)
+        XCTAssertNil(RepoClone.problem(empty.path))
+        // A failed try leaves no folder behind; the next URL works.
+        let dest = t.appendingPathComponent("code/src").path
+        XCTAssertThrowsError(try RepoClone.clone(i, urls: ["file:///nonexistent/r.git"], into: dest))
+        XCTAssertFalse(fm.fileExists(atPath: dest))
+        try RepoClone.clone(i, urls: ["file:///nonexistent/r.git", "file://" + src.path], into: dest)
+        XCTAssertEqual(try String(contentsOfFile: dest + "/f.txt", encoding: .utf8), "x\n")
+        XCTAssertNil(ReviewClones.git(["config", "remote.origin.partialclonefilter"], in: dest).out.nilIfEmpty)   // a full clone
+        // The default folder: the last one used, else where most projects are.
+        let d = UserDefaults(suiteName: "clone-\(UUID())")!
+        XCTAssertEqual(RepoClone.defaultParent(projects: ["/c/a", "/c/b", "/d/e"], defaults: d), "/c")
+        d.set(t.path, forKey: RepoClone.parentKey)
+        XCTAssertEqual(RepoClone.defaultParent(projects: ["/c/a"], defaults: d), t.path)
+    }
 }
+
+private extension String { var nilIfEmpty: String? { trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : self } }

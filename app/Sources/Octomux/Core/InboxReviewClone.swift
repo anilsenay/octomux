@@ -38,13 +38,13 @@ enum ReviewClones {
     static func exists(_ dir: String) -> Bool { FileManager.default.fileExists(atPath: dir + "/.git") }
 
     /// Git that never waits for a password or a passphrase (it fails instead) and skips LFS downloads.
-    static func git(_ args: [String], in dir: String?) -> (ok: Bool, out: String, err: String) {
+    static func git(_ args: [String], in dir: String?, skipLFS: Bool = true) -> (ok: Bool, out: String, err: String) {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/bin/git")
         p.arguments = (dir.map { ["-C", $0] } ?? []) + args
         var env = ProcessInfo.processInfo.environment
         env["GIT_TERMINAL_PROMPT"] = "0"
-        env["GIT_LFS_SKIP_SMUDGE"] = "1"
+        if skipLFS { env["GIT_LFS_SKIP_SMUDGE"] = "1" }
         if env["GIT_SSH_COMMAND"] == nil { env["GIT_SSH_COMMAND"] = "ssh -o BatchMode=yes" }
         p.environment = env
         let out = Pipe(), err = Pipe()
@@ -139,5 +139,47 @@ enum ReviewClones {
             if v?.isRegularFile == true { total += Int64(v?.totalFileAllocatedSize ?? 0) }
         }
         return total
+    }
+}
+
+/// A full clone of a pull request's repo to work in (Clone into a Folder…), made a project.
+enum RepoClone {
+    static let parentKey = "octomux.inbox.cloneParent"
+
+    /// Where clones go by default: the last folder used, else the folder most of your projects sit in, else ~.
+    static func defaultParent(projects: [String], defaults: UserDefaults = .standard) -> String {
+        if let p = defaults.string(forKey: parentKey), FileManager.default.fileExists(atPath: p) { return p }
+        let parents = projects.map { ($0 as NSString).deletingLastPathComponent }
+        let counts = Dictionary(parents.map { ($0, 1) }, uniquingKeysWith: +)
+        return counts.max { ($0.value, $1.key) < ($1.value, $0.key) }?.key ?? FileManager.default.homeDirectoryForCurrentUser.path
+    }
+
+    /// Why `dest` can't take a clone, or nil.
+    static func problem(_ dest: String) -> String? {
+        let fm = FileManager.default
+        var dir: ObjCBool = false
+        guard fm.fileExists(atPath: dest, isDirectory: &dir) else { return nil }
+        if !dir.boolValue { return "\((dest as NSString).abbreviatingWithTildeInPath) is a file." }
+        if !((try? fm.contentsOfDirectory(atPath: dest)) ?? []).isEmpty { return "\((dest as NSString).abbreviatingWithTildeInPath) isn't empty." }
+        return nil
+    }
+
+    /// Clones (ssh or https, as your other clones of that host; never asks for a password). Blocks.
+    static func clone(_ i: InboxItem, remotes: [String], into dest: String) throws {
+        try clone(i, urls: ReviewClones.urls(for: i, remotes: remotes), into: dest)
+    }
+
+    static func clone(_ i: InboxItem, urls: [String], into dest: String) throws {
+        if let p = problem(dest) { throw InboxError(p) }
+        var errors: [String] = []
+        let fm = FileManager.default
+        let existed = fm.fileExists(atPath: dest)
+        for url in urls {
+            let r = ReviewClones.git(["clone", url, dest], in: nil, skipLFS: false)
+            if r.ok { return }
+            errors.append("\(url): \(r.err.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: "\n").last ?? "")")
+            if !existed { try? fm.removeItem(atPath: dest) }   // what the failed try left
+        }
+        throw InboxError("Couldn't clone \(i.place) (git needs access without asking for a password):\n" + errors.joined(separator: "\n"))
     }
 }

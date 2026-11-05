@@ -103,7 +103,9 @@
     (Summarize, the Pull Request menu). A review request puts Review first; your own pull request and issues
     put Work on it first. A review in a chat asks first in a project that isn't a clone of the repo (Return
     cancels). "Choose a Clone on This Mac…" in the picker adds a folder you pick as a project, in the
-    workspace you pick (it says so if the folder is another repo's), and uses it for that repo. Clones in
+    workspace you pick (it says so if the folder is another repo's), and uses it for that repo. "Clone into a
+    Folder…" clones the repo (folder and workspace picked in one dialog; the last folder is remembered) and
+    does the same once it is done, with "Cloning…" in the picker meanwhile. Clones in
     other workspaces count too. The detail header's counts wrap as whole labels in a narrow window.
   - A background review of a repo you have no local clone of downloads one (asked first): a partial clone, so
     only the history without file contents and the files of the pull request's head come down, no Git LFS

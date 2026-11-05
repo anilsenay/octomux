@@ -1378,6 +1378,13 @@ struct InboxDetail: View {
         }
     }
 
+    /// A clone's name in the picker; one in another workspace says which.
+    private func cloneTitle(_ p: Project) -> String {
+        if p.workspaceId == model.selectedWorkspaceId { return p.name }
+        let ws: String = model.state.workspaces.first { $0.id == p.workspaceId }?.name ?? "another workspace"
+        return p.name + " (" + ws + ")"
+    }
+
     /// Where the agent works. A pull request's clones come first; another repo's project is marked.
     private var projectPicker: some View {
         let repo = InboxStore.repoKey(item) != nil
@@ -1388,10 +1395,7 @@ struct InboxDetail: View {
             Menu {
                 if repo {
                     Section(clones.isEmpty ? "No local clone of \(item.place)" : "Clones of \(item.place)") {
-                        ForEach(clones) { p in
-                            Button(p.workspaceId == model.selectedWorkspaceId ? p.name
-                                   : "\(p.name) (\(model.state.workspaces.first { $0.id == p.workspaceId }?.name ?? "another workspace"))") { store.choose(p, for: item) }
-                        }
+                        ForEach(clones) { p in Button(cloneTitle(p)) { store.choose(p, for: item) } }
                     }
                     Section("Other projects") {
                         ForEach(model.projects.filter { p in !clones.contains { $0.id == p.id } }) { p in
@@ -1399,13 +1403,17 @@ struct InboxDetail: View {
                         }
                     }
                     Divider()
+                    Button("Clone into a Folder…") { InboxStart.cloneRepo(item, model: model) }
                     Button("Choose a Clone on This Mac…") { InboxStart.addClone(item, model: model) }
                 } else {
                     ForEach(model.projects) { p in Button(p.name) { store.choose(p, for: item) } }
                 }
             } label: {
                 HStack(spacing: 6) {
-                    if let p = project {
+                    if store.cloning[item.place] != nil {
+                        ProgressView().controlSize(.small)
+                        Text("Cloning…").font(.system(size: T.k * 12.5, weight: .medium))
+                    } else if let p = project {
                         ProjectIconView(project: p, size: 13)
                         Text(p.name).font(.system(size: T.k * 12.5, weight: .medium))
                         if other { Image(systemName: "exclamationmark.triangle.fill").font(.system(size: T.k * 10)).foregroundStyle(T.amber) }
@@ -1420,11 +1428,17 @@ struct InboxDetail: View {
                 .contentShape(Rectangle())
             }
             .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().pointerCursor()
-            .help(other ? "\(project?.name ?? "") is a clone of another repo, not \(item.place): an agent there won't see this pull request's code"
-                  : project == nil && repo ? "No local project is a clone of \(item.place). Pick one, or choose your clone on this Mac."
-                  : "Where Work on it, Review in a chat and Ask run (remembered for \(item.place))")
+            .disabled(store.cloning[item.place] != nil)
+            .help(pickerHelp(other: other, repo: repo))
         }
         .fixedSize()
+    }
+
+    private func pickerHelp(other: Bool, repo: Bool) -> String {
+        if let dest = store.cloning[item.place] { return "Cloning \(item.place) into \((dest as NSString).abbreviatingWithTildeInPath)…" }
+        if other { return "\(project?.name ?? "") is a clone of another repo, not \(item.place): an agent there won't see this pull request's code" }
+        if project == nil && repo { return "No local project is a clone of \(item.place). Pick one, clone it, or choose your clone on this Mac." }
+        return "Where Work on it, Review in a chat and Ask run (remembered for \(item.place))"
     }
 
     @ViewBuilder private var prMenu: some View {
@@ -1716,6 +1730,48 @@ enum InboxStart {
         model.addProject(path: path, workspaceId: ws, select: false) { id in
             guard let id else { return }
             DispatchQueue.main.async { InboxStore.shared.added(id, cloneOf: item) }
+        }
+    }
+
+    /// Asks where to clone the item's repo (folder and workspace), then clones it and makes it a project.
+    static func cloneRepo(_ item: InboxItem, model: AppModel) {
+        let spaces = model.state.workspaces.sorted { $0.sort < $1.sort }
+        guard !spaces.isEmpty else { model.lastError = "Make a workspace first."; return }
+        let name = String(item.place.split(separator: "/").last ?? "repo")
+        let parent = RepoClone.defaultParent(projects: model.state.projects.map(\.path))
+        let a = NSAlert()
+        a.messageText = "Clone \(item.place)"
+        a.informativeText = "A full clone, with your own git access. It becomes a project in the workspace you pick."
+        let w: CGFloat = 360
+        let folder = NSTextField(string: (parent as NSString).appendingPathComponent(name))
+        folder.frame = NSRect(x: 0, y: 34, width: w - 86, height: 24)
+        let choose = InboxClosureButton(title: "Choose…") {
+            let panel = NSOpenPanel()
+            panel.canChooseDirectories = true; panel.canChooseFiles = false; panel.canCreateDirectories = true
+            panel.message = "Choose the folder to clone \(item.place) into (a folder named \(name) is made there)"
+            panel.prompt = "Choose"
+            panel.directoryURL = URL(fileURLWithPath: ((folder.stringValue as NSString).expandingTildeInPath as NSString).deletingLastPathComponent)
+            if panel.runModal() == .OK, let u = panel.url { folder.stringValue = u.appendingPathComponent(name).path }
+        }
+        choose.frame = NSRect(x: w - 80, y: 32, width: 80, height: 28)
+        let label = NSTextField(labelWithString: "Workspace:")
+        label.frame = NSRect(x: 0, y: 3, width: 80, height: 20)
+        let pick = NSPopUpButton(frame: NSRect(x: 84, y: 0, width: w - 84, height: 26), pullsDown: false)
+        for s in spaces { pick.addItem(withTitle: s.name); pick.lastItem?.representedObject = s.id }
+        if let i = spaces.firstIndex(where: { $0.id == model.selectedWorkspaceId }) { pick.selectItem(at: i) }
+        let box = NSView(frame: NSRect(x: 0, y: 0, width: w, height: 60))
+        [folder, choose, label, pick].forEach(box.addSubview)
+        a.accessoryView = box
+        a.addButton(withTitle: "Clone")
+        a.addButton(withTitle: "Cancel")
+        a.window.initialFirstResponder = folder
+        while true {
+            guard a.runModal() == .alertFirstButtonReturn, let ws = pick.selectedItem?.representedObject as? String else { return }
+            let dest = URL(fileURLWithPath: (folder.stringValue.trimmingCharacters(in: .whitespaces) as NSString).expandingTildeInPath).standardizedFileURL.path
+            if let p = RepoClone.problem(dest) { a.informativeText = p + " Pick another folder."; continue }
+            UserDefaults.standard.set((dest as NSString).deletingLastPathComponent, forKey: RepoClone.parentKey)
+            InboxStore.shared.cloneRepo(item, into: dest, workspaceId: ws, model: model)
+            return
         }
     }
 
@@ -3201,4 +3257,15 @@ struct InboxCloneSetting: View {
             DispatchQueue.main.async { count = n; size = b }
         }
     }
+}
+
+/// An AppKit button that runs a closure (for alert accessory views).
+final class InboxClosureButton: NSButton {
+    private var run: () -> Void = {}
+    convenience init(title: String, _ run: @escaping () -> Void) {
+        self.init(frame: .zero)
+        self.title = title; self.bezelStyle = .rounded; self.run = run
+        target = self; action = #selector(fire)
+    }
+    @objc private func fire() { run() }
 }
