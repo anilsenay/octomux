@@ -157,6 +157,11 @@ struct InboxView: View {
             .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().pointerCursor()
             .padding(.leading, 4)
             Spacer()
+            if store.jiraOn {
+                Button { store.composingIssue = true } label: { Label("New Issue", systemImage: "square.and.pencil") }
+                    .buttonStyle(IconButtonStyle(size: 24)).labelStyle(.iconOnly).help("New Jira issue")
+                    .popover(isPresented: $store.composingIssue, arrowEdge: .bottom) { InboxNewIssue { store.composingIssue = false } }
+            }
             if let e = store.errors.values.first {
                 Text(e).font(.system(size: T.k * 11)).foregroundStyle(T.amber).lineLimit(1).truncationMode(.tail).frame(maxWidth: 360, alignment: .trailing)
                     .help(e)
@@ -240,6 +245,7 @@ struct InboxView: View {
         case .mine: return "arrow.triangle.pull"
         case .mention: return "at"
         case .project: return "square.stack.3d.up"
+        case .filter: return "line.3.horizontal.decrease.circle"
         }
     }
 
@@ -543,6 +549,7 @@ struct InboxDetail: View {
     @EnvironmentObject var model: AppModel
     @ObservedObject var store = InboxStore.shared
     @ObservedObject var prActions = InboxActions.shared
+    @ObservedObject var jiraActions = InboxJiraActions.shared
     let item: InboxItem
     @AppStorage(InboxPrefs.startMode) private var startMode = "tab"
     @State private var comment = ""
@@ -556,12 +563,12 @@ struct InboxDetail: View {
             VStack(alignment: .leading, spacing: 14) {
                 header
                 actions
-                if let r = prActions.results[item.id] {
+                if let r = prActions.results[item.id] ?? jiraActions.results[item.id] {
                     HStack(spacing: 8) {
                         Image(systemName: r.ok ? "checkmark.circle.fill" : "exclamationmark.triangle.fill").foregroundStyle(r.ok ? T.green : T.amber)
                         Text(r.text).font(.system(size: T.k * 12)).foregroundStyle(T.text2).lineLimit(3).textSelection(.enabled)
                         Spacer(minLength: 0)
-                        Button { prActions.clear(item) } label: { Image(systemName: "xmark").font(.system(size: T.k * 8, weight: .bold)) }
+                        Button { prActions.clear(item); jiraActions.clear(item) } label: { Image(systemName: "xmark").font(.system(size: T.k * 8, weight: .bold)) }
                             .buttonStyle(IconButtonStyle(size: 18))
                     }
                 }
@@ -597,9 +604,28 @@ struct InboxDetail: View {
                 BrandMark(key: item.source.rawValue, color: item.source.color, size: 12)
                 Text(item.kindName).font(.system(size: T.k * 11.5)).foregroundStyle(T.text2)
                 Text(item.key).font(T.mono(11.5)).foregroundStyle(T.text2)
-                Text(item.ended?.label ?? item.status).font(.system(size: T.k * 10.5, weight: .semibold)).foregroundStyle(statusColor)
-                    .padding(.horizontal, 6).frame(height: 17)
-                    .background(Capsule().fill(statusColor.opacity(0.14)))
+                if item.source == .jira, item.ended == nil {
+                    // The status moves through Jira's workflow (asks first).
+                    Menu {
+                        let ts = jiraActions.transitions[item.id] ?? []
+                        if ts.isEmpty { Text(jiraActions.transitions[item.id] == nil ? "Loading…" : "No moves from here") }
+                        ForEach(ts) { t in Button(t.name == t.to ? t.to : "\(t.name) → \(t.to)") { jiraActions.move(item, t) } }
+                    } label: {
+                        HStack(spacing: 3) {
+                            Text(item.status).font(.system(size: T.k * 10.5, weight: .semibold))
+                            Image(systemName: "chevron.down").font(.system(size: T.k * 7, weight: .bold))
+                        }
+                        .foregroundStyle(statusColor).padding(.horizontal, 6).frame(height: 17)
+                        .background(Capsule().fill(statusColor.opacity(0.14)))
+                    }
+                    .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().pointerCursor()
+                    .help("Change the status")
+                    .onAppear { jiraActions.loadTransitions(item) }
+                } else {
+                    Text(item.ended?.label ?? item.status).font(.system(size: T.k * 10.5, weight: .semibold)).foregroundStyle(statusColor)
+                        .padding(.horizontal, 6).frame(height: 17)
+                        .background(Capsule().fill(statusColor.opacity(0.14)))
+                }
                 Text(item.place).font(.system(size: T.k * 11.5)).foregroundStyle(T.text3)
             }
             Text(item.title).font(.system(size: T.k * 19, weight: .bold)).foregroundStyle(T.text).textSelection(.enabled)
@@ -665,6 +691,10 @@ struct InboxDetail: View {
             .help("The project the agent works in (remembered for \(item.place))")
             if item.kind == .pr && item.reason == .review && item.ended == nil {
                 Button("Review with agent") { start("tab", .review) }.buttonStyle(SecondaryButtonStyle()).fixedSize()
+            }
+            if item.source == .jira, item.ended == nil, item.assignee != "You" {
+                Button { jiraActions.assignToMe(item) } label: { Label("Assign to Me", systemImage: "person.crop.circle.badge.plus") }
+                    .buttonStyle(SecondaryButtonStyle()).fixedSize().disabled(jiraActions.busy.contains(item.id))
             }
             Button { InboxStart.ask(item, model: model) } label: {
                 Label(store.askSession(item) == nil ? "Ask" : "Continue asking", systemImage: "questionmark.bubble")
@@ -901,6 +931,17 @@ enum InboxStart {
         }
     }
 
+    static let defaultJiraTemplate = "Work on this Jira issue."
+    static let templateFields = ["{key}", "{title}", "{status}", "{project}", "{url}", "{assignee}"]
+
+    /// The Jira template from Settings with the issue's fields filled in.
+    static func jiraAsk(_ item: InboxItem, template: String? = UserDefaults.standard.string(forKey: InboxPrefs.jiraTemplate)) -> String {
+        let t = (template?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 } ?? defaultJiraTemplate
+        return t.replacingOccurrences(of: "{key}", with: item.key).replacingOccurrences(of: "{title}", with: item.title)
+            .replacingOccurrences(of: "{status}", with: item.status).replacingOccurrences(of: "{project}", with: item.place)
+            .replacingOccurrences(of: "{url}", with: item.url).replacingOccurrences(of: "{assignee}", with: item.assignee ?? "nobody")
+    }
+
     /// Ask: a read-only chat about the item, its text as reference data, the question typed at the end.
     static func askPrompt(_ item: InboxItem) -> String {
         let trimmed = item.body.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -957,7 +998,7 @@ enum InboxStart {
         case .work:
             what = item.kind == .pr
                 ? "Work on pull request \(item.key) of \(item.place) (branch `\(item.branch ?? "")`; `gh pr checkout \(n)` if you are not on it)."
-                : "Work on this \(item.source.name) issue."
+                : item.source == .jira ? jiraAsk(item) : "Work on this \(item.source.name) issue."
         }
         let trimmed = item.body.trimmingCharacters(in: .whitespacesAndNewlines)
         let body = trimmed.count > 12000 ? String(trimmed.prefix(12000)) + "\n[…cut]" : trimmed
@@ -1100,6 +1141,7 @@ struct InboxSettings: View {
     @AppStorage(InboxPrefs.nUpdates) private var nUpdates = true
     @AppStorage(InboxPrefs.jiraWatched) private var watchedRaw = ""
     @AppStorage(InboxPrefs.nProjects) private var nProjects = "sound"
+    @AppStorage(InboxPrefs.jiraTemplate) private var jiraTemplate = ""
     @State private var ghStatus: String?
     @State private var ghError: String?
     @State private var checking = false
@@ -1165,6 +1207,7 @@ struct InboxSettings: View {
                     Text("Assigned to me").tag("assigned"); Text("All open ones").tag("all")
                 }.labelsHidden().fixedSize().onChange(of: jiraScope) { store.refresh(widened: true) }
             }
+            if jiraConnected { JiraFiltersSetting() }
         }
         SettingsGroup("Notifications", desc: "A banner like a finished agent's, and the count next to Inbox in the sidebar.") {
             SettingRow("Check every") {
@@ -1222,6 +1265,18 @@ struct InboxSettings: View {
                     Text("The last one used").tag("")
                     ForEach(model.enabledProfiles.filter { $0.kind == .claude || $0.kind == .codex }) { p in Text(p.name).tag(p.id) }
                 }.labelsHidden().fixedSize()
+            }
+            if jiraConnected {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("What the agent is asked for a Jira issue").font(.system(size: T.k * 13, weight: .medium))
+                    Text("The issue itself always follows, as reference data. Fill in: " + InboxStart.templateFields.joined(separator: " "))
+                        .font(.system(size: T.k * 11.5)).foregroundStyle(T.text2)
+                    TextField(InboxStart.defaultJiraTemplate, text: $jiraTemplate, axis: .vertical).textFieldStyle(.plain)
+                        .font(.system(size: T.k * 12.5)).lineLimit(2...6).padding(8)
+                        .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(T.frame.opacity(0.5)))
+                        .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(T.border))
+                }
+                .padding(.horizontal, 14).padding(.vertical, 11)
             }
         }
     }
@@ -1695,5 +1750,141 @@ struct InboxPRCode: View {
 
     private func statusColor(_ s: String) -> Color {
         switch s { case "A": return T.green; case "D": return T.red; case "R": return T.blue; default: return T.amber }
+    }
+}
+
+/// New Jira issue: project, type, title, description; created after a confirmation.
+struct InboxNewIssue: View {
+    @ObservedObject var store = InboxStore.shared
+    @ObservedObject var actions = InboxJiraActions.shared
+    let close: () -> Void
+    @State private var project = ""
+    @State private var types: [JiraClient.IssueType] = []
+    @State private var type = ""
+    @State private var summary = ""
+    @State private var details = ""
+    @State private var mine = true
+    @State private var working = false
+    @State private var message: (ok: Bool, text: String)?
+    @State private var typesError: String?
+
+    private var projects: [(id: String, key: String, name: String)] {
+        let picked = JiraClient.pickedProjects
+        let mine = store.jiraProjects.filter { picked.contains($0.key) }
+        return mine.isEmpty ? store.jiraProjects : mine
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("New Jira issue").font(.system(size: T.k * 14, weight: .semibold))
+            HStack(spacing: 8) {
+                Picker("", selection: $project) {
+                    if project.isEmpty { Text("Project").tag("") }
+                    ForEach(projects, id: \.key) { p in Text("\(p.name)  \(p.key)").tag(p.key) }
+                }.labelsHidden().frame(maxWidth: 220)
+                Picker("", selection: $type) {
+                    if types.isEmpty { Text(project.isEmpty || typesError != nil ? "Type" : "Loading…").tag("") }
+                    ForEach(types) { t in Text(t.name).tag(t.id) }
+                }.labelsHidden().frame(maxWidth: 150).disabled(types.isEmpty)
+            }
+            TextField("Title", text: $summary).textFieldStyle(.roundedBorder)
+            TextField("Description (optional)", text: $details, axis: .vertical).textFieldStyle(.roundedBorder).lineLimit(3...8)
+            Toggle("Assign to me", isOn: $mine).toggleStyle(.checkbox)
+            if let typesError { Text(typesError).font(T.caption).foregroundStyle(T.amber).fixedSize(horizontal: false, vertical: true) }
+            if let m = message {
+                Text(m.text).font(T.caption).foregroundStyle(m.ok ? T.green : T.red).fixedSize(horizontal: false, vertical: true)
+            }
+            HStack {
+                Spacer()
+                Button("Cancel") { close() }.keyboardShortcut(.cancelAction)
+                Button(working ? "Creating…" : "Create…") { create() }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(working || project.isEmpty || type.isEmpty || summary.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+        .padding(16).frame(width: 440)
+        .onAppear { if project.isEmpty, let first = projects.first { project = first.key } }
+        .onChange(of: project, initial: true) { _, p in loadTypes(p) }
+    }
+
+    private func loadTypes(_ p: String) {
+        types = []; type = ""; typesError = nil
+        guard !p.isEmpty else { return }
+        let load = actions.loadTypes
+        DispatchQueue.global(qos: .userInitiated).async {
+            let r = Result { try load(p) }
+            DispatchQueue.main.async {
+                guard p == project else { return }
+                switch r {
+                case .success(let t):
+                    types = t
+                    type = (t.first { $0.name == "Task" } ?? t.first)?.id ?? ""
+                    if t.isEmpty { typesError = "\(p) has no issue types you can create." }
+                case .failure(let e): typesError = "\(e)"   // e.g. no permission to create here, or a read-only token
+                }
+            }
+        }
+    }
+
+    private func create() {
+        guard let t = types.first(where: { $0.id == type }) else { return }
+        working = true; message = nil
+        actions.create(project: project, type: t, summary: summary, description: details, mine: mine) { r in
+            working = false
+            switch r {
+            case .success(let key)?: message = (true, "Created \(key)."); summary = ""; details = ""
+            case .failure(let e)?: message = (false, "\(e)")
+            case nil: break
+            }
+        }
+    }
+}
+
+/// Settings: starred Jira filters whose open issues come into the Inbox.
+struct JiraFiltersSetting: View {
+    @ObservedObject var store = InboxStore.shared
+    @State private var filters: [JiraClient.Filter]? = nil
+    @State private var error: String?
+    @State private var tick = 0
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Starred filters").font(.system(size: T.k * 13, weight: .medium))
+                Text("Ticked ones bring their open issues in, under From your filters.").font(.system(size: T.k * 11.5)).foregroundStyle(T.text2)
+                Spacer()
+                Button(filters == nil ? "Load Filters" : "Refresh") { load() }.buttonStyle(SecondaryButtonStyle())
+            }
+            if let error { Text(error).font(T.caption).foregroundStyle(T.red).fixedSize(horizontal: false, vertical: true) }
+            let saved = JiraClient.savedFilters
+            let list = filters ?? saved.map { JiraClient.Filter(id: $0.key, name: $0.value.name, jql: $0.value.jql) }.sorted { $0.name < $1.name }
+            if filters != nil && list.isEmpty { Text("No starred filters. Star one on Jira to see it here.").font(T.caption).foregroundStyle(T.text3) }
+            ForEach(list) { f in
+                Toggle(isOn: Binding(get: { _ = tick; return saved[f.id] != nil }, set: { on in
+                    JiraClient.setSaved(f, on); tick += 1; store.refresh(widened: true)
+                })) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(f.name).font(.system(size: T.k * 12.5))
+                        Text(f.jql).font(T.mono(10.5)).foregroundStyle(T.text3).lineLimit(1).truncationMode(.tail)
+                    }
+                }
+                .toggleStyle(.checkbox)
+            }
+        }
+        .padding(.horizontal, 14).padding(.vertical, 11)
+    }
+
+    private func load() {
+        error = nil
+        let get = InboxJiraActions.shared.loadFilters
+        DispatchQueue.global(qos: .userInitiated).async {
+            let r = Result { try get() }
+            DispatchQueue.main.async {
+                switch r {
+                case .success(let f): filters = f
+                case .failure(let e): error = "\(e)"
+                }
+            }
+        }
     }
 }

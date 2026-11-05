@@ -71,6 +71,18 @@ enum InboxFixture {
         // Writes go nowhere: the commands are only recorded.
         ran = []
         InboxActions.shared.run = { args in ran.append(args.joined(separator: " ")); return "" }
+        let jira = InboxJiraActions.shared
+        jira.loadTransitions = { _ in [
+            .init(id: "21", name: "Back to work", to: "In Progress", category: "indeterminate"),
+            .init(id: "31", name: "Approve", to: "Done", category: "done"),
+        ] }
+        jira.doTransition = { k, id in ran.append("jira move \(k) \(id)") }
+        jira.doAssign = { k in ran.append("jira assign \(k)") }
+        jira.loadTypes = { _ in [.init(id: "10001", name: "Task"), .init(id: "10002", name: "Bug")] }
+        jira.doCreate = { p, t, s, _, mine in ran.append("jira create \(p) \(t) \(s) mine=\(mine)"); return "\(p)-100" }
+        jira.loadFilters = { [.init(id: "1", name: "Shop bugs", jql: "project = SHOP AND type = Bug ORDER BY priority"),
+                              .init(id: "2", name: "Waiting for me", jql: "assignee = currentUser() AND status = \"In Review\"")] }
+        InboxStore.shared.jiraProjects = [(id: "1", key: "SHOP", name: "Shop")]
         InboxStore.shared.loadDiff = { _ in
             """
             diff --git a/src/checkout/retry.ts b/src/checkout/retry.ts

@@ -46,6 +46,11 @@
   - **Pull Request menu** in the detail: merge (merge commit, squash or rebase, into the named base branch), mark
     ready, convert to draft, close or reopen, through the GitHub CLI. Each one asks first, saying exactly what will
     happen; the branch is never deleted. A merge or close made here is no news in your notifications.
+  - **Jira from the Inbox**: change an issue's status through its workflow (the status chip is a menu), assign
+    it to yourself, or create a new issue (the pencil in the Inbox bar), each after a confirmation. Starred Jira
+    filters can bring their open issues in (Settings → Inbox → What shows up), under From your filters. What
+    the agent is asked for a Jira issue is a template in Settings ({key}, {title}, {status}, {project}, {url},
+    {assignee}).
   - Settings → Inbox: connections, Jira projects, GitHub repositories, what shows up, notifications, and what
     Send to agent opens.
 

@@ -101,6 +101,15 @@ enum DebugActions {
             }
             return ["images": refs.count, "matched": matched.count, "attachments": names.count]
         }
+        // The read-only parts of Jira changes: an issue's moves, your starred filters, a project's issue types (counts only).
+        d.register("inbox_probe_jira_reads") { p in
+            let key = p["key"] as? String ?? "", project = p["project"] as? String ?? ""
+            var out: [String: Any] = [:]
+            out["transitions"] = (try? JiraClient.transitions(key).count) ?? -1
+            out["filters"] = (try? JiraClient.favouriteFilters().count) ?? -1
+            do { out["types"] = try JiraClient.issueTypes(project).count } catch { out["types_error"] = "\(error)" }
+            return out
+        }
         // Finds a few of your Jira issues that have attachments (keys only).
         d.register("inbox_probe_jira_with_attachments") { _ in
             let body: [String: Any] = ["jql": "assignee = currentUser() AND attachments is not EMPTY ORDER BY updated DESC", "maxResults": 5, "fields": ["summary"]]
@@ -255,6 +264,17 @@ enum DebugActions {
                 if let v = p["value"] as? String, let a = InboxPRAction(rawValue: v),
                    let item = InboxStore.shared.items.first(where: { $0.id == InboxStore.shared.selectedId }) {
                     InboxActions.shared.perform(a, on: item)
+                }
+            case "inbox_jira":        // value: move:<transition id> | assign | create:<summary> | compose, on the open item
+                let v = p["value"] as? String ?? ""
+                let item = InboxStore.shared.items.first { $0.id == InboxStore.shared.selectedId }
+                let ja = InboxJiraActions.shared
+                if v == "compose" { InboxStore.shared.composingIssue = true }
+                else if v == "save_filter" || v == "unsave_filter", let f = try? ja.loadFilters().first { JiraClient.setSaved(f, v == "save_filter") }
+                else if v == "assign", let item { ja.assignToMe(item) }
+                else if v.hasPrefix("move:"), let item, let t = ja.transitions[item.id]?.first(where: { $0.id == String(v.dropFirst(5)) }) { ja.move(item, t) }
+                else if v.hasPrefix("create:") {
+                    ja.create(project: "SHOP", type: .init(id: "10001", name: "Task"), summary: String(v.dropFirst(7)), description: "", mine: true) { _ in }
                 }
             case "inbox_confirm":     // answers the confirmation sheet on screen
                 if let a = InboxConfirm.current, let w = a.window.sheetParent {
@@ -416,6 +436,12 @@ enum DebugActions {
             case "open_settings":
                 SettingsWindow.show(section: SettingsSection(rawValue: p["value"] as? String ?? "Workspaces"))
             case "close_settings": SettingsWindow.window?.orderOut(nil)
+            case "settings_height":   // makes Settings tall enough to see a long page at once (screenshots)
+                if let w = SettingsWindow.window {
+                    var f = w.frame; let h = CGFloat((p["value"] as? Double) ?? 1600)
+                    f.origin.y += f.height - h; f.size.height = h
+                    w.setFrame(f, display: true)
+                }
             case "settings_scroll":
                 func find(_ v: NSView) -> NSScrollView? {
                     if let s = v as? NSScrollView, (s.documentView?.frame.height ?? 0) > s.contentView.bounds.height + 50 { return s }

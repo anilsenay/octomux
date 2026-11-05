@@ -1030,3 +1030,106 @@ final class InboxPRActionTests: XCTestCase {
         XCTAssertTrue(a.busy.isEmpty)
     }
 }
+
+/// Jira changes from the Inbox: parsing, the request bodies, the template, and confirmation before every write.
+final class InboxJiraActionTests: XCTestCase {
+    private let issue = InboxItem(id: "jira:SHOP-7", source: .jira, kind: .issue, key: "SHOP-7", place: "Shop", title: "Price filter",
+                                  author: "Cem", assignee: "Bob", status: "To Do", statusTone: "todo", reason: .project,
+                                  updated: Date(), body: "", url: "https://x/browse/SHOP-7")
+
+    func testParsers() {
+        let t = JiraClient.transitions(["transitions": [
+            ["id": "21", "name": "Start", "to": ["name": "In Progress", "statusCategory": ["key": "indeterminate"]]],
+            ["id": "31", "name": "Done", "to": ["name": "Done", "statusCategory": ["key": "done"]]],
+            ["name": "broken"],
+        ]])
+        XCTAssertEqual(t.map(\.id), ["21", "31"])
+        XCTAssertEqual(t.first?.to, "In Progress")
+        let f = JiraClient.filters([["id": "100", "name": "My &amp; team", "jql": "project = SHOP ORDER BY rank"], ["id": "x"]])
+        XCTAssertEqual(f, [JiraClient.Filter(id: "100", name: "My & team", jql: "project = SHOP ORDER BY rank")])
+    }
+
+    func testFilterJQL() {
+        XCTAssertEqual(JiraClient.filterJQL("project = SHOP AND labels = ui ORDER BY Rank ASC"),
+                       "(project = SHOP AND labels = ui) AND statusCategory != Done ORDER BY updated DESC")
+        XCTAssertEqual(JiraClient.filterJQL("assignee = currentUser()\norder by created"), "(assignee = currentUser()) AND statusCategory != Done ORDER BY updated DESC")
+        XCTAssertEqual(JiraClient.filterJQL("ORDER BY created DESC"), "statusCategory != Done ORDER BY updated DESC")
+    }
+
+    func testNewIssueBody() {
+        let b = JiraClient.newIssue(project: "SHOP", type: "10001", summary: "Fix it", description: "Steps\nhere", assignTo: "acc-1")
+        let f = b["fields"] as! [String: Any]
+        XCTAssertEqual((f["project"] as? [String: String])?["key"], "SHOP")
+        XCTAssertEqual((f["issuetype"] as? [String: String])?["id"], "10001")
+        XCTAssertEqual(f["summary"] as? String, "Fix it")
+        XCTAssertEqual((f["assignee"] as? [String: String])?["accountId"], "acc-1")
+        XCTAssertNotNil(f["description"])
+        let bare = JiraClient.newIssue(project: "SHOP", type: "1", summary: "x", description: "  ", assignTo: nil)["fields"] as! [String: Any]
+        XCTAssertNil(bare["description"]); XCTAssertNil(bare["assignee"])
+    }
+
+    func testTemplate() {
+        XCTAssertEqual(InboxStart.jiraAsk(issue, template: nil), "Work on this Jira issue.")
+        XCTAssertEqual(InboxStart.jiraAsk(issue, template: "Fix {key} ({status}, {project}); see {url}. Owner: {assignee}"),
+                       "Fix SHOP-7 (To Do, Shop); see https://x/browse/SHOP-7. Owner: Bob")
+        XCTAssertTrue(InboxStart.prompt(issue, .work).hasPrefix("Work on this Jira issue."))
+    }
+
+    private func actions(confirm yes: Bool) -> (InboxJiraActions, Box) {
+        let a = InboxJiraActions(), box = Box()
+        a.background = { $0() }; a.onMain = { $0() }
+        a.confirm = { title, _, _, done in box.asked.append(title); done(yes) }
+        a.doTransition = { k, id in box.calls.append("move \(k) \(id)") }
+        a.doAssign = { k in box.calls.append("assign \(k)") }
+        a.doCreate = { p, t, s, _, mine in box.calls.append("create \(p) \(t) \(s) \(mine)"); return "SHOP-99" }
+        a.changed = { _ in box.changed += 1 }
+        return (a, box)
+    }
+    final class Box { var asked: [String] = []; var calls: [String] = []; var changed = 0 }
+
+    func testNothingChangesUnconfirmed() {
+        let (a, box) = actions(confirm: false)
+        a.move(issue, .init(id: "21", name: "Start", to: "In Progress", category: "indeterminate"))
+        a.assignToMe(issue)
+        var created: Result<String, Error>?? = .none
+        a.create(project: "SHOP", type: .init(id: "1", name: "Task"), summary: "New", description: "", mine: true) { created = $0 }
+        XCTAssertEqual(box.asked, ["Move SHOP-7 to In Progress?", "Assign SHOP-7 to you?", "Create a Task in SHOP?"])
+        XCTAssertEqual(box.calls, [])
+        XCTAssertEqual(box.changed, 0)
+        if case .some(.none) = created {} else { XCTFail("cancel reported as nil") }
+    }
+
+    func testConfirmedChanges() {
+        let (a, box) = actions(confirm: true)
+        a.move(issue, .init(id: "21", name: "Start", to: "In Progress", category: "indeterminate"))
+        a.assignToMe(issue)
+        var key: String?
+        a.create(project: "SHOP", type: .init(id: "1", name: "Task"), summary: "  New  ", description: "", mine: true) { r in
+            if case .success(let k)? = r { key = k }
+        }
+        XCTAssertEqual(box.calls, ["move SHOP-7 21", "assign SHOP-7", "create SHOP 1 New true"])
+        XCTAssertEqual(box.changed, 2)
+        XCTAssertEqual(a.results["jira:SHOP-7"]?.text, "Assigned to you.")
+        XCTAssertEqual(key, "SHOP-99")
+    }
+
+    func testFilterItemsFollowTheBell() {
+        let suite = "octomux-inbox-filter-\(UUID().uuidString)"
+        defer { UserDefaults().removePersistentDomain(forName: suite); UserDefaults.standard.removeObject(forKey: InboxPrefs.jiraWatched) }
+        let store = InboxStore(defaults: UserDefaults(suiteName: suite)!)
+        var rung: [String] = [], chimes = 0
+        store.deliver = { rung.append($0.title) }; store.chime = { chimes += 1 }
+        store.loadActivity = { _ in throw InboxError("offline") }
+        store.background = { $0() }; store.onMain = { $0() }
+        func f(_ t: Double) -> InboxItem {
+            InboxItem(id: "jira:SHOP-7", source: .jira, kind: .issue, key: "SHOP-7", place: "Shop", title: "x", author: "a", assignee: "Bob",
+                      status: "To Do", statusTone: "todo", reason: .filter, updated: Date(timeIntervalSince1970: t), body: "", url: "")
+        }
+        store.apply(.jira, .success([f(1000)]))
+        store.apply(.jira, .success([f(2000)]))
+        XCTAssertEqual(rung, []); XCTAssertEqual(chimes, 0)              // someone else's issue, no bell
+        UserDefaults.standard.set("SHOP", forKey: InboxPrefs.jiraWatched)
+        store.apply(.jira, .success([f(3000)]))
+        XCTAssertEqual(chimes, 1)
+    }
+}

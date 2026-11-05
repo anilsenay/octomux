@@ -16,7 +16,9 @@ struct InboxItem: Identifiable, Equatable {
     /// Why it is in the inbox (an item found by several searches keeps the first of these).
     enum Reason: String, CaseIterable {
         case review = "Review requested", mine = "Your pull request", assigned = "Assigned to you"
-        case mention = "Mentioned you", project = "In your projects"
+        case mention = "Mentioned you", project = "In your projects", filter = "From your filters"
+        /// Other people's work, there because of a project or a filter: news only with the project's bell.
+        var isOthers: Bool { self == .project || self == .filter }
     }
     enum Checks: String { case passing, failing, pending }
 
@@ -75,6 +77,8 @@ enum InboxPrefs {
     static let nChecks = "octomux.inbox.n.checks"
     static let nAssigned = "octomux.inbox.n.assigned"
     static let nUpdates = "octomux.inbox.n.updates"            // changes on your own items (yours / assigned / review)
+    static let jiraFilters = "octomux.inbox.jira.filters"      // starred filters shown: id → "name\njql"
+    static let jiraTemplate = "octomux.inbox.jira.template"    // what "Send to agent" asks for a Jira issue ({key} {title} …)
     static let jiraWatched = "octomux.inbox.jira.watched"      // project keys whose every change notifies (the bell)
     static let nProjects = "octomux.inbox.n.projects"          // how a belled project's changes notify: sound | banner
     static let startMode = "octomux.inbox.start"               // tab | worktree | ask
@@ -240,6 +244,8 @@ final class InboxStore: ObservableObject {
 
     // MARK: Pull request diffs
 
+    /// The New Jira issue form is open.
+    @Published var composingIssue = false
     /// The pull request detail's tab: overview | code.
     @Published var detailTab = "overview"
 
@@ -314,7 +320,7 @@ final class InboxStore: ObservableObject {
                     }
                     // Merged or closed from here: no news.
                     if self.readOnNextRefresh.remove(i.id) != nil { self.markRead(copy); continue }
-                    let relevant = i.reason == .project ? JiraClient.watched.contains(i.projectKey) : InboxPrefs.bool(InboxPrefs.nUpdates, true)
+                    let relevant = i.reason.isOthers ? JiraClient.watched.contains(i.projectKey) : InboxPrefs.bool(InboxPrefs.nUpdates, true)
                     if relevant || self.links[i.id] != nil, self.isUnread(copy) { lines.append("\(i.key) \(what)") }
                 }
                 self.publish()
@@ -641,10 +647,10 @@ final class InboxStore: ObservableObject {
                 lines.append(Line(title: "Review requested: \(i.key)", body: i.title))
             } else if isNew, i.reason == .assigned, InboxPrefs.bool(InboxPrefs.nAssigned, true) {
                 lines.append(Line(title: "Assigned to you: \(i.key)", body: i.title))
-            } else if i.reason == .project, isNew || changed, JiraClient.watched.contains(i.projectKey) {
+            } else if i.reason.isOthers, isNew || changed, JiraClient.watched.contains(i.projectKey) {
                 let l = Line(title: isNew ? "New in \(i.place): \(i.key)" : change(i), body: i.title, item: isNew ? nil : i, since: before)
                 if projectBanner { lines.append(l) } else { quiet.append(l) }
-            } else if i.reason != .project, changed, InboxPrefs.bool(InboxPrefs.nUpdates, true) {
+            } else if !i.reason.isOthers, changed, InboxPrefs.bool(InboxPrefs.nUpdates, true) {
                 lines.append(Line(title: change(i), body: i.title, item: i, since: before))
             }
         }
@@ -1211,7 +1217,34 @@ enum JiraClient {
             let seen = Set(out.map(\.id))
             out += try search(jql(assignedOnly: false, projects: others), limit: 60, me: me).filter { !seen.contains($0.id) }
         }
+        // Starred filters picked in Settings: their open issues (one failing filter doesn't cost the rest).
+        for (_, jql) in savedFilters.sorted(by: { $0.key < $1.key }) {
+            let seen = Set(out.map(\.id))
+            guard let found = try? search(filterJQL(jql.jql), limit: 50, me: me) else { continue }
+            out += found.filter { !seen.contains($0.id) }.map { var i = $0; if i.reason == .project { i.reason = .filter }; return i }
+        }
         return out
+    }
+
+    /// The saved filters shown in the Inbox: id → (name, jql).
+    static var savedFilters: [String: (name: String, jql: String)] {
+        let raw = UserDefaults.standard.dictionary(forKey: InboxPrefs.jiraFilters) as? [String: String] ?? [:]
+        return raw.mapValues { v in
+            let p = v.split(separator: "\n", maxSplits: 1).map(String.init)
+            return (p.first ?? "", p.count > 1 ? p[1] : "")
+        }.filter { !$0.value.jql.isEmpty }
+    }
+    static func setSaved(_ f: Filter, _ on: Bool) {
+        var raw = UserDefaults.standard.dictionary(forKey: InboxPrefs.jiraFilters) as? [String: String] ?? [:]
+        raw[f.id] = on ? f.name + "\n" + f.jql : nil
+        UserDefaults.standard.set(raw, forKey: InboxPrefs.jiraFilters)
+    }
+
+    /// A filter's JQL limited to open issues, newest first (its own ORDER BY dropped).
+    static func filterJQL(_ jql: String) -> String {
+        let core = jql.replacingOccurrences(of: #"(?is)\s*\border\s+by\b.*$"#, with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return (core.isEmpty ? "" : "(\(core)) AND ") + "statusCategory != Done ORDER BY updated DESC"
     }
 
     /// One JQL search, paged (nextPageToken) up to `limit` issues.
@@ -1293,6 +1326,72 @@ enum JiraClient {
         guard a.mime.hasPrefix("image/") else { throw InboxError("not an image") }
         guard a.size <= maxBytes else { throw InboxError("too large") }
         return try request("/rest/api/3/attachment/content/\(a.id)?redirect=false", accept: "*/*")
+    }
+
+    // MARK: Changing issues (each one confirmed by the user first; see InboxJiraActions)
+
+    struct Transition: Equatable, Identifiable { let id: String; let name: String; let to: String; let category: String }
+
+    /// Where the issue can move from its status (Jira's workflow decides).
+    static func transitions(_ key: String) throws -> [Transition] {
+        transitions(try object(request("/rest/api/3/issue/\(key)/transitions")))
+    }
+    static func transitions(_ o: [String: Any]) -> [Transition] {
+        (o["transitions"] as? [[String: Any]] ?? []).compactMap { t in
+            guard let id = t["id"] as? String, let name = t["name"] as? String else { return nil }
+            let to = t["to"] as? [String: Any]
+            return Transition(id: id, name: name, to: to?["name"] as? String ?? name,
+                              category: (to?["statusCategory"] as? [String: Any])?["key"] as? String ?? "")
+        }
+    }
+    static func transition(_ key: String, to id: String) throws {
+        _ = try request("/rest/api/3/issue/\(key)/transitions", method: "POST", body: ["transition": ["id": id]])
+    }
+    static func assignToMe(_ key: String) throws {
+        let me = try myAccountId ?? (object(request("/rest/api/3/myself"))["accountId"] as? String)
+        guard let me else { throw InboxError("Couldn't tell who you are on Jira") }
+        _ = try request("/rest/api/3/issue/\(key)/assignee", method: "PUT", body: ["accountId": me])
+    }
+
+    struct IssueType: Equatable, Identifiable { let id: String; let name: String }
+    /// The issue types a project takes (subtasks left out: they need a parent).
+    static func issueTypes(_ project: String) throws -> [IssueType] {
+        let o = try object(request("/rest/api/3/issue/createmeta/\(project)/issuetypes?maxResults=50"))
+        let list = (o["issueTypes"] as? [[String: Any]]) ?? (o["values"] as? [[String: Any]]) ?? []
+        return list.compactMap { t in
+            guard (t["subtask"] as? Bool) != true, let id = t["id"] as? String, let name = t["name"] as? String else { return nil }
+            return IssueType(id: id, name: name)
+        }
+    }
+
+    /// The fields of a new issue.
+    static func newIssue(project: String, type: String, summary: String, description: String, assignTo: String?) -> [String: Any] {
+        var f: [String: Any] = ["project": ["key": project], "issuetype": ["id": type], "summary": summary]
+        if !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { f["description"] = ADF.doc(description) }
+        if let assignTo { f["assignee"] = ["accountId": assignTo] }
+        return ["fields": f]
+    }
+    /// Creates an issue; returns its key.
+    static func create(project: String, type: String, summary: String, description: String, assignToMe: Bool) throws -> String {
+        let me = assignToMe ? (try myAccountId ?? (object(request("/rest/api/3/myself"))["accountId"] as? String)) : nil
+        let o = try object(request("/rest/api/3/issue", method: "POST",
+                                   body: newIssue(project: project, type: type, summary: summary, description: description, assignTo: me)))
+        guard let key = o["key"] as? String else { throw InboxError("Jira created no issue") }
+        return key
+    }
+
+    struct Filter: Equatable, Identifiable { let id: String; let name: String; let jql: String }
+    /// Your starred filters.
+    static func favouriteFilters() throws -> [Filter] {
+        let d = try request("/rest/api/3/filter/favourite?expand=jql")
+        guard let list = try JSONSerialization.jsonObject(with: d) as? [[String: Any]] else { return [] }
+        return filters(list)
+    }
+    static func filters(_ list: [[String: Any]]) -> [Filter] {
+        list.compactMap { f in
+            guard let id = f["id"] as? String, let name = f["name"] as? String, let jql = f["jql"] as? String else { return nil }
+            return Filter(id: id, name: name.htmlUnescaped, jql: jql)
+        }
     }
 
     /// The signed-in account (set by `inbox()`), to show your own changes as "You".

@@ -109,8 +109,99 @@ enum InboxConfirm {
         a.informativeText = message
         a.addButton(withTitle: button)
         a.addButton(withTitle: "Cancel")
-        guard let win = NSApp.mainWindow ?? NSApp.keyWindow else { done(a.runModal() == .alertFirstButtonReturn); return }
+        // A sheet on our window even while the app is in the background (no main window then); never a blocking modal.
+        let win = NSApp.mainWindow ?? NSApp.keyWindow ?? NSApp.windows.first { $0.isVisible && $0.canBecomeMain && $0.attachedSheet == nil }
+        guard let win else { done(false); return }
         current = a
         a.beginSheetModal(for: win) { r in current = nil; done(r == .alertFirstButtonReturn) }
     }
+}
+
+/// Changing Jira issues from the Inbox: status, assignee, new issues. Every change is confirmed first.
+final class InboxJiraActions: ObservableObject {
+    static let shared = InboxJiraActions()
+
+    @Published private(set) var transitions: [String: [JiraClient.Transition]] = [:]
+    @Published private(set) var busy: Set<String> = []
+    @Published private(set) var results: [String: (ok: Bool, text: String)] = [:]
+
+    // Network (tests and the fixture swap these).
+    var loadTransitions: (String) throws -> [JiraClient.Transition] = JiraClient.transitions
+    var doTransition: (String, String) throws -> Void = JiraClient.transition
+    var doAssign: (String) throws -> Void = JiraClient.assignToMe
+    var loadTypes: (String) throws -> [JiraClient.IssueType] = JiraClient.issueTypes
+    var doCreate: (_ project: String, _ type: String, _ summary: String, _ description: String, _ mine: Bool) throws -> String = JiraClient.create
+    var loadFilters: () throws -> [JiraClient.Filter] = JiraClient.favouriteFilters
+    var confirm: (_ title: String, _ message: String, _ button: String, _ done: @escaping (Bool) -> Void) -> Void = InboxConfirm.ask
+    var background: (@escaping () -> Void) -> Void = { DispatchQueue.global(qos: .userInitiated).async(execute: $0) }
+    var onMain: (@escaping () -> Void) -> Void = { DispatchQueue.main.async(execute: $0) }
+    var changed: (InboxItem) -> Void = { i in InboxStore.shared.ownChange(i) }
+
+    /// Reads where the issue can move (from onAppear of its detail).
+    func loadTransitions(_ i: InboxItem) {
+        guard i.source == .jira, i.ended == nil else { return }
+        let load = loadTransitions
+        background { [weak self] in
+            let t = (try? load(i.key)) ?? []
+            self?.onMain { self?.transitions[i.id] = t }
+        }
+    }
+
+    func move(_ i: InboxItem, _ t: JiraClient.Transition) {
+        guard !busy.contains(i.id) else { return }
+        confirm("Move \(i.key) to \(t.to)?", "Changes “\(i.title)” from \(i.status) to \(t.to) on Jira (\(t.name)).", "Move to \(t.to)") { [weak self] yes in
+            guard yes, let self else { return }
+            let run = self.doTransition
+            self.go(i, done: "Moved to \(t.to).") { try run(i.key, t.id) }
+        }
+    }
+
+    func assignToMe(_ i: InboxItem) {
+        guard !busy.contains(i.id) else { return }
+        let from = i.assignee.map { " from \($0)" } ?? ""
+        confirm("Assign \(i.key) to you?", "Makes you the assignee of “\(i.title)”\(from) on Jira.", "Assign to Me") { [weak self] yes in
+            guard yes, let self else { return }
+            let run = self.doAssign
+            self.go(i, done: "Assigned to you.") { try run(i.key) }
+        }
+    }
+
+    private func go(_ i: InboxItem, done: String, _ work: @escaping () throws -> Void) {
+        busy.insert(i.id)
+        results[i.id] = nil
+        background { [weak self] in
+            let r = Result { try work() }
+            self?.onMain {
+                guard let self else { return }
+                self.busy.remove(i.id)
+                switch r {
+                case .success:
+                    self.results[i.id] = (true, done)
+                    self.transitions[i.id] = nil
+                    self.changed(i)
+                case .failure(let e): self.results[i.id] = (false, "\(e)")
+                }
+            }
+        }
+    }
+
+    /// Creates an issue after asking; `done` gets its key or an error, or nil when the user said no.
+    func create(project: String, type: JiraClient.IssueType, summary: String, description: String, mine: Bool,
+                done: @escaping (Result<String, Error>?) -> Void) {
+        let s = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !s.isEmpty else { done(nil); return }
+        confirm("Create a \(type.name) in \(project)?", "Creates “\(s)” on Jira\(mine ? ", assigned to you" : "").", "Create") { [weak self] yes in
+            guard yes, let self else { done(nil); return }
+            let run = self.doCreate
+            self.background {
+                let r = Result { try run(project, type.id, s, description, mine) }
+                self.onMain {
+                    done(r)
+                    if case .success = r { InboxStore.shared.refresh(widened: true) }
+                }
+            }
+        }
+    }
+
+    func clear(_ i: InboxItem) { results[i.id] = nil }
 }
