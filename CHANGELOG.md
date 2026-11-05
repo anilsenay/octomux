@@ -88,6 +88,9 @@
     next to Mark unread.
   - Settings → Inbox lists the Bitbucket repos read for review requests too, with how many items each holds;
     an unticked one is no longer read.
+  - **Bitbucket tasks and reviewers**: a pull request shows how many open tasks it has (the reviewers' to-dos), and
+    its detail lists them; a click marks one resolved or opens it again (asked first). Send to agent and Fix with
+    agent hand the open ones to the agent. The detail lists the reviewers with where each one's review stands.
   - **Summarize** (✨ in the detail): your own agent CLI (the one picked for commit messages; no tools, nothing
     kept) reads the item and its history and says where it stands, what happened and what waits on whom, you
     first, in the item's language. The card says when the item changed since; Summarize Again redoes it.

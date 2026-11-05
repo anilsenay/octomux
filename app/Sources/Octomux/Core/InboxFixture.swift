@@ -84,6 +84,9 @@ enum InboxFixture {
                                  reason: .review, updated: at(3), body: "[bot-note-0]: https://bot.example.com/#hidden-note-AAAA\n\nSplits a partial refund across the order's items.\n\n- adds `RefundSplitter`\n- SHOP-7 follow-up\n\n> ## Reviews paused\n> The bot waits for the branch to settle.",
                                  url: "https://bitbucket.org/acme/payments-api/pull-requests/7", branch: "feature/SHOP-7-refund-split", number: 7, base: "develop")
         bbReview.head = "a1b2c3d4e5f6"; bbReview.approvals = 1; bbReview.changesRequested = 1; bbReview.commentCount = 18
+        bbReview.openTasks = 2
+        bbReview.reviewers = [.init(id: "a-eli", name: "Eli", state: .changes), .init(id: "a-max", name: "Max", state: .approved),
+                              .init(id: "a-me", name: "You", state: .none, isMe: true)]
         bbReview.checks = .failing; bbReview.checkCounts = (1, 1, 0); bbReview.failedChecks = ["Pipeline #318"]
         bbReview.failedCheckDetails = [.init(name: "Pipeline #318", url: "https://bitbucket.org/acme/payments-api/pipelines/results/318", title: "Tests failed in step test")]
         var bbMine = InboxItem(id: "bb:acme/web-shop#21", source: .bitbucket, kind: .pr, key: "#21", place: "acme/web-shop",
@@ -140,6 +143,14 @@ enum InboxFixture {
             return ""
         }
         InboxStore.shared.commentWriter = { i, text in ran.append("comment \(i.id) \(text)") }
+        InboxStore.shared.taskLoader = { i in
+            i.id != "bb:acme/payments-api#7" ? [] : [
+                .init(id: 11, text: "Give the last item the rounding remainder", resolved: false, creator: "Eli"),
+                .init(id: 12, text: "Add a test for three items", resolved: false, creator: "Max"),
+                .init(id: 10, text: "Rename RefundSplit to RefundSplitter", resolved: true, creator: "Eli"),
+            ]
+        }
+        InboxStore.shared.taskWriter = { i, id, resolved in ran.append("task \(i.id) \(id) \(resolved ? "RESOLVED" : "UNRESOLVED")") }
         // A made-up agent: no CLI runs.
         InboxStore.summarizer = { prompt, _ in
             Thread.sleep(forTimeInterval: 0.6)

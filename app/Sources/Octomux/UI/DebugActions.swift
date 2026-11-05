@@ -342,6 +342,11 @@ enum DebugActions {
             case "inbox_fake_merge": InboxFixture.mergePR()
             case "inbox_fake_bb_decline": InboxFixture.declineBitbucket()
             case "inbox_fake_bb_new": InboxFixture.newBitbucketPR()
+            case "inbox_task":        // value: task id on the open item; "resolved": true | false (asks first)
+                if let item = InboxStore.shared.items.first(where: { $0.id == InboxStore.shared.selectedId }),
+                   let t = InboxStore.shared.prTasks[item.id]?.first(where: { $0.id == (p["value"] as? Int) }) {
+                    InboxStore.shared.setTask(item, t, resolved: (p["resolved"] as? Bool) ?? !t.resolved)
+                }
             case "inbox_summarize":   // the open item's summary (the fixture's agent answers with a made-up one)
                 if let item = InboxStore.shared.items.first(where: { $0.id == InboxStore.shared.selectedId }) { InboxStore.shared.summarize(item) }
             case "inbox_snooze":      // snoozes the open item for `minutes` (default 60)

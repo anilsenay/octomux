@@ -683,4 +683,49 @@ final class BitbucketInboxTests: XCTestCase {
         XCTAssertTrue(InboxActivityView.isLong((1...8).map(String.init).joined(separator: "\n")))
         XCTAssertTrue(InboxActivityView.isLong(String(repeating: "x", count: 800)))
     }
+
+    // MARK: Tasks and reviewers
+
+    func testReviewersAndTaskCount() {
+        var p = pr(7, participants: [
+            ["user": ["account_id": "acc-eli", "display_name": "Eli"], "role": "REVIEWER", "approved": false, "state": "changes_requested"],
+            ["user": ["account_id": "acc-max", "display_name": "Max"], "role": "REVIEWER", "approved": true, "state": "approved"],
+            ["user": ["account_id": "acc-bob", "display_name": "Bob"], "role": "PARTICIPANT", "approved": false],                 // only commented
+            ["user": ["account_id": "acc-zoe", "display_name": "Zoe"], "role": "PARTICIPANT", "approved": true],                  // approved, not a reviewer
+        ], reviewers: ["acc-me", "acc-eli", "acc-max"])
+        p["reviewers"] = [["account_id": "acc-me", "display_name": "Me"], ["account_id": "acc-eli", "display_name": "Eli"], ["account_id": "acc-max", "display_name": "Max"]]
+        p["task_count"] = 2
+        let i = BitbucketClient.item(p, reason: .review, me: "acc-me")!
+        XCTAssertEqual(i.openTasks, 2)
+        XCTAssertEqual(i.reviewers.map(\.name), ["Me", "Eli", "Max", "Zoe"])
+        XCTAssertEqual(i.reviewers.map(\.state), [.none, .changes, .approved, .approved])
+        XCTAssertEqual(i.reviewers.first?.isMe, true)
+        XCTAssertTrue(BitbucketClient.prFields.contains("%2Bvalues.task_count"))
+    }
+
+    func testTasks() {
+        let t = BitbucketClient.tasks([
+            ["id": 10, "state": "RESOLVED", "content": ["raw": "Rename"], "creator": ["account_id": "acc-eli", "display_name": "Eli"]],
+            ["id": 12, "state": "UNRESOLVED", "content": ["raw": "Test three"], "creator": ["account_id": "acc-me", "display_name": "Me"]],
+            ["id": 11, "state": "UNRESOLVED", "content": ["raw": "Remainder"], "creator": ["display_name": "Max"]],
+            ["state": "UNRESOLVED"],
+        ], me: "acc-me")
+        XCTAssertEqual(t.map(\.id), [11, 12, 10])                         // open first
+        XCTAssertEqual(t.map(\.creator), ["Max", "You", "Eli"])
+        let (store, _) = quietStore()
+        var asked: [String] = [], answer = false, wrote: [String] = []
+        store.confirmChange = { title, _, _, done in asked.append(title); done(answer) }
+        store.taskLoader = { _ in t }
+        store.taskWriter = { i, id, r in wrote.append("\(id) \(r)") }
+        let i = bbItem()
+        store.loadTasks(i)
+        XCTAssertEqual(store.prTasks[i.id]?.count, 3)
+        store.setTask(i, t[0], resolved: true)
+        XCTAssertEqual(wrote, [])                                            // said no
+        answer = true
+        store.setTask(i, t[0], resolved: true)
+        XCTAssertEqual(wrote, ["11 true"])
+        XCTAssertEqual(store.prTasks[i.id]?.first { $0.id == 11 }?.resolved, true)
+        XCTAssertEqual(asked, ["Mark the task resolved?", "Mark the task resolved?"])
+    }
 }

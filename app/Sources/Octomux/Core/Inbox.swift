@@ -77,6 +77,9 @@ struct InboxItem: Identifiable, Equatable {
     var commentCount: Int? = nil
     /// Jira: the priority's name.
     var priority: String? = nil
+    /// Bitbucket: open tasks, and the reviewers with where each one's review stands.
+    var openTasks: Int? = nil
+    var reviewers: [InboxReviewer] = []
     var isDraft: Bool { kind == .pr && status == "Draft" }
 
     static func == (a: InboxItem, b: InboxItem) -> Bool {
@@ -89,6 +92,23 @@ struct InboxItem: Identifiable, Equatable {
     var repo: String? { source == .github ? place : nil }
     /// The repo on its code host (GitHub or Bitbucket), nil for Jira.
     var codeRepo: String? { source.isCodeHost ? place : nil }
+}
+
+/// A pull request's reviewer and their review so far.
+struct InboxReviewer: Equatable, Identifiable {
+    enum State: Equatable { case approved, changes, none }
+    let id: String          // account id
+    let name: String
+    var state: State
+    var isMe = false
+}
+
+/// A Bitbucket pull request task (a to-do on the pull request, often made from a review comment).
+struct InboxTask: Equatable, Identifiable {
+    let id: Int
+    let text: String
+    var resolved: Bool
+    let creator: String
 }
 
 enum InboxPrefs {
@@ -367,6 +387,56 @@ final class InboxStore: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { self.refresh() }
     }
 
+    // MARK: Bitbucket tasks
+
+    /// Item id → its tasks as last read (memory only; read when the detail opens).
+    @Published private(set) var prTasks: [String: [InboxTask]] = [:]
+    @Published private(set) var taskBusy: Set<Int> = []
+    @Published private(set) var taskErrors: [String: String] = [:]
+    /// Reads / changes tasks (network; tests and the debug fixture swap them).
+    var taskLoader: (InboxItem) throws -> [InboxTask] = { try BitbucketInbox.shared.tasks($0) }
+    var taskWriter: (InboxItem, Int, Bool) throws -> Void = { try BitbucketWrites.setTask($0, $1, resolved: $2) }
+    var confirmChange: (_ title: String, _ message: String, _ button: String, _ done: @escaping (Bool) -> Void) -> Void = { InboxActions.shared.confirm($0, $1, $2, $3) }
+
+    func loadTasks(_ i: InboxItem) {
+        guard i.source == .bitbucket, i.kind == .pr else { return }
+        let load = taskLoader
+        background { [weak self] in
+            let r = Result { try load(i) }
+            self?.onMain {
+                switch r {
+                case .success(let t): self?.prTasks[i.id] = t; self?.taskErrors[i.id] = nil
+                case .failure(let e): self?.taskErrors[i.id] = "\(e)"
+                }
+            }
+        }
+    }
+
+    /// Marks a task resolved or open again (asks first).
+    func setTask(_ i: InboxItem, _ t: InboxTask, resolved: Bool) {
+        guard !taskBusy.contains(t.id) else { return }
+        let short = t.text.count > 80 ? String(t.text.prefix(80)) + "…" : t.text
+        confirmChange(resolved ? "Mark the task resolved?" : "Open the task again?",
+                      "“\(short)” on \(i.key) in \(i.place), on Bitbucket.", resolved ? "Resolve" : "Reopen") { [weak self] yes in
+            guard yes, let self else { return }
+            self.taskBusy.insert(t.id)
+            let write = self.taskWriter
+            self.background {
+                let r = Result { try write(i, t.id, resolved) }
+                self.onMain {
+                    self.taskBusy.remove(t.id)
+                    switch r {
+                    case .success:
+                        if var list = self.prTasks[i.id], let k = list.firstIndex(where: { $0.id == t.id }) { list[k].resolved = resolved; self.prTasks[i.id] = list }
+                        self.taskErrors[i.id] = nil
+                        self.ownChange(i)
+                    case .failure(let e): self.taskErrors[i.id] = "\(e)"
+                    }
+                }
+            }
+        }
+    }
+
     // MARK: Summaries
 
     struct Summary: Equatable { let updated: Date; let text: String?; let error: String? }
@@ -531,10 +601,13 @@ final class InboxStore: ObservableObject {
         guard !collecting.contains(i.id) else { return }
         collecting.insert(i.id)
         let log = ciLog, bbLog = bitbucketLog
+        let needTasks = i.source == .bitbucket && prTasks[i.id] == nil && (i.openTasks ?? 0) > 0, loadTasks = taskLoader
         background { [weak self] in
             let evidence = InboxCI.block(InboxCI.collect(i, log: log, bitbucketLog: bbLog))
+            let tasks = needTasks ? try? loadTasks(i) : nil          // the reviewers' to-dos go into the prompt too
             self?.onMain {
                 guard let self else { return }
+                if let tasks { self.prTasks[i.id] = tasks }
                 self.collecting.remove(i.id)
                 self.markFixStarted(i)
                 InboxStart.start(i, in: project, worktree: worktree, task: .fix, model: model, evidence: evidence)

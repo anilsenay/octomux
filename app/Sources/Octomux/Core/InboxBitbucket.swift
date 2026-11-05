@@ -254,7 +254,7 @@ enum BitbucketClient {
 
     /// Extra fields on list answers: who reviews and who approved, the description, draft. The `+` (add to the
     /// default fields) is sent encoded: a bare one reads as a space, and the answer then has only these fields.
-    static let prFields = "%2Bvalues.participants,%2Bvalues.reviewers,%2Bvalues.summary,%2Bvalues.draft"
+    static let prFields = "%2Bvalues.participants,%2Bvalues.reviewers,%2Bvalues.summary,%2Bvalues.draft,%2Bvalues.task_count"
 
     static func item(_ pr: [String: Any], reason: InboxItem.Reason, me: String?) -> InboxItem? {
         guard let id = pr["id"] as? Int, let title = pr["title"] as? String else { return nil }
@@ -274,12 +274,44 @@ enum BitbucketClient {
             base: (dest?["branch"] as? [String: Any])?["name"] as? String)
         item.head = (src?["commit"] as? [String: Any])?["hash"] as? String
         item.commentCount = pr["comment_count"] as? Int
+        item.openTasks = pr["task_count"] as? Int
+        item.reviewers = reviewers(pr, me: me)
         for p in pr["participants"] as? [[String: Any]] ?? [] {
             let mine = me != nil && ((p["user"] as? [String: Any])?["account_id"] as? String) == me
             if p["approved"] as? Bool == true { item.approvals += 1; if mine { item.youApproved = true } }
             if (p["state"] as? String) == "changes_requested" { item.changesRequested += 1; if mine { item.youRequestedChanges = true } }
         }
         return item
+    }
+
+    /// The reviewers and where each one's review stands (the reviewer list, plus anyone else who approved or asked for changes).
+    static func reviewers(_ pr: [String: Any], me: String?) -> [InboxReviewer] {
+        var out: [InboxReviewer] = []
+        var byId: [String: Int] = [:]
+        func add(_ u: [String: Any]?, _ state: InboxReviewer.State) {
+            guard let u, let id = u["account_id"] as? String else { return }
+            if let i = byId[id] { if state != .none { out[i].state = state }; return }
+            byId[id] = out.count
+            out.append(InboxReviewer(id: id, name: u["display_name"] as? String ?? u["nickname"] as? String ?? "someone", state: state, isMe: id == me))
+        }
+        for r in pr["reviewers"] as? [[String: Any]] ?? [] { add(r, .none) }
+        for p in pr["participants"] as? [[String: Any]] ?? [] {
+            let state: InboxReviewer.State = (p["state"] as? String) == "changes_requested" ? .changes : (p["approved"] as? Bool) == true ? .approved : .none
+            if (p["role"] as? String) == "REVIEWER" || state != .none { add(p["user"] as? [String: Any], state) }
+        }
+        return out
+    }
+
+    /// A pull request's tasks, open ones first.
+    static func tasks(_ values: [[String: Any]], me: String?) -> [InboxTask] {
+        values.compactMap { v -> InboxTask? in
+            guard let id = v["id"] as? Int else { return nil }
+            let c = v["creator"] as? [String: Any]
+            let creator = me != nil && (c?["account_id"] as? String) == me ? "You" : (c?["display_name"] as? String ?? "someone")
+            return InboxTask(id: id, text: (v["content"] as? [String: Any])?["raw"] as? String ?? "",
+                             resolved: (v["state"] as? String)?.uppercased() == "RESOLVED", creator: creator)
+        }
+        .sorted { ($0.resolved ? 1 : 0, $0.id) < ($1.resolved ? 1 : 0, $1.id) }
     }
 
     /// Whether you are among the pull request's reviewers (for when Bitbucket can't filter by reviewer).
@@ -430,6 +462,12 @@ enum BitbucketWrites {
         do { _ = try BitbucketClient.request(r.path, method: r.method, body: r.body) }
         catch let e as BitbucketHTTPError where e.code == 403 { throw writeRefused(e) }
         return ""
+    }
+
+    /// Marks a task resolved or open again.
+    static func setTask(_ i: InboxItem, _ id: Int, resolved: Bool) throws {
+        do { _ = try BitbucketClient.request(path(i, "tasks/\(id)"), method: "PUT", body: ["state": resolved ? "RESOLVED" : "UNRESOLVED"]) }
+        catch let e as BitbucketHTTPError where e.code == 403 { throw writeRefused(e) }
     }
 
     static func comment(_ i: InboxItem, _ text: String) throws {
@@ -691,6 +729,13 @@ final class BitbucketInbox {
         if let at = approved[i.id] { return at != head }
         approved[i.id] = head
         return false
+    }
+
+    /// The pull request's tasks.
+    func tasks(_ i: InboxItem) throws -> [InboxTask] {
+        guard let n = i.number else { return [] }
+        let me = (try? loadMe())?.accountId ?? BitbucketClient.savedMe?.accountId
+        return BitbucketClient.tasks(try values("/repositories/\(i.place)/pullrequests/\(n)/tasks?pagelen=100", pages: 2), me: me)
     }
 
     /// The history of a pull request (newest 150 entries).
