@@ -1328,8 +1328,11 @@ struct InboxDetail: View {
                 else { Button(action: action) { label }.buttonStyle(SecondaryButtonStyle()) }
             }
             .fixedSize().disabled(disabled).help(help)
-            Menu { menu() } label: { Image(systemName: "chevron.down").font(.system(size: T.k * 10, weight: .semibold)) }
-                .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().frame(width: 22, height: 28).pointerCursor()
+            // The whole box opens the menu, not just the glyph.
+            Menu { menu() } label: {
+                Image(systemName: "chevron.down").font(.system(size: T.k * 10, weight: .semibold)).menuHitBox(22, 28).hoverHighlight(radius: 6)
+            }
+            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().pointerCursor()
         }
     }
 
