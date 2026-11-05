@@ -122,6 +122,7 @@ enum InboxPrefs {
     static let fixes = "octomux.inbox.fixes"                   // item id → unix seconds "Fix with agent" started
     static let linkedSeen = "octomux.inbox.linkedSeen"         // item id → unix seconds its linked session last caught up
     static let placeProject = "octomux.inbox.placeProject"     // repo / Jira project → Octomux project id
+    static let snoozed = "octomux.inbox.snoozed"               // item id → [until, snoozed at] (unix seconds)
 
     static func bool(_ k: String, _ def: Bool) -> Bool { UserDefaults.standard.object(forKey: k) as? Bool ?? def }
 }
@@ -202,6 +203,74 @@ final class InboxStore: ObservableObject {
         links = defaults.dictionary(forKey: InboxPrefs.links) as? [String: String] ?? [:]
         fixes = defaults.dictionary(forKey: InboxPrefs.fixes) as? [String: Double] ?? [:]
         asks = defaults.dictionary(forKey: InboxPrefs.asks) as? [String: String] ?? [:]
+        snoozed = defaults.dictionary(forKey: InboxPrefs.snoozed) as? [String: [Double]] ?? [:]
+    }
+
+    // MARK: Snooze
+
+    /// Item id → [until, when it was snoozed]: out of the list until then, or until it changes.
+    @Published private(set) var snoozed: [String: [Double]] = [:]
+    var now: () -> Date = Date.init
+
+    func isSnoozed(_ id: String) -> Bool { snoozed[id] != nil }
+    func snoozedUntil(_ id: String) -> Date? { snoozed[id].map { Date(timeIntervalSince1970: $0[0]) } }
+
+    /// Takes the item out of the list until `until` (it comes back unread then, or as soon as something happens to it).
+    func snooze(_ i: InboxItem, until: Date) {
+        snoozed[i.id] = [until.timeIntervalSince1970, max(now().timeIntervalSince1970, i.updated.timeIntervalSince1970)]
+        defaults.set(snoozed, forKey: InboxPrefs.snoozed)
+        markRead(i)
+        if selectedId == i.id { selectedId = nil }
+        publish()
+    }
+
+    func unsnooze(_ id: String) {
+        guard snoozed.removeValue(forKey: id) != nil else { return }
+        defaults.set(snoozed, forKey: InboxPrefs.snoozed)
+        publish()
+    }
+
+    /// Snoozed items, soonest back first.
+    var snoozedItems: [InboxItem] {
+        (fetched + endedItems.values).filter { snoozed[$0.id] != nil && !hidden.contains($0.place) }
+            .sorted { (snoozed[$0.id]?[0] ?? 0) < (snoozed[$1.id]?[0] ?? 0) }
+    }
+
+    /// Brings back what is due: its time came (unread, with a notification) or it changed since (the change's own
+    /// notification says so). Snoozes of items no longer fetched are kept until their time, then dropped.
+    func wakeSnoozed() {
+        guard !snoozed.isEmpty else { return }
+        let t = now().timeIntervalSince1970
+        var back: [InboxItem] = []
+        for (id, v) in snoozed {
+            let item = fetched.first { $0.id == id } ?? endedItems[id]
+            let due = t >= v[0], changed = (item?.updated.timeIntervalSince1970 ?? 0) > v[1] + 0.5
+            guard due || changed else { continue }
+            snoozed[id] = nil
+            if due, let item, !changed { markUnread(item); back.append(item) }
+        }
+        defaults.set(snoozed, forKey: InboxPrefs.snoozed)
+        publish()
+        if back.count == 1 {
+            deliver(AppNotification(sessionId: "", projectId: "", kind: "inbox", title: "Back from snooze: \(back[0].key)", body: back[0].title))
+        } else if back.count > 1 {
+            deliver(AppNotification(sessionId: "", projectId: "", kind: "inbox", title: "\(back.count) items are back from snooze",
+                                    body: back.prefix(3).map { "\($0.key) \($0.title)" }.joined(separator: " · ")))
+        }
+    }
+
+    /// The times the Snooze menu offers.
+    static func snoozeOptions(now: Date = Date(), calendar: Calendar = .current) -> [(title: String, until: Date)] {
+        var out: [(String, Date)] = []
+        let hour = calendar.component(.hour, from: now)
+        if hour < 18 { out.append(("Later today", now.addingTimeInterval(3 * 3600))) }
+        let tomorrow = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now))!
+        out.append(("Tomorrow", calendar.date(bySettingHour: 9, minute: 0, second: 0, of: tomorrow)!))
+        // Next Monday (a week from today when today is Monday).
+        var monday = calendar.nextDate(after: now, matching: DateComponents(weekday: 2), matchingPolicy: .nextTime)!
+        monday = calendar.date(bySettingHour: 9, minute: 0, second: 0, of: monday)!
+        out.append(("Next week", monday))
+        return out
     }
 
     /// Item id → the session answering questions about it (Ask), apart from the one working on it.
@@ -237,6 +306,7 @@ final class InboxStore: ObservableObject {
     }
 
     private func tick() {
+        wakeSnoozed()
         let minutes = max(1, defaults.integer(forKey: InboxPrefs.poll).nonZero ?? 2)
         let every = Double(minutes) * 60 * (NSApp.isActive ? 1 : 2.5)
         if Date().timeIntervalSince(lastFetch) >= every { refresh() }
@@ -244,7 +314,7 @@ final class InboxStore: ObservableObject {
 
     func select(_ id: String?) {
         selectedId = id
-        guard let id, let item = items.first(where: { $0.id == id }) else { return }
+        guard let id, let item = items.first(where: { $0.id == id }) ?? snoozedItems.first(where: { $0.id == id }) else { return }
         openedSeen[id] = seen[id]
         loadActivity(item)
         // Read once it has been on screen for a moment (arrowing past it does not count).
@@ -376,7 +446,7 @@ final class InboxStore: ObservableObject {
         endedItems = endedItems.filter { id, i in
             now - (i.ended?.at.timeIntervalSince1970 ?? 0) < (links[id] != nil ? Self.endedKeepLinked : Self.endedKeep)
         }
-        items = (fetched + endedItems.values).filter { !hidden.contains($0.place) }.sorted { $0.updated > $1.updated }
+        items = (fetched + endedItems.values).filter { !hidden.contains($0.place) && snoozed[$0.id] == nil }.sorted { $0.updated > $1.updated }
     }
 
     private func checkEnded(_ departed: [InboxItem]) {
@@ -707,6 +777,7 @@ final class InboxStore: ObservableObject {
         let ownSeen = Dictionary(uniqueKeysWithValues: mine.filter { own.contains($0.id) }.map { ($0.id, $0.updated.timeIntervalSince1970) })
         if !ownSeen.isEmpty { setSeen(ownSeen) }
         fetched = next
+        wakeSnoozed()
         checkLinked(mine)
         let new = primed.contains(source) ? mine.filter { known[$0.id] == nil && !hidden.contains($0.place) } : []
         notify(mine.filter { !hidden.contains($0.place) }, sources: [source])

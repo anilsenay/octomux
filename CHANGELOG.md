@@ -88,6 +88,9 @@
     next to Mark unread.
   - Settings → Inbox lists the Bitbucket repos read for review requests too, with how many items each holds;
     an unticked one is no longer read.
+  - **Snooze** an item (the moon in the detail, or z for tomorrow morning): later today, tomorrow, next week or a
+    date you pick. It leaves the list and the count until then, comes back unread with a notification, or sooner
+    when something happens to it. The Snoozed folder lists them; Unsnooze brings one back.
   - **Jira issues named by pull requests**: a pull request whose title or branch names a Jira issue
     (feature/SHOP-7-…) shows it under the header, with its status; the issue shows its pull requests. The agent's
     prompt names the issue too.

@@ -59,9 +59,17 @@ struct InboxView: View {
     @ObservedObject private var mutes = InboxMute.shared
     private var settingsOpen: Bool { SettingsWindow.window?.isKeyWindow == true }
     @State private var showKeys = false
+    /// The Snoozed folder is open (it lists what is out of the list for now).
+    @State private var showSnoozed = false
 
     private var visible: [InboxItem] {
         let since = days == 0 ? Date.distantPast : Date().addingTimeInterval(-Double(days) * 86400)
+        if showSnoozed {
+            return store.snoozedItems.filter { i in
+                (source == nil || i.source == source)
+                    && (query.isEmpty || (i.title + " " + i.key + " " + i.place).localizedCaseInsensitiveContains(query))
+            }
+        }
         return store.items.filter { i in
             (source == nil || i.source == source)
                 && (reasonFilter == nil || i.reason == reasonFilter)
@@ -78,7 +86,7 @@ struct InboxView: View {
             if !store.anyConnected {
                 InboxConnectCard()
             } else {
-                let item = store.items.first(where: { $0.id == store.selectedId })
+                let item = store.items.first(where: { $0.id == store.selectedId }) ?? store.snoozedItems.first(where: { $0.id == store.selectedId })
                 HStack(spacing: 0) {
                     folders.frame(width: collapsed ? 46 : 210).clipped()
                     Hairline(vertical: true)
@@ -104,7 +112,7 @@ struct InboxView: View {
     /// A key from InboxKeyCatcher; false lets it through.
     private func handle(_ a: InboxKeys.Action) -> Bool {
         let ids = visible.map(\.id)
-        let current = store.items.first { $0.id == store.selectedId }
+        let current = store.items.first { $0.id == store.selectedId } ?? store.snoozedItems.first { $0.id == store.selectedId }
         switch a {
         case .next, .previous:
             guard let id = InboxKeys.step(ids, from: store.selectedId, by: a == .next ? 1 : -1) else { return false }
@@ -129,6 +137,12 @@ struct InboxView: View {
         case .ask:
             guard let c = current else { return false }
             InboxStart.ask(c, model: model)
+        case .snooze:
+            guard let c = current, !store.isSnoozed(c.id), let t = InboxStore.snoozeOptions().first(where: { $0.title == "Tomorrow" }) else { return false }
+            let after = InboxKeys.step(ids, from: c.id, by: 1)
+            let next = after == c.id ? InboxKeys.step(ids, from: c.id, by: -1) : after
+            store.snooze(c, until: t.until)
+            if let next, next != c.id { store.select(next) }
         }
         return true
     }
@@ -199,23 +213,29 @@ struct InboxView: View {
                     .buttonStyle(IconButtonStyle(size: 22)).help(collapsed ? "Show folder names" : "Icons only")
                 }
                 .padding(.leading, collapsed ? 0 : 10).frame(height: 26)
-                folderRow(nil, "All", "tray.full", pool.count, selected: reasonFilter == nil && place == nil) { reasonFilter = nil; place = nil }
+                folderRow(nil, "All", "tray.full", pool.count, selected: reasonFilter == nil && place == nil && !showSnoozed) { reasonFilter = nil; place = nil; showSnoozed = false }
                     .help("Everything the Inbox fetched · \(pool.count)")
                 header("WHY")
                 // "In your projects" stays listed while Jira is connected: it is where the other people's issues go.
                 ForEach(InboxItem.Reason.allCases.filter { r in pool.contains { $0.reason == r } || (r == .project && store.jiraOn && (source == nil || source == .jira)) }, id: \.self) { r in
                     let n = pool.filter { $0.reason == r }.count
-                    folderRow(r, r.rawValue, icon(r), n, selected: reasonFilter == r) {
-                        reasonFilter = reasonFilter == r ? nil : r
+                    folderRow(r, r.rawValue, icon(r), n, selected: reasonFilter == r && !showSnoozed) {
+                        reasonFilter = reasonFilter == r ? nil : r; showSnoozed = false
                     }
                     .opacity(n == 0 ? 0.5 : 1)
+                }
+                let snoozedCount = store.snoozedItems.filter { source == nil || $0.source == source }.count
+                if snoozedCount > 0 || showSnoozed {
+                    InboxFolderRow(title: "Snoozed", icon: "moon.zzz", mark: nil, count: snoozedCount, unread: 0, selected: showSnoozed,
+                                   collapsed: collapsed, bell: nil) { showSnoozed.toggle(); if showSnoozed { reasonFilter = nil; place = nil } }
+                        .help("Out of the list until their time, or until something happens to them · \(snoozedCount)")
                 }
                 header("WHERE")
                 ForEach(Array(Set(pool.map(\.place))).sorted { $0.localizedStandardCompare($1) == .orderedAscending }, id: \.self) { p in
                     let first = pool.first { $0.place == p }
                     let src = first?.source ?? .github
                     folderRow(nil, p, nil, pool.filter { $0.place == p }.count, selected: place == p, unreadIn: { $0.place == p },
-                              mark: AnyView(placeMark(p, src)), bell: src == .jira ? first?.projectKey : nil) { place = place == p ? nil : p }
+                              mark: AnyView(placeMark(p, src)), bell: src == .jira ? first?.projectKey : nil) { place = place == p ? nil : p; showSnoozed = false }
                         .contextMenu {
                             Button("Hide \(p)") { if place == p { place = nil }; store.setHidden(p, true) }
                             Button("Hidden Repos and Projects…") { SettingsWindow.show(section: .inbox) }
@@ -310,7 +330,9 @@ struct InboxView: View {
                         }
                         .id(i.id)
                     }
-                    if visible.isEmpty, reasonFilter == .project {
+                    if visible.isEmpty, showSnoozed {
+                        Text("Nothing is snoozed.").font(T.body).foregroundStyle(T.text3).padding(.top, 40)
+                    } else if visible.isEmpty, reasonFilter == .project {
                         InboxProjectsOff()
                     } else if visible.isEmpty {
                         Text(store.refreshing && store.items.isEmpty ? "Loading…" : store.items.isEmpty ? "Nothing waits for you." : "Nothing matches.")
@@ -519,7 +541,10 @@ struct InboxRow: View {
                 Text(item.title).font(.system(size: T.k * 12.5, weight: unread ? .semibold : .regular)).foregroundStyle(item.ended == nil ? T.text : T.text2)
                     .lineLimit(1).truncationMode(.tail)
                 HStack(spacing: 6) {
-                    if let e = item.ended {
+                    if let until = InboxStore.shared.snoozedUntil(item.id) {
+                        (Text(Image(systemName: "moon.zzz")) + Text(" Until ") + Text(until, format: .dateTime.weekday(.abbreviated).hour().minute()))
+                            .font(.system(size: T.k * 10.5, weight: .medium)).foregroundStyle(InboxSnoozeMenu.tint).lineLimit(1).fixedSize()
+                    } else if let e = item.ended {
                         Label(e.label, systemImage: e.merged ? "arrow.triangle.merge" : "checkmark.circle")
                             .font(.system(size: T.k * 10.5, weight: .semibold)).foregroundStyle(InboxEndedColor.of(e))
                     } else {
@@ -561,6 +586,47 @@ struct InboxStatusDot: View {
         case .failing: Image(systemName: "xmark.circle.fill").font(.system(size: T.k * 9.5)).foregroundStyle(T.red).help("Checks failed")
         case .pending: Image(systemName: "clock.fill").font(.system(size: T.k * 9.5)).foregroundStyle(T.amber).help("Checks running")
         case nil: EmptyView()
+        }
+    }
+}
+
+/// Snooze: out of the list until a time (or until something happens to the item).
+struct InboxSnoozeMenu: View {
+    static let tint = Color(hex: "#A78BFA")
+    @ObservedObject var store = InboxStore.shared
+    let item: InboxItem
+    @State private var picking = false
+    @State private var date = Calendar.current.date(byAdding: .day, value: 2, to: Date()) ?? Date()
+
+    var body: some View {
+        Menu {
+            if store.isSnoozed(item.id) {
+                Button("Unsnooze") { store.unsnooze(item.id) }
+                Divider()
+            }
+            ForEach(InboxStore.snoozeOptions(), id: \.title) { o in
+                Button("\(o.title) · \(o.until.formatted(.dateTime.weekday(.abbreviated).hour().minute()))") { store.snooze(item, until: o.until) }
+            }
+            Divider()
+            Button("Pick a Date…") { picking = true }
+        } label: {
+            Image(systemName: store.isSnoozed(item.id) ? "moon.zzz.fill" : "moon.zzz").font(.system(size: T.k * 13))
+                .foregroundStyle(store.isSnoozed(item.id) ? Self.tint : T.text2)
+                .frame(width: 26, height: 26).contentShape(Rectangle())
+        }
+        .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().pointerCursor()
+        .help("Snooze (z: until tomorrow): out of the list until then, or until something happens to it")
+        .popover(isPresented: $picking, arrowEdge: .bottom) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Snooze until").font(.system(size: T.k * 13, weight: .semibold))
+                DatePicker("", selection: $date, in: Date()..., displayedComponents: [.date, .hourAndMinute]).labelsHidden()
+                HStack {
+                    Spacer()
+                    Button("Cancel") { picking = false }
+                    Button("Snooze") { store.snooze(item, until: date); picking = false }.keyboardShortcut(.defaultAction)
+                }
+            }
+            .padding(14).frame(width: 280)
         }
     }
 }
@@ -630,6 +696,19 @@ struct InboxDetail: View {
                     }
                 }
                 related
+                if let until = store.snoozedUntil(item.id) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "moon.zzz").foregroundStyle(InboxSnoozeMenu.tint)
+                        (Text("Snoozed until ") + Text(until, format: .dateTime.weekday(.wide).day().month().hour().minute()))
+                            .font(.system(size: T.k * 12.5, weight: .medium))
+                        Text("· back sooner if something happens to it").font(.system(size: T.k * 12)).foregroundStyle(T.text3)
+                        Spacer(minLength: 0)
+                        Button("Unsnooze") { store.unsnooze(item.id) }.buttonStyle(.link).font(.system(size: T.k * 12))
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 9)
+                    .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(InboxSnoozeMenu.tint.opacity(0.08)))
+                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(InboxSnoozeMenu.tint.opacity(0.3)))
+                }
                 if let e = item.ended { endedLine(e) }
                 else if item.kind == .pr, item.checks != nil { checks }
                 if let s = store.linkedSession(item) { linked(s) }
@@ -865,6 +944,7 @@ struct InboxDetail: View {
             }
           }
             Spacer(minLength: 0)
+            InboxSnoozeMenu(item: item)
             Button { if let u = URL(string: item.url) { NSWorkspace.shared.open(u) } } label: { Image(systemName: "arrow.up.forward.square") }
                 .buttonStyle(IconButtonStyle(size: 26)).help("Open in \(item.source.name) (o)")
             Button { store.markUnread(item) } label: { Image(systemName: "envelope.badge") }

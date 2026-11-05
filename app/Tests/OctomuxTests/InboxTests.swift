@@ -1316,4 +1316,71 @@ final class InboxReadAcrossLaunchTests: XCTestCase {
         second.apply(.github, .success([gh, fresh]))
         XCTAssertEqual(second.unreadCount, 0, "unread after relaunch: \(second.items.filter(second.isUnread).map(\.id))")
     }
+
+    // MARK: Snooze
+
+    private func snoozeStore() -> (InboxStore, () -> [AppNotification], (TimeInterval) -> Void) {
+        let name = "snooze-\(UUID().uuidString)"
+        let d = UserDefaults(suiteName: name)!
+        addTeardownBlock { d.removePersistentDomain(forName: name) }
+        let store = InboxStore(defaults: d)
+        var sent: [AppNotification] = []
+        var t = Date(timeIntervalSince1970: 1_800_000_000)
+        store.now = { t }
+        store.deliver = { sent.append($0) }; store.chime = {}
+        store.background = { $0() }; store.onMain = { $0() }; store.appeared = { _ in }
+        return (store, { sent }, { t += $0 })
+    }
+
+    private func item(_ n: Int, updated: Double) -> InboxItem {
+        InboxItem(id: "gh:o/r#\(n)", source: .github, kind: .pr, key: "#\(n)", place: "o/r", title: "PR \(n)", author: "ann", assignee: nil,
+                  status: "Open", statusTone: "done", reason: .review, updated: Date(timeIntervalSince1970: updated), body: "", url: "", number: n)
+    }
+
+    func testSnoozeHidesUntilItsTime() {
+        let (store, sent, advance) = snoozeStore()
+        let a = item(1, updated: 1_799_999_000), b = item(2, updated: 1_799_999_000)
+        store.apply(.github, .success([a, b]))
+        store.snooze(a, until: Date(timeIntervalSince1970: 1_800_003_600))
+        XCTAssertEqual(store.items.map(\.id), [b.id])
+        XCTAssertEqual(store.snoozedItems.map(\.id), [a.id])
+        XCTAssertFalse(store.isUnread(a))
+        store.apply(.github, .success([a, b]))                       // nothing happened to it: stays snoozed, no news
+        XCTAssertEqual(store.items.map(\.id), [b.id])
+        XCTAssertTrue(sent().isEmpty)
+        advance(3600)
+        store.wakeSnoozed()
+        XCTAssertEqual(Set(store.items.map(\.id)), [a.id, b.id])
+        XCTAssertTrue(store.isUnread(a))                              // back unread
+        XCTAssertEqual(sent().last?.title, "Back from snooze: #1")
+        XCTAssertFalse(store.isSnoozed(a.id))
+    }
+
+    func testSnoozedItemComesBackWhenSomethingHappens() {
+        let (store, sent, _) = snoozeStore()
+        let a = item(1, updated: 1_799_999_000)
+        store.apply(.github, .success([a]))
+        store.snooze(a, until: Date(timeIntervalSince1970: 1_900_000_000))
+        store.loadActivity = { _ in InboxActivity(events: [InboxEvent(kind: .comment, actor: "bob", date: Date(timeIntervalSince1970: 1_800_000_100), summary: "commented", detail: "hi")]) }
+        var changed = a; changed.updated = Date(timeIntervalSince1970: 1_800_000_100)
+        store.apply(.github, .success([changed]))
+        XCTAssertEqual(store.items.map(\.id), [a.id])
+        XCTAssertFalse(store.isSnoozed(a.id))
+        XCTAssertEqual(sent().last?.title, "#1: bob commented: hi")         // the change's own news, not "back from snooze"
+        store.snooze(changed, until: Date(timeIntervalSince1970: 1_900_000_000))
+        store.unsnooze(changed.id)
+        XCTAssertEqual(store.items.map(\.id), [a.id])
+    }
+
+    func testSnoozeOptions() {
+        var cal = Calendar(identifier: .gregorian); cal.timeZone = TimeZone(identifier: "UTC")!
+        let wednesdayMorning = ISO8601DateFormatter().date(from: "2026-11-04T10:00:00Z")!
+        let o = InboxStore.snoozeOptions(now: wednesdayMorning, calendar: cal)
+        XCTAssertEqual(o.map(\.title), ["Later today", "Tomorrow", "Next week"])
+        XCTAssertEqual(o[1].until, ISO8601DateFormatter().date(from: "2026-11-05T09:00:00Z"))
+        XCTAssertEqual(o[2].until, ISO8601DateFormatter().date(from: "2026-11-09T09:00:00Z"))      // Monday
+        let evening = ISO8601DateFormatter().date(from: "2026-11-04T20:00:00Z")!
+        XCTAssertEqual(InboxStore.snoozeOptions(now: evening, calendar: cal).first?.title, "Tomorrow")
+        XCTAssertEqual(InboxKeys.action(characters: "z", keyCode: 6, modifiers: []), .snooze)
+    }
 }

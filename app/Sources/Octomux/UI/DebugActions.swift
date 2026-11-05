@@ -342,6 +342,14 @@ enum DebugActions {
             case "inbox_fake_merge": InboxFixture.mergePR()
             case "inbox_fake_bb_decline": InboxFixture.declineBitbucket()
             case "inbox_fake_bb_new": InboxFixture.newBitbucketPR()
+            case "inbox_snooze":      // snoozes the open item for `minutes` (default 60)
+                if let item = InboxStore.shared.items.first(where: { $0.id == InboxStore.shared.selectedId }) {
+                    InboxStore.shared.snooze(item, until: Date().addingTimeInterval(Double((p["minutes"] as? Int) ?? 60) * 60))
+                }
+            case "inbox_time_travel": // moves the Inbox's clock `minutes` ahead and wakes what is due (fixture)
+                let m = Double((p["minutes"] as? Int) ?? 0) * 60
+                InboxStore.shared.now = { Date().addingTimeInterval(m) }
+                InboxStore.shared.wakeSnoozed()
             case "inbox_comment":     // value: text, on the open item; asks first on Bitbucket like the Comment button
                 if let v = p["value"] as? String, let item = InboxStore.shared.items.first(where: { $0.id == InboxStore.shared.selectedId }) {
                     let post = { InboxStore.shared.postComment(item, v) { err in if let err { NSLog("inbox_comment: \(err)") } } }
