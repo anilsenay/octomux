@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 /// Made-up Inbox items and history for the debug fixture (`ui_action inbox_fake`): no account is read or written.
@@ -18,7 +19,7 @@ enum InboxFixture {
         func at(_ minutesAgo: Double) -> Date { Date(timeIntervalSince1970: t - minutesAgo * 60) }
         var pr = InboxItem(id: "gh:octo/storefront#42", source: .github, kind: .pr, key: "#42", place: "octo/storefront",
                            title: "Checkout: retry failed payments once", author: "ann", assignee: nil, status: "Open", statusTone: "done",
-                           reason: .review, updated: at(5), body: "Retries a declined payment once when the gateway times out.\n\n- adds `RetryPolicy`\n- logs the second attempt",
+                           reason: .review, updated: at(5), body: "Retries a declined payment once when the gateway times out.\n\n- adds `RetryPolicy`\n- logs the second attempt\n\n![Retry flow](https://user-images.githubusercontent.com/1/retry-flow.png)\n\n<img src=\"https://tracker.example.com/pixel.gif\" width=\"1\">",
                            url: "https://github.com/octo/storefront/pull/42", branch: "ann/payment-retry", number: 42)
         pr.checks = .failing; pr.checkCounts = (5, 2, 0); pr.failedChecks = ["test (ubuntu-latest)", "Vercel"]
         pr.failedCheckDetails = [
@@ -40,7 +41,7 @@ enum InboxFixture {
         }
         let issue = InboxItem(id: "jira:SHOP-7", source: .jira, kind: .issue, key: "SHOP-7", place: "Shop", title: "Price filter ignores the currency",
                               author: "Cem", assignee: "You", status: "Code Review", statusTone: "progress", reason: .assigned, updated: at(12),
-                              body: "When the currency is EUR the filter still compares USD prices.", url: "https://example.atlassian.net/browse/SHOP-7")
+                              body: "When the currency is EUR the filter still compares USD prices.\n\n![eur-filter.png](jira-attachment:eur-filter.png)", url: "https://example.atlassian.net/browse/SHOP-7")
         let quiet = InboxItem(id: "jira:SHOP-3", source: .jira, kind: .issue, key: "SHOP-3", place: "Shop", title: "Update the size guide",
                               author: "Bob", assignee: "Bob", status: "To Do", statusTone: "todo", reason: .project, updated: at(300),
                               body: "", url: "https://example.atlassian.net/browse/SHOP-3")
@@ -65,6 +66,22 @@ enum InboxFixture {
             ], note: "The history isn't available (Jira answered 403). Showing comments only."),
         ]
         fixtureItems = [pr, issue, quiet]
+        // Made-up images: a drawn picture for allowed places (nothing is downloaded).
+        InboxImages.shared.forget()
+        InboxImages.shared.fetch = { origin, _ in
+            let label: String
+            switch origin {
+            case .github: label = "GitHub image"
+            case .jira(let n): label = "Jira attachment " + n
+            case .blocked: throw InboxError("blocked")
+            }
+            let img = NSImage(size: NSSize(width: 520, height: 180), flipped: false) { r in
+                NSColor(calibratedRed: 0.16, green: 0.32, blue: 0.55, alpha: 1).setFill(); r.fill()
+                (label as NSString).draw(at: NSPoint(x: 24, y: 78), withAttributes: [.font: NSFont.systemFont(ofSize: 22, weight: .semibold), .foregroundColor: NSColor.white])
+                return true
+            }
+            return NSBitmapImageRep(data: img.tiffRepresentation!)!.representation(using: .png, properties: [:])!
+        }
         // Read up to an hour ago on the PR and the issue, so both have something new.
         InboxStore.shared.loadFixture([pr, issue, quiet], seen: [pr.id: t - 3600, issue.id: t - 3600, quiet.id: t], activity: history)
     }

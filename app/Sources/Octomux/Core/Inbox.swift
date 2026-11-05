@@ -1043,7 +1043,7 @@ enum JiraClient {
     }
 
     static func request(_ path: String, method: String = "GET", body: Any? = nil,
-                        base: String? = nil, email: String? = nil, token: String? = nil) throws -> Data {
+                        base: String? = nil, email: String? = nil, token: String? = nil, accept: String = "application/json") throws -> Data {
         guard let b = base ?? UserDefaults.standard.string(forKey: InboxPrefs.jiraBase) ?? site,
               let mail = email ?? self.email, let tok = token ?? self.token, let url = URL(string: b + path) else {
             throw InboxError(configured ? "Couldn't read the Jira token from the Keychain. Connect again in Settings → Inbox." : "Jira is not connected.")
@@ -1051,7 +1051,7 @@ enum JiraClient {
         var r = URLRequest(url: url, timeoutInterval: 25)
         r.httpMethod = method
         r.setValue("Basic " + Data("\(mail):\(tok)".utf8).base64EncodedString(), forHTTPHeaderField: "Authorization")
-        r.setValue("application/json", forHTTPHeaderField: "Accept")
+        r.setValue(accept, forHTTPHeaderField: "Accept")
         if let body {
             r.setValue("application/json", forHTTPHeaderField: "Content-Type")
             r.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -1073,10 +1073,26 @@ enum JiraClient {
         return data
     }
 
+    /// Redirects are followed only within the host the request went to: the Authorization header never leaves Jira.
+    private static let session: URLSession = {
+        let c = URLSessionConfiguration.ephemeral
+        c.httpShouldSetCookies = false
+        c.urlCredentialStorage = nil
+        return URLSession(configuration: c, delegate: JiraRedirects(), delegateQueue: nil)
+    }()
+
+    private final class JiraRedirects: NSObject, URLSessionTaskDelegate {
+        func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+                        newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
+            let same = request.url?.host?.lowercased() == task.originalRequest?.url?.host?.lowercased() && request.url?.scheme == "https"
+            completionHandler(same ? request : nil)
+        }
+    }
+
     private static func sync(_ r: URLRequest) throws -> (Data, URLResponse) {
         var result: Result<(Data, URLResponse), Error> = .failure(InboxError("No answer"))
         let sem = DispatchSemaphore(value: 0)
-        URLSession.shared.dataTask(with: r) { d, resp, e in
+        session.dataTask(with: r) { d, resp, e in
             if let e { result = .failure(InboxError(e.localizedDescription)) }
             else if let d, let resp { result = .success((d, resp)) }
             sem.signal()
@@ -1211,6 +1227,32 @@ enum JiraClient {
         return out
     }
 
+    /// Attachments of an issue by file name and id (id, MIME type, size), kept for the session.
+    private static var attachmentCache: [String: [String: (id: String, mime: String, size: Int)]] = [:]
+    private static let attachmentLock = NSLock()
+
+    /// An image attachment's bytes, from the connected Jira only (no redirect: the token stays with Jira).
+    static func attachmentImage(issue key: String, name: String, maxBytes: Int) throws -> Data {
+        let wanted = name.removingPercentEncoding ?? name
+        attachmentLock.lock(); var list = attachmentCache[key]; attachmentLock.unlock()
+        if list == nil {
+            let o = try object(request("/rest/api/3/issue/\(key)?fields=attachment"))
+            var m: [String: (String, String, Int)] = [:]
+            for a in (o["fields"] as? [String: Any])?["attachment"] as? [[String: Any]] ?? [] {
+                guard let id = a["id"] as? String else { continue }
+                let v = (id, a["mimeType"] as? String ?? "", a["size"] as? Int ?? 0)
+                m[id] = v
+                if let f = a["filename"] as? String { m[f] = v }
+            }
+            list = m
+            attachmentLock.lock(); attachmentCache[key] = m; attachmentLock.unlock()
+        }
+        guard let a = list?[wanted] else { throw InboxError("no attachment named \(wanted)") }
+        guard a.mime.hasPrefix("image/") else { throw InboxError("not an image") }
+        guard a.size <= maxBytes else { throw InboxError("too large") }
+        return try request("/rest/api/3/attachment/content/\(a.id)?redirect=false", accept: "*/*")
+    }
+
     /// The signed-in account (set by `inbox()`), to show your own changes as "You".
     static var myAccountId: String?
 
@@ -1303,7 +1345,14 @@ enum ADF {
         case "codeBlock": out += "```\n" + inline() + "\n```\n\n"
         case "blockquote": out += inline().split(separator: "\n", omittingEmptySubsequences: false).map { "> " + $0 }.joined(separator: "\n") + "\n\n"
         case "rule": out += "---\n\n"
-        case "mediaSingle", "mediaGroup", "media": out += "[attachment]\n\n"
+        case "mediaSingle", "mediaGroup": for k in kids { render(k, into: &out, list: list, depth: depth) }
+        case "media", "mediaInline":
+            // An attachment of the issue (matched by file name), or an image from a link.
+            let a = n["attrs"] as? [String: Any] ?? [:]
+            if (a["type"] as? String) == "external", let url = a["url"] as? String { out += "![](\(url))\n\n" }
+            else if let name = (a["alt"] as? String) ?? (a["id"] as? String), !name.isEmpty {
+                out += "![\(name)](\(InboxMedia.jiraScheme)\(name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? name))\n\n"
+            } else { out += "[attachment]\n\n" }
         case "table":
             for row in kids {
                 let cells = (row["content"] as? [[String: Any]] ?? []).map { c -> String in var s = ""; render(c, into: &s, list: nil, depth: depth); return s.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "\n", with: " ") }

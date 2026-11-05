@@ -67,6 +67,44 @@ enum DebugActions {
             return ["kinds": Dictionary(grouping: a.events, by: { $0.kind.rawValue }).mapValues(\.count),
                     "summaries": Array(Set(a.events.map { $0.kind == .comment ? "commented" : $0.summary.components(separatedBy: " ").prefix(2).joined(separator: " ") })).sorted()]
         }
+        // Downloads one image the way the Inbox does (read-only) and says how big it is (no contents).
+        d.register("inbox_probe_image") { p in
+            let url = p["url"] as? String ?? ""
+            let data = try InboxImages.download(InboxMedia.origin(url), nil)
+            let img = NSImage(data: data)
+            return ["bytes": data.count, "width": img?.size.width ?? 0, "height": img?.size.height ?? 0]
+        }
+        // A Jira issue's first image attachment, fetched as the Inbox does (read-only; sizes only).
+        d.register("inbox_probe_jira_image") { p in
+            let key = p["key"] as? String ?? ""
+            let o = try JSONSerialization.jsonObject(with: JiraClient.request("/rest/api/3/issue/\(key)?fields=attachment")) as? [String: Any]
+            let atts = (o?["fields"] as? [String: Any])?["attachment"] as? [[String: Any]] ?? []
+            guard let first = atts.first(where: { ($0["mimeType"] as? String ?? "").hasPrefix("image/") }), let name = first["filename"] as? String else {
+                return ["attachments": atts.count, "images": 0]
+            }
+            let data = try JiraClient.attachmentImage(issue: key, name: name, maxBytes: InboxMedia.maxBytes)
+            let img = NSImage(data: data)
+            return ["attachments": atts.count, "bytes": data.count, "width": img?.size.width ?? 0, "decoded": img != nil]
+        }
+        // How many images a Jira description has and how many of them match an attachment by name (counts only).
+        d.register("inbox_probe_jira_refs") { p in
+            let key = p["key"] as? String ?? ""
+            let o = try JSONSerialization.jsonObject(with: JiraClient.request("/rest/api/3/issue/\(key)?fields=attachment,description")) as? [String: Any]
+            let f = o?["fields"] as? [String: Any] ?? [:]
+            let names = Set(((f["attachment"] as? [[String: Any]]) ?? []).compactMap { $0["filename"] as? String })
+            let refs = InboxMedia.images(in: ADF.text(f["description"])).refs
+            let matched = refs.filter { r in
+                if case .jira(let n) = InboxMedia.origin(r.url) { return names.contains(n.removingPercentEncoding ?? n) }
+                return false
+            }
+            return ["images": refs.count, "matched": matched.count, "attachments": names.count]
+        }
+        // Finds a few of your Jira issues that have attachments (keys only).
+        d.register("inbox_probe_jira_with_attachments") { _ in
+            let body: [String: Any] = ["jql": "assignee = currentUser() AND attachments is not EMPTY ORDER BY updated DESC", "maxResults": 5, "fields": ["summary"]]
+            let o = try JSONSerialization.jsonObject(with: JiraClient.request("/rest/api/3/search/jql", method: "POST", body: body)) as? [String: Any]
+            return ((o?["issues"] as? [[String: Any]]) ?? []).compactMap { $0["key"] as? String }
+        }
         d.register("ui_action") { p in
             let name = p["name"] as? String ?? ""
             let id = p["id"] as? String

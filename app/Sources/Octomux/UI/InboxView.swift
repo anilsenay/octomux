@@ -560,7 +560,7 @@ struct InboxDetail: View {
                 if let s = store.linkedSession(item) { linked(s) }
                 sinceCard
                 Hairline()
-                if !item.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { InboxMarkdown(text: item.body) }
+                if !item.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { InboxMarkdown(text: item.body, item: item) }
                 else { Text("No description.").font(T.body).foregroundStyle(T.text3) }
                 InboxActivityView(item: item)
                 commentBox
@@ -939,6 +939,8 @@ enum InboxStart {
 struct InboxMarkdown: View {
     let text: String
     var size: CGFloat = 13
+    /// The item the text belongs to (its Jira attachments are its images).
+    var item: InboxItem? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -949,8 +951,12 @@ struct InboxMarkdown: View {
                         .padding(10).frame(maxWidth: .infinity, alignment: .leading)
                         .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(T.frame.opacity(0.6)))
                 } else {
-                    Text(attributed(b)).font(.system(size: T.k * size)).foregroundStyle(T.text).lineSpacing(3)
-                        .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                    let parts = InboxMedia.images(in: b)
+                    if !parts.rest.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Text(attributed(parts.rest)).font(.system(size: T.k * size)).foregroundStyle(T.text).lineSpacing(3)
+                            .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                    }
+                    ForEach(Array(parts.refs.enumerated()), id: \.offset) { _, r in InboxImageView(ref: r, item: item) }
                 }
             }
         }
@@ -1377,7 +1383,7 @@ struct InboxActivityView: View {
                 Text("·").foregroundStyle(T.text3)
                 Text(e.date, format: .relative(presentation: .named)).font(.system(size: T.k * 11.5)).foregroundStyle(T.text3)
             }
-            InboxMarkdown(text: e.detail, size: 12.5)
+            InboxMarkdown(text: e.detail, size: 12.5, item: item)
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1471,4 +1477,51 @@ struct LinkedItemNotice: View {
 enum InboxEndedColor {
     static let merged = Color(hex: "#8957e5")
     static func of(_ e: InboxItem.Ended) -> Color { e.merged ? merged : T.text3 }
+}
+
+/// One image of a description or comment: loaded from an allowed place, else a link to it.
+struct InboxImageView: View {
+    @ObservedObject var images = InboxImages.shared
+    let ref: InboxMedia.Ref
+    let item: InboxItem?
+
+    private var blocked: Bool { if case .blocked = InboxMedia.origin(ref.url) { return true }; return false }
+
+    var body: some View {
+        content.onAppear { images.load(ref, item: item) }
+    }
+
+    @ViewBuilder private var content: some View {
+        switch images.state(ref, item: item) {
+        case .loaded(let img):
+            let w = min(img.size.width, 640)
+            Image(nsImage: img).resizable().aspectRatio(contentMode: .fit)
+                .frame(maxWidth: w, maxHeight: 420, alignment: .leading)
+                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(T.border))
+                .help(ref.alt.isEmpty ? "Image" : ref.alt)
+                .onTapGesture(count: 2) { open() }
+        case .failed:
+            note("photo.badge.exclamationmark", "Couldn't load \(ref.alt.isEmpty ? "the image" : ref.alt)", link: true)
+        case .loading, nil:
+            if blocked { note("eye.slash", "Image from \(URL(string: ref.url)?.host ?? "another site") not loaded", link: true) }
+            else { note("photo", "Loading image…", link: false) }
+        }
+    }
+
+    private func note(_ icon: String, _ text: String, link: Bool) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon).foregroundStyle(T.text3)
+            Text(text).font(T.caption).foregroundStyle(T.text3).lineLimit(1)
+            if link, canOpen { Button("Open") { open() }.buttonStyle(.link).font(T.caption) }
+        }
+        .padding(.horizontal, 10).frame(height: 30)
+        .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(T.frame.opacity(0.5)))
+    }
+
+    private var canOpen: Bool { ref.url.hasPrefix(InboxMedia.jiraScheme) ? item?.url.isEmpty == false : URL(string: ref.url)?.scheme == "https" }
+    private func open() {
+        let target = ref.url.hasPrefix(InboxMedia.jiraScheme) ? item?.url : ref.url
+        if let t = target, let u = URL(string: t) { NSWorkspace.shared.open(u) }
+    }
 }

@@ -814,3 +814,64 @@ final class InboxAskTests: XCTestCase {
         XCTAssertEqual(again.asks["jira:DC-1"], "ask")
     }
 }
+
+/// Images in descriptions and comments: which load, from where, and what the text keeps.
+final class InboxMediaTests: XCTestCase {
+    func testExtract() {
+        let b = #"See ![shot one](https://user-images.githubusercontent.com/1/a.png "t") and <img width="300" alt="Two" src="https://github.com/user-attachments/assets/xyz"> here [![](https://camo.githubusercontent.com/c)](https://ci)"#
+        let r = InboxMedia.images(in: b)
+        XCTAssertEqual(r.refs, [
+            .init(url: "https://user-images.githubusercontent.com/1/a.png", alt: "shot one"),
+            .init(url: "https://github.com/user-attachments/assets/xyz", alt: "Two"),
+            .init(url: "https://camo.githubusercontent.com/c", alt: ""),
+        ])
+        XCTAssertEqual(r.rest.trimmingCharacters(in: .whitespaces), "See  and  here")
+        XCTAssertEqual(InboxMedia.images(in: "no images [link](https://x)").refs, [])
+    }
+
+    func testOrigins() {
+        XCTAssertEqual(InboxMedia.origin("https://github.com/user-attachments/assets/x"), .github(URL(string: "https://github.com/user-attachments/assets/x")!))
+        XCTAssertEqual(InboxMedia.origin("https://private-user-images.githubusercontent.com/1/a.png?jwt=x"),
+                       .github(URL(string: "https://private-user-images.githubusercontent.com/1/a.png?jwt=x")!))
+        XCTAssertEqual(InboxMedia.origin("http://github.com/x.png"), .blocked("github.com"))            // https only
+        XCTAssertEqual(InboxMedia.origin("https://tracker.example.com/p.gif"), .blocked("tracker.example.com"))
+        XCTAssertEqual(InboxMedia.origin("https://github.com.evil.example/x.png"), .blocked("github.com.evil.example"))
+        XCTAssertEqual(InboxMedia.origin("jira-attachment:repro%20shot.png"), .jira("repro%20shot.png"))
+    }
+
+    func testRedirectsStayOnAllowedHosts() {
+        XCTAssertTrue(SameSites.github.allow("private-user-images.githubusercontent.com"))
+        XCTAssertFalse(SameSites.github.allow("s3.amazonaws.com"))
+    }
+
+    func testJiraMediaBecomesAnAttachmentImage() {
+        let doc: [String: Any] = ["type": "doc", "content": [
+            ["type": "paragraph", "content": [["type": "text", "text": "Steps:"]]],
+            ["type": "mediaSingle", "content": [["type": "media", "attrs": ["type": "file", "id": "abc-123", "alt": "repro shot.png", "collection": "c"]]]],
+            ["type": "mediaSingle", "content": [["type": "media", "attrs": ["type": "external", "url": "https://example.com/x.png"]]]],
+        ]]
+        let t = ADF.text(doc)
+        XCTAssertTrue(t.contains("![repro shot.png](jira-attachment:repro%20shot.png)"))
+        XCTAssertTrue(t.contains("![](https://example.com/x.png)"))
+    }
+
+    func testLoaderUsesTheFetcherOnlyForAllowedImages() {
+        let images = InboxImages()
+        var asked: [InboxMedia.Origin] = []
+        let png = NSImage(size: NSSize(width: 4, height: 4), flipped: false) { r in NSColor.red.setFill(); r.fill(); return true }
+        let data = NSBitmapImageRep(data: png.tiffRepresentation!)!.representation(using: .png, properties: [:])!
+        images.fetch = { o, _ in asked.append(o); return data }
+        let ok = InboxMedia.Ref(url: "https://user-images.githubusercontent.com/1/a.png", alt: "")
+        let blocked = InboxMedia.Ref(url: "https://tracker.example.com/p.gif", alt: "")
+        images.load(blocked, item: nil)
+        XCTAssertNil(images.state(blocked, item: nil))
+        images.load(ok, item: nil)
+        let done = expectation(description: "loaded")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { done.fulfill() }
+        wait(for: [done], timeout: 2)
+        if case .loaded = images.state(ok, item: nil) {} else { XCTFail("not loaded") }
+        XCTAssertEqual(asked.count, 1)
+        images.load(ok, item: nil)                                   // once
+        XCTAssertEqual(asked.count, 1)
+    }
+}

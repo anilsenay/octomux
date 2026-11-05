@@ -38,6 +38,9 @@
   - **Ask** (button, or the a key): a chat about the item that only reads: the agent starts with the item as
     reference data and your question at the end, in Claude's plan mode or Codex's read-only sandbox, apart from
     any session working on the item. Continue asking goes back to it.
+  - **Images** in descriptions and comments: GitHub's own images (loaded without any credentials) and Jira
+    attachments (from your Jira only). Images from other sites aren't loaded, since they could tell the sender you
+    opened the item; they show as a link. Jira requests no longer follow a redirect to another host.
   - Settings → Inbox: connections, Jira projects, GitHub repositories, what shows up, notifications, and what
     Send to agent opens.
 
