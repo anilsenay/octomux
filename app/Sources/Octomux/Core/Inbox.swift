@@ -779,16 +779,37 @@ enum JiraClient {
         return (scope.isEmpty ? "" : scope + " AND ") + "statusCategory != Done ORDER BY updated DESC"
     }
 
+    static let fields = ["summary", "status", "assignee", "reporter", "updated", "project", "issuetype", "description"]
+
+    /// Two searches, so one cannot crowd out the other: everything open assigned to you (all of it, paged), and
+    /// the newest of the other people's issues where you asked for them (All open ones, or a project's bell).
     static func inbox() throws -> [InboxItem] {
         let picked = pickedProjects
-        let all = (UserDefaults.standard.string(forKey: InboxPrefs.jiraScope) ?? "assigned") == "all"
-        // Everything open in every project is too much: "all" needs picked projects.
+        let all = (UserDefaults.standard.string(forKey: InboxPrefs.jiraScope) ?? "assigned") == "all" && !picked.isEmpty
         let w = watched.filter { picked.isEmpty || picked.contains($0) }.sorted()
-        let body: [String: Any] = ["jql": jql(assignedOnly: !all || picked.isEmpty, projects: picked, watched: w), "maxResults": 60,
-                                   "fields": ["summary", "status", "assignee", "reporter", "updated", "project", "issuetype", "description"]]
-        let o = try object(request("/rest/api/3/search/jql", method: "POST", body: body))
-        let me = try? object(request("/rest/api/3/myself"))
-        return parse(o, me: me?["accountId"] as? String)
+        let me = (try? object(request("/rest/api/3/myself")))?["accountId"] as? String
+        var out = try search(jql(assignedOnly: true, projects: picked), limit: 200, me: me)
+        let others = all ? picked : w
+        if !others.isEmpty {
+            let seen = Set(out.map(\.id))
+            out += try search(jql(assignedOnly: false, projects: others), limit: 60, me: me).filter { !seen.contains($0.id) }
+        }
+        return out
+    }
+
+    /// One JQL search, paged (nextPageToken) up to `limit` issues.
+    static func search(_ jql: String, limit: Int, me: String?) throws -> [InboxItem] {
+        var out: [InboxItem] = []
+        var token: String?
+        repeat {
+            var body: [String: Any] = ["jql": jql, "maxResults": min(100, limit - out.count), "fields": fields]
+            if let token { body["nextPageToken"] = token }
+            let o = try object(request("/rest/api/3/search/jql", method: "POST", body: body))
+            let page = parse(o, me: me)
+            out += page
+            token = (o["isLast"] as? Bool) == true || page.isEmpty ? nil : o["nextPageToken"] as? String
+        } while token != nil && out.count < limit
+        return out
     }
 
     static func parse(_ o: [String: Any], me: String?) -> [InboxItem] {
