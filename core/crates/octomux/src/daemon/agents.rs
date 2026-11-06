@@ -139,6 +139,34 @@ pub fn strip_session_flags(args: &[String], kind: AgentKind) -> Vec<String> {
     out
 }
 
+/// Takes out what makes a run unattended: Claude's print mode (`-p` / `--print`, `--permission-prompts <who>`) and
+/// Codex's `exec` subcommand. Everything else (tool limits, sandbox) stays.
+pub fn drop_unattended_flags(args: &[String], kind: AgentKind) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < args.len() {
+        let a = args[i].as_str();
+        match kind {
+            AgentKind::Claude if a == "-p" || a == "--print" || a.starts_with("--permission-prompts=") => {
+                i += 1;
+                continue;
+            }
+            AgentKind::Claude if a == "--permission-prompts" => {
+                i += 2;
+                continue;
+            }
+            AgentKind::Codex if a == "exec" => {
+                i += 1;
+                continue;
+            }
+            _ => {}
+        }
+        out.push(args[i].clone());
+        i += 1;
+    }
+    out
+}
+
 fn codex_home(profile: &Profile) -> PathBuf {
     profile
         .env
@@ -493,6 +521,11 @@ pub fn build_launch_with_prompt(paths: &Paths, session: &Session, profile: Optio
             // Flags picked when the session was started (model, effort, permission mode, images), before any
             // subcommand (`codex resume`); never one of the session flags managed here.
             args.extend(strip_session_flags(&session.extra_args, profile.kind));
+            // A session started to run unattended (`claude -p`, `codex exec`: an Inbox review) comes back as a
+            // conversation you can continue: print mode without a prompt would only exit with an error.
+            if restoring {
+                args = drop_unattended_flags(&args, profile.kind);
+            }
             let mut agent_id = session.agent_session_id.clone();
             let mut generic_resume: Option<String> = None;
             match profile.kind {
@@ -721,6 +754,18 @@ mod tests {
             ["--model", "opus", "--resume", "abc", "-c", "--session-id=x", "--dangerously-skip-permissions"].iter().map(|s| s.to_string()).collect();
         assert_eq!(strip_session_flags(&args, AgentKind::Claude), vec!["--model", "opus", "--dangerously-skip-permissions"]);
         assert_eq!(strip_session_flags(&args, AgentKind::Generic), args);
+    }
+
+    #[test]
+    fn a_resumed_unattended_run_can_be_continued() {
+        let v = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<String>>();
+        let claude = v(&["-p", "--permission-prompts", "none", "--setting-sources=", "--tools", "Read,Grep", "--permission-mode", "default"]);
+        assert_eq!(drop_unattended_flags(&claude, AgentKind::Claude), v(&["--setting-sources=", "--tools", "Read,Grep", "--permission-mode", "default"]));
+        assert_eq!(drop_unattended_flags(&v(&["--print", "--permission-prompts=none", "--model", "opus"]), AgentKind::Claude), v(&["--model", "opus"]));
+        assert_eq!(drop_unattended_flags(&v(&["exec", "--sandbox", "read-only"]), AgentKind::Codex), v(&["--sandbox", "read-only"]));
+        // Not for other agents, and nothing else is touched.
+        assert_eq!(drop_unattended_flags(&v(&["-p", "x"]), AgentKind::Generic), v(&["-p", "x"]));
+        assert_eq!(drop_unattended_flags(&v(&["--model", "o3"]), AgentKind::Codex), v(&["--model", "o3"]));
     }
 
     #[test]

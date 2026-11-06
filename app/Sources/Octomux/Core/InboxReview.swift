@@ -91,7 +91,20 @@ extension InboxPrefs {
 }
 
 final class InboxReviews: ObservableObject {
-    static let shared: InboxReviews = { let r = InboxReviews(); r.cleanClones = { ReviewClones.prune(busy: $0) }; return r }()
+    static let shared: InboxReviews = {
+        let r = InboxReviews()
+        r.cleanClones = { ReviewClones.prune(busy: $0) }
+        r.closeSessions = { path in
+            let m = AppModel.shared
+            for s in m.state.sessions where s.worktree == path && s.state != .running {
+                m.remove(s.id, confirm: false)
+            }
+        }
+        return r
+    }()
+    /// Closes the earlier review sessions in a review's folder when the next review of the pull request starts (the
+    /// app's instance only). Ones still running stay (a review you resumed to ask about).
+    var closeSessions: ((String) -> Void)?
 
     /// Reviews running at once; the rest wait in line.
     static let maxRunning = 2
@@ -227,6 +240,8 @@ final class InboxReviews: ObservableObject {
         }
         // What was posted stays posted (a finding that still stands keeps its id).
         if keep { runs[i.id]?.posted = old?.posted }
+        // One session per pull request's review: the earlier ones go (their findings live on in the card).
+        if let p = old?.path { closeSessions?(p) }
         save()
         pump()
         return nil
