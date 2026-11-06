@@ -13,6 +13,9 @@
 - **`/` and `@` in the chat composers**: `/` lists built-in commands, your and the project's commands and skills,
   and enabled plugins' (Codex: built-ins and saved prompts), with descriptions; `@` finds files of the project
   (git's list) by name. ↑↓ to move, ↩ or ⇥ to pick, esc to close.
+- **Answer from the chat**: when the agent asks one single-choice question, pick the answer on its card; when it
+  waits for permission on a tool, Allow or Deny under that tool (sent to the terminal as the keys you would press).
+  Messages you send while the agent works show as queued until it reads them.
 
 ## 0.3.0
 

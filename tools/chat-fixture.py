@@ -109,5 +109,13 @@ user("Start with the settings part.", dt=10)
 say(call("b3", "Bash", {"command": "rg -n scrollback core/crates/octomux/src/settings.rs"}))
 w({"type": "user", "message": {"role": "user", "content": [{"type": "text", "text": "[Request interrupted by user for tool use]"}]}}, dt=3)
 
+# FAKE_CLAUDE_PENDING=1: end on an unanswered question (the fake agent then reports "blocked").
+import os
+if os.environ.get("FAKE_CLAUDE_PENDING") == "1":
+    user("Which one next?", dt=30)
+    say(call("q2", "AskUserQuestion", {"questions": [{"header": "Next", "question": "What should I do next?", "multiSelect": False, "options": [
+        {"label": "Write the tests", "description": "Cover the new limit first"},
+        {"label": "Wire the setting", "description": "Settings → Terminal"}]}]}))
+
 with open(out, "w") as f:
     f.write("\n".join(lines) + "\n")

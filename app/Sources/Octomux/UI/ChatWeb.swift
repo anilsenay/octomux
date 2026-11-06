@@ -36,7 +36,7 @@ final class ChatWebController: NSObject, WKScriptMessageHandler, WKNavigationDel
     private var sent: [String: ChatItem] = [:]
     private var sentOrder: [String] = []
     private var sentMeta: [String: String] = [:]
-    private var last: (items: [ChatItem], working: Bool, cwd: String, agent: String)?
+    private var last: (items: [ChatItem], working: Bool, needsInput: Bool, cwd: String, agent: String)?
 
     init(sessionId: String) {
         self.sessionId = sessionId
@@ -58,9 +58,9 @@ final class ChatWebController: NSObject, WKScriptMessageHandler, WKNavigationDel
     }
 
     /// Sends the items that are new or changed since the last update, and the order of all of them.
-    func update(items: [ChatItem], working: Bool, cwd: String, agent: String) {
-        last = (items, working, cwd, agent)
-        let meta = ["working": working ? "1" : "0", "cwd": cwd, "agent": agent]
+    func update(items: [ChatItem], working: Bool, needsInput: Bool, cwd: String, agent: String) {
+        last = (items, working, needsInput, cwd, agent)
+        let meta = ["working": working ? "1" : "0", "input": needsInput ? "1" : "0", "cwd": cwd, "agent": agent]
         let order = items.map(\.id)
         let changed = items.filter { sent[$0.id] != $0 }
         guard !changed.isEmpty || order != sentOrder || meta != sentMeta else { return }
@@ -68,7 +68,7 @@ final class ChatWebController: NSObject, WKScriptMessageHandler, WKNavigationDel
         let reset = !sentOrder.isEmpty && (order.first != sentOrder.first || order.count < sentOrder.count && !sentOrder.starts(with: order))
         let payloadItems = reset ? items : changed
         var p: [String: Any] = [
-            "items": payloadItems.map(Self.json), "working": working, "cwd": cwd, "agent": agent,
+            "items": payloadItems.map(Self.json), "working": working, "needsInput": needsInput, "cwd": cwd, "agent": agent,
             "home": NSHomeDirectory(),
         ]
         if reset { p["reset"] = true }
@@ -116,7 +116,7 @@ final class ChatWebController: NSObject, WKScriptMessageHandler, WKNavigationDel
             if reloaded {
                 sent = [:]; sentOrder = []; sentMeta = [:]
                 applyTheme()
-                if let l = last { update(items: l.items, working: l.working, cwd: l.cwd, agent: l.agent) }
+                if let l = last { update(items: l.items, working: l.working, needsInput: l.needsInput, cwd: l.cwd, agent: l.agent) }
             }
         case "copy":
             if let t = m["text"] as? String {
@@ -129,7 +129,34 @@ final class ChatWebController: NSObject, WKScriptMessageHandler, WKNavigationDel
             }
         case "open":
             if let p = m["path"] as? String { open(path: p) }
+        case "choose":
+            if let id = m["id"] as? String, let i = (m["index"] as? NSNumber)?.intValue, i >= 0, i < 20, waitingOn(id) {
+                // The question's list starts on its first option: move down to the pick, then return.
+                keys(Array(repeating: "\u{1b}[B", count: i) + ["\r"])
+            }
+        case "permit":
+            if let id = m["id"] as? String, waitingOn(id) {
+                keys([(m["allow"] as? Bool) == true ? "\r" : "\u{1b}"])   // first option is Yes; esc says no
+            }
         default: break
+        }
+    }
+
+    /// True when the session waits for input and `id` is its newest tool call without a result
+    /// (what the page shows as answerable), so a late click never lands on another prompt.
+    private func waitingOn(_ id: String) -> Bool {
+        guard AppModel.shared.session(sessionId)?.activity == .needsInput,
+              let l = last, let tool = l.items.last(where: { $0.kind == .tool }) else { return false }
+        return tool.id == id && tool.result == nil
+    }
+
+    /// Keystrokes to the session's terminal, one by one (a TUI reads each as its own key).
+    private func keys(_ seq: [String]) {
+        let c = AppModel.shared.client(for: sessionId)
+        for (i, k) in seq.enumerated() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 0.08) { [sessionId] in
+                c.call("session.input", ["id": sessionId, "data": k], completion: AppModel.shared.report)
+            }
         }
     }
 
@@ -194,6 +221,7 @@ struct ChatTranscriptView: NSViewRepresentable {
     let sessionId: String
     let items: [ChatItem]
     let working: Bool
+    var needsInput = false
     let cwd: String
     let agent: String
 
@@ -205,7 +233,7 @@ struct ChatTranscriptView: NSViewRepresentable {
 
     func updateNSView(_ box: NSView, context: Context) {
         attach(to: box)
-        ChatWebHost.shared.controller(for: sessionId).update(items: items, working: working, cwd: cwd, agent: agent)
+        ChatWebHost.shared.controller(for: sessionId).update(items: items, working: working, needsInput: needsInput, cwd: cwd, agent: agent)
     }
 
     private func attach(to box: NSView) {

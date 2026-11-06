@@ -310,6 +310,7 @@ struct ChatView: View {
     /// Claude's own context reading (its status line writes `run/<session>.context`).
     @State private var statusContext: ContextReading?
     @StateObject private var completion = ComposerCompletion()
+    @State private var queued: [String] = []
 
     var body: some View {
         let s = model.session(sessionId)
@@ -320,18 +321,20 @@ struct ChatView: View {
                 starting(s)
             } else {
                 ChatTranscriptView(sessionId: sessionId, items: chat.items, working: s?.activity == .working,
+                                   needsInput: s?.activity == .needsInput,
                                    cwd: s?.cwd ?? "", agent: model.profile(s?.profileId)?.name ?? "Agent")
             }
             if s?.activity == .needsInput {
                 HStack(spacing: 10) {
                     Image(systemName: "hand.raised.fill").foregroundStyle(T.amber)
-                    Text("\(model.profile(s?.profileId)?.name ?? "The agent") is waiting for your answer (permission or question).").font(T.body).foregroundStyle(T.text)
+                    Text("\(model.profile(s?.profileId)?.name ?? "The agent") is waiting for you: answer above, or in the terminal.").font(T.body).foregroundStyle(T.text)
                     Spacer()
                     Button("Answer in Terminal") { model.toggleChat(sessionId) }.buttonStyle(PrimaryButtonStyle())
                 }
                 .padding(.horizontal, 16).padding(.vertical, 10)
                 .background(T.amber.opacity(0.12))
             }
+            queuedList
             composer(s)
         }
         .background(CanvasBackground())
@@ -345,6 +348,12 @@ struct ChatView: View {
             readStatusContext()
         }
         .onDisappear { chat.stop() }
+        .onChange(of: chat.items.count) { _, _ in
+            guard !queued.isEmpty else { return }
+            let users = chat.items.suffix(40).filter { $0.kind == .user }.map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) }
+            queued.removeAll { q in users.contains { $0 == q || $0.hasPrefix(q) || q.hasPrefix($0) } }
+        }
+        .onChange(of: model.session(sessionId)?.activity) { _, a in if a == .idle || a == .done { DispatchQueue.main.asyncAfter(deadline: .now() + 20) { if model.session(sessionId)?.activity != .working { queued.removeAll() } } } }
         .onChange(of: s?.transcriptPath) { _, _ in chat.attach(resolvePath(model.session(sessionId))) }
         .onChange(of: s?.agentSessionId) { _, _ in chat.attach(resolvePath(model.session(sessionId))) }
     }
@@ -493,7 +502,29 @@ struct ChatView: View {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         draft = ""
+        // Typed while the agent works: it reads it after this step; shown here until the transcript has it.
+        if model.session(sessionId)?.activity == .working, !text.hasPrefix("/") { queued.append(text) }
         model.sendToSession(sessionId, text: text)
+    }
+
+    /// Messages sent while the agent was working that its transcript does not have yet.
+    @ViewBuilder private var queuedList: some View {
+        if !queued.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(Array(queued.enumerated()), id: \.offset) { _, q in
+                    HStack(spacing: 7) {
+                        Image(systemName: "clock").font(.system(size: T.k * 10)).foregroundStyle(T.text3)
+                        Text(q).font(.system(size: T.k * 12)).foregroundStyle(T.text2).lineLimit(1).truncationMode(.tail)
+                        Spacer(minLength: 0)
+                        Text("queued").font(.system(size: T.k * 10.5)).foregroundStyle(T.text3)
+                    }
+                    .help("Sent while the agent works; it reads it when this step ends")
+                }
+            }
+            .frame(maxWidth: 760)
+            .padding(.horizontal, 38).padding(.top, 4)
+            .frame(maxWidth: .infinity)
+        }
     }
 
 }

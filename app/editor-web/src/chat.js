@@ -15,7 +15,8 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&
 if (highlight.module) StyleModule.mount(document, highlight.module);
 
 // ---------- state ----------
-const state = { items: new Map(), order: [], working: false, cwd: "", home: "", agent: "Agent" };
+const state = { items: new Map(), order: [], working: false, needsInput: false, cwd: "", home: "", agent: "Agent" };
+const sentAnswers = new Set();      // tool ids answered from here (buttons stay disabled until the transcript has the result)
 const toggled = new Map();          // key → open (only what the reader changed by hand)
 const turnCache = new Map();        // turn key → { sig, el }
 let list, jump, workingEl;
@@ -41,7 +42,18 @@ function duration(ms) {
   return `${Math.floor(m / 60)}h ${m % 60}m`;
 }
 function clock(ms) { const d = new Date(ms); return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); }
+// If the agent is still waiting a while after an answer was sent, the buttons work again.
+function retryLater(id) { setTimeout(() => { if (sentAnswers.delete(id)) render(); }, 8000); }
 function isOpen(key, dflt) { return toggled.has(key) ? toggled.get(key) : dflt; }
+// The tool call the agent is waiting on: the last one, without a result, while the session needs input.
+function isPending(it) {
+  if (!state.needsInput || it.result != null) return false;
+  for (let i = state.order.length - 1; i >= 0; i--) {
+    const x = state.items.get(state.order[i]);
+    if (x && x.kind === "tool") return x.id === it.id;
+  }
+  return false;
+}
 
 // ---------- syntax highlighting ----------
 const fenceExt = {
@@ -272,6 +284,18 @@ function toolEl(it, live) {
     detail = preEl(JSON.stringify(it.input, null, 2), "out");
   }
   el.append(line);
+  if (isPending(it)) {
+    const bar = $("div", "permit");
+    bar.append($("span", "ptext", "Waiting for your permission"));
+    const allow = $("button", "pbtn primary", "Allow");
+    allow.dataset.permit = "allow"; allow.dataset.id = it.id;
+    const deny = $("button", "pbtn", "Deny");
+    deny.dataset.permit = "deny"; deny.dataset.id = it.id;
+    if (sentAnswers.has(it.id)) { allow.disabled = deny.disabled = true; }
+    bar.append(allow, deny);
+    el.append(bar);
+    dflt = true;
+  }
   if (detail) {
     const key = "t:" + it.id;
     const chev = $("span", "chev", "›");
@@ -344,25 +368,33 @@ function cardEl(it) {
     case "AskUserQuestion": case "request_user_input": {
       head.append($("span", "ctitle", "Question"));
       card.append(head);
-      for (const q of inp.questions || []) {
+      const qs = inp.questions || [];
+      // One single-choice question can be answered here (arrow keys + return to the terminal); others there.
+      const answerable = isPending(it) && qs.length === 1 && !qs[0].multiSelect && it.tool === "AskUserQuestion";
+      for (const q of qs) {
         const box = $("div", "question");
         if (q.header) box.append($("div", "qhead", q.header));
         box.append($("div", "qtext", q.question || ""));
-        const ol = $("ol", "options");
-        for (const o of q.options || []) {
+        const ol = $("ol", "options" + (answerable ? " choose" : ""));
+        (q.options || []).forEach((o, i) => {
           const li = $("li");
           li.append($("span", "olabel", o.label || ""));
           if (o.description) li.append($("span", "odesc", o.description));
+          if (answerable) {
+            li.dataset.choose = String(i); li.dataset.id = it.id;
+            if (sentAnswers.has(it.id)) li.classList.add("disabled");
+          }
           ol.append(li);
-        }
+        });
         box.append(ol);
         card.append(box);
       }
-      if (it.result) {
+      if (answerable) { card.classList.add("pending"); card.append($("div", "hint", sentAnswers.has(it.id) ? "Sent…" : "Pick an answer, or answer in the terminal (other text, several questions)")); }
+      else if (it.result) {
         const answers = [...it.result.matchAll(/"((?:[^"\\]|\\.)*)"="((?:[^"\\]|\\.)*)"/g)].map((m) => m[2]);
         card.append($("div", "answer", "→ " + (answers.length ? answers.join(", ") : firstLine(it.result))));
       }
-      else card.append($("div", "hint", "Answer in the terminal"));
+      else if (!it.result) card.append($("div", "hint", "Answer in the terminal"));
       break;
     }
     case "ExitPlanMode": {
@@ -455,11 +487,11 @@ function renderTurn(turn, isLast) {
     else if (b.type === "tool") el.append(cardEl(b.item));
     else if (b.type === "note") el.append(noteEl(b.item));
   });
-  if (!live && turn.user && turn.items.length) el.append(footerEl(turn));
+  if (!live && !(isLast && state.needsInput) && turn.user && turn.items.length) el.append(footerEl(turn));
   return el;
 }
 function turnSig(turn, isLast) {
-  let s = turn.key + "|" + (isLast && state.working ? "w" : "d") + "|" + state.agent;
+  let s = turn.key + "|" + (isLast && state.working ? "w" : "d") + (isLast && state.needsInput ? "n" : "") + "|" + state.agent + "|" + sentAnswers.size;
   for (const it of turn.items) s += "," + it.id + ":" + it.sig;
   return s + (turn.user ? "|" + turn.user.sig : "");
 }
@@ -511,6 +543,7 @@ function chatUpdate(p) {
     for (const k of [...state.items.keys()]) if (!ids.has(k)) state.items.delete(k);
   }
   if ("working" in p) state.working = !!p.working;
+  if ("needsInput" in p) state.needsInput = !!p.needsInput;
   if (p.cwd != null) state.cwd = p.cwd;
   if (p.home != null) state.home = p.home;
   if (p.agent) state.agent = p.agent;
@@ -534,6 +567,20 @@ function init() {
   document.addEventListener("click", (e) => {
     const a = e.target.closest("a");
     if (a) { e.preventDefault(); const href = a.getAttribute("href"); if (href) post({ type: "link", href }); return; }
+    const ch = e.target.closest("[data-choose]");
+    if (ch && !ch.classList.contains("disabled") && !sentAnswers.has(ch.dataset.id)) {
+      sentAnswers.add(ch.dataset.id); retryLater(ch.dataset.id);
+      post({ type: "choose", id: ch.dataset.id, index: Number(ch.dataset.choose) });
+      render();
+      return;
+    }
+    const pm = e.target.closest("[data-permit]");
+    if (pm && !pm.disabled && !sentAnswers.has(pm.dataset.id)) {
+      sentAnswers.add(pm.dataset.id); retryLater(pm.dataset.id);
+      post({ type: "permit", id: pm.dataset.id, allow: pm.dataset.permit === "allow" });
+      render();
+      return;
+    }
     const op = e.target.closest("[data-open]");
     if (op) { e.stopPropagation(); post({ type: "open", path: op.dataset.open }); return; }
     const t = e.target.closest("[data-toggle]");

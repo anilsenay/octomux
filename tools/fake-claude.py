@@ -52,7 +52,7 @@ elif not resumed:
         "Done. The holder now **captures the main screen** right before the alternate screen is entered and replays it first, so reattaching while `vim` runs keeps your shell history.\n\nTests: `cargo test -p octomux` — 26 passed."}]}})
 print(f"{G}⏺{N} Done. The holder now captures the main screen before the alt screen.\n")
 print(f"{D}(type a message; this fake echoes it){N}")
-status("done")
+status("blocked" if os.environ.get("FAKE_CLAUDE_PENDING") == "1" and not resumed else "done")
 for line in sys.stdin:
     text = re.sub(r"\x1b\[20[01]~", "", line).strip()
     if not text:
