@@ -460,6 +460,7 @@ private struct BaseRow: View {
         .contentShape(Rectangle())
         .onHover { hover = $0 }
         .pointerCursor()
+        .help(f.path)
         .onTapGesture {
             changes.selected = key
             model.openChanges(scrollTo: key)
@@ -527,6 +528,7 @@ private struct ChangeRow: View {
         .contentShape(Rectangle())
         .onHover { hover = $0 }
         .pointerCursor()
+        .help(c.path)
         .onTapGesture {
             changes.selected = key
             model.openChanges(scrollTo: changes.baseName == nil ? key : "b:" + c.path)

@@ -349,7 +349,6 @@ struct ProjectRow: View {
                         Text(b).font(T.mono(10.5)).lineLimit(1).truncationMode(.tail)
                     }
                     .foregroundStyle(T.text3)
-                    .help("On branch \(b)")
                 }
             }
             .layoutPriority(1)
@@ -384,8 +383,18 @@ struct ProjectRow: View {
         .contentShape(Rectangle())
         .onHover { hover = $0 }
         .pointerCursor()
+        .help(tooltip)
         .onTapGesture(count: 1) { toggle(); model.selectProject(project.id) }
         .contextMenu { ProjectMenu(project: project) }
+    }
+}
+
+extension ProjectRow {
+    /// The whole name and branch (both can be cut short in a narrow sidebar), like the worktree rows.
+    var tooltip: String {
+        var lines = [project.name, project.path]
+        if let b = git.branch(for: project.path) { lines.insert("On branch \(b)", at: 1) }
+        return lines.joined(separator: "\n")
     }
 }
 

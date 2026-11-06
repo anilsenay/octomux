@@ -5,6 +5,7 @@
 - **Changes panel follows the compare branch**: with a branch picked next to the status bar's branch, the panel
   lists every file since it (committed on this branch or not) under **Since <branch>**, with the same counts as
   the status bar; a click opens that file's diff against the branch. Before, it showed only uncommitted files.
+- Names cut short show in full on hover: a project's row (name, branch, folder) and the Changes panel's files.
 - **Workspace paging**: a two-finger swipe over the sidebar pulls the next workspace's projects in beside the
   current ones, and the window color blends toward the new workspace's as you pass the middle. Let go past
   the point (or flick) and it switches; otherwise it springs back. ⌃⌘← →, ⌃1…⌃9 and the switcher dots page too.
