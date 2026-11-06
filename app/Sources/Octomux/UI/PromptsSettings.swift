@@ -46,7 +46,7 @@ struct PromptsSettings: View {
     @State private var editing: PromptTemplate?
 
     var body: some View {
-        let scopes = ["global"] + model.state.workspaces.sorted { $0.sort < $1.sort }.map { "workspace:\($0.id)" }
+        let scopes = ["global"] + model.orderedWorkspaces.map { "workspace:\($0.id)" }
             + model.state.projects.filter { !$0.archived }.sorted { $0.sort < $1.sort }.map { "project:\($0.id)" }
         let filled = scopes.filter { $0 == "global" || !model.templates(scope: $0).isEmpty }
         HStack {
@@ -109,7 +109,7 @@ struct PromptEditor: View {
                 Picker("For", selection: $template.scope) {
                     Text("All projects").tag("global")
                     Section("Workspaces") {
-                        ForEach(model.state.workspaces.sorted { $0.sort < $1.sort }) { w in Text(w.name).tag("workspace:\(w.id)") }
+                        ForEach(model.orderedWorkspaces) { w in Text(w.name).tag("workspace:\(w.id)") }
                     }
                     Section("Projects") {
                         ForEach(model.state.projects.filter { !$0.archived }.sorted { $0.sort < $1.sort }) { p in Text(p.name).tag("project:\(p.id)") }

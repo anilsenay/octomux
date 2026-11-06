@@ -26,7 +26,7 @@ final class WorkspacePager: ObservableObject {
     static let commitVelocity: CGFloat = 12
 
     /// Swapped in tests.
-    var workspaceIds: () -> [String] = { AppModel.shared.state.workspaces.sorted { $0.sort < $1.sort }.map(\.id) }
+    var workspaceIds: () -> [String] = { AppModel.shared.orderedWorkspaces.map(\.id) }
     var currentId: () -> String? = { AppModel.shared.selectedWorkspaceId }
     var select: (String) -> Void = { AppModel.shared.selectWorkspace($0) }
     var animated = true

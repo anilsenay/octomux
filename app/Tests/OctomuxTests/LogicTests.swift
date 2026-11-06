@@ -645,3 +645,21 @@ final class LeftoverTests: XCTestCase {
         XCTAssertTrue(CommitMessageGen.parseCodexModels("not json").isEmpty)
     }
 }
+
+final class WorkspaceOrderTests: XCTestCase {
+    private func w(_ id: String, _ sort: Int) -> Workspace { Workspace(id: id, name: id, color: "#fff", sort: sort, icon: nil) }
+
+    func testMovingRenumbersAndMendsTies() {
+        // An older Move Up left two at 0: the order still comes out the same every time (ties by id).
+        let ws = [w("c", 0), w("a", 0), w("b", 2), w("d", 3)]
+        XCTAssertEqual(AppModel.ordered(ws).map(\.id), ["a", "c", "b", "d"])
+        XCTAssertEqual(AppModel.ordered(ws.reversed()).map(\.id), ["a", "c", "b", "d"])
+        // b up one: a c b d → a b c d, numbered 0…3 (a stays 0; c goes to 2, b to 1, d stays 3).
+        let up = AppModel.workspaceSorts(ws, moving: "b", to: 1)
+        XCTAssertEqual(up.map(\.id), ["b", "c"]); XCTAssertEqual(up.map(\.sort), [1, 2])
+        // a to the end.
+        let end = Dictionary(uniqueKeysWithValues: AppModel.workspaceSorts(ws, moving: "a", to: 9).map { ($0.id, $0.sort) })
+        XCTAssertEqual(end, ["b": 1, "d": 2, "a": 3])   // c is at 0 already
+        XCTAssertTrue(AppModel.workspaceSorts([w("a", 0), w("b", 1)], moving: "a", to: 0).isEmpty)   // nothing changes
+    }
+}

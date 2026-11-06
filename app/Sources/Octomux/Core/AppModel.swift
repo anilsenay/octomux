@@ -504,7 +504,7 @@ final class AppModel: ObservableObject {
     }
 
     func cycleWorkspace(_ delta: Int) {
-        let ws = state.workspaces.sorted { $0.sort < $1.sort }
+        let ws = orderedWorkspaces
         guard !ws.isEmpty, let i = ws.firstIndex(where: { $0.id == selectedWorkspaceId }) else { return }
         let n = (i + delta + ws.count) % ws.count
         selectWorkspace(ws[n].id)
@@ -854,6 +854,25 @@ final class AppModel: ObservableObject {
         var p = fields
         p["id"] = id
         client.call("workspace.update", p, completion: report)
+    }
+
+    /// Workspaces in their order. Ties (left by an older Move Up that gave two the same number) break by id, so the
+    /// order is the same everywhere and after a relaunch.
+    var orderedWorkspaces: [Workspace] { Self.ordered(state.workspaces) }
+    static func ordered(_ ws: [Workspace]) -> [Workspace] { ws.sorted { ($0.sort, $0.id) < ($1.sort, $1.id) } }
+
+    /// The numbers to send to put workspace `id` at `index`: all of them become 0, 1, 2… in the new order, and only
+    /// the ones that change are listed.
+    static func workspaceSorts(_ ws: [Workspace], moving id: String, to index: Int) -> [(id: String, sort: Int)] {
+        var order = ordered(ws)
+        guard let from = order.firstIndex(where: { $0.id == id }) else { return [] }
+        let w = order.remove(at: from)
+        order.insert(w, at: min(max(index, 0), order.count))
+        return order.enumerated().compactMap { k, w in w.sort == k ? nil : (w.id, k) }
+    }
+
+    func moveWorkspace(_ id: String, to index: Int) {
+        for c in Self.workspaceSorts(state.workspaces, moving: id, to: index) { updateWorkspace(c.id, ["sort": c.sort]) }
     }
 
     func deleteWorkspace(_ id: String) { client.call("workspace.delete", ["id": id], completion: report) }

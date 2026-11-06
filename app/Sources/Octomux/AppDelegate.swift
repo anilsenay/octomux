@@ -256,7 +256,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         WorkspacePager.shared.slide(d)
     }
     @objc func goToWorkspace(_ s: NSMenuItem) {
-        let ws = model.state.workspaces.sorted { $0.sort < $1.sort }
+        let ws = model.orderedWorkspaces
         if s.tag - 1 < ws.count { WorkspacePager.shared.go(to: ws[s.tag - 1].id) }
     }
     @objc func focusLeft(_ s: Any?) { TerminalHost.shared.focusNeighbor(.minX) }

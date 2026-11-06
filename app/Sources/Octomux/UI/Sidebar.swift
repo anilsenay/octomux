@@ -80,7 +80,7 @@ struct SidebarView: View {
         VStack(spacing: 8) {
             WindowDragArea().frame(height: floating ? 6 : 38)  // traffic lights row: drags the window
             Menu {
-                ForEach(model.state.workspaces.sorted { $0.sort < $1.sort }) { w in
+                ForEach(model.orderedWorkspaces) { w in
                     let a = model.attention(workspace: w.id)
                     let note = attentionText(a)
                     Button((w.id == model.selectedWorkspaceId ? "✓ " : "") + w.name + (note.isEmpty ? "" : "   ·  " + note)) { model.selectWorkspace(w.id) }
@@ -179,7 +179,7 @@ struct WorkspaceSwitcher: View {
 
     var body: some View {
         HStack(spacing: 2) {
-            ForEach(Array(model.state.workspaces.sorted { $0.sort < $1.sort }.enumerated()), id: \.element.id) { i, w in
+            ForEach(Array(model.orderedWorkspaces.enumerated()), id: \.element.id) { i, w in
                 WorkspaceButton(workspace: w, selected: w.id == model.selectedWorkspaceId, index: i + 1)
             }
         }

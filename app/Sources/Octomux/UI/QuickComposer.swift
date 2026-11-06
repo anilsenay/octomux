@@ -123,7 +123,7 @@ struct QuickComposerView: View {
             }
             HStack(spacing: 8) {
                 Picker("", selection: $state.projectId) {
-                    ForEach(model.state.workspaces.sorted { $0.sort < $1.sort }) { w in
+                    ForEach(model.orderedWorkspaces) { w in
                         let ps = model.state.projects.filter { $0.workspaceId == w.id && !$0.archived }.sorted { $0.sort < $1.sort }
                         if !ps.isEmpty {
                             Section(w.name) { ForEach(ps) { p in Text(p.name).tag(Optional(p.id)) } }

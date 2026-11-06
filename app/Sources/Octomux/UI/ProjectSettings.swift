@@ -42,7 +42,7 @@ struct ProjectSettings: View {
         HStack(spacing: 10) {
             Text("Project").font(.system(size: T.k * 12.5)).foregroundStyle(T.text2)
             Menu {
-                ForEach(model.state.workspaces.sorted { $0.sort < $1.sort }) { w in
+                ForEach(model.orderedWorkspaces) { w in
                     let ps = projects.filter { $0.workspaceId == w.id }.sorted { $0.sort < $1.sort }
                     if !ps.isEmpty {
                         Section(w.name) {

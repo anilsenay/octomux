@@ -317,7 +317,7 @@ struct ScopeBar: View {
     @EnvironmentObject var sel: SettingsSelection
 
     var body: some View {
-        let ws = model.state.workspaces.sorted { $0.sort < $1.sort }
+        let ws = model.orderedWorkspaces
         let current = ws.first { "workspace:\($0.id)" == sel.scope }
         HStack(spacing: 10) {
             Picker("", selection: Binding(
@@ -693,12 +693,20 @@ struct WorkspacesSettings: View {
     @EnvironmentObject var model: AppModel
     @State private var newName = ""
     @State private var picking: String?
+    @State private var dragging: String?
+    @State private var over: String?
 
     var body: some View {
-        let ws = model.state.workspaces.sorted { $0.sort < $1.sort }
+        let ws = model.orderedWorkspaces
         SettingsGroup("Workspaces", desc: "Click the dot to pick a color, the name to rename it. New Chat starts with the agent set here.") {
             ForEach(Array(ws.enumerated()), id: \.element.id) { i, w in
                 HStack(spacing: 12) {
+                    // Drag a row by its handle to put it elsewhere.
+                    Image(systemName: "line.3.horizontal").font(.system(size: T.k * 11, weight: .medium)).foregroundStyle(T.text3)
+                        .frame(width: 14, height: 30).contentShape(Rectangle())
+                        .onHover { h in if h { NSCursor.openHand.push() } else { NSCursor.pop() } }
+                        .onDrag { dragging = w.id; return NSItemProvider(object: w.id as NSString) }
+                        .help("Drag to reorder")
                     Button { picking = w.id } label: {
                         Circle().fill(Color(hex: w.color)).frame(width: 14, height: 14)
                             .overlay(Circle().stroke(T.text.opacity(0.15)))
@@ -728,14 +736,20 @@ struct WorkspacesSettings: View {
                     .menuStyle(.borderlessButton).fixedSize().tint(T.text2)
                     .help("Agent the New Chat screen starts with in this workspace")
                     Menu {
-                        Button("Move Up") { model.updateWorkspace(w.id, ["sort": w.sort - 2]) }.disabled(i == 0)
-                        Button("Move Down") { model.updateWorkspace(w.id, ["sort": w.sort + 2]) }.disabled(i == ws.count - 1)
+                        Button("Move Up") { model.moveWorkspace(w.id, to: i - 1) }.disabled(i == 0)
+                        Button("Move Down") { model.moveWorkspace(w.id, to: i + 1) }.disabled(i == ws.count - 1)
                         Divider()
                         Button("Delete Workspace", role: .destructive) { model.deleteWorkspace(w.id) }.disabled(ws.count <= 1)
                     } label: { Image(systemName: "ellipsis").font(.system(size: T.k * 13)).foregroundStyle(T.text2) }
                         .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().tint(T.text2)
                 }
                 .padding(.horizontal, 14).frame(minHeight: 52)
+                .background(dragging == w.id ? T.hover : .clear)
+                // Where it lands: below the row when coming from above, above it when coming from below.
+                .overlay(alignment: (ws.firstIndex { $0.id == dragging } ?? i) < i ? .bottom : .top) {
+                    if over == w.id { Rectangle().fill(T.accent).frame(height: 2) }
+                }
+                .onDrop(of: [.text], delegate: WorkspaceRowDrop(target: w.id, index: i, dragging: $dragging, over: $over, model: model))
             }
             HStack(spacing: 10) {
                 Image(systemName: "plus").font(.system(size: T.k * 12)).foregroundStyle(T.text3).frame(width: 22)
@@ -1854,4 +1868,25 @@ struct AdvancedSettings: View {
             }
         }
     }
+}
+
+/// Settings → Workspaces: the row a dragged one is over is marked; letting go puts the dragged one there (one move,
+/// so the numbers sent never race each other).
+struct WorkspaceRowDrop: DropDelegate {
+    let target: String
+    let index: Int
+    @Binding var dragging: String?
+    @Binding var over: String?
+    let model: AppModel
+
+    func dropEntered(info: DropInfo) { if dragging != target { over = target } }
+    func dropExited(info: DropInfo) { if over == target { over = nil } }
+    func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: .move) }
+    func performDrop(info: DropInfo) -> Bool {
+        defer { dragging = nil; over = nil }
+        guard let d = dragging, d != target else { return false }
+        model.moveWorkspace(d, to: index)
+        return true
+    }
+    func validateDrop(info: DropInfo) -> Bool { dragging != nil }
 }

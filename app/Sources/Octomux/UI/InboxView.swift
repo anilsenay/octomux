@@ -50,17 +50,29 @@ struct InboxView: View {
     @EnvironmentObject var model: AppModel
     @ObservedObject var store = InboxStore.shared
     @AppStorage(InboxPrefs.foldersCollapsed) private var collapsed = false
-    @State private var source: InboxSource? = nil
-    @State private var reasonFilter: InboxItem.Reason? = nil
-    @State private var place: String? = nil
-    @State private var days = 0     // 0: any time
+    // Where you were (source tab, folder, time) comes back after a relaunch; the filter text doesn't.
+    @AppStorage("octomux.inbox.view.source") private var sourceRaw = ""
+    @AppStorage("octomux.inbox.view.reason") private var reasonRaw = ""
+    @AppStorage("octomux.inbox.view.place") private var placeRaw = ""
+    @AppStorage("octomux.inbox.view.days") private var days = 0     // 0: any time
+    @AppStorage("octomux.inbox.view.snoozed") private var showSnoozed = false
+    private var source: InboxSource? {
+        get { InboxSource(rawValue: sourceRaw) }
+        nonmutating set { sourceRaw = newValue?.rawValue ?? "" }
+    }
+    private var reasonFilter: InboxItem.Reason? {
+        get { InboxItem.Reason(rawValue: reasonRaw) }
+        nonmutating set { reasonRaw = newValue?.rawValue ?? "" }
+    }
+    private var place: String? {
+        get { placeRaw.isEmpty ? nil : placeRaw }
+        nonmutating set { placeRaw = newValue ?? "" }
+    }
     @State private var query = ""
     @FocusState private var filterFocused: Bool
     @ObservedObject private var mutes = InboxMute.shared
     private var settingsOpen: Bool { SettingsWindow.window?.isKeyWindow == true }
     @State private var showKeys = false
-    /// The Snoozed folder is open (it lists what is out of the list for now).
-    @State private var showSnoozed = false
 
     /// Shown sources still on their first fetch since launch.
     private var loadingHere: [InboxSource] {
@@ -145,7 +157,12 @@ struct InboxView: View {
         .background(CanvasBackground())
         .background(InboxKeyCatcher { handle($0) })
         .sheet(isPresented: Binding(get: { mutes.picking != nil && !settingsOpen }, set: { if !$0 { mutes.picking = nil } })) { InboxMuteDatePicker() }
-        .onAppear { if store.lastRefresh == nil || Date().timeIntervalSince(store.lastRefresh!) > 60 { store.refresh() } }
+        .onAppear {
+            if store.lastRefresh == nil || Date().timeIntervalSince(store.lastRefresh!) > 60 { store.refresh() }
+            // What was open last time but is gone now (a source turned off, a repo with nothing left) isn't kept.
+            if let s = source, !store.isOn(s) { source = nil }
+            if let p = place, !store.items.isEmpty, !store.items.contains(where: { $0.place == p }) { place = nil }
+        }
     }
 
     /// A key from InboxKeyCatcher; false lets it through.
@@ -1866,7 +1883,7 @@ enum InboxStart {
             a.addButton(withTitle: "Add Anyway").keyEquivalent = ""
             guard a.runModal() == .alertSecondButtonReturn else { return }
         }
-        let spaces = model.state.workspaces.sorted { $0.sort < $1.sort }
+        let spaces = model.orderedWorkspaces
         guard !spaces.isEmpty else { model.lastError = "Make a workspace first."; return }
         let a = NSAlert()
         a.messageText = "Add \(url.lastPathComponent) as a project?"
@@ -1886,7 +1903,7 @@ enum InboxStart {
 
     /// Asks where to clone the item's repo (folder and workspace), then clones it and makes it a project.
     static func cloneRepo(_ item: InboxItem, model: AppModel) {
-        let spaces = model.state.workspaces.sorted { $0.sort < $1.sort }
+        let spaces = model.orderedWorkspaces
         guard !spaces.isEmpty else { model.lastError = "Make a workspace first."; return }
         let name = String(item.place.split(separator: "/").last ?? "repo")
         let parent = RepoClone.defaultParent(projects: model.state.projects.map(\.path))
