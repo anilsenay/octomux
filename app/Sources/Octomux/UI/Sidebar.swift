@@ -70,7 +70,8 @@ struct SidebarView: View {
             seen.insert(w.path)
             out.append(WorktreeGroup(path: w.path, branch: w.label, sessions: sessions.filter { $0.worktree == w.path }))
         }
-        for path in Set(sessions.compactMap(\.worktree)) where !seen.contains(path) {
+        // Hidden ones stay hidden even with sessions in them (those are still in the Agents list).
+        for path in Set(sessions.compactMap(\.worktree)) where !seen.contains(path) && !wt.hidden.contains(path) {
             out.append(WorktreeGroup(path: path, branch: (path as NSString).lastPathComponent, sessions: sessions.filter { $0.worktree == path }))
         }
         return out
@@ -463,7 +464,7 @@ struct ProjectMenu: View {
         }
         if model.setting("features.worktrees")?.bool ?? true {
             Button("New Worktree…") { model.newWorktreeFor = project }
-            let hidden = Worktrees.shared.hiddenPaths(of: project.path)
+            let hidden = Worktrees.shared.hiddenPaths(of: project.path, sessionFolders: model.sessions(ofProject: project.id).compactMap(\.worktree))
             if !hidden.isEmpty {
                 Button("Show \(hidden.count) Hidden Worktree\(hidden.count == 1 ? "" : "s")") { Worktrees.shared.unhide(hidden) }
             }

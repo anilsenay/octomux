@@ -288,6 +288,8 @@ enum DebugActions {
                 if let id, let proj = m.project(id) {
                     m.newWorktree(project: proj, branch: p["value"] as? String ?? "feat/x", open: p["profile_id"] as? String)
                 }
+            case "hide_worktree":     // value: worktree path; "show": true brings it back (the project menu's Show Hidden)
+                if let v = p["value"] as? String { if (p["show"] as? Bool) == true { Worktrees.shared.unhide([v]) } else { Worktrees.shared.hide(v) } }
             case "remove_worktree":   // the real removal without its question: teardown, then {"drop_branch": "<b>"}
                 if let id, let proj = m.project(id), let path = p["value"] as? String {
                     m.performWorktreeRemoval(project: proj, path: path, locked: false, dropBranch: p["drop_branch"] as? String)

@@ -130,6 +130,9 @@
   - Resuming an Inbox review's session continues the conversation (it runs interactively, with the same limits);
     before, it started in print mode with no prompt and exited at once with code 1. The next review of a pull
     request closes the earlier review sessions that have stopped, so they don't pile up.
+  - Hide from Sidebar hides a worktree that has sessions in it too (it came straight back before); its sessions
+    stay in the Agents list. The project's menu (right-click it) shows hidden worktrees again, review folders
+    of downloaded clones included.
   - Workspaces keep their order: Move Up / Down could give two workspaces the same position, so the order
     changed after a relaunch and moves jumped. Moving now renumbers them (mending old ties), and Settings →
     Workspaces rows can be dragged by their handle.

@@ -40,8 +40,10 @@ final class Worktrees: ObservableObject {
         hidden.insert(path)
         UserDefaults.standard.set(Array(hidden), forKey: "octomux.hiddenWorktrees")
     }
-    func hiddenPaths(of projectPath: String) -> [String] {
-        (lists[projectPath] ?? []).map(\.path).filter { hidden.contains($0) }
+    /// The project's hidden worktrees: its git ones, and folders its sessions are in (a review folder of a
+    /// downloaded clone isn't in the project's git list).
+    func hiddenPaths(of projectPath: String, sessionFolders: [String] = []) -> [String] {
+        Array(Set((lists[projectPath] ?? []).map(\.path) + sessionFolders).filter { hidden.contains($0) }).sorted()
     }
     func unhide(_ paths: [String]) {
         hidden.subtract(paths)
