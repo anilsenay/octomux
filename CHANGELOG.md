@@ -16,6 +16,8 @@
 - **Answer from the chat**: when the agent asks one single-choice question, pick the answer on its card; when it
   waits for permission on a tool, Allow or Deny under that tool (sent to the terminal as the keys you would press).
   Messages you send while the agent works show as queued until it reads them.
+- **Chat turns end with the files they changed** (lines added and removed, from the agent's own edits); click one
+  to see it in Changes. Commands show the agent's own description ("Run tests") next to the command line.
 
 ## 0.3.0
 

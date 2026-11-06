@@ -129,6 +129,8 @@ final class ChatWebController: NSObject, WKScriptMessageHandler, WKNavigationDel
             }
         case "open":
             if let p = m["path"] as? String { open(path: p) }
+        case "diff":
+            showChanges(path: m["path"] as? String ?? "")
         case "choose":
             if let id = m["id"] as? String, let i = (m["index"] as? NSNumber)?.intValue, i >= 0, i < 20, waitingOn(id) {
                 // The question's list starts on its first option: move down to the pick, then return.
@@ -140,6 +142,22 @@ final class ChatWebController: NSObject, WKScriptMessageHandler, WKNavigationDel
             }
         default: break
         }
+    }
+
+    /// The Changes view of the session's folder, scrolled to `path` when given (as a working-tree change,
+    /// or against the compare branch when one is set).
+    private func showChanges(path: String) {
+        let model = AppModel.shared
+        guard let s = model.session(sessionId) else { return }
+        let base = s.worktree ?? model.project(s.projectId)?.path ?? s.cwd
+        if model.selectedProjectId != s.projectId { model.selectedProjectId = s.projectId }
+        var key: String?
+        let full = (path as NSString).standardizingPath
+        if !path.isEmpty, full.hasPrefix(base + "/") {
+            let rel = String(full.dropFirst(base.count + 1))
+            key = (GitInfo.compareBase(for: base) != nil ? "b:" : "u:") + rel
+        }
+        model.openDoc(.changes, workPath: base, scrollTo: key)
     }
 
     /// True when the session waits for input and `id` is its newest tool call without a result

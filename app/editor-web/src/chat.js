@@ -138,7 +138,7 @@ function toolInfo(it) {
       return { cat: "edit", verb: "Edited", target: fs.length ? fs.map((f) => rel(f.path)).join(", ") : it.detail, path: fs.length === 1 ? fs[0].path : "", files: Math.max(1, fs.length) };
     }
     case "Bash": case "exec_command": case "shell": case "local_shell": case "unified_exec": case "write_stdin":
-      return { cat: "run", verb: "Ran", target: firstLine(inp.command || it.detail) };
+      return { cat: "run", verb: "Ran", target: firstLine(inp.command || it.detail), desc: inp.description || "" };
     case "BashOutput": case "KillShell": case "KillBash": return { cat: "run", verb: n === "BashOutput" ? "Checked output" : "Stopped", target: inp.bash_id || inp.shell_id || it.detail };
     case "Grep": case "grep": case "rg": return { cat: "search", verb: "Searched", target: (inp.pattern || it.detail) + (inp.path ? "  in " + rel(inp.path) : "") };
     case "Glob": case "LS": case "list_dir": return { cat: "search", verb: n === "Glob" ? "Found files" : "Listed", target: inp.pattern || rel(inp.path) || it.detail };
@@ -250,8 +250,9 @@ function toolEl(it, live) {
   const dot = $("span", "dot");
   const verb = $("span", "verb", it.failed ? "Failed: " + info.verb.toLowerCase() : info.verb);
   const target = $("span", "target", info.target);
+  const desc = info.desc ? $("span", "desc", info.desc) : null;
   if (info.path && info.cat !== "run") { target.classList.add("path"); target.dataset.open = info.path; target.title = "Open " + rel(info.path); }
-  line.append(dot, verb, target);
+  if (desc) line.append(dot, verb, desc, target); else line.append(dot, verb, target);
 
   // Details: diff for edits, command + output for shells, markdown for subagents, text for the rest.
   let detail = null, dflt = false;
@@ -332,6 +333,8 @@ function groupEl(items, live, done) {
   head.dataset.toggle = key;
   const failed = tools.filter((t) => t.failed).length;
   head.append($("span", "chev", "›"), $("span", "gsum", groupSummary(items)));
+  const lastDesc = [...tools].reverse().map((t) => toolInfo(t).desc).find((d) => d);
+  if (lastDesc) head.append($("span", "gdesc", lastDesc));
   if (failed) head.append($("span", "gfail", plural(failed, "failed", "failed")));
   if (live) head.append($("span", "spin"));
   const body = $("div", "gbody");
@@ -436,6 +439,68 @@ function assistantEl(it) {
 }
 function noteEl(it) { return $("div", "note", it.text); }
 
+// Files the turn's edit tools changed, with lines added and removed (from the edits themselves, not git).
+function changedFiles(items) {
+  const files = new Map();
+  const add = (path, a, d) => {
+    if (!path) return;
+    const f = files.get(path) || { path, added: 0, removed: 0 };
+    f.added += a; f.removed += d; files.set(path, f);
+  };
+  for (const it of items) {
+    if (it.kind !== "tool" || it.failed) continue;
+    const info = toolInfo(it);
+    if (info.cat !== "edit") continue;
+    if (it.tool === "apply_patch") {
+      let cur = null;
+      for (const line of String((it.input || {}).patch || "").split("\n")) {
+        const m = /^\*\*\* (?:Update|Add|Delete) File: (.+)$/.exec(line);
+        if (m) { cur = m[1].trim(); add(cur, 0, 0); continue; }
+        if (!cur || line.startsWith("***")) continue;
+        if (line.startsWith("+")) add(cur, 1, 0); else if (line.startsWith("-")) add(cur, 0, 1);
+      }
+      continue;
+    }
+    const ops = editOps(it) || [];
+    let a = 0, d = 0;
+    for (const o of ops) { if (o.op === "+") a++; else if (o.op === "-") d++; }
+    add(info.path || it.detail, a, d);
+  }
+  return [...files.values()];
+}
+function changesEl(turn) {
+  const files = changedFiles(turn.items);
+  if (!files.length) return null;
+  const key = "c:" + turn.key;
+  const el = $("div", "changes");
+  const head = $("div", "chhead toggle");
+  head.dataset.toggle = key;
+  let a = 0, d = 0;
+  files.forEach((f) => { a += f.added; d += f.removed; });
+  const st = $("span", "stat");
+  if (a) st.append($("span", "plus", "+" + a));
+  if (d) st.append($("span", "minus", "−" + d));
+  const diff = $("button", "chbtn", "Open diff");
+  diff.dataset.diff = "";
+  diff.title = "Show these files in Changes";
+  head.append($("span", "chev", "›"), $("span", "chtitle", plural(files.length, "changed file", "changed files")), st, diff);
+  const list = $("div", "chlist");
+  for (const f of files) {
+    const row = $("div", "chrow");
+    row.dataset.diff = f.path;
+    row.title = rel(f.path);
+    const fst = $("span", "stat");
+    if (f.added) fst.append($("span", "plus", "+" + f.added));
+    if (f.removed) fst.append($("span", "minus", "−" + f.removed));
+    const r = rel(f.path), cut = r.lastIndexOf("/");
+    row.append($("span", "chname", cut >= 0 ? r.slice(cut + 1) : r), $("span", "chdir", cut >= 0 ? r.slice(0, cut) : ""), fst);
+    list.append(row);
+  }
+  el.append(head, list);
+  if (isOpen(key, files.length <= 4)) el.classList.add("open");
+  return el;
+}
+
 function footerEl(turn) {
   const start = parseTs(turn.user && turn.user.ts);
   const last = [...turn.items].reverse().find((i) => i.kind !== "note" && parseTs(i.ts));
@@ -487,7 +552,11 @@ function renderTurn(turn, isLast) {
     else if (b.type === "tool") el.append(cardEl(b.item));
     else if (b.type === "note") el.append(noteEl(b.item));
   });
-  if (!live && !(isLast && state.needsInput) && turn.user && turn.items.length) el.append(footerEl(turn));
+  if (!live && !(isLast && state.needsInput) && turn.user && turn.items.length) {
+    const ch = changesEl(turn);
+    if (ch) el.append(ch);
+    el.append(footerEl(turn));
+  }
   return el;
 }
 function turnSig(turn, isLast) {
@@ -581,6 +650,8 @@ function init() {
       render();
       return;
     }
+    const df = e.target.closest("[data-diff]");
+    if (df) { e.stopPropagation(); post({ type: "diff", path: df.dataset.diff }); return; }
     const op = e.target.closest("[data-open]");
     if (op) { e.stopPropagation(); post({ type: "open", path: op.dataset.open }); return; }
     const t = e.target.closest("[data-toggle]");
