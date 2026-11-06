@@ -19,8 +19,17 @@ struct ChatItem: Identifiable, Equatable {
     var ts = ""
 }
 
+/// How full the agent's context is, from its transcript (tokens of the last main-thread reply; Codex also
+/// reports its window). Claude's own reading (status line) is preferred when the app has it.
+struct ChatContext: Equatable {
+    var used = 0
+    var window: Int?
+    var model = ""
+}
+
 final class ChatModel: ObservableObject {
     @Published var items: [ChatItem] = []
+    @Published var context = ChatContext()
     @Published var path: String?
     /// Client of the session's host when it is remote (transcripts live there).
     var remoteClient: DaemonClient?
@@ -32,6 +41,10 @@ final class ChatModel: ObservableObject {
     private var seq = 0
     /// Timestamp of the line being ingested.
     private var lineTs = ""
+    /// Context readings while lines are ingested; published once per poll.
+    private var pendingContext = ChatContext()
+
+    static func int(_ v: Any?) -> Int { (v as? NSNumber)?.intValue ?? (v as? Int) ?? 0 }
 
     func attach(_ p: String?) {
         guard p != path else { return }
@@ -40,6 +53,8 @@ final class ChatModel: ObservableObject {
         offset = 0
         partial = Data()
         toolIndex = [:]
+        pendingContext = ChatContext()
+        context = ChatContext()
         poll()
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 0.7, repeats: true) { [weak self] _ in self?.poll() }
@@ -79,6 +94,7 @@ final class ChatModel: ObservableObject {
         var next = items
         for l in lines { ingest(l, into: &next) }
         if next != items { items = next }
+        if pendingContext != context { context = pendingContext }
     }
 
     /// Parses complete JSONL lines (used by `poll`; exposed for tests).
@@ -90,6 +106,7 @@ final class ChatModel: ObservableObject {
             partial.removeSubrange(partial.startIndex...nl)
         }
         if next != items { items = next }
+        if pendingContext != context { context = pendingContext }
     }
 
     private func newId() -> String { seq += 1; return "c\(seq)" }
@@ -106,6 +123,15 @@ final class ChatModel: ObservableObject {
         let start = out.count
         defer { stamp(&out, from: start) }
         if type == "response_item", let p = o["payload"] as? [String: Any] { ingestCodex(p, into: &out); return }
+        if type == "event_msg", let p = o["payload"] as? [String: Any], (p["type"] as? String) == "token_count",
+           let info = p["info"] as? [String: Any] {
+            let last = info["last_token_usage"] as? [String: Any] ?? [:]
+            let used = Self.int(last["input_tokens"]) + Self.int(last["output_tokens"])
+            if used > 0 { pendingContext.used = used }
+            if let w = info["model_context_window"] { pendingContext.window = Self.int(w) }
+            return
+        }
+        if type == "turn_context", let p = o["payload"] as? [String: Any], let m = p["model"] as? String { pendingContext.model = m; return }
         if (o["isMeta"] as? Bool) == true || (o["isSidechain"] as? Bool) == true { return }
         guard let msg = o["message"] as? [String: Any] else { return }
         switch type {
@@ -128,6 +154,11 @@ final class ChatModel: ObservableObject {
                 }
             }
         case "assistant":
+            if let m = msg["model"] as? String, !m.hasPrefix("<") { pendingContext.model = m }
+            if let u = msg["usage"] as? [String: Any] {
+                let used = Self.int(u["input_tokens"]) + Self.int(u["cache_creation_input_tokens"]) + Self.int(u["cache_read_input_tokens"])
+                if used > 0 { pendingContext.used = used }
+            }
             for p in (msg["content"] as? [[String: Any]]) ?? [] {
                 switch p["type"] as? String {
                 case "text":
@@ -276,6 +307,8 @@ struct ChatView: View {
     @StateObject private var chat = ChatModel()
     @State private var draft = ""
     @State private var composerFocused = false
+    /// Claude's own context reading (its status line writes `run/<session>.context`).
+    @State private var statusContext: ContextReading?
 
     var body: some View {
         let s = model.session(sessionId)
@@ -307,6 +340,7 @@ struct ChatView: View {
         }
         .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in
             if chat.path == nil { chat.attach(resolvePath(model.session(sessionId))) }   // transcript appears after the first turn
+            readStatusContext()
         }
         .onDisappear { chat.stop() }
         .onChange(of: s?.transcriptPath) { _, _ in chat.attach(resolvePath(model.session(sessionId))) }
@@ -383,6 +417,7 @@ struct ChatView: View {
             HStack(spacing: 6) {
                 if let p { AgentIcon(icon: p.icon, size: 11) }
                 Text(p?.name ?? "Agent").font(.system(size: T.k * 12, weight: .medium)).foregroundStyle(T.text2)
+                modelChip(s, kind: p?.kind)
                 if let b = s.flatMap({ GitInfo.shared.branch(for: $0.worktree ?? model.project($0.projectId)?.path ?? $0.cwd) }) {
                     Image(systemName: "arrow.triangle.branch").font(.system(size: T.k * 10)).foregroundStyle(T.text3).padding(.leading, 6)
                     Text(b).font(T.mono(11.5)).foregroundStyle(T.text3)
@@ -394,13 +429,56 @@ struct ChatView: View {
                     if !refs.isEmpty { draft += (draft.isEmpty || draft.hasSuffix(" ") ? "" : " ") + refs.joined(separator: " ") + " " }
                 } label: { Image(systemName: "paperclip").font(.system(size: T.k * 12.5)).foregroundStyle(T.text2) }
                 .buttonStyle(IconButtonStyle(size: 26)).help("Attach files (added to the message as paths)")
-                SendButton(enabled: !draft.isEmpty && s?.state == .running, action: send)
+                ContextRing(reading: contextReading)
+                if s?.activity == .working && draft.isEmpty {
+                    StopButton { model.interruptSession(sessionId) }
+                } else {
+                    SendButton(enabled: !draft.isEmpty && s?.state == .running,
+                               help: s?.activity == .working ? "Send (↩); the agent reads it when it finishes this step" : "Send (↩)", action: send)
+                }
             }
         }
         .composerCard(focused: composerFocused)
         .frame(maxWidth: 780)
         .padding(.horizontal, 28).padding(.bottom, 18).padding(.top, 6)
         .frame(maxWidth: .infinity)
+    }
+
+    /// The model the session runs, from its transcript; for Claude a menu that switches it with `/model`.
+    @ViewBuilder private func modelChip(_ s: Session?, kind: AgentKind?) -> some View {
+        let name = ChatModels.pretty(statusContext?.model ?? chat.context.model)
+        if !name.isEmpty || kind == .claude {
+            Rectangle().fill(T.border).frame(width: 1, height: 12).padding(.horizontal, 3)
+            if kind == .claude {
+                Menu {
+                    ForEach(ChatModels.claude, id: \.alias) { m in
+                        Button(m.title) { model.sendToSession(sessionId, text: "/model " + m.alias) }
+                    }
+                } label: {
+                    Text(name.isEmpty ? "Model" : name).font(.system(size: T.k * 12)).foregroundStyle(T.text2)
+                }
+                .menuStyle(.borderlessButton).menuIndicator(.visible).fixedSize()
+                .disabled(s?.activity == .working || s?.state != .running)
+                .help("Switch the model for the rest of this session (sends /model)")
+            } else {
+                Text(name).font(.system(size: T.k * 12)).foregroundStyle(T.text2)
+            }
+        }
+    }
+
+    private var contextReading: ContextReading? {
+        if let r = statusContext { return r }
+        let c = chat.context
+        guard c.used > 0 else { return nil }
+        return ContextReading(percent: c.window.map { Double(c.used) / Double(max($0, 1)) * 100 }, used: c.used, size: c.window, model: c.model)
+    }
+
+    private func readStatusContext() {
+        guard let s = model.session(sessionId), !model.host(for: s.id).isRemote,
+              let data = try? Data(contentsOf: Paths.home.appendingPathComponent("run/\(s.id).context")),
+              let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+        let r = ContextReading(statusLine: o)
+        if r != statusContext { statusContext = r }
     }
 
     private func send() {

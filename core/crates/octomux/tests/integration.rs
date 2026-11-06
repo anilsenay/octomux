@@ -614,7 +614,8 @@ fn statusline_reports_usage_and_passes_through_user_statusline() {
     let payload = json!({
         "model": { "display_name": "Opus" },
         "workspace": { "current_dir": "/nonexistent" },
-        "rate_limits": { "five_hour": { "used_percentage": 42.5, "resets_at": 1900000000 }, "seven_day": { "used_percentage": 18, "resets_at": 1900500000 } }
+        "rate_limits": { "five_hour": { "used_percentage": 42.5, "resets_at": 1900000000 }, "seven_day": { "used_percentage": 18, "resets_at": 1900500000 } },
+        "context_window": { "context_window_size": 200000, "used_percentage": 8, "current_usage": { "input_tokens": 16000 } }
     });
     let run = |cfg: &Path| {
         let mut c = std::process::Command::new(BIN)
@@ -640,10 +641,15 @@ fn statusline_reports_usage_and_passes_through_user_statusline() {
     assert_eq!(five["used_percent"], 42.5);
     assert_eq!(five["resets_at"], 1900000000);
 
+    // The context reading is left for the app's chat view.
+    let ctx: Value = serde_json::from_str(&std::fs::read_to_string(e.home.join(format!("run/{id}.context"))).unwrap()).unwrap();
+    assert_eq!(ctx["context_window"]["used_percentage"], 8, "{ctx}");
+    assert_eq!(ctx["model"], "Opus");
+
     // No user status line: a short default line.
     let empty = e.home.join("empty-cfg");
     std::fs::create_dir_all(&empty).unwrap();
-    assert_eq!(run(&empty).trim(), "Opus");
+    assert_eq!(run(&empty).trim(), "Opus · 8% context");
 }
 
 #[test]

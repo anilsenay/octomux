@@ -18,7 +18,11 @@ def w(entry, dt=4):
     lines.append(json.dumps(entry))
 
 def user(text, dt=4): w({"type": "user", "message": {"role": "user", "content": text}}, dt)
-def say(*parts, dt=3): w({"type": "assistant", "message": {"role": "assistant", "content": list(parts)}}, dt)
+used = [30000]
+def say(*parts, dt=3):
+    used[0] += 2500
+    w({"type": "assistant", "message": {"role": "assistant", "model": "claude-opus-5-5", "content": list(parts),
+       "usage": {"input_tokens": 12, "cache_creation_input_tokens": 800, "cache_read_input_tokens": used[0], "output_tokens": 300}}}, dt)
 def text(t): return {"type": "text", "text": t}
 def think(t): return {"type": "thinking", "thinking": t}
 def call(i, name, inp): return {"type": "tool_use", "id": i, "name": name, "input": inp}

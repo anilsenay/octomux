@@ -16,8 +16,12 @@ pub fn run(paths: &Paths) -> i32 {
     let mut input = String::new();
     let _ = std::io::stdin().take(4 << 20).read_to_string(&mut input);
     let v: Value = serde_json::from_str(&input).unwrap_or(Value::Null);
-    if let (Some(sid), Some(rl)) = (octomux_proto::env_var_os("SESSION_ID").and_then(|v| v.into_string().ok()), v.get("rate_limits")) {
-        report(paths, &sid, rl);
+    let sid = octomux_proto::env_var_os("SESSION_ID").and_then(|v| v.into_string().ok());
+    if let (Some(sid), Some(rl)) = (sid.as_deref(), v.get("rate_limits")) {
+        report(paths, sid, rl);
+    }
+    if let (Some(sid), Some(ctx)) = (sid.as_deref(), v.get("context_window")) {
+        write_context(paths, sid, ctx, v.pointer("/model/display_name"));
     }
     let cwd = v.pointer("/workspace/current_dir").or_else(|| v.get("cwd")).and_then(|x| x.as_str()).map(PathBuf::from);
     match user_command(cwd.as_deref()) {
@@ -26,6 +30,22 @@ pub fn run(paths: &Paths) -> i32 {
             println!("{}", default_line(&v));
             0
         }
+    }
+}
+
+/// The session's context usage for the app's chat view (`run/<sid>.context`), rewritten when it changes.
+fn write_context(paths: &Paths, sid: &str, ctx: &Value, model: Option<&Value>) {
+    if sid.is_empty() || sid.contains('/') || sid.contains("..") {
+        return;
+    }
+    let body = serde_json::json!({ "context_window": ctx, "model": model }).to_string();
+    let path = paths.run_dir().join(format!("{sid}.context"));
+    if std::fs::read_to_string(&path).is_ok_and(|s| s == body) {
+        return;
+    }
+    let tmp = path.with_extension("context.tmp");
+    if std::fs::write(&tmp, &body).is_ok() {
+        let _ = std::fs::rename(&tmp, &path);
     }
 }
 

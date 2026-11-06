@@ -97,6 +97,37 @@ final class ChatParsingTests: XCTestCase {
         XCTAssertEqual(m.items[1].result, "done")
     }
 
+    func testContextFromTranscriptAndStatusLine() {
+        let m = ChatModel()
+        m.feed(lines([
+            ["type": "assistant", "message": ["role": "assistant", "model": "claude-opus-5-5", "content": [["type": "text", "text": "a"]],
+                                              "usage": ["input_tokens": 10, "cache_creation_input_tokens": 1000, "cache_read_input_tokens": 40000, "output_tokens": 500]]],
+            ["type": "assistant", "isSidechain": true, "message": ["role": "assistant", "model": "claude-haiku-4-5", "content": [],
+                                                                   "usage": ["input_tokens": 9]]],
+        ]))
+        XCTAssertEqual(m.context, ChatContext(used: 41010, window: nil, model: "claude-opus-5-5"))
+        let codex = ChatModel()
+        codex.feed(lines([
+            ["type": "turn_context", "payload": ["model": "gpt-5-codex"]],
+            ["type": "event_msg", "payload": ["type": "token_count", "info": ["last_token_usage": ["input_tokens": 5000, "output_tokens": 200], "model_context_window": 272000]]],
+        ]))
+        XCTAssertEqual(codex.context, ChatContext(used: 5200, window: 272000, model: "gpt-5-codex"))
+
+        let r = ContextReading(statusLine: ["model": "Opus 5.5", "context_window": [
+            "context_window_size": 200000, "used_percentage": 21,
+            "current_usage": ["input_tokens": 2000, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 40000, "output_tokens": 900]]])
+        XCTAssertEqual(r.percent, 21)
+        XCTAssertEqual(r.used, 42000)
+        XCTAssertEqual(r.help, "21% context used · 42K / 200K tokens")
+        // After /compact current_usage is null and the percentage may be too.
+        XCTAssertNil(ContextReading(statusLine: ["context_window": ["context_window_size": 200000, "current_usage": NSNull()]]).percent)
+
+        XCTAssertEqual(ChatModels.pretty("claude-opus-5-5"), "Opus 5.5")
+        XCTAssertEqual(ChatModels.pretty("claude-sonnet-4-5-20250929"), "Sonnet 4.5")
+        XCTAssertEqual(ChatModels.pretty("claude-sonnet-4-5[1m]"), "Sonnet 4.5 (1M)")
+        XCTAssertEqual(ChatModels.pretty("gpt-5-codex"), "gpt-5-codex")
+    }
+
     /// The chat page draws edit diffs, todo lists and turn times from the tool input and line timestamps.
     func testToolInputAndTimestampsReachTheItems() throws {
         let m = ChatModel()

@@ -8,6 +8,8 @@
   when you scroll up (new messages no longer pull you down while you read).
 - **Chat composers** grow with the text and scroll past 14 lines (wheel, trackpad); ↩ sends, ⇧↩ adds a line,
   pasted screenshots and files become attachments.
+- **Chat composer** shows the model the session runs (Claude: switch it from there, sent as `/model`), a ring with
+  how full the context is (Claude's own reading; Codex from its log), and a Stop button while the agent works.
 
 ## 0.3.0
 
