@@ -281,6 +281,30 @@ enum GitDiffData {
         return (staged, unstaged)
     }
 
+    /// The files `againstBase` shows, with their counts only (no contents): what the Changes panel lists and the
+    /// status bar counts (same git calls, so the numbers match).
+    static func baseSummary(_ dir: String, _ base: String) -> [FileDiff] {
+        let names = GitInfo.git(["diff", "--name-status", base], in: dir) ?? ""
+        let stat = numstat(GitInfo.git(["diff", "--numstat", base], in: dir))
+        var out: [FileDiff] = []
+        for line in names.split(separator: "\n") {
+            let f = line.split(separator: "\t").map(String.init)
+            guard f.count >= 2 else { continue }
+            let path = f[f.count - 1]
+            var d = FileDiff(key: "b:" + path, path: path, status: String(f[0].prefix(1)))
+            if let st = stat[path] { d.added = st.0; d.removed = st.1; d.binary = st.2 }
+            out.append(d)
+        }
+        let others = (GitInfo.git(["ls-files", "--others", "--exclude-standard"], in: dir) ?? "").split(separator: "\n").map(String.init)
+        let counts = untrackedStats(dir, others)
+        for p in others {
+            var f = FileDiff(key: "b:" + p, path: p, status: "U")
+            f.added = counts[p] ?? 0
+            out.append(f)
+        }
+        return out
+    }
+
     /// The work tree (committed on this branch + uncommitted + untracked) against a base commit.
     static func againstBase(_ dir: String, _ base: String) -> [FileDiff] {
         let names = GitInfo.git(["diff", "--name-status", "-M", base], in: dir) ?? ""

@@ -171,6 +171,31 @@ final class GitDiffDataTests: XCTestCase {
         XCTAssertEqual(s["img.png"]?.2, true)
         XCTAssertEqual(s["src/new.rs"]?.0, 2)
     }
+
+    /// The panel's "Since <branch>" list: committed on the branch, uncommitted and untracked, counted like the status bar.
+    func testBaseSummaryCoversCommittedUncommittedAndUntracked() throws {
+        let dir = NSTemporaryDirectory() + "octomux-base-\(UUID().uuidString)"
+        try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: dir) }
+        func git(_ a: String...) { _ = GitInfo.gitResult(["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false"] + a, in: dir) }
+        func write(_ name: String, _ text: String) throws { try text.write(toFile: dir + "/" + name, atomically: true, encoding: .utf8) }
+        git("init", "-q", "-b", "main")
+        try write("a.txt", "one\n"); try write("gone.txt", "x\n")
+        git("add", "-A"); git("commit", "-q", "-m", "base")
+        git("checkout", "-q", "-b", "feature")
+        try write("b.txt", "1\n2\n"); try FileManager.default.removeItem(atPath: dir + "/gone.txt")
+        git("add", "-A"); git("commit", "-q", "-m", "feature")
+        try write("a.txt", "one\ntwo\n")   // uncommitted
+        try write("new.txt", "n\n")          // untracked
+        let base = try XCTUnwrap(GitInfo.git(["merge-base", "HEAD", "main"], in: dir)?.trimmingCharacters(in: .whitespacesAndNewlines))
+        let files = Dictionary(uniqueKeysWithValues: GitDiffData.baseSummary(dir, base).map { ($0.path, $0) })
+        XCTAssertEqual(files["b.txt"]?.status, "A"); XCTAssertEqual(files["b.txt"]?.added, 2)
+        XCTAssertEqual(files["gone.txt"]?.status, "D"); XCTAssertEqual(files["gone.txt"]?.removed, 1)
+        XCTAssertEqual(files["a.txt"]?.status, "M"); XCTAssertEqual(files["a.txt"]?.added, 1)
+        XCTAssertEqual(files["new.txt"]?.status, "U"); XCTAssertEqual(files["new.txt"]?.added, 1)
+        XCTAssertEqual(files["b.txt"]?.key, "b:b.txt")
+        XCTAssertEqual(files.count, 4)
+    }
 }
 
 final class GraphTests: XCTestCase {

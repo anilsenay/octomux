@@ -44,6 +44,15 @@ struct GitChange: Identifiable, Equatable {
     }
 }
 
+/// A file changed since the compare branch (committed on this branch or not); read-only in the panel.
+struct BaseFile: Identifiable, Equatable {
+    /// Not the bare path: the same file can sit in the uncommitted groups of the same list.
+    var id: String { "b:" + path }
+    let path: String
+    let status: String
+    let added: Int, removed: Int
+}
+
 /// Right-hand panel: working-tree changes of the current project, diffs, commit.
 final class ChangesModel: ObservableObject {
     @Published var changes: [GitChange] = []
@@ -53,6 +62,9 @@ final class ChangesModel: ObservableObject {
     @Published var status = ""
     @Published var busy = false
     @Published var isRepo = true
+    /// The branch the status bar compares against (nil = uncommitted work only), and the files since it.
+    @Published var baseName: String?
+    @Published var baseFiles: [BaseFile] = []
     /// ✨ writing a commit message right now.
     @Published var generating: CommitMessageGen.Run?
     private var path: String?
@@ -112,9 +124,16 @@ final class ChangesModel: ObservableObject {
                 if let n = untracked[c.path] { c.unstagedStat = (n, 0) }
                 return c
             }
+            let baseName = GitInfo.compareBase(for: path)
+            let base = baseName == nil ? nil : GitInfo.diffBase(for: path)
+            let since = base.map { b in GitDiffData.baseSummary(path, b).map { BaseFile(path: $0.path, status: $0.status, added: $0.added, removed: $0.removed) } } ?? []
             DispatchQueue.main.async {
+                guard self.path == path else { return }
                 self.isRepo = out != nil
                 if self.changes != full { self.changes = full }
+                let name = base == nil ? nil : baseName
+                if self.baseName != name { self.baseName = name }
+                if self.baseFiles != since { self.baseFiles = since }
             }
         }
     }
@@ -255,7 +274,7 @@ struct ChangesPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
-                Text(changes.changes.isEmpty ? "No changes" : "\(changes.changes.count) changed").font(.system(size: T.k * 12, weight: .semibold)).foregroundStyle(T.text2)
+                Text(changes.changes.isEmpty ? (changes.baseName == nil ? "No changes" : "No uncommitted changes") : "\(changes.changes.count) changed").font(.system(size: T.k * 12, weight: .semibold)).foregroundStyle(T.text2)
                 if let wp = model.currentWorkPath, wp != model.currentProject?.path, let b = GitInfo.shared.branch(for: wp) {
                     HStack(spacing: 4) {
                         Image(systemName: "arrow.triangle.branch").font(.system(size: T.k * 9.5))
@@ -322,7 +341,10 @@ struct ChangesPanel: View {
                             group(staged.isEmpty ? "Changes" : "Uncommitted", unstaged, staged: false)
                         }
                         if changes.changes.isEmpty {
-                            Text("Working tree clean").font(T.body).foregroundStyle(T.text2).padding(14)
+                            Text(changes.baseName == nil ? "Working tree clean" : "No uncommitted changes").font(T.body).foregroundStyle(T.text2).padding(14)
+                        }
+                        if let name = changes.baseName {
+                            baseGroup(name)
                         }
                     }
                     .padding(.vertical, 4)
@@ -335,6 +357,24 @@ struct ChangesPanel: View {
     }
 
     @State private var collapsed: Set<String> = []
+
+    /// Everything since the compare branch (what the status bar counts): a list only; a click opens its diff.
+    @ViewBuilder private func baseGroup(_ name: String) -> some View {
+        let list = changes.baseFiles
+        let title = "Since \(name)"
+        let open = !collapsed.contains(title)
+        if !changes.changes.isEmpty { Hairline().padding(.vertical, 4) }
+        GroupHeader(title: "\(title) (\(list.count))", open: open, added: list.reduce(0) { $0 + $1.added }, removed: list.reduce(0) { $0 + $1.removed },
+                    action: nil, help: "Committed on this branch and not yet, since it left \(name); change it from the branch in the status bar") {
+            if open { collapsed.insert(title) } else { collapsed.remove(title) }
+        }
+        if open {
+            if list.isEmpty {
+                Text("No changes against \(name)").font(T.body).foregroundStyle(T.text2).padding(.horizontal, 14).padding(.vertical, 6)
+            }
+            ForEach(list) { f in BaseRow(file: f, changes: changes) }
+        }
+    }
 
     @ViewBuilder private func group(_ title: String, _ list: [GitChange], staged: Bool) -> some View {
         let add = list.reduce(0) { $0 + ((staged ? $1.stagedStat : $1.unstagedStat)?.0 ?? 0) }
@@ -358,9 +398,10 @@ private struct GroupHeader: View {
     let title: String
     let open: Bool
     let added: Int, removed: Int
-    let action: (String, String, () -> Void)
+    let action: (String, String, () -> Void)?
     var discard: (() -> Void)?
     var discardHelp = ""
+    var help = ""
     let toggle: () -> Void
     @State private var hover = false
 
@@ -374,8 +415,10 @@ private struct GroupHeader: View {
                     Button(action: discard) { Image(systemName: "arrow.uturn.backward").font(.system(size: T.k * 10, weight: .semibold)) }
                         .buttonStyle(IconButtonStyle(size: 18)).help(discardHelp)
                 }
-                Button(action: action.2) { Image(systemName: action.0).font(.system(size: T.k * 10, weight: .semibold)) }
-                    .buttonStyle(IconButtonStyle(size: 18)).help(action.1)
+                if let action {
+                    Button(action: action.2) { Image(systemName: action.0).font(.system(size: T.k * 10, weight: .semibold)) }
+                        .buttonStyle(IconButtonStyle(size: 18)).help(action.1)
+                }
             }
             DiffCount(added: added, removed: removed)
         }
@@ -383,6 +426,51 @@ private struct GroupHeader: View {
         .contentShape(Rectangle())
         .onHover { hover = $0 }
         .onTapGesture(perform: toggle)
+        .help(help)
+    }
+}
+
+/// A file in "Since <branch>": opens the Changes view (against that branch) at the file.
+private struct BaseRow: View {
+    @EnvironmentObject var model: AppModel
+    let file: BaseFile
+    @ObservedObject var changes: ChangesModel
+    @State private var hover = false
+
+    var body: some View {
+        let f = file
+        let key = "b:" + f.path
+        let selected = model.activeDoc?.kind == .changes && changes.selected == key
+        HStack(spacing: 6) {
+            FileIcon(name: (f.path as NSString).lastPathComponent)
+            Text((f.path as NSString).lastPathComponent).font(.system(size: T.k * 12.5)).foregroundStyle(T.text).lineLimit(1)
+            Text((f.path as NSString).deletingLastPathComponent).font(.system(size: T.k * 11)).foregroundStyle(T.text3).lineLimit(1).truncationMode(.head)
+            Spacer(minLength: 4)
+            if hover, f.status != "D" {
+                Button { model.openDoc(.file(f.path)) } label: { Image(systemName: "doc.text").font(.system(size: T.k * 10)) }
+                    .buttonStyle(IconButtonStyle(size: 18)).help("Open file")
+            } else {
+                DiffCount(added: f.added, removed: f.removed)
+                Text(f.status).font(T.mono(10.5, .bold)).foregroundStyle(GitChange.color(f.status)).frame(width: 12)
+            }
+        }
+        .padding(.leading, 10).padding(.trailing, 8).frame(height: 26)
+        .background(RoundedRectangle(cornerRadius: T.m.rowR, style: .continuous).fill(selected ? T.selection : hover ? T.hover : .clear))
+        .padding(.horizontal, 6)
+        .contentShape(Rectangle())
+        .onHover { hover = $0 }
+        .pointerCursor()
+        .onTapGesture {
+            changes.selected = key
+            model.openChanges(scrollTo: key)
+        }
+        .contextMenu {
+            if f.status != "D" { Button("Open File") { model.openDoc(.file(f.path)) } }
+            if let wp = changes.workPath, let pid = model.currentProject?.id {
+                AskAgentMenu(projectId: pid, folder: wp, file: f.path) { Text("Ask Agent") }
+            }
+            Button("Copy Path") { copy(f.path) }
+        }
     }
 }
 
@@ -441,7 +529,7 @@ private struct ChangeRow: View {
         .pointerCursor()
         .onTapGesture {
             changes.selected = key
-            model.openChanges(scrollTo: key)
+            model.openChanges(scrollTo: changes.baseName == nil ? key : "b:" + c.path)
         }
         .contextMenu {
             Button("Open File") { model.openDoc(.file(c.path)) }

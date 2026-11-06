@@ -1239,7 +1239,7 @@ struct GitStatusControls: View {
                     .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(T.amber.opacity(0.13)))
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain).pointerCursor().help("Show changes (\(base.map { "against " + $0 } ?? "uncommitted"))")
+                .buttonStyle(.plain).pointerCursor().help(base.map { "Show changes against \($0)" } ?? "Show uncommitted changes")
             }
             if full {
                 Button { pickingBase = true } label: {
