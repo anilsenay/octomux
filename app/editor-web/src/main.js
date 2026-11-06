@@ -6,6 +6,7 @@ import { syntaxHighlighting, HighlightStyle, foldGutter, codeFolding, foldKeymap
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { searchKeymap, highlightSelectionMatches, search } from "@codemirror/search";
 import { unifiedMergeView, MergeView } from "@codemirror/merge";
+import { diffConfig } from "./linediff.js";
 import { tags as t } from "@lezer/highlight";
 import { javascript } from "@codemirror/lang-javascript";
 import { python } from "@codemirror/lang-python";
@@ -282,7 +283,7 @@ function buildMerge(host, f) {
       parent: host,
       a: { doc: f.original || "", extensions: ext },
       b: { doc: f.modified || "", extensions: ext },
-      collapseUnchanged: collapse, gutter: true, highlightChanges: words,
+      collapseUnchanged: collapse, gutter: true, highlightChanges: words, diffConfig,
     });
     return () => mv.destroy();
   }
@@ -290,7 +291,7 @@ function buildMerge(host, f) {
     parent: host,
     state: EditorState.create({
       doc: f.modified || "",
-      extensions: [ext, unifiedMergeView({ original: f.original || "", mergeControls: false, gutter: true, highlightChanges: words, syntaxHighlightDeletions: true, collapseUnchanged: collapse })],
+      extensions: [ext, unifiedMergeView({ original: f.original || "", mergeControls: false, gutter: true, highlightChanges: words, syntaxHighlightDeletions: true, collapseUnchanged: collapse, diffConfig })],
     }),
   });
   return () => view.destroy();
