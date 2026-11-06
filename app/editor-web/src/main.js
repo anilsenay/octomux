@@ -304,6 +304,37 @@ function startsCollapsed(f) {
   return !!(f.binary || f.tooLarge || (f.added + f.removed) > 1500 || f.status === "D");
 }
 
+/// A horizontal scroll bar for each side, kept at the bottom of the window while the file is on screen
+/// (the editor's own bar sits at the file's end, often far below). Synced both ways with the editor.
+function stickyScrollbars(host, scrollers) {
+  const row = $("div", "hbars" + (scrollers.length > 1 ? " split" : ""));
+  const cleanups = [];
+  scrollers.forEach((sc, i) => {
+    if (i > 0) row.append($("div", "hbar-gap"));
+    const bar = $("div", "hbar");
+    const inner = $("div", "hbar-inner");
+    bar.append(inner);
+    row.append(bar);
+    let from = null;   // which side moved first, so the echo doesn't bounce back
+    const fit = () => {
+      inner.style.width = sc.scrollWidth + "px";
+      bar.classList.toggle("none", sc.scrollWidth <= sc.clientWidth + 1);
+      row.classList.toggle("none", [...row.querySelectorAll(".hbar")].every((b) => b.classList.contains("none")));
+      bar.scrollLeft = sc.scrollLeft;
+    };
+    const onBar = () => { if (from === "sc") { from = null; return; } from = "bar"; sc.scrollLeft = bar.scrollLeft; };
+    const onSc = () => { if (from === "bar") { from = null; return; } from = "sc"; bar.scrollLeft = sc.scrollLeft; };
+    bar.addEventListener("scroll", onBar, { passive: true });
+    sc.addEventListener("scroll", onSc, { passive: true });
+    const ro = new ResizeObserver(fit);
+    ro.observe(sc); if (sc.firstElementChild) ro.observe(sc.querySelector(".cm-content") || sc.firstElementChild);
+    requestAnimationFrame(fit);
+    cleanups.push(() => { ro.disconnect(); sc.removeEventListener("scroll", onSc); });
+  });
+  host.append(row);
+  return () => { cleanups.forEach((c) => c()); row.remove(); };
+}
+
 function buildMerge(host, f) {
   const ext = [common({ path: f.path, editable: false, wrap: diffState.wrap }), lineNumbers(), EditorView.theme({ ".cm-content": { padding: "0" } })];
   const collapse = { margin: 3, minSize: 6 };
@@ -318,7 +349,8 @@ function buildMerge(host, f) {
     });
     const editors = mv.dom.querySelector(".cm-mergeViewEditors");
     if (editors) splitHandle(editors);
-    return () => mv.destroy();
+    const bars = stickyScrollbars(host, [mv.a.scrollDOM, mv.b.scrollDOM]);
+    return () => { bars(); mv.destroy(); };
   }
   const view = new EditorView({
     parent: host,
@@ -327,7 +359,8 @@ function buildMerge(host, f) {
       extensions: [ext, unifiedMergeView({ original: f.original || "", mergeControls: false, gutter: true, highlightChanges: words, syntaxHighlightDeletions: true, collapseUnchanged: collapse, diffConfig })],
     }),
   });
-  return () => view.destroy();
+  const bars = stickyScrollbars(host, [view.scrollDOM]);
+  return () => { bars(); view.destroy(); };
 }
 
 function badgeClass(s) { return { A: "add", U: "add", D: "del", R: "ren", M: "mod" }[s] || "mod"; }

@@ -94,6 +94,16 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 .cbody .cm-mergeViewEditor { flex: 1; min-width: 0; }
 .cbody .cm-mergeViewEditors > .cm-mergeViewEditor:first-child { flex: 0 0 calc(var(--split, 50%) - 4px) !important; }
 .cbody .cm-mergeViewEditors > .cm-mergeViewEditor:last-child { flex: 1 1 0 !important; }
+/* The sticky bars replace the editors' own (which sit at each file's end). */
+.cbody .cm-scroller { scrollbar-width: none; }
+.cbody .cm-scroller::-webkit-scrollbar { display: none; }
+.hbars { position: sticky; bottom: -40px; /* the list's bottom padding: stick to its very edge */ z-index: 4; display: flex; background: var(--bg); border-top: 1px solid var(--border); }
+.hbars.none { display: none; }
+.hbars.split .hbar:first-child { flex: 0 0 calc(var(--split, 50%) - 4px); }
+.hbar-gap { flex: 0 0 8px; }
+.hbar { flex: 1 1 0; min-width: 0; overflow-x: auto; overflow-y: hidden; height: 14px; }
+.hbar.none { visibility: hidden; }
+.hbar-inner { height: 1px; }
 .split-handle { flex: 0 0 8px; cursor: col-resize; position: relative; touch-action: none; }
 .split-handle::after { content: ""; position: absolute; top: 0; bottom: 0; left: 3.5px; width: 1px; background: var(--border); transition: background .12s, width .12s, left .12s; }
 .split-handle:hover::after, .split-handle.dragging::after { background: var(--accent); width: 2px; left: 3px; }
