@@ -60,7 +60,8 @@ final class InboxReviewTests: XCTestCase {
         XCTAssertEqual(claude.first, "-p")   // print mode: no folder-trust question nobody would answer
         // No settings file loads (yours could allow running the PR's code; the PR's could add hooks), no MCP server,
         // and only the reading tools exist.
-        XCTAssertEqual(Array(claude.dropFirst().prefix(4)), ["--setting-sources=", "--strict-mcp-config", "--tools", "Read,Grep,Glob,Bash"])
+        XCTAssertEqual(Array(claude.dropFirst().prefix(2)), ["--permission-prompts", "none"])   // refused, never waited on
+        XCTAssertEqual(Array(claude.dropFirst(3).prefix(4)), ["--setting-sources=", "--strict-mcp-config", "--tools", "Read,Grep,Glob,Bash"])
         // No --settings: the daemon drops it from extra args, and a later one would replace it anyway.
         XCTAssertFalse(claude.contains("--settings"))
         func list(_ flag: String) -> [String] {

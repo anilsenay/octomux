@@ -348,8 +348,8 @@ final class InboxReviews: ObservableObject {
             }
             if s.stopped { fail(id, "The agent stopped without writing its review. Go to the session to see why."); continue }
             if t - r.startedAt > Self.timeout { fail(id, "No review after \(Int(Self.timeout / 60)) minutes."); continue }
-            let note = s.needsInput ? "The agent waits for you in its session." : nil
-            if runs[id]?.note != note { runs[id]?.note = note; save() }
+            // No "waits for you": the agent runs without asking (claude -p, codex exec), so a session that looks
+            // like it waits (a refused permission shows that way for a moment) is still working.
         }
         if !runs.values.contains(where: { $0.state == .working }) { timer?.invalidate(); timer = nil }
         pump()
@@ -410,7 +410,7 @@ final class InboxReviews: ObservableObject {
             ? #"{"summary": "two or three sentences on what changed and whether it is ready now", "risk": "low", "fixed": ["title of an earlier finding that is fixed now"], "findings": [{"file": "path/in/repo.ext", "line": 42, "severity": "issue", "title": "short", "detail": "what is wrong and what to do", "status": "new"}]}"#
             : #"{"summary": "two or three sentences on what it does and whether it is ready", "risk": "low", "findings": [{"file": "path/in/repo.ext", "line": 42, "severity": "issue", "title": "short", "detail": "what is wrong and what to do"}]}"#
         return """
-        Review pull request \(i.key) of \(i.place) on \(i.source.name). This folder is a checkout of its head (commit \(String(head.prefix(12)))); its base is `\(base)`. See the change with `git diff \(base)...HEAD` and `git log \(base)..HEAD`, and read any file you need\(restricted ? " (a .codex folder is left out of the folder; `git show HEAD:<path>` reads it)" : ""). Don't change anything: no edits, no commits, no commands that write.
+        Review pull request \(i.key) of \(i.place) on \(i.source.name). This folder is a checkout of its head (commit \(String(head.prefix(12)))); its base is `\(base)`. See the change with `git diff \(base)...HEAD` and `git log \(base)..HEAD`, and read any file you need\(restricted ? " (a .codex folder is left out of the folder; `git show HEAD:<path>` reads it). You can only read files and run git's reading commands (diff, log, show, status, blame): anything else is refused, so don't try to build, install or run tests; judge from the code" : ""). Don't change anything: no edits, no commits, no commands that write.
         \(what.isEmpty ? "" : "\n" + what + "\n")
         Look for bugs, missed cases, security and data risks, and anything that will hurt later; skip style the project doesn't care about. Write in the language the pull request is written in.
 
@@ -448,7 +448,8 @@ final class InboxReviews: ObservableObject {
         switch kind {
         case .claude:
             guard restricted else { return ["-p"] }
-            return ["-p", "--setting-sources=", "--strict-mcp-config", "--tools", "Read,Grep,Glob,Bash",
+            // Nobody answers a permission question: anything outside the lists is refused at once, never waited on.
+            return ["-p", "--permission-prompts", "none", "--setting-sources=", "--strict-mcp-config", "--tools", "Read,Grep,Glob,Bash",
                     "--allowedTools", "Read", "Grep", "Glob", "Bash(git diff:*)", "Bash(git log:*)", "Bash(git show:*)", "Bash(git status:*)", "Bash(git blame:*)",
                     "--disallowedTools", "Edit", "Write", "NotebookEdit", "WebFetch", "WebSearch",
                     "Bash(git push:*)", "Bash(git commit:*)", "Bash(git checkout:*)", "Bash(git reset:*)", "Bash(git switch:*)",
