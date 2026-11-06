@@ -127,6 +127,9 @@
     its .claude settings or servers to its .mcp.json can no longer run them during the review. Its .codex folder
     is left out of the review's checkout: Codex loads it (MCP servers, notify commands) whenever your clone is a
     trusted Codex project, and no flag turns that off. The agent can still read it with git show.
+  - The sidebar shows a project's branch right after its name, with a branch mark. When room runs short the name
+    shortens first while the branch stays whole, then both shorten; badges and the hover buttons keep their
+    size. Before, the branch was capped at a few characters even with room to spare.
   - The Inbox opens in a workspace that has no project yet (in place of its "add a project" screen); before,
     clicking it did nothing there.
   - The Inbox's folders and list are resized by dragging their right edge (a double click puts one back); the

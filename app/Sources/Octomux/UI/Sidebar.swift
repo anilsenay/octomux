@@ -340,7 +340,18 @@ struct ProjectRow: View {
         let unread = sessions.filter { $0.unread && $0.activity != .needsInput }.count
         HStack(spacing: 8) {
             ProjectIconView(project: project, size: 18)
-            Text(project.name).font(T.headline).foregroundStyle(T.text).lineLimit(1)
+            NameAndBranch {
+                Text(project.name).font(T.headline).foregroundStyle(T.text).lineLimit(1).truncationMode(.tail)
+                if let b = git.branch(for: project.path) {
+                    HStack(spacing: 3) {
+                        Image(systemName: "arrow.triangle.branch").font(.system(size: T.k * 9, weight: .medium))
+                        Text(b).font(T.mono(10.5)).lineLimit(1).truncationMode(.tail)
+                    }
+                    .foregroundStyle(T.text3)
+                    .help("On branch \(b)")
+                }
+            }
+            .layoutPriority(1)
             if model.owner[project.id] != nil {
                 HStack(spacing: 3) {
                     Image(systemName: "server.rack").font(.system(size: T.k * 8.5))
@@ -352,20 +363,17 @@ struct ProjectRow: View {
                 .help("On \(model.host(for: project.id).name)")
             }
             if collapsed && !sessions.isEmpty {
-                Text("\(sessions.count)").font(T.caption).foregroundStyle(T.text3)
+                Text("\(sessions.count)").font(T.caption).foregroundStyle(T.text3).fixedSize()
                     .help(sessions.count == 1 ? "1 session" : "\(sessions.count) sessions")
             }
             Spacer(minLength: 4)
             if hover || model.debugHoverProject == project.id {
                 ProjectQuickActions(project: project)
             } else {
-                if waiting > 0 { Badge(text: "\(waiting)").help(waiting == 1 ? "1 session needs your input" : "\(waiting) sessions need your input") }
+                if waiting > 0 { Badge(text: "\(waiting)").fixedSize().help(waiting == 1 ? "1 session needs your input" : "\(waiting) sessions need your input") }
                 else if collapsed && unread > 0 {
                     Circle().fill(T.green).frame(width: 6, height: 6)
                         .help(unread == 1 ? "1 session finished, not looked at yet" : "\(unread) sessions finished, not looked at yet")
-                }
-                if let b = git.branch(for: project.path) {
-                    Text(b).font(T.mono(10.5)).foregroundStyle(T.text3).lineLimit(1).frame(maxWidth: 80, alignment: .trailing)
                 }
             }
         }
@@ -880,5 +888,37 @@ struct AttentionDot: View {
     let attention: (waiting: Int, unread: Int)
     var body: some View {
         Circle().fill(attention.waiting > 0 ? T.amber : T.green).frame(width: 6, height: 6)
+    }
+}
+
+/// A project's name and its branch side by side, sharing what room there is: both whole when they fit; else the
+/// branch stays whole while it needs under `branchShare` of the room and the name shortens; else the name gets
+/// the rest and both shorten.
+struct NameAndBranch: Layout {
+    var spacing: CGFloat = 6
+    var branchShare: CGFloat = 0.45
+
+    private func widths(_ subviews: Subviews, _ width: CGFloat?) -> [CGFloat] {
+        let ideal = subviews.map { $0.sizeThatFits(.unspecified).width }
+        guard subviews.count == 2, let width else { return ideal }
+        let room = max(0, width - spacing)
+        if ideal[0] + ideal[1] <= room { return ideal }
+        let branch = min(ideal[1], max(room - ideal[0], room * branchShare))
+        return [max(0, room - branch), branch]
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let w = widths(subviews, proposal.width)
+        let h = subviews.map { $0.sizeThatFits(.unspecified).height }.max() ?? 0
+        return CGSize(width: w.reduce(0, +) + spacing * CGFloat(max(0, subviews.count - 1)), height: h)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let w = widths(subviews, bounds.width)
+        var x = bounds.minX
+        for (k, v) in subviews.enumerated() {
+            v.place(at: CGPoint(x: x, y: bounds.midY), anchor: .leading, proposal: ProposedViewSize(width: w[k], height: bounds.height))
+            x += w[k] + spacing
+        }
     }
 }
