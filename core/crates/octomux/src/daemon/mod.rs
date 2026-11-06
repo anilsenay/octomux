@@ -5,6 +5,7 @@
 
 pub mod agents;
 pub mod integration;
+pub mod perms;
 pub mod resources;
 pub mod events;
 pub mod store;
@@ -2135,6 +2136,15 @@ impl Daemon {
                 let cwd = p.get("cwd").and_then(|v| v.as_str()).unwrap_or("");
                 let since = p.get("since").and_then(|v| v.as_u64()).unwrap_or(0);
                 Ok(json!({ "path": agents::find_rollout(&codex_home, id, cwd, since) }))
+            }
+            // macOS permissions of programs run in sessions (checked against the daemon's app).
+            "permissions.status" => Ok(perms::status()),
+            "permissions.request" => {
+                let granted = match p.get("kind").and_then(|v| v.as_str()) {
+                    Some("screen_recording") => perms::request_screen_recording(),
+                    _ => bail!("unknown permission"),
+                };
+                Ok(json!({ "granted": granted }))
             }
             "usage.refresh" => {
                 // Re-reads what can be read on demand now (Codex rollouts); Claude readings arrive with its status line.

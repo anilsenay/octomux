@@ -33,8 +33,10 @@ for f in "$BIN" "$CLI"; do
 done
 if [ "$VARIANT" = dev ]; then
     NAME="Octomux Dev"; BUNDLE_ID=dev.octomux.app.dev; OCTOMUX_FEED_URL=""; OCTOMUX_ED_PUBLIC_KEY=""
+    HELPER_NAME="Octomux Dev Sessions"; HELPER_ID=dev.octomux.sessions.dev
 else
     NAME="Octomux"; BUNDLE_ID=dev.octomux.app
+    HELPER_NAME="Octomux Sessions"; HELPER_ID=dev.octomux.sessions
 fi
 APP="${OCTOMUX_APP_OUT:-$ROOT/build/$NAME.app}"   # OCTOMUX_APP_OUT: another place (update tests)
 rm -rf "$APP"
@@ -76,6 +78,33 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </dict>
 </plist>
 PLIST
+# The daemon runs from a small background app of its own ("Octomux Sessions"): what runs in a session asks
+# macOS for screen recording, accessibility… under that name, and the permission sticks to it (a bare CLI
+# started by launchd has no name the user can find or grant). Same binary as bin/octomux.
+HELPER="$APP/Contents/Helpers/$HELPER_NAME.app"
+mkdir -p "$HELPER/Contents/MacOS" "$HELPER/Contents/Resources"
+cp "$CLI" "$HELPER/Contents/MacOS/octomux"
+cp "$APP/Contents/Resources/AppIcon.icns" "$HELPER/Contents/Resources/AppIcon.icns"
+cat > "$HELPER/Contents/Info.plist" <<HPLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key><string>$HELPER_ID</string>
+  <key>CFBundleName</key><string>$HELPER_NAME</string>
+  <key>CFBundleDisplayName</key><string>$HELPER_NAME</string>
+  <key>CFBundleExecutable</key><string>octomux</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
+  <key>CFBundleShortVersionString</key><string>$VERSION</string>
+  <key>CFBundleVersion</key><string>$BUILD</string>
+  <key>LSMinimumSystemVersion</key><string>14.0</string>
+  <key>LSUIElement</key><true/>
+  <key>NSScreenCaptureUsageDescription</key><string>Programs you run in Octomux sessions (agents, scripts) take screenshots.</string>
+</dict>
+</plist>
+HPLIST
+codesign --force --sign - "$HELPER" >/dev/null 2>&1 || true
 codesign --force --sign - "$APP/Contents/Resources/bin/octomux" >/dev/null 2>&1 || true
 codesign --force --deep --sign - "$APP" >/dev/null 2>&1 || true
 echo "built $APP"

@@ -18,6 +18,10 @@
   Messages you send while the agent works show as queued until it reads them.
 - **Chat turns end with the files they changed** (lines added and removed, from the agent's own edits); click one
   to see it in Changes. Commands show the agent's own description ("Run tests") next to the command line.
+- **Permissions for programs in sessions**: the daemon now runs from a small background app, “Octomux Sessions”,
+  so when an agent takes a screenshot (or drives other apps) macOS asks in that name and remembers it, instead of
+  blocking a nameless command line tool. Settings → Terminal → Permissions shows screen recording and
+  accessibility, asks for the first and opens System Settings for both.
 
 ## 0.3.0
 

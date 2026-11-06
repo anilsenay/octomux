@@ -536,6 +536,7 @@ enum SettingsIndex {
             e(.appearance, "React to agents", "scene glow working"),
             e(.appearance, "Your scenes", "custom import template"),
             e(.terminal, "Font", "family typeface mono jetbrains"),
+            e(.terminal, "Permissions", "screen recording screenshot accessibility privacy macos allow sessions"),
             e(.terminal, "Size", "font size points bigger smaller zoom"),
             e(.terminal, "Line height", "spacing cell height leading"),
             e(.terminal, "Cursor style", "block bar underline caret"),

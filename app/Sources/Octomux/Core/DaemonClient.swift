@@ -128,13 +128,14 @@ final class DaemonClient {
         let plist = agents.appendingPathComponent("\(Paths.launchLabel).plist")
         if !Paths.homeFromEnv && !agentChecked {
             agentChecked = true
-            if agentProgram(plist) != Paths.cliBinary {
+            if agentProgram(plist) != Paths.daemonBinary {
                 // First run (or first run after the rename): also replaces the pre-rename `dev.ade-dev.daemon`
                 // agent, whose daemon may be serving the socket right now. Also when the agent runs another
                 // copy's CLI (the app was moved or updated to another place): the daemon and the agents' hooks
                 // follow the agent's binary. Sessions survive the daemon restart. Only once, at launch: on a
                 // reconnect, an older copy that is still open must not take the agent back.
-                run([Paths.cliBinary, "install-agent"])
+                // The agent runs whichever binary installs it (its own path): the background app's.
+                run([Paths.daemonBinary, "install-agent"])
             }
         }
         if LineSocket(path: Paths.daemonSocket.path) != nil { return true }

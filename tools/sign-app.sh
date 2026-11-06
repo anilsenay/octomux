@@ -8,6 +8,8 @@ SIGN_ID="${OCTOMUX_SIGN_ID:-$(security find-identity -v -p codesigning | sed -n 
 [ -n "$SIGN_ID" ] || { echo "no Developer ID Application identity in the keychain" >&2; exit 1; }
 sign() { codesign --force $TS --options runtime --sign "$SIGN_ID" "$@"; }
 sign "$APP/Contents/Resources/bin/octomux"
+# The daemon's background app (see build-app.sh), signed as a bundle so its identifier is its own.
+for h in "$APP"/Contents/Helpers/*.app; do [ -d "$h" ] && sign "$h"; done
 # Sparkle's helpers, innermost first (as Sparkle documents for Developer ID apps).
 SP="$APP/Contents/Frameworks/Sparkle.framework/Versions/B"
 sign "$SP/XPCServices/Installer.xpc"

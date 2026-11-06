@@ -42,6 +42,21 @@ enum Paths {
     static var debugSocket: URL { home.appendingPathComponent("run/app-debug.sock") }
 
     /// The `octomux` CLI: bundled inside the app, or `OCTOMUX_BIN` / the dev build for development.
+    /// The binary the launchd agent runs as the daemon: the one inside the bundled background app
+    /// (Contents/Helpers/<name> Sessions.app), so permissions asked by programs in sessions carry that app's
+    /// name; the plain CLI when there is none (development builds, OCTOMUX_BIN).
+    static var daemonBinary: String {
+        if env("BIN") != nil { return cliBinary }
+        let helpers = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers")
+        if let apps = try? FileManager.default.contentsOfDirectory(at: helpers, includingPropertiesForKeys: nil) {
+            for a in apps.sorted(by: { $0.path < $1.path }) where a.pathExtension == "app" {
+                let exe = a.appendingPathComponent("Contents/MacOS/octomux")
+                if FileManager.default.isExecutableFile(atPath: exe.path) { return exe.path }
+            }
+        }
+        return cliBinary
+    }
+
     static var cliBinary: String {
         if let b = env("BIN") { return b }
         if let bundled = Bundle.main.url(forResource: "octomux", withExtension: nil, subdirectory: "bin"),
