@@ -31,7 +31,20 @@ final class AppModel: ObservableObject {
     }
     @Published var selectedProjectId: String? { didSet { saveSelection() } }
     @Published var activeTabId: String? {
-        didSet { saveSelection(); if oldValue != activeTabId, activeTabId != nil { activeDocId = nil } }
+        didSet {
+            saveSelection()
+            if oldValue != activeTabId, activeTabId != nil { activeDocId = nil }
+            if let t = activeTabId, tabHistory.last != t { tabHistory.removeAll { $0 == t }; tabHistory.append(t); tabHistory = Array(tabHistory.suffix(50)) }
+        }
+    }
+    /// Tabs in the order they were last shown (most recent last): closing one goes back to the one before it.
+    private(set) var tabHistory: [String] = []
+
+    /// The tab to show once `gone` is closed: the most recently shown one still open in `projectId`, else its first.
+    func tabAfterClosing(in projectId: String?) -> String? {
+        let open = tabs(ofProject: projectId)
+        let ids = Set(open.map(\.id))
+        return tabHistory.last(where: { ids.contains($0) }) ?? open.first?.id
     }
     /// App-side tabs (file, changes, commit views) shown next to the session tabs; not in the sidebar.
     @Published var docTabs: [DocTab] = DocTab.load() { didSet { DocTab.save(docTabs) } }
@@ -255,7 +268,7 @@ final class AppModel: ObservableObject {
             selectedWorkspaceId = s.workspaces.first?.id
         }
         if let t = activeTabId, !s.tabs.contains(where: { $0.id == t }) {
-            activeTabId = tabs(ofProject: selectedProjectId).first?.id
+            activeTabId = tabAfterClosing(in: selectedProjectId)
         }
         // A tab or project from another workspace (stale saved selection): fall back to this workspace's.
         if let t = activeTab, project(t.projectId)?.workspaceId != selectedWorkspaceId {
