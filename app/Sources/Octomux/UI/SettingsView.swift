@@ -560,6 +560,7 @@ enum SettingsIndex {
             e(.notifications, "Sound: Agent needs input", "audio permission tone"),
             e(.notifications, "Sound: Agent error", "audio failed tone"),
             e(.notifications, "Sound: Commands and programs", "audio terminal tone"),
+            e(.notifications, "Sound: Inbox", "audio inbox pull request review tone chime"),
             e(.notifications, "Dock badge", "count"),
             e(.keyboard, "Shortcuts", "keys bindings hotkeys find by keys acts on"),
             e(.keyboard, "Reset all shortcuts", "defaults restore keybindings"),
@@ -1430,9 +1431,9 @@ struct NotificationSettings: View {
             HStack(spacing: 6) {
                 Picker("", selection: Binding(get: { current }, set: { v in
                     model.setSetting(key, v == "default" && sel.scope == "global" ? nil : v, scope: sel.scope)
-                    if v != "default" { NSSound(named: v)?.play() }
+                    if let s = v == "default" ? Notifier.defaultSound(for: kind) : v { NSSound(named: s)?.play() }
                 })) {
-                    Text("Default").tag("default")
+                    Text(Notifier.defaultSound(for: kind).map { "Default (\($0))" } ?? "Default").tag("default")
                     Divider()
                     ForEach(Notifier.systemSounds, id: \.self) { Text($0).tag($0) }
                 }

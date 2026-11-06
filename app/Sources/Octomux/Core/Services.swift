@@ -416,7 +416,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     /// Follows the Sound switch in Settings → Notifications. Played by the app, so macOS Focus doesn't mute it.
     func chime() {
         guard AppModel.shared.setting("notifications.sound")?.bool ?? true else { return }
-        NSSound(named: "Tink")?.play()
+        NSSound(named: Self.soundName(for: "inbox", project: nil) ?? "Tink")?.play()
     }
 
     // MARK: Sounds
@@ -427,7 +427,11 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         ("needs_input", "Agent needs input", "notifications.sound_needs_input"),
         ("error", "Agent error", "notifications.sound_error"),
         ("other", "Commands and programs", "notifications.sound_other"),
+        ("inbox", "Inbox", "notifications.sound_inbox"),
     ]
+
+    /// A kind's sound when none is picked; nil is the system's default notification sound.
+    static func defaultSound(for kind: String) -> String? { kind == "inbox" ? "Tink" : nil }
 
     /// macOS's alert sounds (System Settings → Sound), by name.
     static let systemSounds: [String] = {
@@ -441,7 +445,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
 
     /// The sound chosen for a kind; nil is the system's default notification sound.
     static func soundName(for kind: String, project: String?) -> String? {
-        guard let v = AppModel.shared.setting(soundKey(for: kind), project: project)?.string, !v.isEmpty, v != "default" else { return nil }
+        guard let v = AppModel.shared.setting(soundKey(for: kind), project: project)?.string, !v.isEmpty, v != "default" else { return defaultSound(for: kind) }
         return v
     }
 
@@ -451,7 +455,8 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         let samples = ["done": ("Fix the flaky test", "Claude finished its turn."),
                        "needs_input": ("Fix the flaky test", "Claude wants to run: cargo test"),
                        "error": ("Fix the flaky test", "Claude stopped with an error."),
-                       "other": ("cargo build", "The command finished after 42 s.")]
+                       "other": ("cargo build", "The command finished after 42 s."),
+                       "inbox": ("Review requested: Fix the flaky test", "#42 in octomux")]
         let (title, body) = samples[kind] ?? samples["needs_input"]!
         post(AppNotification(sessionId: "", projectId: AppModel.shared.currentProject?.id ?? "", kind: kind, title: "Test: " + title, body: body))
     }

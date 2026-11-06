@@ -345,6 +345,9 @@ final class UsageLabelTests: XCTestCase {
     func testSoundSettings() {
         XCTAssertEqual(Notifier.soundKey(for: "done"), "notifications.sound_done")
         XCTAssertEqual(Notifier.soundKey(for: "command_done"), "notifications.sound_other")
+        XCTAssertEqual(Notifier.soundKey(for: "inbox"), "notifications.sound_inbox")
+        XCTAssertEqual(Notifier.defaultSound(for: "inbox"), "Tink")
+        XCTAssertNil(Notifier.defaultSound(for: "done"))
         XCTAssertTrue(Notifier.systemSounds.contains("Glass"))
     }
 }
