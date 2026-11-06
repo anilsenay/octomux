@@ -1870,6 +1870,16 @@ impl Daemon {
             }
             "session.restart" => {
                 let id = req("id")?;
+                // "Resume with Flags…": the agent's extra flags from now on (kept for later resumes and restores).
+                if let Some(args) = p.get("extra_args").and_then(|v| serde_json::from_value::<Vec<String>>(v.clone()).ok()) {
+                    let copy = self.with_session(&id, |s| {
+                        s.extra_args = args;
+                        s.clone()
+                    });
+                    if let Some(copy) = copy {
+                        self.persist_session(&copy);
+                    }
+                }
                 // Marked before the kill: what the dying program reports (an agent's `clear`) is not an exit.
                 self.with_session(&id, |s| s.state = SessionState::Interrupted).ok_or_else(|| anyhow!("no such session"))?;
                 if holder_alive(&self.paths, &id) {

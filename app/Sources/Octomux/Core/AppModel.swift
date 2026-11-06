@@ -691,6 +691,11 @@ final class AppModel: ObservableObject {
     }
     func restart(_ id: String) { if ensureManageable() { client(for: id).call("session.restart", ["id": id], completion: report) } }
 
+    /// Resumes an agent with these flags from now on (Resume with Flags…).
+    func restart(_ id: String, extraArgs: [String]) {
+        if ensureManageable() { client(for: id).call("session.restart", ["id": id, "extra_args": extraArgs], completion: report) }
+    }
+
     /// Closes a pane. Its session only leaves the tab: it stays in the sidebar, still running, until it is
     /// stopped and removed there.
     func closePane(_ id: String) {

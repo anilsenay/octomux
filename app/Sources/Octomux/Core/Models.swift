@@ -114,6 +114,8 @@ struct Session: Codable, Identifiable, Equatable {
     var backgroundShells: Int?
     /// The first message sent to the agent (start screen, or the first one typed in its terminal).
     var firstPrompt: String?
+    /// Flags picked when the agent started (or at its last "Resume with Flags…"), used on every resume.
+    var extraArgs: [String]? = nil
 
     /// Settings → Sessions → Tab titles: the first message instead of the agent's own title.
     static var titleFromPrompt = false
@@ -127,6 +129,7 @@ struct Session: Codable, Identifiable, Equatable {
         case reportsStatus = "reports_status"
         case backgroundShells = "background_shells"
         case firstPrompt = "first_prompt"
+        case extraArgs = "extra_args"
         case transcriptPath = "transcript_path"
         case agentTitle = "agent_title"
         case projectId = "project_id"

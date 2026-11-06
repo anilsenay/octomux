@@ -879,6 +879,13 @@ fn agent_started_with_a_first_message_gets_it_as_cli_prompt() {
     let last = text.lines().filter(|l| l.contains("FAKE-ARGS")).last().unwrap_or("");
     assert!(!last.contains("explain the build"), "{text}");
     assert!(last.contains("--permission-mode acceptEdits"), "flags survive a restart: {text}");
+    // "Resume with Flags…": a restart can replace them, and they stay for the next one.
+    e.call("session.restart", json!({ "id": id, "extra_args": ["--chrome", "--model", "sonnet"] }));
+    std::thread::sleep(Duration::from_millis(800));
+    let text = e.wait_screen(&id, "FAKE-ARGS");
+    let last = text.lines().filter(|l| l.contains("FAKE-ARGS")).last().unwrap_or("");
+    assert!(last.contains("--chrome --model sonnet") && !last.contains("acceptEdits"), "{text}");
+    assert_eq!(e.session(&id)["extra_args"], json!(["--chrome", "--model", "sonnet"]));
 }
 
 #[test]

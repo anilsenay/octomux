@@ -691,3 +691,29 @@ final class WorkspaceOrderTests: XCTestCase {
         XCTAssertTrue(AppModel.workspaceSorts([w("a", 0), w("b", 1)], moving: "a", to: 0).isEmpty)   // nothing changes
     }
 }
+
+final class ResumeFlagsTests: XCTestCase {
+    func testSplitKeepsQuotedValues() {
+        XCTAssertEqual(ResumeFlags.split("--chrome  --model opus --append-system-prompt \"be brief\" ''"),
+                       ["--chrome", "--model", "opus", "--append-system-prompt", "be brief", ""])
+        XCTAssertEqual(ResumeFlags.split("   "), [])
+    }
+
+    func testToggleAddsAndRemovesOnlyThatFlag() {
+        let on = ResumeFlags.toggle("--chrome", in: "--model opus", on: true)
+        XCTAssertEqual(on, "--model opus --chrome")
+        XCTAssertEqual(ResumeFlags.toggle("--chrome", in: on, on: false), "--model opus")
+        XCTAssertEqual(ResumeFlags.toggle("--chrome", in: "--chrome --chrome", on: true), "--chrome")
+    }
+
+    func testJoinQuotesWhatSplitWouldBreak() {
+        let args = ["--append-system-prompt", "be brief", "--x"]
+        XCTAssertEqual(ResumeFlags.split(ResumeFlags.join(args)), args)
+    }
+
+    func testShortcutsPerAgent() {
+        XCTAssertTrue(ResumeFlags.shortcuts(.claude).contains { $0.flag == "--chrome" })
+        XCTAssertTrue(ResumeFlags.shortcuts(.codex).contains { $0.flag == "--search" })
+        XCTAssertTrue(ResumeFlags.shortcuts(.generic).isEmpty)
+    }
+}

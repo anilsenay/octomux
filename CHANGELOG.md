@@ -11,6 +11,8 @@
   for half and half), and each file's header stays at the top while you scroll through it. A file's horizontal
   scroll bar stays at the bottom of the window while the file is on screen (one per side in split mode, over
   the code, shown while the pointer is on that side), so a mouse can scroll long lines; **↩** wraps them instead (kept for next time); line numbers no longer show code through them when it scrolls sideways.
+- **Resume with Flags…** next to Resume on a stopped agent: add flags (`--chrome`, a model…) by hand or with
+  checkboxes for common ones; the conversation goes on where it stopped and the flags stay for later resumes.
 - Closing a tab goes back to the tab you were on before it, not to the first one.
 - Names cut short show in full on hover: a project's row (name, branch, folder) and the Changes panel's files.
 - **Workspace paging**: a two-finger swipe over the sidebar pulls the next workspace's projects in beside the

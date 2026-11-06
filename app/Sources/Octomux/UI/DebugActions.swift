@@ -526,6 +526,7 @@ enum DebugActions {
                     }
                 }
             case "sidebar_agents": m.sidebarAgents = (p["value"] as? Bool) ?? !m.sidebarAgents
+            case "resume_flags": NotificationCenter.default.post(name: .adeDebugPanel, object: nil, userInfo: ["resumeFlags": (p["value"] as? Bool) ?? true])
             case "notifications": NotificationCenter.default.post(name: .adeDebugPanel, object: nil, userInfo: ["notifications": (p["value"] as? Bool) ?? true])
             case "compare_base": if let wp = m.currentWorkPath { GitInfo.shared.setCompareBase(p["value"] as? String, for: wp) }
             case "close_doc": if let d = m.activeDocId { m.closeDoc(d) }

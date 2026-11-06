@@ -861,6 +861,7 @@ struct WindowDragArea: NSViewRepresentable {
 struct DormantPaneView: View {
     @EnvironmentObject var model: AppModel
     let sessionId: String
+    @State private var flags = false
 
     var body: some View {
         let s = model.session(sessionId)
@@ -873,6 +874,14 @@ struct DormantPaneView: View {
                 HStack(spacing: 8) {
                     Button(s.isAgent ? "Resume" : "Restart") { model.restart(s.id) }
                         .buttonStyle(PrimaryButtonStyle()).keyboardShortcut(.defaultAction)
+                    if s.kind == .agent {
+                        Button("Resume with Flags…") { flags = true }
+                            .buttonStyle(SecondaryButtonStyle())
+                            .help("Resume with other command-line flags, such as --chrome")
+                            .background(PopoverAnchor(isPresented: $flags) {
+                                ResumeFlagsView(model: model, session: s) { flags = false }
+                            })
+                    }
                     Button("Remove") { model.remove(s.id, confirm: false) }.buttonStyle(SecondaryButtonStyle())
                 }
                 .padding(.top, 6)
@@ -880,6 +889,9 @@ struct DormantPaneView: View {
                     Text("Resume continues the same conversation.").font(T.caption).foregroundStyle(T.text3)
                 }
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .adeDebugPanel)) { n in
+            if let v = n.userInfo?["resumeFlags"] as? Bool { flags = v }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(CanvasBackground())
