@@ -19,7 +19,7 @@ struct InboxSidebarRow: View {
     @State private var hover = false
 
     var body: some View {
-        let active: Bool = { if case .inbox = model.activeDoc?.kind { return true }; return false }()
+        let active: Bool = { if case .inbox = model.activeDoc?.kind { return true }; return model.showsInboxWithoutProject }()
         let unread = store.unreadCount
         Button { model.openInbox() } label: {
             HStack(spacing: 8) {

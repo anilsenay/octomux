@@ -802,8 +802,13 @@ final class InboxStore: ObservableObject {
     /// `widened`: the user just changed what is fetched (a bell, a scope, a project, a search). What that brings in
     /// is not news: it comes in read and rings nothing.
     /// Each source fetches on its own: Jira waiting on a Keychain prompt or a slow network does not hold GitHub.
+    /// A dev or fixture run (OCTOMUX_HOME set) reads no real account unless OCTOMUX_INBOX_LIVE=1: its settings may
+    /// still hold a connection from earlier, and a test run must not fetch from it by accident.
+    static var liveAllowed: Bool { !Paths.homeFromEnv || Paths.env("INBOX_LIVE") == "1" }
+
     func refresh(widened: Bool = false) {
         if frozen { return }
+        if self === InboxStore.shared, !Self.liveAllowed { return }
         if widened { widen() }
         lastFetch = Date()
         let on: [InboxSource: Bool] = Dictionary(uniqueKeysWithValues: InboxSource.allCases.map { ($0, isOn($0)) })

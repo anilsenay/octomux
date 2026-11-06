@@ -43,6 +43,14 @@ enum InboxKeys {
     }
 }
 
+extension InboxKeys {
+    /// The Inbox is what the main area shows (a tab, or in place of the empty screen of a workspace without projects).
+    static var inboxOnScreen: Bool {
+        if case .inbox = AppModel.shared.activeDoc?.kind { return true }
+        return AppModel.shared.showsInboxWithoutProject
+    }
+}
+
 /// Catches keys for the Inbox while its window is key, the Inbox is the open doc and no text field is being typed in.
 struct InboxKeyCatcher: NSViewRepresentable {
     let handle: (InboxKeys.Action) -> Bool
@@ -57,7 +65,7 @@ struct InboxKeyCatcher: NSViewRepresentable {
             guard window != nil else { return }
             monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
                 guard let self, let win = self.window, e.window === win, win.isKeyWindow,
-                      case .inbox = AppModel.shared.activeDoc?.kind,
+                      InboxKeys.inboxOnScreen,
                       !(win.firstResponder is NSText),                       // typing in the filter or a comment
                       let a = InboxKeys.action(characters: e.charactersIgnoringModifiers ?? "", keyCode: e.keyCode, modifiers: e.modifierFlags)
                 else { return e }

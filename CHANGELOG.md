@@ -127,6 +127,8 @@
     its .claude settings or servers to its .mcp.json can no longer run them during the review. Its .codex folder
     is left out of the review's checkout: Codex loads it (MCP servers, notify commands) whenever your clone is a
     trusted Codex project, and no flag turns that off. The agent can still read it with git show.
+  - The Inbox opens in a workspace that has no project yet (in place of its "add a project" screen); before,
+    clicking it did nothing there.
   - The Inbox's folders and list are resized by dragging their right edge (a double click puts one back); the
     widths are kept, and the detail never gets narrower than it can show.
   - After a launch the Inbox shows the lists from the last run at once (kept for up to three days, connected

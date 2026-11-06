@@ -99,7 +99,19 @@ extension AppModel {
     }
 
     func openFile(_ rel: String, line: Int? = nil) { openDoc(.file(rel), line: line) }
-    func openInbox() { openDoc(.inbox, workPath: currentProject?.path) }
+    /// The Inbox opens as a tab of the open project; a workspace with no project yet shows it in place of the
+    /// "add a project" screen (until a project is added).
+    func openInbox() {
+        guard currentProject != nil else {
+            inboxWithoutProject = selectedWorkspaceId
+            TerminalHost.shared.render(force: true)
+            return
+        }
+        openDoc(.inbox, workPath: currentProject?.path)
+    }
+
+    /// The Inbox is on screen in a workspace without projects.
+    var showsInboxWithoutProject: Bool { currentProject == nil && inboxWithoutProject != nil && inboxWithoutProject == selectedWorkspaceId }
     func openChanges(scrollTo: String? = nil) { openDoc(.changes, scrollTo: scrollTo) }
     func openCommit(_ hash: String, subject: String) { openDoc(.commit(hash, subject)) }
 

@@ -12,6 +12,8 @@ final class TerminalHost {
     private var renderedDock: (String?, SessionState?)?
     private var surfaces: [String: TerminalSurfaceView] = [:]
     private var renderedTabId: String?
+    /// The Inbox in place of the empty screen (a workspace without projects) is what is on screen.
+    private var renderedInboxHere = false
     private var renderedDocId: String?
     private var renderedLayout: PaneNode?
     private var renderedStates: [String: SessionState] = [:]
@@ -145,7 +147,10 @@ final class TerminalHost {
             DispatchQueue.main.async { self.model.zoomedPanes[tab.id] = nil }
         }
         let zoomed = model.zoomedPane(in: tab)
-        if !force, tab?.id == renderedTabId, tab?.layout == renderedLayout, states == renderedStates, zoomed == renderedZoom { return }
+        let inboxHere = tab == nil && model.showsInboxWithoutProject
+        if !force, tab?.id == renderedTabId, tab?.layout == renderedLayout, states == renderedStates, zoomed == renderedZoom,
+           inboxHere == renderedInboxHere { return }
+        renderedInboxHere = inboxHere
         // Zoom toggled on the tab already on screen: animate the pane between its slot and full size.
         if let tab, tab.id == renderedTabId, tab.layout == renderedLayout, states == renderedStates, zoomed != renderedZoom,
            let id = zoomed ?? renderedZoom, animateZoom(tab: tab, sessionId: id, zoomIn: zoomed != nil) {
@@ -158,7 +163,13 @@ final class TerminalHost {
         renderedStates = states
         container.subviews.forEach { $0.removeFromSuperview() }
         guard let tab else {
-            container.showEmpty()
+            if inboxHere {
+                let pane = PaneView(sessionId: "")
+                pane.setContent(NSHostingView(rootView: InboxView().environmentObject(model)))
+                container.setRoot(pane)
+            } else {
+                container.showEmpty()
+            }
             return
         }
         let root = build(zoomed.map { PaneNode.leaf(sessionId: $0) } ?? tab.layout, tabId: tab.id, path: [])

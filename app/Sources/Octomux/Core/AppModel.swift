@@ -36,6 +36,8 @@ final class AppModel: ObservableObject {
     /// App-side tabs (file, changes, commit views) shown next to the session tabs; not in the sidebar.
     @Published var docTabs: [DocTab] = DocTab.load() { didSet { DocTab.save(docTabs) } }
     /// The doc tab shown instead of the active session tab (nil: the session tab shows).
+    /// The workspace (without projects) whose main area shows the Inbox (see openInbox).
+    @Published var inboxWithoutProject: String?
     @Published var activeDocId: String? { didSet { if oldValue != activeDocId { TerminalHost.shared.render(force: true) } } }
     @Published var focusedSessionId: String?
     /// Split tab temporarily showing one pane full size (tab id → session id). App-side only.
