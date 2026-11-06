@@ -262,7 +262,36 @@ const diffState = {
   collapsed: new Set(),         // keys the user collapsed
   opened: new Set(),            // keys the user opened (large files start collapsed)
   cards: new Map(),             // key -> { el, sig, mount, unmount, file }
+  split: 0.5,                   // the left side's share in split mode (every file at once)
 };
+
+function setSplit(r) {
+  diffState.split = Math.min(0.85, Math.max(0.15, r));
+  document.documentElement.style.setProperty("--split", (diffState.split * 100).toFixed(2) + "%");
+}
+try { const v = parseFloat(localStorage.getItem("octomux.diffSplit")); if (v > 0 && v < 1) setSplit(v); } catch {}
+
+/// The bar between the two sides: drag to resize (all files follow), double-click for half and half.
+function splitHandle(editors) {
+  const h = document.createElement("div");
+  h.className = "split-handle";
+  h.title = "Drag to resize · double-click to reset";
+  h.addEventListener("pointerdown", (e) => {
+    e.preventDefault(); e.stopPropagation();
+    h.setPointerCapture(e.pointerId);
+    h.classList.add("dragging");
+    const box = editors.getBoundingClientRect();
+    const move = (ev) => setSplit((ev.clientX - box.left) / box.width);
+    const up = () => {
+      h.classList.remove("dragging");
+      h.removeEventListener("pointermove", move); h.removeEventListener("pointerup", up); h.removeEventListener("pointercancel", up);
+      try { localStorage.setItem("octomux.diffSplit", String(diffState.split)); } catch {}
+    };
+    h.addEventListener("pointermove", move); h.addEventListener("pointerup", up); h.addEventListener("pointercancel", up);
+  });
+  h.addEventListener("dblclick", () => { setSplit(0.5); try { localStorage.setItem("octomux.diffSplit", "0.5"); } catch {} });
+  editors.insertBefore(h, editors.children[1] || null);
+}
 
 function fileSig(f) { return [f.status, f.original?.length, f.modified?.length, hash(f.original || ""), hash(f.modified || "")].join(":"); }
 function hash(s) { let h = 0; for (let i = 0; i < s.length; i += Math.max(1, (s.length / 4000) | 0)) h = (h * 31 + s.charCodeAt(i)) | 0; return h; }
@@ -285,6 +314,8 @@ function buildMerge(host, f) {
       b: { doc: f.modified || "", extensions: ext },
       collapseUnchanged: collapse, gutter: true, highlightChanges: words, diffConfig,
     });
+    const editors = mv.dom.querySelector(".cm-mergeViewEditors");
+    if (editors) splitHandle(editors);
     return () => mv.destroy();
   }
   const view = new EditorView({

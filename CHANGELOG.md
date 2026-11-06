@@ -7,6 +7,8 @@
   the status bar; a click opens that file's diff against the branch. Before, it showed only uncommitted files.
 - **Diffs by line, like git**: a file with many changes no longer shows untouched lines as removed and added
   again; the Changes view now matches the +/− counts, with word marks inside the lines that did change.
+- Changes view: in split mode drag the bar between the sides to resize them (every file follows; double-click
+  for half and half), and each file's header stays at the top while you scroll through it.
 - Names cut short show in full on hover: a project's row (name, branch, folder) and the Changes panel's files.
 - **Workspace paging**: a two-finger swipe over the sidebar pulls the next workspace's projects in beside the
   current ones, and the window color blends toward the new workspace's as you pass the middle. Let go past
