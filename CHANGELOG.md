@@ -29,7 +29,7 @@
   - Notifications for review requests, failed checks, new assignments and changes to your things; ring the
     bell on a Jira project to hear about every change there, by anyone: a sound only (no banner) unless you
     choose banners. Checked every 1–10 minutes. Their sound is picked in Settings → Notifications (Sound: Inbox,
-    Tink unless you change it).
+    Blow unless you change it).
   - **Activity**: an item's comments, Jira changes (status, assignee, priority, sprint, title, description; who and
     when) and GitHub events (commits, reviews, review requests, labels, assignees, merge/close, renames,
     force-pushes) in one timeline, with a **New** line where you left off and a "Since you looked" summary on

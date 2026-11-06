@@ -371,7 +371,7 @@ final class UsageLabelTests: XCTestCase {
         XCTAssertEqual(Notifier.soundKey(for: "done"), "notifications.sound_done")
         XCTAssertEqual(Notifier.soundKey(for: "command_done"), "notifications.sound_other")
         XCTAssertEqual(Notifier.soundKey(for: "inbox"), "notifications.sound_inbox")
-        XCTAssertEqual(Notifier.defaultSound(for: "inbox"), "Tink")
+        XCTAssertEqual(Notifier.defaultSound(for: "inbox"), "Blow")
         XCTAssertNil(Notifier.defaultSound(for: "done"))
         XCTAssertTrue(Notifier.systemSounds.contains("Glass"))
     }

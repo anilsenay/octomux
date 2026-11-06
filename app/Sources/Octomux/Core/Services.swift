@@ -416,7 +416,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     /// Follows the Sound switch in Settings → Notifications. Played by the app, so macOS Focus doesn't mute it.
     func chime() {
         guard AppModel.shared.setting("notifications.sound")?.bool ?? true else { return }
-        NSSound(named: Self.soundName(for: "inbox", project: nil) ?? "Tink")?.play()
+        NSSound(named: Self.soundName(for: "inbox", project: nil) ?? "Blow")?.play()
     }
 
     // MARK: Sounds
@@ -431,7 +431,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     ]
 
     /// A kind's sound when none is picked; nil is the system's default notification sound.
-    static func defaultSound(for kind: String) -> String? { kind == "inbox" ? "Tink" : nil }
+    static func defaultSound(for kind: String) -> String? { kind == "inbox" ? "Blow" : nil }
 
     /// macOS's alert sounds (System Settings → Sound), by name.
     static let systemSounds: [String] = {
