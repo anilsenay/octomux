@@ -1,6 +1,19 @@
 # Changelog
 
-## Unreleased
+## 0.3.0
+
+Highlights:
+- **Inbox** in the sidebar: pull requests waiting for your review, your own pull requests with their checks, and
+  issues assigned to you, from **GitHub**, **Jira Cloud** and **Bitbucket Cloud**, with notifications, activity,
+  snooze, keyboard, and changes you can make from there (each asked first).
+- **Agents on Inbox items**: Work on it, Ask, Summarize, Fix with agent, and **Review** a pull request in the
+  background (read-only by default, a download when you have no clone), then post its findings as review comments.
+- **Changes view**: diffs by line like git, a resizable split, sticky file headers, scroll bars a mouse can reach,
+  wrapped lines on request, and the panel follows the branch you compare against.
+- **Resume with Flags…** to bring a stopped agent back with other flags (`--chrome`, a model…).
+- **Workspace paging** with a two-finger swipe over the sidebar.
+
+All changes:
 
 - **Changes panel follows the compare branch**: with a branch picked next to the status bar's branch, the panel
   lists every file since it (committed on this branch or not) under **Since <branch>**, with the same counts as
