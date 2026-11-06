@@ -305,17 +305,21 @@ function startsCollapsed(f) {
 }
 
 /// A horizontal scroll bar for each side, kept at the bottom of the window while the file is on screen
-/// (the editor's own bar sits at the file's end, often far below). Synced both ways with the editor.
-function stickyScrollbars(host, scrollers) {
-  const row = $("div", "hbars" + (scrollers.length > 1 ? " split" : ""));
+/// (the editor's own bar sits at the file's end, often far below). It lies over the code and shows only
+/// while the pointer is over that side (or it is scrolling), like VS Code. Synced both ways with the editor.
+function stickyScrollbars(host, sides) {
+  const row = $("div", "hbars" + (sides.length > 1 ? " split" : ""));
   const cleanups = [];
-  scrollers.forEach((sc, i) => {
+  sides.forEach(({ scroller: sc, area }, i) => {
     if (i > 0) row.append($("div", "hbar-gap"));
     const bar = $("div", "hbar");
     const inner = $("div", "hbar-inner");
     bar.append(inner);
     row.append(bar);
     let from = null;   // which side moved first, so the echo doesn't bounce back
+    let over = 0, idle;
+    const show = () => bar.classList.toggle("show", over > 0);
+    const flash = () => { bar.classList.add("show"); clearTimeout(idle); idle = setTimeout(show, 900); };
     const fit = () => {
       inner.style.width = sc.scrollWidth + "px";
       bar.classList.toggle("none", sc.scrollWidth <= sc.clientWidth + 1);
@@ -323,13 +327,18 @@ function stickyScrollbars(host, scrollers) {
       bar.scrollLeft = sc.scrollLeft;
     };
     const onBar = () => { if (from === "sc") { from = null; return; } from = "bar"; sc.scrollLeft = bar.scrollLeft; };
-    const onSc = () => { if (from === "bar") { from = null; return; } from = "sc"; bar.scrollLeft = sc.scrollLeft; };
+    const onSc = () => { flash(); if (from === "bar") { from = null; return; } from = "sc"; bar.scrollLeft = sc.scrollLeft; };
+    const enter = () => { over++; show(); }, leave = () => { over = Math.max(0, over - 1); show(); };
+    for (const el of [area, bar]) { el.addEventListener("mouseenter", enter); el.addEventListener("mouseleave", leave); }
     bar.addEventListener("scroll", onBar, { passive: true });
     sc.addEventListener("scroll", onSc, { passive: true });
     const ro = new ResizeObserver(fit);
-    ro.observe(sc); if (sc.firstElementChild) ro.observe(sc.querySelector(".cm-content") || sc.firstElementChild);
+    ro.observe(sc); ro.observe(sc.querySelector(".cm-content") || sc);
     requestAnimationFrame(fit);
-    cleanups.push(() => { ro.disconnect(); sc.removeEventListener("scroll", onSc); });
+    cleanups.push(() => {
+      ro.disconnect(); clearTimeout(idle);
+      sc.removeEventListener("scroll", onSc); area.removeEventListener("mouseenter", enter); area.removeEventListener("mouseleave", leave);
+    });
   });
   host.append(row);
   return () => { cleanups.forEach((c) => c()); row.remove(); };
@@ -349,7 +358,7 @@ function buildMerge(host, f) {
     });
     const editors = mv.dom.querySelector(".cm-mergeViewEditors");
     if (editors) splitHandle(editors);
-    const bars = stickyScrollbars(host, [mv.a.scrollDOM, mv.b.scrollDOM]);
+    const bars = stickyScrollbars(host, [{ scroller: mv.a.scrollDOM, area: mv.a.dom }, { scroller: mv.b.scrollDOM, area: mv.b.dom }]);
     return () => { bars(); mv.destroy(); };
   }
   const view = new EditorView({
@@ -359,7 +368,7 @@ function buildMerge(host, f) {
       extensions: [ext, unifiedMergeView({ original: f.original || "", mergeControls: false, gutter: true, highlightChanges: words, syntaxHighlightDeletions: true, collapseUnchanged: collapse, diffConfig })],
     }),
   });
-  const bars = stickyScrollbars(host, [view.scrollDOM]);
+  const bars = stickyScrollbars(host, [{ scroller: view.scrollDOM, area: view.dom }]);
   return () => { bars(); view.destroy(); };
 }
 

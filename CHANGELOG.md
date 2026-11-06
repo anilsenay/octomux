@@ -9,8 +9,8 @@
   again; the Changes view now matches the +/− counts, with word marks inside the lines that did change.
 - Changes view: in split mode drag the bar between the sides to resize them (every file follows; double-click
   for half and half), and each file's header stays at the top while you scroll through it. A file's horizontal
-  scroll bar stays at the bottom of the window while the file is on screen (one per side in split mode), so a
-  mouse can scroll long lines; **↩** wraps them instead (kept for next time); line numbers no longer show code through them when it scrolls sideways.
+  scroll bar stays at the bottom of the window while the file is on screen (one per side in split mode, over
+  the code, shown while the pointer is on that side), so a mouse can scroll long lines; **↩** wraps them instead (kept for next time); line numbers no longer show code through them when it scrolls sideways.
 - Names cut short show in full on hover: a project's row (name, branch, folder) and the Changes panel's files.
 - **Workspace paging**: a two-finger swipe over the sidebar pulls the next workspace's projects in beside the
   current ones, and the window color blends toward the new workspace's as you pass the middle. Let go past
