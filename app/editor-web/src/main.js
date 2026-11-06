@@ -104,7 +104,8 @@ const baseTheme = EditorView.theme({
   ".cm-content": { caretColor: "var(--accent)", padding: "6px 0" },
   ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--accent)", borderLeftWidth: "2px" },
   "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection": { backgroundColor: "var(--selection) !important" },
-  ".cm-gutters": { backgroundColor: "transparent", color: "var(--text3)", border: "none" },
+  // Opaque: the gutter stays put while the code scrolls sideways under it.
+  ".cm-gutters": { backgroundColor: "var(--bg)", color: "var(--text3)", border: "none" },
   ".cm-lineNumbers .cm-gutterElement": { padding: "0 10px 0 14px", minWidth: "32px" },
   ".cm-activeLine": { backgroundColor: "var(--hover)" },
   ".cm-activeLineGutter": { backgroundColor: "transparent", color: "var(--text)" },
@@ -263,6 +264,7 @@ const diffState = {
   opened: new Set(),            // keys the user opened (large files start collapsed)
   cards: new Map(),             // key -> { el, sig, mount, unmount, file }
   split: 0.5,                   // the left side's share in split mode (every file at once)
+  wrap: (() => { try { return localStorage.getItem("octomux.diffWrap") === "1"; } catch { return false; } })(),
 };
 
 function setSplit(r) {
@@ -303,7 +305,7 @@ function startsCollapsed(f) {
 }
 
 function buildMerge(host, f) {
-  const ext = [common({ path: f.path, editable: false }), lineNumbers(), EditorView.theme({ ".cm-content": { padding: "0" } })];
+  const ext = [common({ path: f.path, editable: false, wrap: diffState.wrap }), lineNumbers(), EditorView.theme({ ".cm-content": { padding: "0" } })];
   const collapse = { margin: 3, minSize: 6 };
   // Word-level marks only help when both sides have text (not for added or deleted files).
   const words = !!(f.original && f.modified);
@@ -417,8 +419,16 @@ function showDiff(p) {
       };
       seg.append(b);
     }
+    const wrapBtn = $("button", "wrapbtn" + (diffState.wrap ? " on" : ""), "↩");
+    wrapBtn.title = "Wrap long lines";
+    wrapBtn.onclick = () => {
+      diffState.wrap = !diffState.wrap;
+      try { localStorage.setItem("octomux.diffWrap", diffState.wrap ? "1" : "0"); } catch {}
+      wrapBtn.classList.toggle("on", diffState.wrap);
+      for (const c of diffState.cards.values()) { if (c.mounted) { c.unmountNow(); c.mount(); } }
+    };
     countEl = $("span", "count");
-    right.append(seg, countEl);
+    right.append(wrapBtn, seg, countEl);
     header.append(left, right);
     list = $("div", "list");
     wrap.append(header, list);

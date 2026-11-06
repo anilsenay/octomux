@@ -4,6 +4,7 @@ import UserNotifications
 
 /// UI-level debug methods (dev only): drive the app like a user and read back what it shows.
 enum DebugActions {
+    static var jsResult: String?
     static func register() {
         registerMenuBar()
         let d = DebugServer.shared
@@ -39,6 +40,7 @@ enum DebugActions {
             ] as [String: Any]
         }
         // Inbox counts per source, errors and whether a refresh is running (no item contents).
+        d.register("doc_js_result") { _ in ["result": DebugActions.jsResult ?? ""] }
         d.register("inbox_state") { _ in
             let st = InboxStore.shared
             return [
@@ -461,6 +463,31 @@ enum DebugActions {
             case "open_changes": m.openChanges(scrollTo: p["value"] as? String)
             case "open_commit": if let v = p["value"] as? String { m.openCommit(v, subject: p["subject"] as? String ?? "") }
             case "doc_js": if let d = m.activeDoc, let v = p["value"] as? String { DocHost.shared.controller(for: d).web.evaluateJavaScript(v) }
+            // A trackpad scroll (dx, dy points; one changed event) delivered to the doc's web view at x, y (view, top-left).
+            case "doc_scroll":
+                if let d = m.activeDoc {
+                    let web = DocHost.shared.controller(for: d).web
+                    let x = (p["x"] as? Double) ?? Double(web.bounds.midX), y = (p["y"] as? Double) ?? Double(web.bounds.midY)
+                    let dx = Int32((p["dx"] as? Int) ?? 0), dy = Int32((p["dy"] as? Int) ?? 0)
+                    if let win = web.window {
+                        let inWin = web.convert(NSPoint(x: x, y: web.isFlipped ? y : web.bounds.height - y), to: nil)
+                        let screen = win.convertPoint(toScreen: inWin)
+                        let flippedY = (NSScreen.screens.first?.frame.height ?? 0) - screen.y
+                        for phase: Int64 in [1, 2, 2, 2, 4] {
+                            guard let cg = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2, wheel1: phase == 2 ? dy : 0, wheel2: phase == 2 ? dx : 0, wheel3: 0) else { continue }
+                            cg.setIntegerValueField(.scrollWheelEventIsContinuous, value: 1)
+                            cg.setIntegerValueField(.scrollWheelEventScrollPhase, value: phase)
+                            cg.location = CGPoint(x: screen.x, y: flippedY)
+                            if let e = NSEvent(cgEvent: cg) { web.scrollWheel(with: e) }
+                        }
+                    }
+                }
+            // Like doc_js, keeping the result (as a string) for `doc_js_result` to read.
+            case "doc_js_eval":
+                DebugActions.jsResult = nil
+                if let d = m.activeDoc, let v = p["value"] as? String {
+                    DocHost.shared.controller(for: d).web.evaluateJavaScript(v) { r, e in DebugActions.jsResult = e.map { "error: \($0)" } ?? "\(r ?? "nil")" }
+                }
             case "drop_preview", "drop":
                 // value: edge; id: target session; for "drop", kind + source in p["kind"], p["source"].
                 let edge = AppModel.PaneEdge(rawValue: p["value"] as? String ?? "") ?? .right
