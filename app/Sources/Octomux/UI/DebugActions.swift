@@ -488,6 +488,27 @@ enum DebugActions {
                 if let d = m.activeDoc, let v = p["value"] as? String {
                     DocHost.shared.controller(for: d).web.evaluateJavaScript(v) { r, e in DebugActions.jsResult = e.map { "error: \($0)" } ?? "\(r ?? "nil")" }
                 }
+            // Types into the first chat composer field of the main window (value: text; "\u{1b}" = esc, "\n" = return,
+            // "↓"/"↑" = arrows) like keystrokes, so the / and @ menus react. key: "clear" empties it first.
+            case "composer_type":
+                func find(_ v: NSView) -> ComposerTextView? {
+                    if let t = v as? ComposerTextView { return t }
+                    for s in v.subviews { if let t = find(s) { return t } }
+                    return nil
+                }
+                if let root = (NSApp.delegate as? AppDelegate)?.mainWindow?.contentView, let tv = find(root) {
+                    tv.window?.makeFirstResponder(tv)
+                    if (p["key"] as? String) == "clear" { tv.selectAll(nil); tv.insertText("", replacementRange: tv.selectedRange()) }
+                    for ch in (p["value"] as? String ?? "") {
+                        switch ch {
+                        case "\u{1b}": tv.doCommand(by: #selector(NSResponder.cancelOperation(_:)))
+                        case "\n": tv.doCommand(by: #selector(NSResponder.insertNewline(_:)))
+                        case "↓": tv.doCommand(by: #selector(NSResponder.moveDown(_:)))
+                        case "↑": tv.doCommand(by: #selector(NSResponder.moveUp(_:)))
+                        default: tv.insertText(String(ch), replacementRange: tv.selectedRange())
+                        }
+                    }
+                }
             // The chat page as a PNG (window captures leave web views blank). value: output path.
             case "chat_snapshot":
                 DebugActions.jsResult = nil

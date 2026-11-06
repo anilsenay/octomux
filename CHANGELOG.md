@@ -10,6 +10,9 @@
   pasted screenshots and files become attachments.
 - **Chat composer** shows the model the session runs (Claude: switch it from there, sent as `/model`), a ring with
   how full the context is (Claude's own reading; Codex from its log), and a Stop button while the agent works.
+- **`/` and `@` in the chat composers**: `/` lists built-in commands, your and the project's commands and skills,
+  and enabled plugins' (Codex: built-ins and saved prompts), with descriptions; `@` finds files of the project
+  (git's list) by name. ↑↓ to move, ↩ or ⇥ to pick, esc to close.
 
 ## 0.3.0
 

@@ -20,6 +20,7 @@ struct NewChatView: View {
     @State private var options = ChatLaunchOptions()
     @State private var files: [URL] = []
     @State private var dropTarget = false
+    @StateObject private var completion = ComposerCompletion()
     @State private var focused = false
 
     private var doc: DocTab? { model.docTabs.first { $0.id == docId } }
@@ -99,7 +100,7 @@ struct NewChatView: View {
                 set: { draft = $0; if NewChatDraft.pending[docId] != nil { NewChatDraft.pending[docId] = $0 } }),
                 placeholder: "Type a message… (↩ to send, ⇧↩ for a new line)",
                 minLines: 3, maxLines: 14, enabled: !sending, focused: $focused, onSubmit: send,
-                onPasteFiles: { let f = AttachmentChips.pasted(); files += f; return !f.isEmpty })
+                onPasteFiles: { let f = AttachmentChips.pasted(); files += f; return !f.isEmpty }, completion: completion)
             HStack(spacing: 2) {
                 modelChip(flags: flags)
                 if NewChatDraft.asks[docId] != nil {
@@ -146,6 +147,7 @@ struct NewChatView: View {
             }
         }
         .composerCard(focused: focused || dropTarget)
+        .overlay(alignment: .top) { CompletionMenu(completion: completion).alignmentGuide(.top) { $0[.bottom] + 8 } }
         .onDrop(of: [.fileURL], isTargeted: $dropTarget) { providers in
             for p in providers {
                 _ = p.loadObject(ofClass: URL.self) { u, _ in
@@ -154,7 +156,11 @@ struct NewChatView: View {
             }
             return true
         }
-        .onAppear { if let k = profile?.kind { options = ChatLaunchOptions.load(k) } }
+        .onAppear {
+            if let k = profile?.kind { options = ChatLaunchOptions.load(k) }
+            completion.configure(kind: { profile?.kind }, configDir: { ChatAgentDirs.config(profile) },
+                                 folder: { worktree ?? project?.path })
+        }
         .onChange(of: profile?.id) { _, _ in if let k = profile?.kind { options = ChatLaunchOptions.load(k) } }
         .onChange(of: options) { _, v in if let k = profile?.kind { v.save(k) } }
     }

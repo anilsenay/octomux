@@ -768,3 +768,50 @@ final class ResumeFlagsTests: XCTestCase {
         XCTAssertTrue(ResumeFlags.shortcuts(.generic).isEmpty)
     }
 }
+
+final class ComposerCompletionTests: XCTestCase {
+    func testTokenAtCaret() {
+        XCTAssertEqual(ComposerCompletion.token(in: "/comp", caret: 5)?.1, "comp")
+        XCTAssertEqual(ComposerCompletion.token(in: "  /comp", caret: 7)?.0, "/")
+        XCTAssertNil(ComposerCompletion.token(in: "run /comp", caret: 9), "a slash command only starts the message")
+        let at = ComposerCompletion.token(in: "look at @src/ma", caret: 15)
+        XCTAssertEqual(at?.0, "@"); XCTAssertEqual(at?.1, "src/ma"); XCTAssertEqual(at?.2, NSRange(location: 8, length: 7))
+        XCTAssertNil(ComposerCompletion.token(in: "mail a@b", caret: 8), "@ inside a word is not a mention")
+        XCTAssertNil(ComposerCompletion.token(in: "@src ", caret: 5))
+    }
+
+    func testFuzzyRanking() {
+        let files = ["src/main.rs", "README.md", "src/ui/theme.swift", "docs/maintenance.md"]
+        XCTAssertEqual(FuzzyRank.rank(files, "main", key: { $0 }), ["src/main.rs", "docs/maintenance.md"])
+        XCTAssertEqual(FuzzyRank.rank(files, "thm", key: { $0 }), ["src/ui/theme.swift"])
+        XCTAssertEqual(FuzzyRank.rank(["compact", "context", "clear"], "co", key: { $0 }), ["compact", "context"])
+    }
+
+    func testSlashCommandsFromFiles() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("slash-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let fm = FileManager.default
+        try fm.createDirectory(at: dir.appendingPathComponent("commands/git"), withIntermediateDirectories: true)
+        try "---\ndescription: \"Ship it\"\n---\nbody".write(to: dir.appendingPathComponent("commands/git/ship.md"), atomically: true, encoding: .utf8)
+        try "# Title\nReview the diff\n".write(to: dir.appendingPathComponent("commands/review.md"), atomically: true, encoding: .utf8)
+        try fm.createDirectory(at: dir.appendingPathComponent("skills/pdf"), withIntermediateDirectories: true)
+        try "---\nname: pdf-tools\ndescription: Read PDFs\n---\n".write(to: dir.appendingPathComponent("skills/pdf/SKILL.md"), atomically: true, encoding: .utf8)
+        let plug = dir.appendingPathComponent("plug")
+        try fm.createDirectory(at: plug.appendingPathComponent("commands"), withIntermediateDirectories: true)
+        try "Lint the code".write(to: plug.appendingPathComponent("commands/lint.md"), atomically: true, encoding: .utf8)
+        try fm.createDirectory(at: dir.appendingPathComponent("plugins"), withIntermediateDirectories: true)
+        let installed: [String: Any] = ["plugins": ["tools@market": [["installPath": plug.path]], "off@market": [["installPath": plug.path]]]]
+        try JSONSerialization.data(withJSONObject: installed).write(to: dir.appendingPathComponent("plugins/installed_plugins.json"))
+        try JSONSerialization.data(withJSONObject: ["enabledPlugins": ["tools@market": true, "off@market": false]]).write(to: dir.appendingPathComponent("settings.json"))
+
+        let list = SlashCommands.list(kind: .claude, configDir: dir, project: nil)
+        let byName = Dictionary(uniqueKeysWithValues: list.map { ($0.name, $0) })
+        XCTAssertEqual(byName["git:ship"]?.detail, "Ship it")
+        XCTAssertEqual(byName["review"]?.detail, "Review the diff")
+        XCTAssertEqual(byName["review"]?.kind, "user", "a custom command replaces the built-in of the same name")
+        XCTAssertEqual(byName["pdf-tools"]?.kind, "skill")
+        XCTAssertEqual(byName["tools:lint"]?.detail, "Lint the code")
+        XCTAssertNil(byName["off:lint"], "disabled plugins are left out")
+        XCTAssertNotNil(byName["compact"])
+    }
+}

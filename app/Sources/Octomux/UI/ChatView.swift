@@ -309,6 +309,7 @@ struct ChatView: View {
     @State private var composerFocused = false
     /// Claude's own context reading (its status line writes `run/<session>.context`).
     @State private var statusContext: ContextReading?
+    @StateObject private var completion = ComposerCompletion()
 
     var body: some View {
         let s = model.session(sessionId)
@@ -337,6 +338,7 @@ struct ChatView: View {
         .onAppear {
             if let s, model.host(for: s.id).isRemote { chat.remoteClient = model.client(for: s.id) }
             chat.attach(resolvePath(s))
+            readStatusContext()
         }
         .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in
             if chat.path == nil { chat.attach(resolvePath(model.session(sessionId))) }   // transcript appears after the first turn
@@ -413,7 +415,7 @@ struct ChatView: View {
                               let refs = AttachmentChips.pasted().map { kind == .claude ? "@" + $0.path : $0.path }
                               if !refs.isEmpty { draft += (draft.isEmpty || draft.hasSuffix(" ") ? "" : " ") + refs.joined(separator: " ") + " " }
                               return !refs.isEmpty
-                          })
+                          }, completion: completion)
             HStack(spacing: 6) {
                 if let p { AgentIcon(icon: p.icon, size: 11) }
                 Text(p?.name ?? "Agent").font(.system(size: T.k * 12, weight: .medium)).foregroundStyle(T.text2)
@@ -439,6 +441,12 @@ struct ChatView: View {
             }
         }
         .composerCard(focused: composerFocused)
+        .overlay(alignment: .top) { CompletionMenu(completion: completion).alignmentGuide(.top) { $0[.bottom] + 8 } }
+        .onAppear {
+            completion.configure(kind: { [model, sessionId] in model.profile(model.session(sessionId)?.profileId)?.kind },
+                                 configDir: { [model, sessionId] in ChatAgentDirs.config(model.profile(model.session(sessionId)?.profileId)) },
+                                 folder: { [model, sessionId] in model.session(sessionId).map { $0.worktree ?? model.project($0.projectId)?.path ?? $0.cwd } })
+        }
         .frame(maxWidth: 780)
         .padding(.horizontal, 28).padding(.bottom, 18).padding(.top, 6)
         .frame(maxWidth: .infinity)

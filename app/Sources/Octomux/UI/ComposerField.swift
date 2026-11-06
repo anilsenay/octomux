@@ -15,6 +15,8 @@ struct ComposerField: NSViewRepresentable {
     var onSubmit: () -> Void
     /// Called for a paste that carries images or files; return true when it was handled.
     var onPasteFiles: (() -> Bool)? = nil
+    /// `/` and `@` menus (keys ↑ ↓ ↩ ⇥ esc go to the menu while it is open).
+    var completion: ComposerCompletion? = nil
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -50,6 +52,7 @@ struct ComposerField: NSViewRepresentable {
         sv.documentView = tv
         sv.textView = tv
         context.coordinator.scroll = sv
+        completion?.textView = tv
         apply(to: sv, tv)
         tv.string = text
         sv.recalcHeight()
@@ -105,9 +108,24 @@ struct ComposerField: NSViewRepresentable {
             if parent.text != tv.string { parent.text = tv.string }
             scroll?.recalcHeight()
             tv.scrollRangeToVisible(tv.selectedRange())
+            parent.completion?.update(text: tv.string, caret: tv.selectedRange().location)
+        }
+
+        func textViewDidChangeSelection(_ n: Notification) {
+            guard let tv = n.object as? NSTextView, let c = parent.completion, c.isActive || tv.selectedRange().length == 0 else { return }
+            c.update(text: tv.string, caret: tv.selectedRange().location)
         }
 
         func textView(_ tv: NSTextView, doCommandBy sel: Selector) -> Bool {
+            if let c = parent.completion, c.isActive {
+                switch sel {
+                case #selector(NSResponder.moveUp(_:)): c.move(-1); return true
+                case #selector(NSResponder.moveDown(_:)): c.move(1); return true
+                case #selector(NSResponder.insertNewline(_:)), #selector(NSResponder.insertTab(_:)): c.accept(); return true
+                case #selector(NSResponder.cancelOperation(_:)): c.dismiss(); return true
+                default: break
+                }
+            }
             guard sel == #selector(NSResponder.insertNewline(_:)) else { return false }
             let flags = NSApp.currentEvent?.modifierFlags ?? []
             if flags.contains(.shift) || flags.contains(.option) {
