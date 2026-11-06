@@ -488,6 +488,22 @@ enum DebugActions {
                 if let d = m.activeDoc, let v = p["value"] as? String {
                     DocHost.shared.controller(for: d).web.evaluateJavaScript(v) { r, e in DebugActions.jsResult = e.map { "error: \($0)" } ?? "\(r ?? "nil")" }
                 }
+            // The chat page as a PNG (window captures leave web views blank). value: output path.
+            case "chat_snapshot":
+                DebugActions.jsResult = nil
+                if let c = ChatWebHost.shared.any, let out = p["value"] as? String {
+                    c.web.takeSnapshot(with: nil) { img, e in
+                        guard let img, let tiff = img.tiffRepresentation, let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) else {
+                            DebugActions.jsResult = "error: \(e.map { "\($0)" } ?? "no image")"; return
+                        }
+                        try? png.write(to: URL(fileURLWithPath: out))
+                        DebugActions.jsResult = out
+                    }
+                }
+            // The chat page of the most recently shown chat view; result read with `doc_js_result`.
+            case "chat_js_eval":
+                DebugActions.jsResult = nil
+                if let c = ChatWebHost.shared.any, let v = p["value"] as? String { c.eval(v) { DebugActions.jsResult = $0 } }
             case "drop_preview", "drop":
                 // value: edge; id: target session; for "drop", kind + source in p["kind"], p["source"].
                 let edge = AppModel.PaneEdge(rawValue: p["value"] as? String ?? "") ?? .right

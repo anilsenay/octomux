@@ -25,7 +25,17 @@ def status(s):
 O, G, D, B, N = "\x1b[38;5;209m", "\x1b[32m", "\x1b[90m", "\x1b[1m", "\x1b[0m"
 sys.stdout.write("\x1b]2;Refactor holder snapshot\x07")
 print(f"{O}✻ {B}Fake Claude{N}{D}  {os.getcwd()}  session {sid[:8]}{N}\n")
-if not resumed:
+if not resumed and os.environ.get("FAKE_CLAUDE_RICH") == "1":
+    # Every case the chat view draws (tools/chat-fixture.py), instead of the short default conversation.
+    import subprocess
+    subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "chat-fixture.py"), path, os.getcwd()], check=True)
+    with open(path) as f:
+        rows = [json.loads(l) for l in f if l.strip()]
+    with open(path, "w") as f:
+        for r in rows:
+            r["sessionId"] = sid
+            f.write(json.dumps(r) + "\n")
+elif not resumed:
     w({"type": "user", "message": {"role": "user", "content": "snapshot should replay the main screen before the alt screen"}})
     w({"type": "assistant", "message": {"role": "assistant", "content": [
         {"type": "thinking", "thinking": "The holder must capture the main screen when the program switches to the alternate screen, then replay it first on attach."},

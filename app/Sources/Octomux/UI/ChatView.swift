@@ -13,6 +13,10 @@ struct ChatItem: Identifiable, Equatable {
     var detail: String = ""
     var result: String?
     var failed = false
+    /// The tool call's input as JSON (edit snippets, todo lists, questions…), long strings cut.
+    var input = ""
+    /// When the transcript wrote it (ISO 8601), for turn durations and times.
+    var ts = ""
 }
 
 final class ChatModel: ObservableObject {
@@ -26,6 +30,8 @@ final class ChatModel: ObservableObject {
     private var toolIndex: [String: Int] = [:]
     private var timer: Timer?
     private var seq = 0
+    /// Timestamp of the line being ingested.
+    private var lineTs = ""
 
     func attach(_ p: String?) {
         guard p != path else { return }
@@ -88,8 +94,17 @@ final class ChatModel: ObservableObject {
 
     private func newId() -> String { seq += 1; return "c\(seq)" }
 
+    /// Gives the items `ingest` just added the line's timestamp.
+    private func stamp(_ out: inout [ChatItem], from start: Int) {
+        guard !lineTs.isEmpty, start < out.count else { return }
+        for i in start..<out.count where out[i].ts.isEmpty { out[i].ts = lineTs }
+    }
+
     private func ingest(_ line: Data, into out: inout [ChatItem]) {
         guard let o = try? JSONSerialization.jsonObject(with: line) as? [String: Any], let type = o["type"] as? String else { return }
+        lineTs = o["timestamp"] as? String ?? ""
+        let start = out.count
+        defer { stamp(&out, from: start) }
         if type == "response_item", let p = o["payload"] as? [String: Any] { ingestCodex(p, into: &out); return }
         if (o["isMeta"] as? Bool) == true || (o["isSidechain"] as? Bool) == true { return }
         guard let msg = o["message"] as? [String: Any] else { return }
@@ -123,7 +138,8 @@ final class ChatModel: ObservableObject {
                     if !t.isEmpty { out.append(ChatItem(id: newId(), kind: .thinking, text: t)) }
                 case "tool_use":
                     let name = p["name"] as? String ?? "Tool"
-                    let item = ChatItem(id: newId(), kind: .tool, text: name, tool: name, detail: Self.summary(name, p["input"] as? [String: Any] ?? [:]))
+                    let item = ChatItem(id: newId(), kind: .tool, text: name, tool: name, detail: Self.summary(name, p["input"] as? [String: Any] ?? [:]),
+                                        input: Self.inputJSON(p["input"]))
                     toolIndex[p["id"] as? String ?? item.id] = out.count
                     out.append(item)
                 default: break
@@ -160,7 +176,7 @@ final class ChatModel: ObservableObject {
             if let a = p["arguments"] as? String, let d = a.data(using: .utf8), let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any] { input = o }
             if let cmd = input["command"] as? [String] { input["command"] = cmd.joined(separator: " ") }
             if let cmd = input["cmd"] as? String { input["command"] = cmd }
-            let item = ChatItem(id: newId(), kind: .tool, text: name, tool: name, detail: Self.summary(name, input))
+            let item = ChatItem(id: newId(), kind: .tool, text: name, tool: name, detail: Self.summary(name, input), input: Self.inputJSON(input))
             toolIndex[p["call_id"] as? String ?? item.id] = out.count
             out.append(item)
         case "function_call_output":
@@ -173,8 +189,9 @@ final class ChatModel: ObservableObject {
         case "custom_tool_call":
             // Codex's code mode: the call is a script (`await tools.exec_command({ cmd: "…" })`).
             let script = p["input"] as? String ?? ""
-            let (name, input) = Self.codeModeCall(script, fallback: p["name"] as? String ?? "tool")
-            let item = ChatItem(id: newId(), kind: .tool, text: name, tool: name, detail: Self.summary(name, input))
+            var (name, input) = Self.codeModeCall(script, fallback: p["name"] as? String ?? "tool")
+            if (p["name"] as? String) == "apply_patch" || script.hasPrefix("*** Begin Patch") { name = "apply_patch"; input = ["patch": script] }
+            let item = ChatItem(id: newId(), kind: .tool, text: name, tool: name, detail: Self.summary(name, input), input: Self.inputJSON(input))
             toolIndex[p["call_id"] as? String ?? item.id] = out.count
             out.append(item)
         case "custom_tool_call_output":
@@ -222,6 +239,19 @@ final class ChatModel: ObservableObject {
         return (name, input)
     }
 
+    /// A tool input as JSON for the chat page; strings longer than 40k characters are cut.
+    static func inputJSON(_ v: Any?) -> String {
+        func cut(_ x: Any) -> Any {
+            if let s = x as? String { return s.count > 40_000 ? String(s.prefix(40_000)) + "\n…" : s }
+            if let d = x as? [String: Any] { return d.mapValues(cut) }
+            if let a = x as? [Any] { return a.map(cut) }
+            return x
+        }
+        guard let v, JSONSerialization.isValidJSONObject(v),
+              let data = try? JSONSerialization.data(withJSONObject: cut(v), options: [.sortedKeys]) else { return "" }
+        return String(data: data, encoding: .utf8) ?? ""
+    }
+
     static func flatten(_ v: Any?) -> String {
         if let s = v as? String { return s }
         if let a = v as? [[String: Any]] { return a.compactMap { $0["text"] as? String }.joined(separator: "\n") }
@@ -245,8 +275,7 @@ struct ChatView: View {
     let sessionId: String
     @StateObject private var chat = ChatModel()
     @State private var draft = ""
-    @State private var expanded: Set<String> = []
-    @FocusState private var composerFocused: Bool
+    @State private var composerFocused = false
 
     var body: some View {
         let s = model.session(sessionId)
@@ -256,24 +285,8 @@ struct ChatView: View {
             if chat.path == nil || chat.items.isEmpty {
                 starting(s)
             } else {
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 10) {
-                            ForEach(chat.items) { item in row(item).id(item.id) }
-                            if s?.activity == .working {
-                                HStack(spacing: 8) { WorkingRing(); Text("Working…").font(T.body).foregroundStyle(T.text2) }
-                                    .padding(.leading, 4).id("working")
-                            }
-                        }
-                        .padding(.horizontal, 22).padding(.vertical, 16)
-                        .frame(maxWidth: 820, alignment: .leading)
-                        .frame(maxWidth: .infinity)
-                    }
-                    .onChange(of: chat.items.count) { _, _ in
-                        if let last = chat.items.last { withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(last.id, anchor: .bottom) } }
-                    }
-                    .onAppear { if let last = chat.items.last { proxy.scrollTo(last.id, anchor: .bottom) } }
-                }
+                ChatTranscriptView(sessionId: sessionId, items: chat.items, working: s?.activity == .working,
+                                   cwd: s?.cwd ?? "", agent: model.profile(s?.profileId)?.name ?? "Agent")
             }
             if s?.activity == .needsInput {
                 HStack(spacing: 10) {
@@ -356,55 +369,17 @@ struct ChatView: View {
         .padding(.horizontal, 14).frame(height: 38)
     }
 
-    @ViewBuilder private func row(_ item: ChatItem) -> some View {
-        switch item.kind {
-        case .user:
-            HStack {
-                Spacer(minLength: 80)
-                Text(item.text).font(T.body).foregroundStyle(T.text).textSelection(.enabled)
-                    .padding(.horizontal, 13).padding(.vertical, 9)
-                    .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(T.selection))
-            }
-        case .assistant:
-            Text(markdown(item.text)).font(.system(size: T.k * 13.5)).foregroundStyle(T.text).textSelection(.enabled)
-                .lineSpacing(3).frame(maxWidth: .infinity, alignment: .leading)
-        case .thinking:
-            Text(item.text).font(.system(size: T.k * 12).italic()).foregroundStyle(T.text3).lineLimit(expanded.contains(item.id) ? nil : 2)
-                .onTapGesture { toggle(item.id) }
-        case .note:
-            Text(item.text).font(T.mono(11)).foregroundStyle(T.text3)
-        case .tool:
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 8) {
-                    Circle().fill(item.result == nil ? T.accent : item.failed ? T.red : T.green).frame(width: 7, height: 7)
-                    Text(item.tool).font(.system(size: T.k * 12.5, weight: .semibold)).foregroundStyle(T.text)
-                    Text(relative(item.detail)).font(T.mono(11.5)).foregroundStyle(T.text2).lineLimit(1).truncationMode(.middle)
-                    Spacer(minLength: 4)
-                    if item.result != nil {
-                        Image(systemName: expanded.contains(item.id) ? "chevron.up" : "chevron.down").font(.system(size: T.k * 9, weight: .semibold)).foregroundStyle(T.text3)
-                    }
-                }
-                if let r = item.result, expanded.contains(item.id) {
-                    Text(r.count > 4000 ? String(r.prefix(4000)) + "\n…" : r).font(T.mono(11)).foregroundStyle(T.text2).textSelection(.enabled)
-                        .padding(8).frame(maxWidth: .infinity, alignment: .leading)
-                        .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(T.frame.opacity(0.6)))
-                }
-            }
-            .padding(.horizontal, 10).padding(.vertical, 7)
-            .background(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(T.border))
-            .contentShape(Rectangle())
-            .onTapGesture { toggle(item.id) }
-        }
-    }
-
     private func composer(_ s: Session?) -> some View {
         let p = model.profile(s?.profileId)
         return VStack(alignment: .leading, spacing: 12) {
-            TextField("Message \(p?.name ?? "the agent") — goes to the same session", text: $draft, axis: .vertical)
-                .textFieldStyle(.plain).font(.system(size: T.k * 14)).lineLimit(2...10)
-                .frame(minHeight: 40, alignment: .topLeading)
-                .focused($composerFocused)
-                .onSubmit(send)
+            ComposerField(text: $draft, placeholder: "Message \(p?.name ?? "the agent") — goes to the same session (⇧↩ new line)",
+                          minLines: 2, maxLines: 14, focused: $composerFocused, onSubmit: send,
+                          onPasteFiles: {
+                              let kind = model.profile(s?.profileId)?.kind ?? .claude
+                              let refs = AttachmentChips.pasted().map { kind == .claude ? "@" + $0.path : $0.path }
+                              if !refs.isEmpty { draft += (draft.isEmpty || draft.hasSuffix(" ") ? "" : " ") + refs.joined(separator: " ") + " " }
+                              return !refs.isEmpty
+                          })
             HStack(spacing: 6) {
                 if let p { AgentIcon(icon: p.icon, size: 11) }
                 Text(p?.name ?? "Agent").font(.system(size: T.k * 12, weight: .medium)).foregroundStyle(T.text2)
@@ -435,21 +410,6 @@ struct ChatView: View {
         model.sendToSession(sessionId, text: text)
     }
 
-    /// Paths inside the session's folder are shown relative to it.
-    private func relative(_ s: String) -> String {
-        guard let cwd = model.session(sessionId)?.cwd else { return s }
-        var out = s
-        for base in [cwd, "/private" + cwd, cwd.replacingOccurrences(of: "/private/", with: "/")] {
-            out = out.replacingOccurrences(of: base + "/", with: "")
-        }
-        return out
-    }
-
-    private func toggle(_ id: String) { if expanded.contains(id) { expanded.remove(id) } else { expanded.insert(id) } }
-
-    private func markdown(_ s: String) -> AttributedString {
-        (try? AttributedString(markdown: s, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(s)
-    }
 }
 
 /// The message a chat session was started with (shown until the transcript has it). App-side only.

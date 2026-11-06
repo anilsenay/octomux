@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- **Chat view**: the conversation is drawn with full markdown (lists, tables, code blocks with highlighting and
+  Copy), tool calls grouped per step ("Read 2 files · Ran 1 command") and folded once the turn ends, edit diffs,
+  command output, todo lists, plans and questions as cards, "worked for" time per turn, and a "Latest" button
+  when you scroll up (new messages no longer pull you down while you read).
+- **Chat composers** grow with the text and scroll past 14 lines (wheel, trackpad); ↩ sends, ⇧↩ adds a line,
+  pasted screenshots and files become attachments.
+
 ## 0.3.0
 
 Highlights:

@@ -53,3 +53,25 @@ export function lineDiff(a, b) {
 }
 
 export const diffConfig = { override: lineDiff };
+
+// Whole-line operations for a small unified diff (chat edit cards): [{ op: " " | "-" | "+", text }].
+export function lineOps(a, b) {
+  const atA = starts(a), atB = starts(b);
+  const ids = new Map();
+  const ea = encode(a, atA, ids), eb = ea === null ? null : encode(b, atB, ids);
+  const line = (s, at, i) => s.slice(at[i], at[i + 1]).replace(/\n$/, "");
+  const out = [];
+  if (ea === null || eb === null) {
+    for (let i = 0; i + 1 < atA.length; i++) out.push({ op: "-", text: line(a, atA, i) });
+    for (let i = 0; i + 1 < atB.length; i++) out.push({ op: "+", text: line(b, atB, i) });
+    return out;
+  }
+  let ia = 0, ib = 0;
+  for (const c of diff(ea, eb, { scanLimit: 1e9, timeout: 1000 })) {
+    while (ia < c.fromA) { out.push({ op: " ", text: line(a, atA, ia) }); ia++; ib++; }
+    for (; ia < c.toA; ia++) out.push({ op: "-", text: line(a, atA, ia) });
+    for (; ib < c.toB; ib++) out.push({ op: "+", text: line(b, atB, ib) });
+  }
+  while (ia + 1 < atA.length) { out.push({ op: " ", text: line(a, atA, ia) }); ia++; }
+  return out;
+}

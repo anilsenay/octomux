@@ -1,0 +1,198 @@
+import AppKit
+import SwiftUI
+
+/// Multi-line message field of the chat composers. Grows with its text between `minLines` and `maxLines`,
+/// then scrolls (wheel, trackpad, scroll bar). ↩ sends; ⇧↩ / ⌥↩ add a new line. A SwiftUI vertical
+/// `TextField` stops growing at its line limit and cannot be scrolled on macOS, so this wraps an NSTextView.
+struct ComposerField: NSViewRepresentable {
+    @Binding var text: String
+    var placeholder: String
+    var fontSize: CGFloat = 14
+    var minLines = 2
+    var maxLines = 12
+    var enabled = true
+    @Binding var focused: Bool
+    var onSubmit: () -> Void
+    /// Called for a paste that carries images or files; return true when it was handled.
+    var onPasteFiles: (() -> Bool)? = nil
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    func makeNSView(context: Context) -> ComposerScrollView {
+        let tv = ComposerTextView()
+        tv.coordinator = context.coordinator
+        tv.delegate = context.coordinator
+        tv.isRichText = false
+        tv.importsGraphics = false
+        tv.allowsUndo = true
+        tv.drawsBackground = false
+        tv.isAutomaticQuoteSubstitutionEnabled = false
+        tv.isAutomaticDashSubstitutionEnabled = false
+        tv.isAutomaticTextReplacementEnabled = false
+        // The system's writing-tools badge sits on the field's left edge, over the composer border.
+        if #available(macOS 15.0, *) { tv.writingToolsBehavior = .none }
+        tv.textContainerInset = .zero
+        tv.textContainer?.lineFragmentPadding = 0
+        tv.textContainer?.widthTracksTextView = true
+        tv.isVerticallyResizable = true
+        tv.isHorizontallyResizable = false
+        tv.autoresizingMask = [.width]
+        tv.minSize = .zero
+        tv.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+
+        let sv = ComposerScrollView()
+        sv.drawsBackground = false
+        sv.hasVerticalScroller = true
+        sv.hasHorizontalScroller = false
+        sv.autohidesScrollers = true
+        sv.scrollerStyle = .overlay
+        sv.borderType = .noBorder
+        sv.documentView = tv
+        sv.textView = tv
+        context.coordinator.scroll = sv
+        apply(to: sv, tv)
+        tv.string = text
+        sv.recalcHeight()
+        return sv
+    }
+
+    func updateNSView(_ sv: ComposerScrollView, context: Context) {
+        context.coordinator.parent = self
+        guard let tv = sv.textView else { return }
+        apply(to: sv, tv)
+        if tv.string != text, !tv.hasMarkedText() {
+            tv.string = text
+            let end = NSRange(location: (text as NSString).length, length: 0)
+            tv.setSelectedRange(end)
+            tv.scrollRangeToVisible(end)
+            sv.recalcHeight()
+        }
+        // Focus requested from SwiftUI (on appear, after picking a template…).
+        if focused, let w = sv.window, w.firstResponder !== tv {
+            DispatchQueue.main.async { if self.focused { w.makeFirstResponder(tv) } }
+        }
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: ComposerScrollView, context: Context) -> CGSize? {
+        nsView.recalcHeight(width: proposal.width)
+        return CGSize(width: proposal.width ?? 300, height: nsView.height)
+    }
+
+    private func apply(to sv: ComposerScrollView, _ tv: ComposerTextView) {
+        let font = NSFont.systemFont(ofSize: T.k * fontSize)
+        if tv.font != font {
+            tv.font = font
+            tv.typingAttributes[.font] = font
+        }
+        tv.textColor = NSColor(T.text)
+        tv.insertionPointColor = NSColor(T.text)
+        tv.placeholder = placeholder
+        tv.placeholderColor = NSColor(T.text3)
+        tv.isEditable = enabled
+        tv.isSelectable = true
+        let line = ceil(font.ascender - font.descender + font.leading)
+        sv.minHeight = line * CGFloat(minLines)
+        sv.maxHeight = line * CGFloat(maxLines)
+    }
+
+    final class Coordinator: NSObject, NSTextViewDelegate {
+        var parent: ComposerField
+        weak var scroll: ComposerScrollView?
+        init(_ p: ComposerField) { parent = p }
+
+        func textDidChange(_ n: Notification) {
+            guard let tv = n.object as? NSTextView else { return }
+            if parent.text != tv.string { parent.text = tv.string }
+            scroll?.recalcHeight()
+            tv.scrollRangeToVisible(tv.selectedRange())
+        }
+
+        func textView(_ tv: NSTextView, doCommandBy sel: Selector) -> Bool {
+            guard sel == #selector(NSResponder.insertNewline(_:)) else { return false }
+            let flags = NSApp.currentEvent?.modifierFlags ?? []
+            if flags.contains(.shift) || flags.contains(.option) {
+                tv.insertNewlineIgnoringFieldEditor(nil)
+                return true
+            }
+            parent.onSubmit()
+            return true
+        }
+
+        func focusChanged(_ on: Bool) {
+            guard parent.focused != on else { return }
+            DispatchQueue.main.async { self.parent.focused = on }
+        }
+    }
+}
+
+final class ComposerScrollView: NSScrollView {
+    weak var textView: ComposerTextView?
+    var minHeight: CGFloat = 36
+    var maxHeight: CGFloat = 220
+    private(set) var height: CGFloat = 36
+
+    /// Height of the text at `width` (or the current width), clamped; scrolls past the maximum.
+    func recalcHeight(width: CGFloat? = nil) {
+        guard let tv = textView, let lm = tv.layoutManager, let tc = tv.textContainer else { return }
+        if let w = width, w > 0, abs(tc.containerSize.width - w) > 0.5 {
+            tc.containerSize = NSSize(width: w, height: .greatestFiniteMagnitude)
+        }
+        lm.ensureLayout(for: tc)
+        var used = lm.usedRect(for: tc).height
+        if tv.string.hasSuffix("\n") || tv.string.isEmpty { used = max(used, lm.extraLineFragmentRect.maxY) }
+        let h = min(max(ceil(used), minHeight), maxHeight)
+        if abs(h - height) > 0.5 {
+            height = h
+            invalidateIntrinsicContentSize()
+            superview?.needsLayout = true
+        }
+    }
+
+    override var intrinsicContentSize: NSSize { NSSize(width: NSView.noIntrinsicMetric, height: height) }
+
+    override func layout() {
+        super.layout()
+        recalcHeight()
+    }
+}
+
+final class ComposerTextView: NSTextView {
+    weak var coordinator: ComposerField.Coordinator?
+    var placeholder = "" { didSet { if oldValue != placeholder { needsDisplay = true } } }
+    var placeholderColor = NSColor.placeholderTextColor
+
+    override func becomeFirstResponder() -> Bool {
+        let ok = super.becomeFirstResponder()
+        if ok { coordinator?.focusChanged(true) }
+        return ok
+    }
+
+    override func resignFirstResponder() -> Bool {
+        let ok = super.resignFirstResponder()
+        if ok { coordinator?.focusChanged(false) }
+        return ok
+    }
+
+    override func paste(_ sender: Any?) {
+        let pb = NSPasteboard.general
+        let hasFiles = pb.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true])
+        let hasImage = pb.data(forType: .png) != nil || pb.data(forType: .tiff) != nil
+        // A screenshot, or files copied in Finder (they also carry their names as text).
+        if hasImage || hasFiles, let handler = coordinator?.parent.onPasteFiles, handler() {
+            return
+        }
+        pasteAsPlainText(sender)
+    }
+
+    override func draw(_ rect: NSRect) {
+        super.draw(rect)
+        guard string.isEmpty, !placeholder.isEmpty else { return }
+        let attrs: [NSAttributedString.Key: Any] = [.font: font ?? NSFont.systemFont(ofSize: 14), .foregroundColor: placeholderColor]
+        (placeholder as NSString).draw(at: NSPoint(x: textContainerInset.width, y: textContainerInset.height), withAttributes: attrs)
+    }
+
+    override func didChangeText() {
+        super.didChangeText()
+        needsDisplay = true
+    }
+}

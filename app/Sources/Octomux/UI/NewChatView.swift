@@ -20,7 +20,7 @@ struct NewChatView: View {
     @State private var options = ChatLaunchOptions()
     @State private var files: [URL] = []
     @State private var dropTarget = false
-    @FocusState private var focused: Bool
+    @State private var focused = false
 
     private var doc: DocTab? { model.docTabs.first { $0.id == docId } }
     private var project: Project? { model.project(doc?.projectId ?? "") }
@@ -94,15 +94,12 @@ struct NewChatView: View {
         let flags = kind == .claude || kind == .codex
         return VStack(alignment: .leading, spacing: 10) {
             AttachmentChips(files: $files)
-            TextField("Type a message… (↩ to send, ⌥↩ for a new line)", text: Binding(
+            ComposerField(text: Binding(
                 get: { draft },
-                set: { draft = $0; if NewChatDraft.pending[docId] != nil { NewChatDraft.pending[docId] = $0 } }), axis: .vertical)
-                .textFieldStyle(.plain).font(.system(size: T.k * 14)).lineLimit(3...12)
-                .frame(minHeight: 58, alignment: .topLeading)
-                .focused($focused)
-                .onSubmit(send)
-                .disabled(sending)
-                .onPasteCommand(of: [.png, .tiff, .fileURL]) { _ in files += AttachmentChips.pasted() }
+                set: { draft = $0; if NewChatDraft.pending[docId] != nil { NewChatDraft.pending[docId] = $0 } }),
+                placeholder: "Type a message… (↩ to send, ⇧↩ for a new line)",
+                minLines: 3, maxLines: 14, enabled: !sending, focused: $focused, onSubmit: send,
+                onPasteFiles: { let f = AttachmentChips.pasted(); files += f; return !f.isEmpty })
             HStack(spacing: 2) {
                 modelChip(flags: flags)
                 if NewChatDraft.asks[docId] != nil {

@@ -96,6 +96,26 @@ final class ChatParsingTests: XCTestCase {
         XCTAssertEqual(m.items[1].detail, "bash -lc cargo update")
         XCTAssertEqual(m.items[1].result, "done")
     }
+
+    /// The chat page draws edit diffs, todo lists and turn times from the tool input and line timestamps.
+    func testToolInputAndTimestampsReachTheItems() throws {
+        let m = ChatModel()
+        let long = String(repeating: "x", count: 50_000)
+        m.feed(lines([
+            ["type": "user", "timestamp": "2026-11-07T10:00:00.000Z", "message": ["role": "user", "content": "edit it"]],
+            ["type": "assistant", "timestamp": "2026-11-07T10:00:05.000Z", "message": ["role": "assistant", "content": [
+                ["type": "tool_use", "id": "e1", "name": "Edit", "input": ["file_path": "/p/a.rs", "old_string": "a", "new_string": long]]]]],
+            ["type": "response_item", "timestamp": "2026-11-07T10:00:09.000Z", "payload": ["type": "custom_tool_call", "name": "apply_patch", "call_id": "p1",
+                                                                                         "input": "*** Begin Patch\n*** Update File: b.rs\n-x\n+y\n*** End Patch"]],
+        ]))
+        XCTAssertEqual(m.items.map(\.ts), ["2026-11-07T10:00:00.000Z", "2026-11-07T10:00:05.000Z", "2026-11-07T10:00:09.000Z"])
+        let edit = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(m.items[1].input.utf8)) as? [String: Any])
+        XCTAssertEqual(edit["old_string"] as? String, "a")
+        XCTAssertLessThan((edit["new_string"] as? String)?.count ?? 0, 41_000)   // long strings are cut
+        XCTAssertEqual(m.items[2].tool, "apply_patch")
+        let patch = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(m.items[2].input.utf8)) as? [String: Any])
+        XCTAssertTrue((patch["patch"] as? String)?.contains("*** Update File: b.rs") ?? false)
+    }
 }
 
 final class UsageTests: XCTestCase {
