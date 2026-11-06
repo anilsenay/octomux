@@ -127,6 +127,13 @@
     its .claude settings or servers to its .mcp.json can no longer run them during the review. Its .codex folder
     is left out of the review's checkout: Codex loads it (MCP servers, notify commands) whenever your clone is a
     trusted Codex project, and no flag turns that off. The agent can still read it with git show.
+  - Resuming an Inbox review's session continues the conversation (it runs interactively, with the same limits);
+    before, it started in print mode with no prompt and exited at once with code 1. The next review of a pull
+    request closes the earlier review sessions that have stopped, so they don't pile up.
+  - Workspaces keep their order: Move Up / Down could give two workspaces the same position, so the order
+    changed after a relaunch and moves jumped. Moving now renumbers them (mending old ties), and Settings →
+    Workspaces rows can be dragged by their handle.
+  - The Inbox remembers its source tab, folder, time range and the Snoozed folder across relaunches.
   - The sidebar shows a project's branch right after its name, with a branch mark. When room runs short the name
     shortens first while the branch stays whole, then both shorten; badges and the hover buttons keep their
     size. Before, the branch was capped at a few characters even with room to spare.
