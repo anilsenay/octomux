@@ -107,6 +107,8 @@ enum DebugActions {
                 "layout_user": m.layout.userId as Any,
                 "saved_layouts": SavedLayouts.sorted(m.savedLayouts).map { ["id": $0.id, "name": $0.file.name, "base": $0.file.base.rawValue, "tree": $0.file.tree != nil, "preview": SavedLayouts.preview($0.id) != nil] },
                 "layout_import_result": LayoutImport.last,
+                "modal_class": NSApp.modalWindow.map { String(describing: type(of: $0)) } as Any,
+                "modal": NSApp.modalWindow.map { w in (w.contentView?.subviews ?? []).compactMap { ($0 as? NSTextField)?.stringValue }.filter { !$0.isEmpty } } as Any,
                 "layout_menu": (NSApp.mainMenu?.items.first { $0.submenu?.title == "View" }?.submenu?.items ?? [])
                     .filter { $0.tag >= AppDelegate.savedLayoutTag }
                     .map { "\($0.title) \($0.keyEquivalentModifierMask.contains(.control) ? "⌃⌘" + $0.keyEquivalent : "") \($0.state == .on ? "✓" : "")" },
@@ -510,9 +512,19 @@ enum DebugActions {
             case "open_inbox": m.openInbox()
             case "inbox_refresh": InboxStore.shared.refresh()
             case "inbox_fake": InboxFixture.load()
+            case "modal_press":   // value: a button title in the open alert / panel (presses it, as a click would)
+                if let w = NSApp.modalWindow, let t = p["value"] as? String {
+                    func find(_ v: NSView) -> NSButton? {
+                        if let b = v as? NSButton, b.title == t { return b }
+                        for c in v.subviews { if let b = find(c) { return b } }
+                        return nil
+                    }
+                    if let b = w.contentView.flatMap(find) { DispatchQueue.main.async { b.performClick(nil) } }
+                }
             case "key_event":   // posts a key press to the key window, through the event queue (local monitors see it)
                 // The app's own window when it isn't key (the fixture runs in the background).
-                if let win = NSApp.keyWindow ?? NSApp.mainWindow ?? (NSApp.delegate as? AppDelegate)?.mainWindow {
+                // An open alert first (it runs modally and takes the keys).
+                if let win = NSApp.modalWindow ?? NSApp.keyWindow ?? NSApp.mainWindow ?? (NSApp.delegate as? AppDelegate)?.mainWindow {
                     let chars = p["chars"] as? String ?? ""
                     let code = UInt16(p["code"] as? Int ?? 0)
                     var flags: NSEvent.ModifierFlags = []

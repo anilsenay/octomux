@@ -112,12 +112,15 @@ struct LayoutSettings: View {
             }
             SettingsGroup("Your layouts", desc: "Layouts you saved or imported. A layout is a small file (.\(LayoutFile.fileExtension)): it arranges Octomux's own parts and can't run anything.", trailing: {
                 HStack(spacing: 8) {
-                    if let message { Text(message).font(.system(size: T.k * 12)).foregroundStyle(T.text2).lineLimit(2) }
                     Button("Import…", action: importFile)
                     Button("Save Current as New…", action: saveAsNew)
                 }
                 .controlSize(.small)
             }) {
+                if let message {
+                    Text(message).font(.system(size: T.k * 12)).foregroundStyle(T.text2)
+                        .padding(.horizontal, 14).padding(.top, 10)
+                }
                 if saved.isEmpty {
                     Text("None yet. Arrange a layout below, then Save Current as New; or import a file someone shared.")
                         .font(.system(size: T.k * 12)).foregroundStyle(T.text3).padding(14)
@@ -464,7 +467,7 @@ struct LayoutSchematic: View {
             .overlay {
                 if b.kind != .bar || b == .aquariumStrip {
                     Text(variant.map { ShellBlock.title(b) + " · " + $0 } ?? ShellBlock.title(b))
-                        .font(.system(size: 7, weight: .medium)).foregroundStyle(T.text2).lineLimit(2).multilineTextAlignment(.center).padding(2)
+                        .font(.system(size: 7, weight: .medium)).foregroundStyle(T.text2).lineLimit(1).minimumScaleFactor(0.6).padding(2)
                 }
             }
     }
