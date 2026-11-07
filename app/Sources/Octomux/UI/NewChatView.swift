@@ -60,8 +60,9 @@ struct NewChatView: View {
                     ForEach(Self.starters, id: \.text) { st in
                         StarterChip(icon: st.icon, text: st.label) { draft = st.text; focused = true }.help(st.text)
                     }
+                    Spacer(minLength: 0)
                 }
-                .frame(maxWidth: Self.column)
+                .frame(maxWidth: Self.column, alignment: .leading)
                 .padding(.horizontal, 28).padding(.top, 18).padding(.bottom, 12)
                 .transition(.opacity)
             } else {
