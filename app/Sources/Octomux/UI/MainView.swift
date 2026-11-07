@@ -864,8 +864,8 @@ struct ProjectQuickActions: View {
 struct TerminalArea: NSViewRepresentable {
     func makeNSView(context: Context) -> PaneSlotView {
         let v = PaneSlotView(TerminalHost.shared.container)
+        // Drawn once, when it takes the container (in the window); not again from here.
         v.onAdopt = { TerminalHost.shared.render(force: true) }
-        DispatchQueue.main.async { TerminalHost.shared.render(force: true) }
         return v
     }
     func updateNSView(_ v: PaneSlotView, context: Context) {
