@@ -43,14 +43,15 @@ struct NewChatView: View {
             // first message goes out): the mark and the question, what waits and what ran here, starters.
             Spacer(minLength: 16)
             VStack(spacing: 0) {
-                OctoMark(size: 64)
+                FloatingOctoMark(size: 60)
                 Text("What should we build in \(project?.name ?? "this project")?")
                     .font(.system(size: T.k * 26, weight: .regular, design: .serif)).foregroundStyle(T.text)
                     .multilineTextAlignment(.center)
-                    .padding(.top, 14)
-                Text(summary(path: path)).font(.system(size: T.k * 12)).foregroundStyle(T.text3).padding(.top, 6)
-                lists.padding(.top, 22)
+                    .padding(.top, 16)
+                statusLine(path: path).padding(.top, 10)
+                lists.padding(.top, 24)
             }
+            .shadow(color: .black.opacity(ThemeStore.shared.activeScene != nil ? 0.35 : 0), radius: 12)  // legible over a scene
             .frame(maxWidth: Self.column)
             .padding(.horizontal, 28)
             if draft.isEmpty && files.isEmpty {
@@ -59,10 +60,9 @@ struct NewChatView: View {
                     ForEach(Self.starters, id: \.text) { st in
                         StarterChip(icon: st.icon, text: st.label) { draft = st.text; focused = true }.help(st.text)
                     }
-                    Spacer(minLength: 0)
                 }
-                .frame(maxWidth: Self.column, alignment: .leading)
-                .padding(.horizontal, 28).padding(.top, 18).padding(.bottom, 10)
+                .frame(maxWidth: Self.column)
+                .padding(.horizontal, 28).padding(.top, 18).padding(.bottom, 12)
                 .transition(.opacity)
             } else {
                 Color.clear.frame(height: 18)
@@ -101,15 +101,23 @@ struct NewChatView: View {
     /// Width of the start screen's column and of the chat's (the same, so nothing moves when the chat starts).
     static let column: CGFloat = 720
 
-    /// "octomux · main · 3 agents waiting · 1 working"
-    private func summary(path: String) -> String {
+    /// "octomux · main" and pills for what is waiting and working.
+    private func statusLine(path: String) -> some View {
         let live = model.agentSessions(onlyCurrentWorkspace: false).filter { !$0.isDormant }
         let waiting = live.filter { $0.activity == .needsInput }.count
         let working = live.filter { $0.activity == .working }.count
-        var parts = [project?.name, git.branch(for: path)].compactMap { $0 }
-        if waiting > 0 { parts.append("\(waiting) waiting for you") }
-        if working > 0 { parts.append("\(working) working") }
-        return parts.joined(separator: " · ")
+        return HStack(spacing: 8) {
+            HStack(spacing: 5) {
+                if let p = project { ProjectIconView(project: p, size: 14) }
+                Text(project?.name ?? "").font(.system(size: T.k * 12, weight: .medium)).foregroundStyle(T.text2)
+                if let b = git.branch(for: path) {
+                    Image(systemName: "arrow.triangle.branch").font(T.icon(10)).foregroundStyle(T.text3)
+                    Text(b).font(T.mono(11)).foregroundStyle(T.text3)
+                }
+            }
+            if waiting > 0 { StatusPill(text: "\(waiting) waiting", color: T.amber) }
+            if working > 0 { StatusPill(text: "\(working) working", color: T.accent, spinning: true) }
+        }
     }
 
     /// What waits for you (any project) and what ran last in this project; each row opens its session.
@@ -396,7 +404,10 @@ extension View {
     func composerCard(focused: Bool) -> some View {
         self
             .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 10)
-            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(T.raised.opacity(ThemeStore.shared.isDark ? 0.8 : 1)))
+            .background {
+                if ThemeStore.shared.activeScene != nil { RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.ultraThinMaterial) }
+                RoundedRectangle(cornerRadius: 14, style: .continuous).fill(T.raised.opacity(ThemeStore.shared.isDark ? 0.8 : 1))
+            }
             .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .stroke(focused ? WorkspaceTintColor.ring(AppModel.shared).opacity(0.6) : T.border, lineWidth: 1))
             .shadow(color: .black.opacity(ThemeStore.shared.isDark ? 0.25 : 0.07), radius: 10, y: 3)
@@ -438,14 +449,66 @@ struct StartList: View {
     let sessions: [Session]
     let showProject: Bool
     var body: some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(title.uppercased()).font(T.micro).tracking(0.6).foregroundStyle(tint ?? T.text3)
-                .lineLimit(1).padding(.horizontal, 8).padding(.bottom, 4)
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 6) {
+                Image(systemName: tint == nil ? "clock" : "hand.raised.fill").font(T.icon(10)).foregroundStyle(tint ?? T.text3)
+                Text(title).font(.system(size: T.k * 12, weight: .semibold)).foregroundStyle(tint ?? T.text2).lineLimit(1)
+                Spacer(minLength: 4)
+                Text("\(sessions.count)").font(T.meta).monospacedDigit().foregroundStyle(T.text3)
+            }
+            .padding(.horizontal, 8).padding(.bottom, 4)
             ForEach(sessions) { s in StartListRow(session: s, showProject: showProject) }
         }
-        .padding(.vertical, 8).padding(.horizontal, 6)
+        .padding(.top, 10).padding(.bottom, 6).padding(.horizontal, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .overlay(RoundedRectangle(cornerRadius: R.lg, style: .continuous).stroke(T.border))
+        .startCard()
+    }
+}
+
+/// A pill with a dot (or a spinning ring) and a short state: "3 waiting", "1 working".
+struct StatusPill: View {
+    let text: String
+    let color: Color
+    var spinning = false
+    var body: some View {
+        HStack(spacing: 5) {
+            if spinning { WorkingRing().frame(width: 9, height: 9) } else { Circle().fill(color).frame(width: 6, height: 6) }
+            Text(text).font(.system(size: T.k * 11, weight: .semibold)).foregroundStyle(color)
+        }
+        .padding(.horizontal, 8).frame(height: 20)
+        .background(Capsule().fill(color.opacity(0.14)))
+    }
+}
+
+/// The octopus, bobbing slowly (still with Reduce Motion).
+struct FloatingOctoMark: View {
+    var size: CGFloat = 60
+    @State private var up = false
+    var body: some View {
+        OctoMark(size: size)
+            .offset(y: up ? -3 : 3)
+            .shadow(color: Color(hex: "#8B5CF6").opacity(0.35), radius: 14, y: 4)
+            .onAppear {
+                guard !Motion.reduced else { return }
+                withAnimation(.easeInOut(duration: 2.4).repeatForever(autoreverses: true)) { up = true }
+            }
+    }
+}
+
+extension View {
+    /// Card on the start screen: a frosted fill (a scene's art blurs behind it), hairline edge.
+    func startCard(radius: CGFloat = R.xl) -> some View {
+        let scene = ThemeStore.shared.activeScene != nil
+        let dark = ThemeStore.shared.isDark
+        return self
+            .background {
+                ZStack {
+                    if scene { RoundedRectangle(cornerRadius: radius, style: .continuous).fill(.ultraThinMaterial) }
+                    RoundedRectangle(cornerRadius: radius, style: .continuous)
+                        .fill(T.raised.opacity(scene ? 0.55 : (dark ? 0.45 : 0.9)))
+                }
+            }
+            .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous).stroke(T.border))
     }
 }
 
@@ -463,8 +526,8 @@ struct StartListRow: View {
                 .compactMap { $0 }.joined(separator: " · "))
                 .font(T.meta).foregroundStyle(T.text3).lineLimit(1)
         }
-        .padding(.horizontal, 8).frame(height: 27)
-        .background(RoundedRectangle(cornerRadius: R.sm, style: .continuous).fill(hover ? T.hover : .clear))
+        .padding(.horizontal, 8).frame(height: 28)
+        .background(RoundedRectangle(cornerRadius: R.md, style: .continuous).fill(hover ? T.hover : .clear))
         .contentShape(Rectangle())
         .onHover { hover = $0 }
         .pointerCursor()
@@ -484,8 +547,11 @@ struct StarterChip: View {
             Image(systemName: icon).font(T.icon(11)).foregroundStyle(T.text3)
             Text(text).font(.system(size: T.k * 12)).foregroundStyle(hover ? T.text : T.text2).lineLimit(1)
         }
-        .padding(.horizontal, 10).frame(height: 26)
-        .background(Capsule().fill(hover ? T.hover : .clear))
+        .padding(.horizontal, 11).frame(height: 28)
+        .background {
+            if ThemeStore.shared.activeScene != nil { Capsule().fill(.ultraThinMaterial) }
+            Capsule().fill(hover ? T.raised : T.raised.opacity(ThemeStore.shared.activeScene != nil ? 0.5 : 0.35))
+        }
         .overlay(Capsule().stroke(T.border))
         .contentShape(Capsule())
         .onHover { hover = $0 }
