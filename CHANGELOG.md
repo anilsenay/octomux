@@ -5,7 +5,8 @@
 - **Layouts**: pick how the window is arranged for the way you work, for the whole app: **Terminal** (the window as
   it always was, still the default), **Agents** (the Agents home below; new Claude and Codex sessions open as
   chats), **Workday** (the Workday home below), **Minimal** (only the panes) or **Editor** (code next to its agent:
-  its chat on the left, the file in the middle, the Files panel on the right). Switch with ⌃⌘1…,
+  its chat on the left, the file in the middle, the Files panel on the right) or **Tasks** (the workspace
+  assistant in the middle, the Tasks panel on the right). Switch with ⌃⌘1…,
   the command palette (View → … Layout), or the Layout button the other layouts show in the status bar.
 - **Agents home** (the Agents layout opens it as a tab): every agent at a glance, in three ways to try: **Board**
   (who waits for you, who works, who finished, recent), **Columns** (one column per state) and **Inbox** (agents by
@@ -24,6 +25,15 @@
   changed lines marked in the editor's gutter; a note on the selected lines ("Note to agent", ⌘⇧M) goes into the
   agent's message with the file, the lines and the code, for you to send; the Files panel lists what the agent
   touched in its current turn; and the project's agent can sit in a column beside the work area.
+- **Tasks**: Octomux's own work items. Add one (or let the assistant split your request into several), start it,
+  and it gets its own worktree, branch and agent; its state follows the agent and its pull request. Also from the
+  command line (`octomux task …`) and for agents through the Octomux MCP tools (`task_create`, `task_list`,
+  `task_start`…).
+- **Workspace assistant**: your default agent with its editing tools off, as a planner. It turns what you ask into
+  tasks and asks to start them; **Autopilot** decides how far it may go alone (off, start agents, or also open draft
+  pull requests; never merging).
+- **Default agent** (Settings → Agents) for tasks, the assistant and "Work on it"; each can be started once with
+  another agent.
 - **Settings → Layout**: in each layout, turn off and reorder what the sidebar, its bottom row, the status bar and
   the top bar show; hide the status bar; open new agents as chats. Each layout keeps its own changes (Reset brings
   it back as it comes), and a layout can be exported to a file and imported on another Mac.
