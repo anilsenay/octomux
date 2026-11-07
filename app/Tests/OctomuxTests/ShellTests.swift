@@ -106,7 +106,7 @@ final class ShellTests: XCTestCase {
         XCTAssertEqual(m.focusedSessionId, "s-keep")
         XCTAssertEqual(m.activeTabId, "t-keep")
         m.chooseLayout(.terminal)
-        XCTAssertNil(m.shellTree)                                      // the classic window again
+        XCTAssertEqual(m.shellNav, .tabs)                              // Terminal: tabs again
         XCTAssertEqual(m.focusedSessionId, "s-keep")
         XCTAssertEqual(m.activeTabId, "t-keep")
     }

@@ -9,7 +9,7 @@ final class LayoutTreeTests: XCTestCase {
         let t = try XCTUnwrap(ShellTree.builtIn("agents"))
         XCTAssertNil(t.problem())
         XCTAssertEqual(Set(t.root.blocks), [.agentRail, .breadcrumb, .home, .workArea, .sidePanel, .statusBar])
-        XCTAssertFalse(LayoutCache.engine.contains(.terminal))   // the classic window (its tree only seeds saved layouts)
+        XCTAssertTrue(LayoutCache.engine.contains(.terminal))    // drawn by the engine, the same as the classic window
     }
 
     func testEveryBuiltInFileReads() throws {
@@ -58,7 +58,7 @@ final class LayoutTreeTests: XCTestCase {
     }
 
     func testOnlyEngineLayoutsGetATreeAndTheResultIsCached() {
-        XCTAssertNil(LayoutCache.get(nil).tree)                             // Terminal: classic window
+        XCTAssertEqual(LayoutCache.get(nil).tree, ShellTree.builtIn("terminal"))   // nothing stored: Terminal's tree
         XCTAssertNotNil(LayoutCache.get(LayoutEdit.choose(.editor, in: nil)).tree)   // phase 2: on the engine
         LayoutCache.reset()
         let v = LayoutEdit.choose(.agents, in: nil)
@@ -108,7 +108,7 @@ final class LayoutTreeTests: XCTestCase {
         let t = try XCTUnwrap(ShellTree.builtIn("tasks"))
         XCTAssertEqual(t.nav, .tasks)
         XCTAssertTrue(t.has(.taskDetail) && t.has(.breadcrumb) && !t.has(.tabStrip) && !t.has(.home))
-        XCTAssertNil(LayoutCache.get(nil).tree)                              // Terminal: the classic window
+        XCTAssertEqual(LayoutCache.get(nil).tree, ShellTree.builtIn("terminal"))   // nothing stored: Terminal's tree
     }
 
     func testVariantsReadUnknownOnesAsTheFirst() throws {

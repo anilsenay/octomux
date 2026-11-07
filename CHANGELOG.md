@@ -21,7 +21,7 @@
 - **Layouts as data**: every layout but Terminal is a tree of rows, columns and stacks over Octomux's own blocks
   (agent rail, tasks rail, project tree, tabs, breadcrumb, work area, Home and its Workday variant, side panel, task
   detail, agent column, aquarium, status bar), read from a JSON file; a tree that doesn't read or breaks a block's
-  rules falls back to the built-in one. Terminal stays the window it always was.
+  rules falls back to the built-in one. Terminal's tree draws the window it always was, to the pixel.
 - **Your own layouts, as files**: Settings → Layout → Your layouts. Save the layout you arranged under a name, then
   switch to it from the View menu (⌃⌘8, ⌃⌘9) or the status bar's Layout panel. Export it as a small
   `.octomux-layout.json` (your theme and shortcuts too, if you tick them) and import someone else's: a sheet shows

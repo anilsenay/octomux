@@ -110,7 +110,7 @@ final class LayoutFileTests: XCTestCase {
         saved = SavedLayouts.adding(engineBase, id: "c", to: saved)
         LayoutCache.reset()
         XCTAssertEqual(LayoutCache.get(LayoutEdit.chooseUser("a", base: .terminal, in: nil), saved: saved).tree, own.tree)   // its own window
-        XCTAssertNil(LayoutCache.get(LayoutEdit.chooseUser("b", base: .terminal, in: nil), saved: saved).tree)              // Terminal's: classic
+        XCTAssertEqual(LayoutCache.get(LayoutEdit.chooseUser("b", base: .terminal, in: nil), saved: saved).tree, ShellTree.builtIn("terminal"))   // its base's
         XCTAssertEqual(LayoutCache.get(LayoutEdit.chooseUser("c", base: .tasks, in: nil), saved: saved).tree, ShellTree.builtIn("tasks"))
         XCTAssertEqual(LayoutCache.get(nil, saved: saved).saved.count, 3)
     }

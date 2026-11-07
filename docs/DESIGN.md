@@ -119,10 +119,9 @@ A closed scale with no half points (`DesignTokenTests` fails on `N.5` sizes in `
 
 ### Layout engine
 - A layout's window is a JSON tree (`app/Resources/layouts/<layout>.json`, schema 1) that `Core/LayoutTree.swift`
-  reads and `UI/Shell.swift` draws. The engine draws Agents, Workday, Minimal, Editor, Tasks and Aquarium.
-  Terminal keeps the classic window (`MainView.classicWindow`): drawn by the engine it was not the same to the pixel
-  (with a file open the sidebar's list sat a point lower), and the default look never moves. Its tree
-  (`terminal.json`) is the starting point of a layout saved from Terminal.
+  reads and `UI/Shell.swift` draws — every layout, Terminal included: its tree draws today's window to the pixel
+  (checked against the classic window in 13 states), and a switch stays inside one window. `MainView.classicWindow`
+  remains as the fallback for a tree that can't be used.
 - Nodes: `row` / `column` (children side by side / stacked) and `stack` (one child shows: Home while the window is on
   its Home, else the first other one); each child may have a `size` along its parent's axis: `{"fixed": pt}`,
   `{"min": pt}` or `{"flex": weight}`. Leaves are blocks, optionally with a `variant`; there is no code in a layout,
@@ -155,8 +154,9 @@ A closed scale with no half points (`DesignTokenTests` fails on `N.5` sizes in `
   container keeps every child in its list and leaves one that is off out by its own `if` (identity by block).
 - Performance: the resolved layout is cached per change of the settings; the agents' transcripts are read once for
   every block that shows them (rail, Home, task detail), after the first frame, and only while one is on screen.
-  Measured per layout: idle CPU as the classic window (the Aquarium's animation aside), +5–30 MB, switches 100–250 ms
-  (Tasks' first switch also makes the assistant's terminal), no terminal view made by a switch.
+  Measured per layout: idle CPU as the classic window (the Aquarium's animation aside: 12 frames a second, 6 behind
+  other apps, ~7–8%), +5–30 MB, switches mostly 90–230 ms, no terminal view made by a switch. A terminal area that
+  takes the panes draws them on the next turn; the Tasks window selects its assistant after its first frame.
 - A user's own tree goes in `custom.<layout>.tree`, dragged widths in `custom.<layout>.sizes`; both go over the
   built-in tree, which keeps getting our updates.
 
