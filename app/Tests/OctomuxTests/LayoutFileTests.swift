@@ -79,11 +79,11 @@ final class LayoutFileTests: XCTestCase {
 
     func testSavedLayoutsResolveAsTheirBaseWithTheirSettingsThenYourChanges() throws {
         let f = try read(#"{"schema":1,"name":"Desk","base":"agents","tree":\#(tree),"settings":{"statusBar":false}}"#).get().file
-        let saved = SavedLayouts.adding(f, id: "u1", to: nil)
-        XCTAssertEqual(SavedLayouts.parse(saved)["u1"], f)
-        var stored = LayoutEdit.chooseUser("u1", base: .agents, in: nil)
+        let saved = SavedLayouts.adding(f, id: "u0000000a", to: nil)
+        XCTAssertEqual(SavedLayouts.parse(saved)["u0000000a"], f)
+        var stored = LayoutEdit.chooseUser("u0000000a", base: .agents, in: nil)
         var c = LayoutConfig.resolve(stored, saved: SavedLayouts.parse(saved))
-        XCTAssertEqual(c.userId, "u1")
+        XCTAssertEqual(c.userId, "u0000000a")
         XCTAssertEqual(c.title, "Desk")
         XCTAssertFalse(c.statusBar)                                           // the file's
         XCTAssertTrue(c.chat)                                                 // the base's
@@ -96,33 +96,46 @@ final class LayoutFileTests: XCTestCase {
         // Gone (deleted, or not on this Mac): the base.
         XCTAssertNil(LayoutConfig.resolve(stored).userId)
         XCTAssertEqual(LayoutConfig.resolve(stored).preset, .agents)
-        let forgot = try XCTUnwrap(LayoutEdit.forget(user: "u1", in: stored))
+        let forgot = try XCTUnwrap(LayoutEdit.forget(user: "u0000000a", in: stored))
         XCTAssertNil(LayoutEdit.object(forgot)["user"])
-        XCTAssertNil(LayoutEdit.object(LayoutEdit.object(forgot)["custom"])["user:u1"])
+        XCTAssertNil(LayoutEdit.object(LayoutEdit.object(forgot)["custom"])["user:u0000000a"])
     }
 
     func testSavedLayoutsWindow() throws {
         let own = try read(#"{"schema":1,"name":"A","base":"terminal","tree":\#(tree)}"#).get().file
         let classic = try read(#"{"schema":1,"name":"B","base":"terminal"}"#).get().file
         let engineBase = try read(#"{"schema":1,"name":"C","base":"tasks"}"#).get().file
-        var saved = SavedLayouts.adding(own, id: "a", to: nil)
-        saved = SavedLayouts.adding(classic, id: "b", to: saved)
-        saved = SavedLayouts.adding(engineBase, id: "c", to: saved)
+        var saved = SavedLayouts.adding(own, id: "u000000aa", to: nil)
+        saved = SavedLayouts.adding(classic, id: "u000000bb", to: saved)
+        saved = SavedLayouts.adding(engineBase, id: "u000000cc", to: saved)
         LayoutCache.reset()
-        XCTAssertEqual(LayoutCache.get(LayoutEdit.chooseUser("a", base: .terminal, in: nil), saved: saved).tree, own.tree)   // its own window
-        XCTAssertEqual(LayoutCache.get(LayoutEdit.chooseUser("b", base: .terminal, in: nil), saved: saved).tree, ShellTree.builtIn("terminal"))   // its base's
-        XCTAssertEqual(LayoutCache.get(LayoutEdit.chooseUser("c", base: .tasks, in: nil), saved: saved).tree, ShellTree.builtIn("tasks"))
+        XCTAssertEqual(LayoutCache.get(LayoutEdit.chooseUser("u000000aa", base: .terminal, in: nil), saved: saved).tree, own.tree)   // its own window
+        XCTAssertEqual(LayoutCache.get(LayoutEdit.chooseUser("u000000bb", base: .terminal, in: nil), saved: saved).tree, ShellTree.builtIn("terminal"))   // its base's
+        XCTAssertEqual(LayoutCache.get(LayoutEdit.chooseUser("u000000cc", base: .tasks, in: nil), saved: saved).tree, ShellTree.builtIn("tasks"))
         XCTAssertEqual(LayoutCache.get(nil, saved: saved).saved.count, 3)
     }
 
     func testNamesStayApartAndRemovingLeavesNothing() throws {
         let f = try read(#"{"schema":1,"name":"Desk","base":"agents"}"#).get().file
-        let d = SavedLayouts.parse(SavedLayouts.adding(f, id: "u1", to: nil))
+        let d = SavedLayouts.parse(SavedLayouts.adding(f, id: "u0000000a", to: nil))
         XCTAssertEqual(SavedLayouts.freeName("Desk", in: d), "Desk 2")
         XCTAssertEqual(SavedLayouts.freeName("Other", in: d), "Other")
-        XCTAssertNil(SavedLayouts.removing("u1", from: SavedLayouts.adding(f, id: "u1", to: nil)))
+        XCTAssertNil(SavedLayouts.removing("u0000000a", from: SavedLayouts.adding(f, id: "u0000000a", to: nil)))
         XCTAssertNotEqual(SavedLayouts.newId(), SavedLayouts.newId())
         XCTAssertTrue(SavedLayouts.parse(.object(["bad": .string("x")])).isEmpty)   // an entry that doesn't read is left out
+    }
+
+    func testIdsNeverNameAPathOutOfThePicturesFolder() throws {
+        let f = try read(#"{"schema":1,"name":"Desk","base":"agents"}"#).get().file
+        for bad in ["../../evil", "u1234567/", "U0000000A", "u0000000g", "u000000000", "", "/tmp/x"] {
+            XCTAssertFalse(SavedLayouts.isId(bad), bad)
+            XCTAssertNil(SavedLayouts.previewURL(bad), bad)
+            XCTAssertTrue(SavedLayouts.parse(SavedLayouts.adding(f, id: bad, to: nil)).isEmpty, bad)   // a hand-edited entry is left out
+        }
+        let id = SavedLayouts.newId()
+        XCTAssertTrue(SavedLayouts.isId(id))
+        XCTAssertEqual(SavedLayouts.previewURL(id)?.deletingLastPathComponent().lastPathComponent, "layout-previews")
+        XCTAssertNotEqual(SavedLayouts.newId(unusedIn: [id: f]), id)
     }
 
     func testConfigSettingsRoundTrip() {

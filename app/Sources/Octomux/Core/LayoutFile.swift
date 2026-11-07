@@ -168,7 +168,7 @@ enum SavedLayouts {
     static func parse(_ v: JSONValue?) -> [String: LayoutFile] {
         guard case .object(let o)? = v else { return [:] }
         var out: [String: LayoutFile] = [:]
-        for (id, f) in o {
+        for (id, f) in o where isId(id) {
             // What was stored was checked when it came in; read it again with every theme and command accepted.
             if case .success(let r) = LayoutFile.read(f, themes: nil, commands: nil) { out[id] = r.file }
         }
@@ -192,8 +192,17 @@ enum SavedLayouts {
         return o.isEmpty ? nil : .object(o)
     }
 
-    /// A new id ("u" + 8 hex).
-    static func newId() -> String { "u" + UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(8).lowercased() }
+    /// A new id ("u" + 8 hex), one no saved layout has.
+    static func newId(unusedIn d: [String: LayoutFile] = [:]) -> String {
+        while true {
+            let id = "u" + UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(8).lowercased()
+            if d[id] == nil { return id }
+        }
+    }
+    /// Ids name files (a saved layout's picture), so only the app's own form is one: "u" + 8 lowercase hex.
+    static func isId(_ id: String) -> Bool {
+        id.count == 9 && id.first == "u" && id.dropFirst().allSatisfy { ("0"..."9").contains($0) || ("a"..."f").contains($0) }
+    }
 
     /// "Review desk", "Review desk 2", …: a name no saved layout has.
     static func freeName(_ name: String, in d: [String: LayoutFile]) -> String {
@@ -204,15 +213,17 @@ enum SavedLayouts {
         return "\(name) \(n)"
     }
 
-    static func previewURL(_ id: String) -> URL {
-        Paths.home.appendingPathComponent("layout-previews").appendingPathComponent(id + ".png")
+    /// Where a saved layout's picture is; nil for anything that isn't an id (never a path out of the folder).
+    static func previewURL(_ id: String) -> URL? {
+        guard isId(id) else { return nil }
+        return Paths.home.appendingPathComponent("layout-previews").appendingPathComponent(id + ".png")
     }
-    static func preview(_ id: String) -> Data? { try? Data(contentsOf: previewURL(id)) }
+    static func preview(_ id: String) -> Data? { previewURL(id).flatMap { try? Data(contentsOf: $0) } }
     static func setPreview(_ id: String, _ d: Data?) {
-        let u = previewURL(id)
+        guard let u = previewURL(id) else { return }
         if let d {
             try? FileManager.default.createDirectory(at: u.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try? d.write(to: u)
+            try? d.write(to: u, options: .atomic)
         } else {
             try? FileManager.default.removeItem(at: u)
         }
@@ -236,7 +247,7 @@ extension AppModel {
 
     /// Saves the layout in use under a new name; it becomes the one in use when `use`. Returns its id.
     @discardableResult func saveLayoutAsNew(name: String, author: String = "", use: Bool = true) -> String {
-        let id = SavedLayouts.newId()
+        let id = SavedLayouts.newId(unusedIn: savedLayouts)
         let f = currentLayoutFile(name: SavedLayouts.freeName(name, in: savedLayouts), author: author)
         storeSavedLayouts(SavedLayouts.adding(f, id: id, to: savedLayoutsStored))
         if let from = layout.userId, let p = SavedLayouts.preview(from) { SavedLayouts.setPreview(id, p) }
@@ -246,7 +257,7 @@ extension AppModel {
 
     @discardableResult func duplicateSavedLayout(_ id: String) -> String? {
         guard var f = savedLayouts[id] else { return nil }
-        let new = SavedLayouts.newId()
+        let new = SavedLayouts.newId(unusedIn: savedLayouts)
         f.name = SavedLayouts.freeName(f.name, in: savedLayouts)
         // The copy has the changes you made to the original.
         if layout.userId == id { f.settings = layout.settings; f.tree = shellTree }
@@ -266,7 +277,7 @@ extension AppModel {
 
     /// Adds a layout read from a file. Its theme and shortcuts are applied only when asked; nothing in it runs.
     @discardableResult func addLayout(_ f: LayoutFile, use: Bool, applyTheme: Bool = false, applyKeys: Bool = false) -> String {
-        let id = SavedLayouts.newId()
+        let id = SavedLayouts.newId(unusedIn: savedLayouts)
         var g = f
         g.name = SavedLayouts.freeName(f.name, in: savedLayouts)
         storeSavedLayouts(SavedLayouts.adding(g, id: id, to: savedLayoutsStored))
