@@ -865,7 +865,7 @@ struct TerminalArea: NSViewRepresentable {
     func makeNSView(context: Context) -> PaneSlotView {
         let v = PaneSlotView(TerminalHost.shared.container)
         // Drawn once, when it takes the container (in the window); not again from here.
-        v.onAdopt = { TerminalHost.shared.render(force: true) }
+        v.onAdopt = { DispatchQueue.main.async { TerminalHost.shared.render(force: true) } }   // after the window's frame (the panes moved with the container)
         return v
     }
     func updateNSView(_ v: PaneSlotView, context: Context) {

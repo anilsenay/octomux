@@ -53,7 +53,8 @@ struct ShellView: View {
 
     private var homeShown: Bool { model.shellHome || (model.activeTab == nil && model.activeDoc == nil) }
     private var wants: Bool {
-        Self.wantsDigests(tree, railShown: model.sidebarVisible, homeShown: homeShown, detailShown: model.rightPanelVisible)
+        // The task detail shows agents' words only for a picked task (its overview has none).
+        Self.wantsDigests(tree, railShown: model.sidebarVisible, homeShown: homeShown, detailShown: model.rightPanelVisible && model.shellTaskId != nil)
     }
 
     /// The blocks the last draw put on screen, in order (debug state; E2E checks).

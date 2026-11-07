@@ -82,6 +82,18 @@ struct AquariumView: View {
     var style: Style = .full
     var still = false
     @State private var hovered: String?
+    /// Octomux in front: 12 frames a second (pixel art moves in steps anyway); behind other apps, 6. The CPU cost
+    /// goes with the frames (24 a second cost ~11% while idle, 12 about half).
+    @State private var active = NSApp.isActive
+
+    /// Seconds between frames.
+    static func frameInterval(style: Style, active: Bool) -> Double {
+        if !active { return 1.0 / 6 }
+        return style == .backdrop ? 1.0 / 8 : 1.0 / 12
+    }
+
+    static let eyeColor = Color(hex: "#1E1B4B")
+    static let cheekColor = Color(hex: "#F9A8D4")
 
     static let rows = [
         ".....aaaaaa.....",
@@ -114,7 +126,7 @@ struct AquariumView: View {
         let list = fish
         let sprite = CGSize(width: 16 * px, height: 13 * px)
         GeometryReader { g in
-            TimelineView(.animation(minimumInterval: still ? 1000 : style == .backdrop ? 1.0 / 12 : 1.0 / 24, paused: still)) { tl in
+            TimelineView(.animation(minimumInterval: still ? 1000 : Self.frameInterval(style: style, active: active), paused: still)) { tl in
                 let t = still ? 37 : tl.date.timeIntervalSinceReferenceDate
                 Canvas { ctx, size in
                     if style != .backdrop { water(ctx, size, t) }
@@ -141,6 +153,8 @@ struct AquariumView: View {
         }
         .allowsHitTesting(style != .backdrop)
         .opacity(style == .backdrop ? 0.6 : 1)
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in active = true }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in active = false }
     }
 
     // MARK: Drawing
@@ -196,23 +210,28 @@ struct AquariumView: View {
         let sleeping = f.mood == .finished || f.mood == .idle
         // Legs move while it swims.
         let wiggle = f.mood == .working && Int(t * 4) % 2 == 0
+        // One path per color (a few fills per octopus, not one per pixel: the strip redraws many times a second).
+        enum Ink: Int { case body, light, shade, white, eye, cheek }
+        var paths = [Path](repeating: Path(), count: 6)
         for (y, row) in Self.rows.enumerated() {
             for (x, ch) in row.enumerated() where ch != "." {
-                var c: Color
+                let ink: Ink
                 switch ch {
-                case "a": c = body
-                case "b": c = light
-                case "c": c = shade
-                case "d": c = sleeping ? body : .white
-                case "e": c = sleeping ? (y == 7 ? Color(hex: "#1E1B4B") : body) : Color(hex: "#1E1B4B")
-                case "f": c = Color(hex: "#F9A8D4")
+                case "a": ink = .body
+                case "b": ink = .light
+                case "c": ink = .shade
+                case "d": ink = sleeping ? .body : .white
+                case "e": ink = sleeping ? (y == 7 ? .eye : .body) : .eye
+                case "f": ink = .cheek
                 default: continue
                 }
                 var dx: CGFloat = 0
                 if y >= 10 && wiggle { dx = (x % 2 == 0 ? 1 : -1) * px * 0.5 }
-                ctx.fill(Path(CGRect(x: o.x + CGFloat(x) * px + dx, y: o.y + CGFloat(y) * px, width: px, height: px)), with: .color(c))
+                paths[ink.rawValue].addRect(CGRect(x: o.x + CGFloat(x) * px + dx, y: o.y + CGFloat(y) * px, width: px, height: px))
             }
         }
+        let inks: [Color] = [body, light, shade, .white, Self.eyeColor, Self.cheekColor]
+        for (i, p) in paths.enumerated() where !p.isEmpty { ctx.fill(p, with: .color(inks[i])) }
         let w = 16 * px
         switch f.mood {
         case .working:

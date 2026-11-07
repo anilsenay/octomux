@@ -467,7 +467,8 @@ extension AppModel {
         // The Tasks window opens on its assistant (the middle), no task picked.
         if p == .tasks {
             shellTaskId = nil
-            if let a = assistantSession(workspace: selectedWorkspaceId) { selectSession(a.id) }
+            // After the window's first frame: making the assistant's terminal doesn't hold up the switch.
+            if let a = assistantSession(workspace: selectedWorkspaceId) { DispatchQueue.main.async { [weak self] in self?.selectSession(a.id) } }
         }
     }
 

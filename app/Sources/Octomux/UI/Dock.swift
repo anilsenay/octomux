@@ -248,7 +248,7 @@ struct DockArea: NSViewRepresentable {
     func makeNSView(context: Context) -> PaneSlotView {
         let v = PaneSlotView(TerminalHost.shared.dockContainer)
         // Drawn once, when it takes the container (in the window); not again from here.
-        v.onAdopt = { TerminalHost.shared.renderDock(force: true) }
+        v.onAdopt = { DispatchQueue.main.async { TerminalHost.shared.renderDock(force: true) } }
         return v
     }
     func updateNSView(_ v: PaneSlotView, context: Context) {
