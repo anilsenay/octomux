@@ -376,12 +376,17 @@ final class PaneSlotView: NSView {
     init(_ content: PaneContainerView) {
         self.content = content
         super.init(frame: .zero)
+        content.slots.add(self)
     }
     required init?(coder: NSCoder) { fatalError() }
 
-    /// Takes the container if it is elsewhere (or nowhere); true when it moved here.
+    /// Takes the container if it is elsewhere (or nowhere); true when it moved here. While two slots are in a window
+    /// (a layout switch animating one out and one in), the one that arrived last has it: the leaving one's updates
+    /// never take it back.
     @discardableResult func adopt() -> Bool {
         guard window != nil, content.superview !== self else { return false }
+        if let owner = content.owner, owner !== self, owner.window != nil { return false }
+        content.owner = self
         content.removeFromSuperview()
         content.frame = bounds
         content.autoresizingMask = [.width, .height]
@@ -390,7 +395,17 @@ final class PaneSlotView: NSView {
     }
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        if adopt() { onAdopt?() }
+        if window != nil {
+            content.owner = nil                      // the newest slot takes it
+            if adopt() { onAdopt?() }
+        } else if content.owner === self {
+            // Leaving: a slot still on screen takes it now, not on its next update.
+            content.owner = nil
+            for case let other? in content.slots.allObjects where other !== self && other.window != nil {
+                if other.adopt() { other.onAdopt?() }
+                break
+            }
+        }
     }
     var onAdopt: (() -> Void)?
     override func layout() {
@@ -401,6 +416,9 @@ final class PaneSlotView: NSView {
 
 final class PaneContainerView: NSView {
     private var empty: NSView?
+    /// The slots that can show this container, and the one that does (see PaneSlotView.adopt).
+    let slots = NSHashTable<PaneSlotView>.weakObjects()
+    weak var owner: PaneSlotView?
 
     func setRoot(_ v: NSView) {
         empty?.removeFromSuperview()
