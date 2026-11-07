@@ -20,8 +20,12 @@ final class TerminalHost {
 
     var model: AppModel { AppModel.shared }
 
+    /// Terminal views made so far (a layout switch must not make any: they are moved, not rebuilt).
+    private(set) var surfacesMade = 0
+
     func surface(for session: Session) -> TerminalSurfaceView {
         if let s = surfaces[session.id], s.surface != nil { return s }
+        surfacesMade += 1
         let v = TerminalSurfaceView(
             sessionId: session.id,
             command: model.host(for: session.id).attachCommand(session.id),

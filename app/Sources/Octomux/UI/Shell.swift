@@ -31,7 +31,11 @@ struct ShellView: View {
     var body: some View {
         node(tree.root, edges: Edges())
             .environmentObject(digests)
-            .onAppear { if tree.root.blocks.contains(.agentRail) || tree.root.blocks.contains(.home) { digests.start() } }
+            // After the first frame: the window shows the layout first, then reads the agents' transcripts.
+            .onAppear {
+                guard tree.root.blocks.contains(.agentRail) || tree.root.blocks.contains(.home) else { return }
+                DispatchQueue.main.async { digests.start() }
+            }
             .onDisappear { digests.stop() }
     }
 

@@ -103,6 +103,7 @@ enum DebugActions {
                 "focused_session": m.focusedSessionId ?? NSNull(),
                 "shell": m.shellTree != nil,
                 "shell_home": m.shellHome,
+                "surfaces_made": TerminalHost.shared.surfacesMade,
                 "rail": m.railSessions.map(\.id),
                 "dock_open": m.isDockOpen(m.currentProject?.id),
                 "dock_sessions": m.dockSessions(m.currentProject?.id).map { ["id": $0.id, "title": $0.displayTitle, "kind": $0.kind.rawValue, "state": $0.state.rawValue] },
@@ -368,6 +369,19 @@ enum DebugActions {
                 if let v = p["value"] as? String { UserDefaults.standard.set(v, forKey: "octomux.agentsHomeStyle") }
                 m.openAgentsHome()
             case "workday": m.openWorkday()
+            case "layout_timing":     // value: layout; switches and logs how long until the window has drawn it (ms)
+                if let v = p["value"] as? String, let l = LayoutPreset(rawValue: v), let w = (NSApp.delegate as? AppDelegate)?.mainWindow {
+                    let t0 = CACurrentMediaTime()
+                    m.chooseLayout(l)
+                    DispatchQueue.main.async {
+                        w.contentView?.layoutSubtreeIfNeeded(); w.displayIfNeeded()
+                        DispatchQueue.main.async {
+                            w.displayIfNeeded()
+                            NSLog("layout timing \(v): \(Int((CACurrentMediaTime() - t0) * 1000)) ms")
+                            UserDefaults.standard.set((CACurrentMediaTime() - t0) * 1000, forKey: "octomux.debug.layoutTiming")
+                        }
+                    }
+                }
             case "tasks": m.showTasks()
             case "aquarium": m.openAquarium()
             case "assistant": m.openAssistant()
