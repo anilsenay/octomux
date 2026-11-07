@@ -104,7 +104,7 @@ struct ShellView: View {
         let m = T.m
         switch b {
         case .agentRail:
-            ShellPlaceholder(block: b).background(sidebarBackground)
+            AgentRail().background(sidebarBackground)
         case .projectTree:
             SidebarView(floating: false).background(sidebarBackground)
         case .tabStrip:

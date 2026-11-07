@@ -395,7 +395,11 @@ extension AppModel {
         }
         sidebarPeek = false
         saveSelection()
-        if p == .agents { openAgentsHome() }
+        // The Agents layout is the engine's window: its Home is a mode, not a tab.
+        if p == .agents {
+            if case .agents? = activeDoc?.kind { activeDocId = nil }
+            shellHome = true
+        }
         if p == .workday { openWorkday() }
         if p == .tasks, let a = assistantSession(workspace: selectedWorkspaceId) { selectSession(a.id) }
     }
