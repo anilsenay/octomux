@@ -306,7 +306,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc func closePane(_ s: Any?) {
         if NSApp.keyWindow === mainWindow {
             // On the engine window's Home no pane shows: nothing to close.
-            if model.shellNav == .agents && model.shellHome { return }
+            if model.shellNav == .agents && model.shellHomeShown { return }
             model.closeFocusedPane()
         } else { NSApp.keyWindow?.performClose(nil) }
     }

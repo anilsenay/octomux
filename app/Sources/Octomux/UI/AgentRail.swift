@@ -132,10 +132,10 @@ struct AgentRail: View {
             return true
         })
         .onReceive(NotificationCenter.default.publisher(for: .octomuxRailFocus)) { _ in keys.active = true }
-        .onChange(of: keys.active) { _, f in if f { cursor = model.shellHome ? flat.first?.id : (model.focusedSessionId ?? flat.first?.id) } }
+        .onChange(of: keys.active) { _, f in if f { cursor = model.shellHomeShown ? flat.first?.id : (model.focusedSessionId ?? flat.first?.id) } }
     }
 
-    private func isSelected(_ s: Session) -> Bool { !model.shellHome && model.focusedSessionId == s.id }
+    private func isSelected(_ s: Session) -> Bool { !model.shellHomeShown && model.focusedSessionId == s.id }
 
     private func move(_ d: Int, _ flat: [Session]) {
         guard !flat.isEmpty else { return }

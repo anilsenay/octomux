@@ -137,6 +137,24 @@ final class ShellTests: XCTestCase {
         XCTAssertEqual(m.layout.preset, .tasks)
     }
 
+    func testARailWithoutHomeIsNeverOnHome() throws {
+        let m = AppModel.shared
+        let (saved, home) = (m.layoutStored, m.shellHome)
+        defer { m.setSettingLocally(AppModel.layoutKey, saved, scope: "global"); m.shellHome = home; LayoutCache.reset() }
+        let bare = try JSONDecoder().decode(JSONValue.self, from: Data(#"{"layout":"agents","custom":{"agents":{"tree":{"schema":1,"root":{"row":[{"block":"agentRail"},{"block":"workArea"}]}}}}}"#.utf8))
+        m.setSettingLocally(AppModel.layoutKey, bare, scope: "global")
+        XCTAssertEqual(m.shellNav, .agents)
+        XCTAssertEqual(m.shellTree?.has(.home), false)
+        m.shellHome = true
+        XCTAssertFalse(m.shellHomeShown)                               // ⌘W closes the pane, the rail marks the session
+        m.focusedSessionId = "s1"
+        XCTAssertEqual(m.shellListCurrent, "s1")
+        m.setSettingLocally(AppModel.layoutKey, LayoutEdit.choose(.agents, in: nil), scope: "global")
+        m.shellHome = true
+        XCTAssertTrue(m.shellHomeShown)
+        XCTAssertNil(m.shellListCurrent)
+    }
+
     // MARK: Switching layouts
 
     func testSwitchingLayoutsKeepsTheSelection() {

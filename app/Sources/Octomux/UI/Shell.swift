@@ -13,8 +13,13 @@ extension AppModel {
     /// The window steps through a list (agents or tasks) instead of tabs.
     var shellListNav: Bool { shellNav == .agents || shellNav == .tasks }
 
-    /// The engine window's "new" (⌘T): Home's composer, or the tasks rail's new task.
+    /// The engine window shows its Home: the window has one and is on it (a tree may have the rail but no Home).
+    var shellHomeShown: Bool { shellHome && shellTree?.has(.home) == true }
+
+    /// The engine window's "new" (⌘T): Home's composer, or the tasks rail's new task (a window without Home: a
+    /// terminal, as in the classic window).
     func shellNew() {
+        if shellNav == .agents, shellTree?.has(.home) != true { newSession(profileId: nil); return }
         if shellNav == .agents { shellHome = true }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { NotificationCenter.default.post(name: .octomuxShellComposer, object: nil) }
     }
@@ -26,7 +31,7 @@ extension AppModel {
 
     /// The list ⌘1…9 and ⌘[ ⌘] go through, and where the window is on it.
     var shellList: [String] { shellNav == .tasks ? tasksRail.map(\.id) : railSessions.map(\.id) }
-    var shellListCurrent: String? { shellNav == .tasks ? shellTaskId : (shellHome ? nil : focusedSessionId) }
+    var shellListCurrent: String? { shellNav == .tasks ? shellTaskId : (shellHomeShown ? nil : focusedSessionId) }
     func shellOpen(_ id: String) { if shellNav == .tasks { shellSelectTask(id) } else { selectSession(id) } }
 }
 

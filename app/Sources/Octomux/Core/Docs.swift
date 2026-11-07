@@ -124,12 +124,12 @@ extension AppModel {
     /// The Agents home (one per project's tab row, showing every agent).
     /// In a window whose Home is this page, its Home; elsewhere the page as a tab.
     func openAgentsHome() {
-        if shellNav == .agents, shellTree?.variant(of: .home) == nil { shellGoHome(); return }
+        if shellNav == .agents, shellTree?.has(.home) == true, shellTree?.variant(of: .home) == nil { shellGoHome(); return }
         openDoc(.agents, workPath: currentProject?.path)
     }
     /// Workday's home: your day on one page (any layout can open it).
     func openWorkday() {
-        if shellTree?.variant(of: .home) == "workday" { shellGoHome(); return }
+        if shellNav == .agents, shellTree?.variant(of: .home) == "workday" { shellGoHome(); return }
         openDoc(.workday, workPath: currentProject?.path)
     }
     /// The aquarium: every agent as an octopus (any layout can open it).

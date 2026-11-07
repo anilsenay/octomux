@@ -14,7 +14,7 @@ struct ShellBreadcrumb: View {
     private func content(compact: Bool) -> some View {
         // The Tasks window has no Home: its root is the tasks (⌘0 opens the assistant), then the picked task.
         let tasks = model.shellNav == .tasks
-        let home = !tasks && (model.shellHome || (model.activeTab == nil && model.activeDoc == nil))
+        let home = !tasks && (model.shellHomeShown || (model.activeTab == nil && model.activeDoc == nil))
         let s = home ? nil : model.session(model.focusedSessionId)
         let task = tasks ? model.task(model.shellTaskId) : nil
         return HStack(spacing: 6) {
