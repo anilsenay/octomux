@@ -31,7 +31,7 @@ struct MainView: View {
                             .padding(.leading, model.sidebarVisible ? 0 : m.inset)
                             .padding(.trailing, m.inset)
                     }
-                    workArea
+                    workAreaWithExtras
                         .padding(.trailing, model.rightPanelVisible ? 0 : m.inset)
                         .padding(.leading, model.sidebarVisible || model.layout.sideChat ? 0 : m.inset)
                         .frame(minWidth: 0, maxWidth: .infinity)
@@ -104,7 +104,12 @@ struct MainView: View {
     private var rootBackground: AnyView {
         // The veil spans the whole window: on the sidebar only, it ended in a hard edge in the top bar.
         if let s = theme.activeScene {
-            return AnyView(SceneBackdrop(scene: s, textColumn: model.sidebarVisible ? model.sidebarWidth : 0).overlay(Color(nsColor: s.colors.frame).opacity(s.dark ? 0.4 : 0.35)))
+            let backdrop = SceneBackdrop(scene: s, textColumn: model.sidebarVisible ? model.sidebarWidth : 0)
+                .overlay(alignment: .bottomLeading) {
+                    // The Aquarium scene: the agents' octopuses behind the sidebar.
+                    if s.kind == .aquarium { AquariumView(style: .backdrop).frame(width: max(model.sidebarVisible ? model.sidebarWidth : 260, 200)).frame(maxHeight: 360) }
+                }
+            return AnyView(backdrop.overlay(Color(nsColor: s.colors.frame).opacity(s.dark ? 0.4 : 0.35)))
         }
         return T.m.glass ? AnyView(VisualEffect(material: .underWindowBackground)) : AnyView(WorkspaceTintedFrame())
     }
@@ -122,6 +127,21 @@ struct MainView: View {
             HStack(spacing: m.inset) { WorkAreaWithBrowser { TerminalArea() }; if open { DockView(position: "right") } }
         default:
             VStack(spacing: m.inset) { WorkAreaWithBrowser { TerminalArea() }; if open { DockView(position: "bottom") } }
+        }
+    }
+
+    /// The work area, with the aquarium above it when the layout has it.
+    @ViewBuilder private var workAreaWithExtras: some View {
+        if model.layout.has("aquarium", in: .views) {
+            VStack(spacing: T.m.inset) {
+                AquariumView(style: .strip)
+                    .frame(height: 210)
+                    .clipShape(RoundedRectangle(cornerRadius: T.m.cardR, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: T.m.cardR, style: .continuous).stroke(T.border))
+                workArea
+            }
+        } else {
+            workArea
         }
     }
 
@@ -625,6 +645,7 @@ struct DocChip: View {
         case .inbox: return "Pull requests, reviews and issues"
         case .agents: return "Every agent: what it did, what it waits for"
         case .workday: return "Your day: who needs you, what happened, your pull requests and issues"
+        case .aquarium: return "Every agent as an octopus: swimming while it works, ! when it waits"
         }
     }
 }
@@ -1020,6 +1041,11 @@ struct StatusBar: View {
         case "keepAwake": if !model.host.isRemote { KeepAwakeControl() }
         case "usage": UsageStatus(compact: !full)
         case "actions": ActionsControl().fixedSize()
+        case "aquarium":
+            Button { model.openAquarium() } label: {
+                HStack(spacing: 5) { Image(systemName: "fish").font(.system(size: T.k * 11)); if full { Text("Aquarium") } }
+            }
+            .buttonStyle(ChromeButtonStyle()).fixedSize().help("Every agent as an octopus")
         case "dock":
             Button { model.toggleDock() } label: {
                 HStack(spacing: 5) { Image(systemName: "terminal").font(.system(size: T.k * 11)); if full { Text("Terminal") } }

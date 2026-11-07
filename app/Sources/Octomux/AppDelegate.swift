@@ -163,6 +163,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         view.addItem(item("Open Agents Home", #selector(openAgentsHome(_:)), ""))
         view.addItem(item("Open Workday", #selector(openWorkday(_:)), ""))
         view.addItem(item("Show Tasks", #selector(showTasks(_:)), ""))
+        view.addItem(item("Open Aquarium", #selector(openAquarium(_:)), ""))
         view.addItem(item("Open Assistant", #selector(openAssistant(_:)), ""))
         view.addItem(.separator())
         for p in LayoutPreset.allCases {   // ⌃⌘1…4
@@ -244,6 +245,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc func openAgentsHome(_ s: Any?) { openMainWindow(); model.openAgentsHome() }
     @objc func openWorkday(_ s: Any?) { openMainWindow(); model.openWorkday() }
     @objc func showTasks(_ s: Any?) { openMainWindow(); model.showTasks() }
+    @objc func openAquarium(_ s: Any?) { openMainWindow(); model.openAquarium() }
     @objc func openAssistant(_ s: Any?) { openMainWindow(); model.openAssistant() }
     @objc func newTerminal(_ s: Any?) { model.newSession(profileId: nil) }
     @objc func newAgent(_ s: Any?) { model.newSession(profileId: (model.profile(model.lastNewSessionProfile) ?? model.pinnedProfiles.first ?? model.enabledProfiles.first)?.id) }

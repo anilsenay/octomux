@@ -6,7 +6,7 @@ import SwiftUI
 // (`appearance.scene` at `workspace:<id>`), falling back to the global choice; "none" turns it off.
 
 struct AmbientScene: Identifiable, Equatable {
-    enum Kind { case nightSky, reef, fireflies, embers, rain, sky, sakura, snow, aurora, circuit, kites, octopus, tentacles, custom }
+    enum Kind { case nightSky, reef, fireflies, embers, rain, sky, sakura, snow, aurora, circuit, kites, octopus, tentacles, aquarium, custom }
     let id: String
     let name: String
     let kind: Kind
@@ -62,6 +62,8 @@ enum Scenes {
              surface: "#121830", frame: "#0D1224", raised: "#1E2744", accent: "#FF8A75",
              art: ["body": "#FF7A66", "hi": "#FFC4B8", "shade": "#D9503F", "eye": "#1A1030", "cheek": "#FFD6A0", "octoInk": "#B23A2C",
                    "ink": "#05070F", "rock": "#222B4A", "rockInk": "#3A466E", "weed1": "#2E8F7A", "weed2": "#246E63", "weedInk": "#0E3A33"]),
+        make("aquarium", "Aquarium", .aquarium, dark: true, top: "#132A4A", bottom: "#071426",
+             surface: "#0E1A2E", frame: "#0A1424", raised: "#16243C", accent: "#5EC8F0"),
         make("kraken", "Kraken", .tentacles, dark: true, top: "#1A0F2E", bottom: "#05030B",
              surface: "#130C20", frame: "#0E0918", raised: "#21173A", accent: "#C084FC"),
         make("lavender", "Lavender", .octopus, dark: false, top: "#F3EFFF", bottom: "#D9CFFD",
@@ -653,6 +655,7 @@ private struct SceneBuilder {
         case .kites: kites()
         case .octopus: octopus()
         case .tentacles: tentacles()
+        case .aquarium: break   // the gradient; the octopuses are drawn by AquariumView over it
         case .custom:
             if let b = s.base { build(kind: b) }
             if let spec = s.spec { custom(spec, dark: s.dark) }
@@ -675,7 +678,7 @@ private struct SceneBuilder {
         case .kites: kites()
         case .octopus: octopus()
         case .tentacles: tentacles()
-        case .custom: break
+        case .aquarium, .custom: break
         }
     }
 
@@ -1408,7 +1411,10 @@ struct SceneTile: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             ZStack {
-                if let scene { SceneBackdrop(scene: scene, still: true) }
+                if let scene {
+                    SceneBackdrop(scene: scene, still: true)
+                        .overlay { if scene.kind == .aquarium { AquariumView(style: .backdrop, still: true) } }
+                }
                 else {
                     LinearGradient(colors: [T.surface, T.frame], startPoint: .top, endPoint: .bottom)
                     Image(systemName: choice == .global ? "globe" : "circle.slash").font(.system(size: T.k * 15)).foregroundStyle(T.text3)

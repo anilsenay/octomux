@@ -12,6 +12,7 @@ struct DocTab: Codable, Identifiable, Equatable {
         case inbox                   // pull requests, reviews and issues (InboxView)
         case agents                  // the Agents layout's home: every agent at a glance (AgentsHomeView)
         case workday                 // Workday's home: who needs you, while you were away, your PRs and issues
+        case aquarium                // every agent as an octopus (AquariumHomeView)
     }
     var id: String
     var projectId: String
@@ -31,6 +32,7 @@ struct DocTab: Codable, Identifiable, Equatable {
         case .inbox: return "Inbox"
         case .agents: return "Agents"
         case .workday: return "Workday"
+        case .aquarium: return "Aquarium"
         }
     }
 
@@ -43,6 +45,7 @@ struct DocTab: Codable, Identifiable, Equatable {
         case .inbox: return "tray"
         case .agents: return "sparkles"
         case .workday: return "sun.max"
+        case .aquarium: return "fish"
         }
     }
 
@@ -122,6 +125,8 @@ extension AppModel {
     func openAgentsHome() { openDoc(.agents, workPath: currentProject?.path) }
     /// Workday's home: your day on one page (any layout can open it).
     func openWorkday() { openDoc(.workday, workPath: currentProject?.path) }
+    /// The aquarium: every agent as an octopus (any layout can open it).
+    func openAquarium() { openDoc(.aquarium, workPath: currentProject?.path) }
     func openChanges(scrollTo: String? = nil) { openDoc(.changes, scrollTo: scrollTo) }
     func openCommit(_ hash: String, subject: String) { openDoc(.commit(hash, subject)) }
 

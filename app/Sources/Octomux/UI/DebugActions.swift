@@ -366,6 +366,7 @@ enum DebugActions {
                 m.openAgentsHome()
             case "workday": m.openWorkday()
             case "tasks": m.showTasks()
+            case "aquarium": m.openAquarium()
             case "assistant": m.openAssistant()
             case "autopilot":         // value: off | start | pr (the current workspace)
                 m.setAutopilot(Autopilot(rawValue: p["value"] as? String ?? "off") ?? .off, workspace: m.selectedWorkspaceId)

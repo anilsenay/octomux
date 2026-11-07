@@ -36,6 +36,16 @@ final class LayoutTests: XCTestCase {
         XCTAssertTrue(LayoutConfig.builtIn(.workday).has("work", in: .paneHeader))
     }
 
+    /// Each layout turns on only the opt-in parts it is about.
+    func testLayoutsTurnOnTheirOwnParts() {
+        XCTAssertEqual(LayoutConfig.builtIn(.tasks).shown(.views), ["tasks"])
+        XCTAssertTrue(LayoutConfig.builtIn(.tasks).has("tasks", in: .sidebar))
+        XCTAssertEqual(LayoutConfig.builtIn(.editor).shown(.views), ["touched", "marks", "notes"])
+        for p in [LayoutPreset.agents, .workday, .minimal, .editor, .tasks] {
+            XCTAssertFalse(LayoutConfig.builtIn(p).has("aquarium", in: .statusRight), p.rawValue)
+        }
+    }
+
     func testOtherLayoutsShowTheWayBack() {
         for p in LayoutPreset.allCases where p != .terminal {
             XCTAssertTrue(LayoutConfig.builtIn(p).has("layout", in: .statusRight), p.rawValue)
@@ -69,8 +79,9 @@ final class LayoutTests: XCTestCase {
         let base = LayoutConfig.builtIn(.terminal).items(.statusRight)
         let stored: [JSONValue] = [json(#"{"id":"dock","on":true}"#), json(#"{"id":"usage","on":false}"#)]
         let out = LayoutConfig.merge(stored, into: base, known: LayoutRegion.statusRight.items)
-        XCTAssertEqual(out.map(\.id), ["layout", "keepAwake", "dock", "usage", "actions"])
+        XCTAssertEqual(out.map(\.id), ["layout", "keepAwake", "dock", "usage", "actions", "aquarium"])
         XCTAssertEqual(out.first { $0.id == "usage" }?.on, false)
+        XCTAssertEqual(out.first { $0.id == "aquarium" }?.on, false)   // opt-in: comes in off
         XCTAssertEqual(out.first { $0.id == "layout" }?.on, false)
     }
 

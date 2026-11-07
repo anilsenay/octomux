@@ -79,8 +79,9 @@ enum LayoutRegion: String, CaseIterable, Identifiable, Codable {
     var optIn: Set<String> {
         switch self {
         case .sidebar: return ["tasks"]
+        case .statusRight: return ["aquarium"]
         case .paneHeader: return ["work"]
-        case .views: return ["touched", "marks", "notes", "tasks"]
+        case .views: return ["touched", "marks", "notes", "tasks", "aquarium"]
         default: return []
         }
     }
@@ -90,10 +91,10 @@ enum LayoutRegion: String, CaseIterable, Identifiable, Codable {
         case .sidebar: return ["search", "inbox", "projects", "agents", "tasks"]
         case .sidebarFooter: return ["add", "workspaces", "settings"]
         case .statusLeft: return ["agents", "git"]
-        case .statusRight: return ["layout", "keepAwake", "usage", "actions", "dock"]
+        case .statusRight: return ["layout", "keepAwake", "usage", "actions", "aquarium", "dock"]
         case .topBar: return ["diff", "openIn", "git", "rightPanel"]
         case .paneHeader: return ["work"]
-        case .views: return ["touched", "marks", "notes", "tasks"]
+        case .views: return ["touched", "marks", "notes", "tasks", "aquarium"]
         }
     }
     static func itemTitle(_ id: String, in region: LayoutRegion) -> String {
@@ -121,6 +122,8 @@ enum LayoutRegion: String, CaseIterable, Identifiable, Codable {
         case (.views, "marks"): return "Editor: changed lines in the gutter"
         case (.views, "notes"): return "Editor: note on a line → agent"
         case (.views, "tasks"): return "Right panel: Tasks tab"
+        case (.views, "aquarium"): return "Aquarium above the panes"
+        case (_, "aquarium"): return "Aquarium"
         case (.sidebar, "tasks"): return "Tasks"
         default: return id
         }
@@ -152,40 +155,43 @@ struct LayoutConfig: Equatable {
 
     /// A layout as it ships.
     static func builtIn(_ p: LayoutPreset) -> LayoutConfig {
-        func all(_ r: LayoutRegion, off: Set<String> = [], order: [String]? = nil) -> [LayoutItem] {
-            (order ?? r.items).map { LayoutItem(id: $0, on: !off.contains($0)) }
+        /// A region's items: all on, but `off` and the opt-in items the layout doesn't turn on (`with`).
+        func items(_ r: LayoutRegion, with: Set<String> = [], off: Set<String> = [], order: [String]? = nil) -> [LayoutItem] {
+            let hidden = off.union(r.optIn.subtracting(with))
+            let ids = order.map { o in o + r.items.filter { !o.contains($0) } } ?? r.items
+            return ids.map { LayoutItem(id: $0, on: !hidden.contains($0)) }
         }
         var regions: [LayoutRegion: [LayoutItem]] = [:]
-        for r in LayoutRegion.allCases { regions[r] = all(r, off: r.optIn) }
+        for r in LayoutRegion.allCases { regions[r] = items(r) }
         // Terminal: today's window. The Layout button stays out of its status bar (the window looks as it always did);
         // the other layouts show it, so the way back is in sight.
-        regions[.statusRight] = all(.statusRight, off: Set(["layout"]).union(LayoutRegion.statusRight.optIn))
+        regions[.statusRight] = items(.statusRight, off: ["layout"])
         switch p {
         case .terminal:
             return LayoutConfig(preset: p, regions: regions, statusBar: true, chat: false)
         case .agents:
-            regions[.statusRight] = all(.statusRight)
-            regions[.paneHeader] = all(.paneHeader)
+            regions[.statusRight] = items(.statusRight)
+            regions[.paneHeader] = items(.paneHeader, with: ["work"])
             return LayoutConfig(preset: p, regions: regions, statusBar: true, chat: true)
         case .workday:
-            regions[.sidebar] = all(.sidebar, off: LayoutRegion.sidebar.optIn, order: ["inbox", "search", "projects", "agents"] + LayoutRegion.sidebar.items.filter { !["inbox", "search", "projects", "agents"].contains($0) })
-            regions[.statusRight] = all(.statusRight)
-            regions[.paneHeader] = all(.paneHeader)
+            regions[.sidebar] = items(.sidebar, order: ["inbox", "search", "projects", "agents"])
+            regions[.statusRight] = items(.statusRight)
+            regions[.paneHeader] = items(.paneHeader, with: ["work"])
             return LayoutConfig(preset: p, regions: regions, statusBar: true, chat: false)
         case .minimal:
-            regions[.topBar] = all(.topBar, off: ["diff", "openIn"])
-            regions[.statusRight] = all(.statusRight)
+            regions[.topBar] = items(.topBar, off: ["diff", "openIn"])
+            regions[.statusRight] = items(.statusRight)
             return LayoutConfig(preset: p, regions: regions, statusBar: false, chat: false)
         case .editor:
-            regions[.statusRight] = all(.statusRight)
-            regions[.paneHeader] = all(.paneHeader)
-            regions[.views] = all(.views, off: ["tasks"])
+            regions[.statusRight] = items(.statusRight)
+            regions[.paneHeader] = items(.paneHeader, with: ["work"])
+            regions[.views] = items(.views, with: ["touched", "marks", "notes"])
             return LayoutConfig(preset: p, regions: regions, statusBar: true, chat: true, sideChat: true)
         case .tasks:
-            regions[.statusRight] = all(.statusRight)
-            regions[.paneHeader] = all(.paneHeader)
-            regions[.views] = all(.views, off: ["touched", "marks", "notes"])
-            regions[.sidebar] = all(.sidebar, order: ["search", "inbox", "tasks", "projects", "agents"])
+            regions[.statusRight] = items(.statusRight)
+            regions[.paneHeader] = items(.paneHeader, with: ["work"])
+            regions[.views] = items(.views, with: ["tasks"])
+            regions[.sidebar] = items(.sidebar, with: ["tasks"], order: ["search", "inbox", "tasks", "projects", "agents"])
             return LayoutConfig(preset: p, regions: regions, statusBar: true, chat: true)
         }
     }
