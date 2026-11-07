@@ -140,7 +140,8 @@ A closed scale with no half points (`DesignTokenTests` fails on `N.5` sizes in `
   Every block at most once; a stack holds main blocks and containers.
 - The terminal views are the classic window's, moved into the work area block; a layout switch makes none.
   The resolved layout is cached per change of the setting; the agents' transcripts are read once for the rail and
-  Home together, after the first frame, and only while the engine window shows.
+  Home together, after the first frame, and only while one of them is on screen (⌘B hides the rail as it hides the
+  classic sidebar; a session with the rail hidden reads nothing).
 - A user's own tree goes in `custom.<layout>.tree`, dragged widths in `custom.<layout>.sizes`; both go over the
   built-in tree, which keeps getting our updates.
 - In the engine window the tab keys work on the rail: ⌘1…8 / ⌘9, ⌘[ ⌘] (and ⇧⌘[ ⇧⌘]), ⌘T Home + composer, ⌘0 Home,
