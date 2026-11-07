@@ -198,6 +198,21 @@ impl Keeper {
     }
 }
 
+/// What the safety limits read right now (`power.probe`, for checking a machine).
+pub fn probe() -> Value {
+    json!({ "lid_closed_without_external_display": lid_closed(), "external_display": external_display_any(),
+            "on_ac": on_ac_power(), "battery": battery_percent(), "thermal_pressure": thermal_pressure() })
+}
+
+#[cfg(target_os = "macos")]
+fn external_display_any() -> bool {
+    external_display()
+}
+#[cfg(not(target_os = "macos"))]
+fn external_display_any() -> bool {
+    false
+}
+
 /// After a crash with the lid kept awake: puts `disablesleep` back once at start.
 pub fn recover(marker: &std::path::Path) {
     if marker.exists() && set_disablesleep(false) {
@@ -280,7 +295,9 @@ fn on_ac_power() -> bool {
     true
 }
 
-/// The built-in display's lid is closed (IOPMrootDomain's AppleClamshellState; no privileges needed).
+/// The lid is closed with no external display (IOPMrootDomain's AppleClamshellState; no privileges needed).
+/// With an external display a closed lid does not sleep the Mac anyway (clamshell mode), so that time is not
+/// counted against the limit. (Not AppleClamshellCausesSleep: disablesleep itself may turn that off.)
 #[cfg(target_os = "macos")]
 fn lid_closed() -> bool {
     use std::ffi::c_void;
@@ -302,17 +319,37 @@ fn lid_closed() -> bool {
         if svc == 0 {
             return false;
         }
-        let key = CFStringCreateWithCString(std::ptr::null(), c"AppleClamshellState".as_ptr(), 0x0800_0100);
-        let v = IORegistryEntryCreateCFProperty(svc, key, std::ptr::null(), 0);
-        CFRelease(key);
+        let read = |name: &std::ffi::CStr| -> Option<bool> {
+            let key = CFStringCreateWithCString(std::ptr::null(), name.as_ptr(), 0x0800_0100);
+            let v = IORegistryEntryCreateCFProperty(svc, key, std::ptr::null(), 0);
+            CFRelease(key);
+            if v.is_null() {
+                return None;
+            }
+            let b = CFBooleanGetValue(v);
+            CFRelease(v);
+            Some(b)
+        };
+        let closed = read(c"AppleClamshellState").unwrap_or(false);
         IOObjectRelease(svc);
-        if v.is_null() {
-            return false;
-        }
-        let closed = CFBooleanGetValue(v);
-        CFRelease(v);
-        closed
+        closed && !external_display()
     }
+}
+
+/// Some display other than the built-in one is connected.
+#[cfg(target_os = "macos")]
+fn external_display() -> bool {
+    #[link(name = "CoreGraphics", kind = "framework")]
+    unsafe extern "C" {
+        fn CGGetOnlineDisplayList(max: u32, ids: *mut u32, count: *mut u32) -> i32;
+        fn CGDisplayIsBuiltin(id: u32) -> u32;
+    }
+    let mut ids = [0u32; 16];
+    let mut n = 0u32;
+    if unsafe { CGGetOnlineDisplayList(16, ids.as_mut_ptr(), &mut n) } != 0 {
+        return false;
+    }
+    ids[..n as usize].iter().any(|&d| unsafe { CGDisplayIsBuiltin(d) } == 0)
 }
 
 #[cfg(not(target_os = "macos"))]

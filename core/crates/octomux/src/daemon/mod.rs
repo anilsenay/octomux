@@ -2205,6 +2205,7 @@ impl Daemon {
                 Ok(json!({ "path": agents::find_rollout(&codex_home, id, cwd, since) }))
             }
             "power.status" => Ok(self.apply_power()),
+            "power.probe" => Ok(power::probe()),
             // After installing or removing the sudoers rule for the closed-lid option.
             "power.rule_changed" => {
                 power::forget_rule_cache();
