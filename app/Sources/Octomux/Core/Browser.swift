@@ -268,8 +268,10 @@ final class BrowserWebView: WKWebView {
 final class BrowserStore: ObservableObject {
     static let shared = BrowserStore()
     @Published private(set) var pages: [BrowserPage] = []
-    /// The page in the Browser panel.
-    @Published var shownPageId: String? { didSet { if shownPageId != oldValue { save() } } }
+    /// The browser beside a tab's terminals: tab id → the page it shows ("" = open, no page yet). No entry: closed.
+    @Published private(set) var splits: [String: String] = [:]
+    /// The page last shown anywhere (what the browser shows when opened on a tab that had none).
+    private(set) var lastShownId: String?
     /// Each session's current page (the one its tools act on).
     private(set) var current: [String: String] = [:]
     private var nextId = 1
@@ -280,7 +282,29 @@ final class BrowserStore: ObservableObject {
     /// Called when an agent starts using a page in the focused session (the app shows the panel).
     var onAgentPage: ((BrowserPage, String) -> Void)?
 
-    var shownPage: BrowserPage? { pages.first { $0.id == shownPageId } }
+    func splitPage(tab: String?) -> BrowserPage? { tab.flatMap { splits[$0] }.flatMap(page) }
+    func splitOpen(tab: String?) -> Bool { tab.map { splits[$0] != nil } ?? false }
+
+    /// Shows `page` beside the tab's terminals (opening the browser there).
+    func show(_ page: BrowserPage, in tab: String) {
+        guard splits[tab] != page.id else { return }
+        splits[tab] = page.id
+        lastShownId = page.id
+        save()
+    }
+
+    /// Opens the browser on a tab: the page it showed last, or an empty browser.
+    func openSplit(tab: String) {
+        guard splits[tab] == nil else { return }
+        splits[tab] = page(lastShownId)?.id ?? pages.last?.id ?? ""
+        save()
+    }
+
+    func closeSplit(tab: String) {
+        guard splits[tab] != nil else { return }
+        splits[tab] = nil
+        save()
+    }
     func page(_ id: String?) -> BrowserPage? { pages.first { $0.id == id } }
     func currentPage(of session: String) -> BrowserPage? { page(current[session]) }
 
@@ -327,12 +351,12 @@ final class BrowserStore: ObservableObject {
     """
 
     @discardableResult
-    func newPage(owner: String?, show: Bool = false) -> BrowserPage {
+    func newPage(owner: String?, showIn tab: String? = nil) -> BrowserPage {
         let p = BrowserPage(id: "p\(nextId)", owner: owner, configuration: makeConfiguration())
         nextId += 1
         pages.append(p)
         if let owner { current[owner] = p.id }
-        if show || shownPageId == nil { shownPageId = p.id }
+        if let tab { splits[tab] = p.id; lastShownId = p.id }
         save()
         return p
     }
@@ -341,20 +365,20 @@ final class BrowserStore: ObservableObject {
 
     private static let savedKey = "octomux.browserPages"
     private struct Saved: Codable { var id: String; var owner: String?; var url: String; var current: [String]? }
+    private struct SavedState: Codable { var pages: [Saved]; var splits: [String: String]; var last: String? }
 
     /// Pages, their owners and which sessions work in them, so agents (and the user) find them after a relaunch
     /// or an update. Their addresses load when first shown or used.
     func save() {
         let v = pages.map { p in Saved(id: p.id, owner: p.owner, url: p.web.url?.absoluteString ?? p.pendingURL?.absoluteString ?? p.url,
                                        current: current.filter { $0.value == p.id }.map(\.key)) }
-        if let d = try? JSONEncoder().encode(v) { UserDefaults.standard.set(d, forKey: Self.savedKey) }
-        UserDefaults.standard.set(shownPageId, forKey: Self.savedKey + ".shown")
+        if let d = try? JSONEncoder().encode(SavedState(pages: v, splits: splits, last: lastShownId)) { UserDefaults.standard.set(d, forKey: Self.savedKey) }
     }
 
     func restore() {
         guard pages.isEmpty, let d = UserDefaults.standard.data(forKey: Self.savedKey),
-              let saved = try? JSONDecoder().decode([Saved].self, from: d) else { return }
-        for s in saved.prefix(20) {
+              let state = try? JSONDecoder().decode(SavedState.self, from: d) else { return }
+        for s in state.pages.prefix(20) {
             let p = BrowserPage(id: s.id, owner: s.owner, configuration: makeConfiguration())
             p.pendingURL = URL(string: s.url).flatMap { $0.scheme == nil || $0.absoluteString == "about:blank" ? nil : $0 }
             p.url = s.url
@@ -363,8 +387,8 @@ final class BrowserStore: ObservableObject {
             for sid in s.current ?? [] { current[sid] = p.id }
             if let n = Int(s.id.dropFirst()), n >= nextId { nextId = n + 1 }
         }
-        let shown = UserDefaults.standard.string(forKey: Self.savedKey + ".shown")
-        shownPageId = pages.contains { $0.id == shown } ? shown : pages.first?.id
+        splits = state.splits.filter { $0.value.isEmpty || page($0.value) != nil }
+        lastShownId = page(state.last)?.id
     }
 
     /// A page the web content opened (window.open, target=_blank), with the configuration WebKit gives.
@@ -373,7 +397,11 @@ final class BrowserStore: ObservableObject {
         nextId += 1
         if let i = pages.firstIndex(where: { $0 === opener }) { pages.insert(p, at: i + 1) } else { pages.append(p) }
         // The user clicked it: show it, as a browser would. An agent's popup waits until it switches to it.
-        if !opener.agentDriving { shownPageId = p.id }
+        if !opener.agentDriving {
+            for (tab, pid) in splits where pid == opener.id { splits[tab] = p.id }
+            lastShownId = p.id
+        }
+        save()
         return p
     }
 
@@ -384,7 +412,10 @@ final class BrowserStore: ObservableObject {
         let p = pages.remove(at: i)
         p.close()
         for (s, pid) in current where pid == id { current[s] = nil }
-        if shownPageId == id { shownPageId = pages.indices.contains(i) ? pages[i].id : pages.last?.id }
+        // A browser that showed it moves to a neighbor page, or stays open empty.
+        let next = pages.indices.contains(i) ? pages[i].id : pages.last?.id
+        for (tab, pid) in splits where pid == id { splits[tab] = next ?? "" }
+        if lastShownId == id { lastShownId = next }
         save()
     }
 

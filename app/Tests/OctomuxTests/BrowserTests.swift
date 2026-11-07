@@ -142,6 +142,26 @@ final class BrowserToolsTests: XCTestCase {
         for p in fresh.pages { fresh.close(p.id) }
     }
 
+    func testBrowserBesideTabs() throws {
+        let store = BrowserStore()
+        XCTAssertFalse(store.splitOpen(tab: "t1"))
+        store.openSplit(tab: "t1")
+        XCTAssertTrue(store.splitOpen(tab: "t1"), "opens empty when there is no page yet")
+        XCTAssertNil(store.splitPage(tab: "t1"))
+        let a = store.newPage(owner: nil, showIn: "t1"), b = store.newPage(owner: "s1")
+        XCTAssertEqual(store.splitPage(tab: "t1")?.id, a.id)
+        XCTAssertFalse(store.splitOpen(tab: "t2"), "each tab has its own")
+        store.show(b, in: "t2")
+        store.closeSplit(tab: "t2")
+        store.openSplit(tab: "t2")
+        XCTAssertEqual(store.splitPage(tab: "t2")?.id, b.id, "reopens on the page shown last")
+        store.close(a.id)
+        XCTAssertEqual(store.splitPage(tab: "t1")?.id, b.id, "a closed page's browser moves to a neighbor")
+        store.close(b.id)
+        XCTAssertTrue(store.splitOpen(tab: "t1"))
+        XCTAssertNil(store.splitPage(tab: "t1"))
+    }
+
     func testWaitAndKeys() async throws {
         var (text, _) = await call("browser_navigate", ["url": Self.testPage.path])
         let link = try ref(text, #"link "Show details""#)

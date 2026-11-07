@@ -5,9 +5,6 @@ struct MainView: View {
     @EnvironmentObject var model: AppModel
     @ObservedObject var theme = ThemeStore.shared
     @AppStorage("octomux.dockPosition") private var dockPosition = "bottom"
-    @AppStorage("octomux.rightTab") private var rightTab = RightTab.changes.rawValue
-    /// The right panel is wider on the Browser tab (pages need room); dragged from its left edge.
-    @AppStorage("octomux.browserWidth") private var browserWidth = 560.0
 
     var body: some View {
         let m = T.m
@@ -32,8 +29,7 @@ struct MainView: View {
                     if model.rightPanelVisible {
                         if flat { Hairline(vertical: true) }
                         RightPanel()
-                            .frame(width: rightTab == RightTab.browser.rawValue ? browserWidth : 320)
-                            .overlay(alignment: .leading) { if rightTab == RightTab.browser.rawValue { BrowserResizeHandle(width: $browserWidth) } }
+                            .frame(width: 320)
                             .background(CanvasBackground(minOpacity: 0.9))
                             .clipShape(RoundedRectangle(cornerRadius: m.cardR, style: .continuous))
                             .overlay(RoundedRectangle(cornerRadius: m.cardR, style: .continuous).stroke(T.border))
@@ -104,13 +100,13 @@ struct MainView: View {
         let open = model.isDockOpen(model.currentProject?.id)
         switch dockPosition {
         case "top":
-            VStack(spacing: m.inset) { if open { DockView(position: "top") }; TerminalArea() }
+            VStack(spacing: m.inset) { if open { DockView(position: "top") }; WorkAreaWithBrowser { TerminalArea() } }
         case "left":
-            HStack(spacing: m.inset) { if open { DockView(position: "left") }; TerminalArea() }
+            HStack(spacing: m.inset) { if open { DockView(position: "left") }; WorkAreaWithBrowser { TerminalArea() } }
         case "right":
-            HStack(spacing: m.inset) { TerminalArea(); if open { DockView(position: "right") } }
+            HStack(spacing: m.inset) { WorkAreaWithBrowser { TerminalArea() }; if open { DockView(position: "right") } }
         default:
-            VStack(spacing: m.inset) { TerminalArea(); if open { DockView(position: "bottom") } }
+            VStack(spacing: m.inset) { WorkAreaWithBrowser { TerminalArea() }; if open { DockView(position: "bottom") } }
         }
     }
 
@@ -205,25 +201,6 @@ struct TopLeftControls: View {
 }
 
 /// Drag the sidebar's right edge to resize it.
-/// The Browser panel's left edge: drag to resize.
-struct BrowserResizeHandle: View {
-    @Binding var width: Double
-    @State private var start: Double?
-
-    var body: some View {
-        Rectangle().fill(Color.clear).frame(width: 6)
-            .contentShape(Rectangle())
-            .onHover { h in if h { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() } }
-            .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .global)
-                .onChanged { v in
-                    if start == nil { start = width }
-                    width = min(1400, max(360, (start ?? 560) - v.translation.width))
-                }
-                .onEnded { _ in start = nil })
-            .offset(x: -3)
-    }
-}
-
 struct SidebarResizeHandle: View {
     @EnvironmentObject var model: AppModel
     @State private var start: CGFloat?
@@ -512,6 +489,7 @@ struct TopBar: View {
                     Button { model.toggleChat(fs.id) } label: { Image(systemName: model.isChat(fs.id) ? "terminal" : "text.bubble") }
                         .buttonStyle(ChromeButtonStyle(active: model.isChat(fs.id))).help(model.isChat(fs.id) ? "Show terminal (⌘⇧C)" : "Show as chat (⌘⇧C)")
                 }
+                BrowserToggleButton()
                 Button { model.toggleRightPanel() } label: { Image(systemName: "sidebar.right") }
                     .buttonStyle(ChromeButtonStyle(active: model.rightPanelVisible)).help("Files / Changes / Sessions (⌘⌥B)")
             }

@@ -2,59 +2,94 @@ import AppKit
 import SwiftUI
 import WebKit
 
-/// The right panel's Browser tab: the Octomux browser's pages, which agents drive through their browser tools
-/// while the user watches (cursor, action label, highlighted element) or takes over.
-struct BrowserPanel: View {
-    @EnvironmentObject var model: AppModel
+/// The Octomux browser beside a tab's terminals (half the work area by default, resized from its left edge): the
+/// pages agents drive through their browser tools while the user watches (cursor, action label, framed element),
+/// or browses themselves. Each tab remembers whether it shows the browser and which page.
+struct BrowserSplit: View {
+    let tab: String
     @ObservedObject var store = BrowserStore.shared
 
     var body: some View {
-        VStack(spacing: 0) {
-            if let page = store.shownPage {
-                BrowserPageView(page: page).id(page.id)
-            } else {
+        if let page = store.splitPage(tab: tab) {
+            BrowserPageView(page: page, tab: tab).id(page.id)
+        } else {
+            VStack(spacing: 0) {
+                HStack {
+                    Spacer()
+                    Button { store.closeSplit(tab: tab) } label: { Image(systemName: "xmark") }
+                        .buttonStyle(IconButtonStyle(size: 24)).help("Close Browser")
+                }
+                .padding(.horizontal, 6).frame(height: 36)
+                Hairline()
                 VStack(spacing: 10) {
-                    PanelEmpty(icon: "globe", text: "No pages open").frame(height: 90)
-                    Text("Agents open pages here when they use the browser, and you can watch them work.")
-                        .font(T.caption).foregroundStyle(T.text3).multilineTextAlignment(.center).frame(maxWidth: 260)
-                    Button { BrowserUI.newUserPage() } label: { Label("New Page", systemImage: "plus") }
+                    PanelEmpty(icon: "globe", text: "No page here").frame(height: 90)
+                    Text("Agents open pages beside their tab when they use the browser, and you can watch them work.")
+                        .font(T.caption).foregroundStyle(T.text3).multilineTextAlignment(.center).frame(maxWidth: 280)
+                    Button { BrowserUI.newUserPage(tab: tab) } label: { Label("New Page", systemImage: "plus") }
                         .buttonStyle(ChromeButtonStyle()).font(T.small)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .onChange(of: model.focusedSessionId) { _, id in
-            // Following the user around: the page the newly focused session works in.
-            if let id, let p = store.currentPage(of: id) { store.shownPageId = p.id }
+    }
+}
+
+/// The work area with the active tab's browser (if open) on the right, split by a draggable edge.
+struct WorkAreaWithBrowser<Content: View>: View {
+    @EnvironmentObject var model: AppModel
+    @ObservedObject var store = BrowserStore.shared
+    /// The browser's share of the work area's width.
+    @AppStorage("octomux.browserSplit") private var ratio = 0.5
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        let tab = model.activeDoc == nil ? model.activeTabId : nil
+        if let tab, store.splitOpen(tab: tab) {
+            GeometryReader { g in
+                HStack(spacing: T.m.inset) {
+                    content.frame(maxWidth: .infinity)
+                    BrowserSplit(tab: tab)
+                        .frame(width: max(320, min(g.size.width - 260, g.size.width * ratio)))
+                        .background(T.surface)
+                        .clipShape(RoundedRectangle(cornerRadius: T.m.cardR, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: T.m.cardR, style: .continuous).stroke(T.border))
+                        .overlay(alignment: .leading) { BrowserResizeHandle(ratio: $ratio, total: g.size.width) }
+                }
+            }
+        } else {
+            content
         }
     }
 }
 
 enum BrowserUI {
-    /// Pages already brought into view for an agent (the panel opens for an agent's page once; after that the
-    /// user decides whether it stays open).
+    /// Pages already brought into view for an agent: the browser opens beside the agent's tab for a page once;
+    /// after that the user decides whether it stays open (while open, it follows the agent to its current page).
     @MainActor private static var revealed = Set<String>()
 
     @MainActor static func start() {
         BrowserStore.shared.restore()
         BrowserServer.shared.start()
         BrowserStore.shared.onAgentPage = { page, session in
-            let m = AppModel.shared
-            let inView = m.focusedSessionId == session || (m.activeDoc == nil && m.activeTab?.layout.sessions.contains(session) == true)
-            guard inView else { return }
-            BrowserStore.shared.shownPageId = page.id
-            if revealed.insert(page.id).inserted {
-                UserDefaults.standard.set(RightTab.browser.rawValue, forKey: "octomux.rightTab")
-                m.setRightPanel(true)
-            }
+            let store = BrowserStore.shared
+            guard let tab = AppModel.shared.state.tabs.first(where: { $0.layout.sessions.contains(session) })?.id else { return }
+            if revealed.insert(page.id).inserted || store.splitOpen(tab: tab) { store.show(page, in: tab) }
         }
     }
 
-    @MainActor static func newUserPage(url: String? = nil) {
-        let p = BrowserStore.shared.newPage(owner: nil, show: true)
+    @MainActor static func newUserPage(tab: String, url: String? = nil) {
+        let p = BrowserStore.shared.newPage(owner: nil, showIn: tab)
         if let url, let u = BrowserStore.addressBarURL(url) { Task { await p.load(u) } }
         BrowserUI.focusAddress = p.id
     }
+
+    /// The top bar's globe: shows or hides the browser beside the active tab.
+    @MainActor static func toggle() {
+        guard let tab = AppModel.shared.activeTabId else { return }
+        let store = BrowserStore.shared
+        if store.splitOpen(tab: tab) { store.closeSplit(tab: tab) } else { store.openSplit(tab: tab) }
+    }
+
     /// The page whose address bar takes focus when it appears (a new page).
     @MainActor static var focusAddress: String?
 
@@ -68,9 +103,30 @@ enum BrowserUI {
     }
 }
 
+/// The browser's left edge: drag to change its share of the work area.
+struct BrowserResizeHandle: View {
+    @Binding var ratio: Double
+    let total: CGFloat
+    @State private var start: Double?
+
+    var body: some View {
+        Rectangle().fill(Color.clear).frame(width: 8)
+            .contentShape(Rectangle())
+            .onHover { h in if h { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() } }
+            .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                .onChanged { v in
+                    if start == nil { start = ratio }
+                    ratio = min(0.8, max(0.25, (start ?? 0.5) - Double(v.translation.width / max(total, 1))))
+                }
+                .onEnded { _ in start = nil })
+            .offset(x: -6)
+    }
+}
+
 struct BrowserPageView: View {
     @EnvironmentObject var model: AppModel
     @ObservedObject var page: BrowserPage
+    let tab: String
     @ObservedObject var store = BrowserStore.shared
     @State private var address = ""
     @FocusState private var addressFocused: Bool
@@ -128,8 +184,10 @@ struct BrowserPageView: View {
                 }
                 .onExitCommand { address = page.url; addressFocused = false }
             pagesMenu
-            Button { BrowserUI.newUserPage() } label: { Image(systemName: "plus") }
+            Button { BrowserUI.newUserPage(tab: tab) } label: { Image(systemName: "plus") }
                 .buttonStyle(IconButtonStyle(size: 24)).help("New Page")
+            Button { store.closeSplit(tab: tab) } label: { Image(systemName: "xmark") }
+                .buttonStyle(IconButtonStyle(size: 24)).help("Close Browser (the page stays open; the globe in the top bar brings it back)")
         }
         .font(.system(size: T.k * 12, weight: .medium))
     }
@@ -139,7 +197,7 @@ struct BrowserPageView: View {
             Section("Pages") {
                 ForEach(store.pages) { p in
                     Button {
-                        store.shownPageId = p.id
+                        store.show(p, in: tab)
                     } label: {
                         Text((p.id == page.id ? "✓ " : "") + BrowserTools.short(p.displayTitle, 50) + "  —  " + (p.owner.map(BrowserUI.agentLabel) ?? "You"))
                     }
@@ -306,5 +364,17 @@ struct BrowserWebHost: NSViewRepresentable {
     static func dismantleNSView(_ v: NSView, coordinator: ()) {
         // Off screen the page keeps its size, so an agent's snapshots and screenshots stay the same.
         v.subviews.forEach { $0.removeFromSuperview() }
+    }
+}
+
+/// Top bar: the browser beside the active tab.
+struct BrowserToggleButton: View {
+    @EnvironmentObject var model: AppModel
+    @ObservedObject var store = BrowserStore.shared
+    var body: some View {
+        let open = model.activeDoc == nil && store.splitOpen(tab: model.activeTabId)
+        Button { BrowserUI.toggle() } label: { Image(systemName: "globe") }
+            .buttonStyle(ChromeButtonStyle(active: open)).help(open ? "Close Browser" : "Browser")
+            .disabled(model.activeTabId == nil || model.activeDoc != nil)
     }
 }
