@@ -10,14 +10,14 @@ import SwiftUI
 /// change to a built-in layout still reaches everyone who didn't touch that part. Anything unreadable falls back
 /// to the built-in values (a wrong type, an unknown layout or item), never to a broken window.
 enum LayoutPreset: String, CaseIterable, Identifiable, Codable {
-    case terminal, agents, review, minimal
+    case terminal, agents, workday, minimal
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .terminal: return "Terminal"
         case .agents: return "Agents"
-        case .review: return "Review"
+        case .workday: return "Workday"
         case .minimal: return "Minimal"
         }
     }
@@ -25,7 +25,7 @@ enum LayoutPreset: String, CaseIterable, Identifiable, Codable {
         switch self {
         case .terminal: return "terminal"
         case .agents: return "sparkles"
-        case .review: return "plus.forwardslash.minus"
+        case .workday: return "sun.max"
         case .minimal: return "rectangle"
         }
     }
@@ -33,7 +33,7 @@ enum LayoutPreset: String, CaseIterable, Identifiable, Codable {
         switch self {
         case .terminal: return "Octomux as it comes: projects and their sessions, terminals first."
         case .agents: return "Agents up front: a home with every agent (board, columns or inbox), answers from the cards, new agents open as chats."
-        case .review: return "Changes up front: the Changes panel open and wide, the Inbox first."
+        case .workday: return "Your day on one page: who needs you, what happened while you were away, your pull requests and issues with their next step."
         case .minimal: return "Only the panes: no sidebar, no status bar, a quiet top bar."
         }
     }
@@ -149,9 +149,10 @@ struct LayoutConfig: Equatable {
             regions[.statusRight] = all(.statusRight)
             regions[.paneHeader] = all(.paneHeader)
             return LayoutConfig(preset: p, regions: regions, statusBar: true, chat: true)
-        case .review:
-            regions[.sidebar] = all(.sidebar, order: ["inbox", "search", "projects", "agents"])
+        case .workday:
+            regions[.sidebar] = all(.sidebar, off: LayoutRegion.sidebar.optIn, order: ["inbox", "search", "projects", "agents"] + LayoutRegion.sidebar.items.filter { !["inbox", "search", "projects", "agents"].contains($0) })
             regions[.statusRight] = all(.statusRight)
+            regions[.paneHeader] = all(.paneHeader)
             return LayoutConfig(preset: p, regions: regions, statusBar: true, chat: false)
         case .minimal:
             regions[.topBar] = all(.topBar, off: ["diff", "openIn"])
@@ -319,12 +320,10 @@ extension AppModel {
                 sidebarVisible = true
                 sidebarAgents = false   // the home lists them
                 rightPanelVisible = false
-            case .review:
+            case .workday:
                 sidebarVisible = true
                 sidebarAgents = false
-                UserDefaults.standard.set("Changes", forKey: "octomux.rightTab")
-                rightPanelWidth = 560
-                rightPanelVisible = true
+                rightPanelVisible = false
             case .minimal:
                 sidebarVisible = false
                 rightPanelVisible = false
@@ -333,6 +332,7 @@ extension AppModel {
         sidebarPeek = false
         saveSelection()
         if p == .agents { openAgentsHome() }
+        if p == .workday { openWorkday() }
     }
 
     /// The first state after this version starts: the old "hide the cup" switch moves into the layout.

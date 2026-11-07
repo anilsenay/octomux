@@ -33,7 +33,7 @@ final class LayoutTests: XCTestCase {
         let old = json(#"{"layout":"terminal","custom":{"terminal":{"regions":{"statusRight":[{"id":"usage","on":false}]}}}}"#)
         let c = LayoutConfig.resolve(old)
         for id in LayoutRegion.statusRight.optIn { XCTAssertFalse(c.has(id, in: .statusRight), id) }
-        XCTAssertTrue(LayoutConfig.builtIn(.agents).has("work", in: .paneHeader))
+        XCTAssertTrue(LayoutConfig.builtIn(.workday).has("work", in: .paneHeader))
     }
 
     func testOtherLayoutsShowTheWayBack() {
@@ -42,7 +42,7 @@ final class LayoutTests: XCTestCase {
         }
         XCTAssertFalse(LayoutConfig.builtIn(.minimal).statusBar)
         XCTAssertTrue(LayoutConfig.builtIn(.agents).chat)
-        XCTAssertEqual(LayoutConfig.builtIn(.review).shown(.sidebar).first, "inbox")
+        XCTAssertEqual(LayoutConfig.builtIn(.workday).shown(.sidebar).first, "inbox")
     }
 
     // MARK: Broken values fall back
@@ -55,11 +55,11 @@ final class LayoutTests: XCTestCase {
     }
 
     func testPartlyBrokenKeepsWhatItCanRead() {
-        let v = json(#"{"layout":"review","custom":{"review":{"statusBar":"x","regions":{"sidebar":"oops","topBar":[{"id":"zzz"},{"id":"rightPanel","on":false},{"id":"rightPanel","on":true},7]}}}}"#)
+        let v = json(#"{"layout":"workday","custom":{"workday":{"statusBar":"x","regions":{"sidebar":"oops","topBar":[{"id":"zzz"},{"id":"rightPanel","on":false},{"id":"rightPanel","on":true},7]}}}}"#)
         let c = LayoutConfig.resolve(v)
-        XCTAssertEqual(c.preset, .review)
+        XCTAssertEqual(c.preset, .workday)
         XCTAssertTrue(c.statusBar)                                               // wrong type: built-in
-        XCTAssertEqual(c.items(.sidebar), LayoutConfig.builtIn(.review).items(.sidebar))   // not a list: built-in
+        XCTAssertEqual(c.items(.sidebar), LayoutConfig.builtIn(.workday).items(.sidebar))   // not a list: built-in
         XCTAssertEqual(c.shown(.topBar), ["diff", "openIn", "git"])               // unknown and repeated dropped
         XCTAssertEqual(c.items(.topBar).map(\.id), ["diff", "openIn", "git", "rightPanel"])
     }
@@ -80,7 +80,7 @@ final class LayoutTests: XCTestCase {
         var v = LayoutEdit.choose(.agents, in: nil)
         v = LayoutEdit.toggle("usage", in: .statusRight, on: false, stored: v)
         XCTAssertFalse(LayoutConfig.resolve(v).has("usage", in: .statusRight))
-        v = LayoutEdit.choose(.review, in: v)
+        v = LayoutEdit.choose(.workday, in: v)
         XCTAssertTrue(LayoutConfig.resolve(v).has("usage", in: .statusRight))
         v = LayoutEdit.choose(.agents, in: v)
         XCTAssertFalse(LayoutConfig.resolve(v).has("usage", in: .statusRight))

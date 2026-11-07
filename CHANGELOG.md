@@ -4,13 +4,21 @@
 
 - **Layouts**: pick how the window is arranged for the way you work, for the whole app: **Terminal** (the window as
   it always was, still the default), **Agents** (the Agents home below; new Claude and Codex sessions open as
-  chats), **Review** (Changes open and wide, the Inbox first) or **Minimal** (only the panes). Switch with ⌃⌘1…4,
+  chats), **Workday** (the Workday home below) or **Minimal** (only the panes). Switch with ⌃⌘1…4,
   the command palette (View → … Layout), or the Layout button the other layouts show in the status bar.
 - **Agents home** (the Agents layout opens it as a tab): every agent at a glance, in three ways to try: **Board**
   (who waits for you, who works, who finished, recent), **Columns** (one column per state) and **Inbox** (agents by
   urgency on the left, the selected one's chat on the right, ↑↓ to move). Cards show the agent's last words, the
   steps and files of its turn, and what it waits for: allow or deny a tool, or pick an answer, right on the card.
   "What should an agent work on?" continues on the start screen.
+- **Workday home** (the Workday layout opens it; View → Open Workday in any layout): your day on one page. Who
+  needs you, answered right there; what happened while you were away (agents that finished, with the files they
+  changed since you last looked, and automations that started work); your pull requests with their next step
+  (fix the checks with an agent, mark ready, merge), reviews waiting for you, and your issues ("Work on it").
+- **Work chips**: an agent's pull request (with its checks) and issue show next to it on cards, and in the pane
+  header in the Agents and Workday layouts (Settings → Layout → Pane header elsewhere).
+- **Since you looked**: an agent card says how many files changed after you last looked at the agent, and lists
+  them with their diffs.
 - **Settings → Layout**: in each layout, turn off and reorder what the sidebar, its bottom row, the status bar and
   the top bar show; hide the status bar; open new agents as chats. Each layout keeps its own changes (Reset brings
   it back as it comes), and a layout can be exported to a file and imported on another Mac.
