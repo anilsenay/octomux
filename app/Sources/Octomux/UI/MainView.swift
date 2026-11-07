@@ -862,13 +862,14 @@ struct ProjectQuickActions: View {
 }
 
 struct TerminalArea: NSViewRepresentable {
-    func makeNSView(context: Context) -> PaneContainerView {
-        let c = TerminalHost.shared.container
+    func makeNSView(context: Context) -> PaneSlotView {
+        let v = PaneSlotView(TerminalHost.shared.container)
+        v.onAdopt = { TerminalHost.shared.render(force: true) }
         DispatchQueue.main.async { TerminalHost.shared.render(force: true) }
-        return c
+        return v
     }
-    func updateNSView(_ nsView: PaneContainerView, context: Context) {
-        TerminalHost.shared.render()
+    func updateNSView(_ v: PaneSlotView, context: Context) {
+        if v.adopt() { TerminalHost.shared.render(force: true) } else { TerminalHost.shared.render() }
     }
 }
 

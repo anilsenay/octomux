@@ -245,13 +245,14 @@ struct DockResizeHandle: View {
 }
 
 struct DockArea: NSViewRepresentable {
-    func makeNSView(context: Context) -> PaneContainerView {
-        let c = TerminalHost.shared.dockContainer
+    func makeNSView(context: Context) -> PaneSlotView {
+        let v = PaneSlotView(TerminalHost.shared.dockContainer)
+        v.onAdopt = { TerminalHost.shared.renderDock(force: true) }
         DispatchQueue.main.async { TerminalHost.shared.renderDock(force: true) }
-        return c
+        return v
     }
-    func updateNSView(_ nsView: PaneContainerView, context: Context) {
-        TerminalHost.shared.renderDock()
+    func updateNSView(_ v: PaneSlotView, context: Context) {
+        if v.adopt() { TerminalHost.shared.renderDock(force: true) } else { TerminalHost.shared.renderDock() }
     }
 }
 

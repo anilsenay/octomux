@@ -367,6 +367,38 @@ final class TerminalHost {
 }
 
 /// Root of the terminal area.
+/// Where a shared pane container is shown: each terminal area on screen has its own slot, and the slot that is in
+/// the window holds the container. When the window is rebuilt (a layout drawn by another part, a theme change) the
+/// new slot takes the container and the old one, removed afterwards, no longer has it to take along — the panes
+/// are moved, never lost or made again.
+final class PaneSlotView: NSView {
+    let content: PaneContainerView
+    init(_ content: PaneContainerView) {
+        self.content = content
+        super.init(frame: .zero)
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    /// Takes the container if it is elsewhere (or nowhere); true when it moved here.
+    @discardableResult func adopt() -> Bool {
+        guard window != nil, content.superview !== self else { return false }
+        content.removeFromSuperview()
+        content.frame = bounds
+        content.autoresizingMask = [.width, .height]
+        addSubview(content)
+        return true
+    }
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if adopt() { onAdopt?() }
+    }
+    var onAdopt: (() -> Void)?
+    override func layout() {
+        super.layout()
+        if content.superview === self { content.frame = bounds }
+    }
+}
+
 final class PaneContainerView: NSView {
     private var empty: NSView?
 
