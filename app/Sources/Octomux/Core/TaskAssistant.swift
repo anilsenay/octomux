@@ -71,6 +71,12 @@ enum TaskAssistant {
         }
     }
 
+    /// The update to send the assistant, if any: nothing with Autopilot off, nothing past the task's turns.
+    static func notify(_ t: WorkTask, from old: Activity, to new: Activity, level: Autopilot) -> String? {
+        guard level != .off, t.turns < Autopilot.maxTurns else { return nil }
+        return update(t, from: old, to: new)
+    }
+
     /// Whether a requested start may go ahead without you.
     static func mayStart(level: Autopilot, byAssistant: Bool, running: Int, maxAgents: Int) -> Bool {
         byAssistant && level != .off && running < maxAgents
@@ -175,7 +181,7 @@ final class TaskAutopilot: ObservableObject {
                   let a = t.assistantSession, let assistant = model.session(a), !assistant.isDormant else { continue }
             let level = model.autopilot(workspace: model.project(t.projectId)?.workspaceId)
             guard level != .off else { continue }
-            if let text = TaskAssistant.update(t, from: o.activity, to: s.activity), t.turns < Autopilot.maxTurns {
+            if let text = TaskAssistant.notify(t, from: o.activity, to: s.activity, level: level) {
                 model.updateTask(t.id, ["turns": t.turns + 1])
                 model.sendToSession(a, text: text, submit: true)
             }

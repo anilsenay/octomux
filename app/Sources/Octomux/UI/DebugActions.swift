@@ -103,7 +103,7 @@ enum DebugActions {
                 "focused_session": m.focusedSessionId ?? NSNull(),
                 "shell": m.shellTree != nil,
                 "shell_home": m.shellHome,
-                "shell_drawn": ShellView.drawn,
+                "shell_drawn": m.shellTree == nil ? [] : ShellView.drawn,
                 "layout_user": m.layout.userId as Any,
                 "saved_layouts": SavedLayouts.sorted(m.savedLayouts).map { ["id": $0.id, "name": $0.file.name, "base": $0.file.base.rawValue, "tree": $0.file.tree != nil, "preview": SavedLayouts.preview($0.id) != nil] },
                 "layout_import_result": LayoutImport.last,

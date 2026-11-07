@@ -45,6 +45,18 @@ final class TasksTests: XCTestCase {
         XCTAssertEqual(TaskRules.derive(t, sessions: [session("a", .working)], pr: pr), .planned)   // by hand stays
     }
 
+    func testAssistantGetsAtMostFiveTurnsPerTaskAndNoneWithAutopilotOff() {
+        var t = WorkTask(id: "t", projectId: "p", title: "x", state: .working)
+        XCTAssertEqual(Autopilot.maxTurns, 5)
+        XCTAssertNotNil(TaskAssistant.notify(t, from: .working, to: .done, level: .start))
+        XCTAssertNil(TaskAssistant.notify(t, from: .working, to: .done, level: .off))
+        t.turns = 4
+        XCTAssertNotNil(TaskAssistant.notify(t, from: .working, to: .needsInput, level: .pr))
+        t.turns = 5
+        XCTAssertNil(TaskAssistant.notify(t, from: .working, to: .done, level: .start))   // the sixth: not sent
+        XCTAssertNil(TaskAssistant.notify(WorkTask(id: "u", projectId: "p", title: "y"), from: .working, to: .working, level: .start))
+    }
+
     func testTasksRailGroupsByWhatTheyNeedDoneOnlyWhenAsked() {
         var a = WorkTask(id: "a", projectId: "p", title: "a", state: .planned); a.createdAt = 1
         var b = WorkTask(id: "b", projectId: "p", title: "b", state: .needsYou); b.createdAt = 2
