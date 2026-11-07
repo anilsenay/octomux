@@ -1404,38 +1404,3 @@ struct BranchPicker: View {
 }
 
 
-/// Commit ▾ in the top bar: the Changes panel with its commit box; the menu adds pull requests.
-struct TopBarCommitButton: View {
-    @EnvironmentObject var model: AppModel
-    @State private var hover = false
-    var body: some View {
-        HStack(spacing: 0) {
-            Button {
-                UserDefaults.standard.set("Changes", forKey: "octomux.rightTab")
-                model.setRightPanel(true)
-            } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "point.topleft.down.to.point.bottomright.curvepath").font(T.icon(11))
-                    Text("Commit").font(.system(size: T.k * 12, weight: .medium))
-                }
-                .foregroundStyle(hover ? T.text : T.text2)
-                .padding(.leading, 9).padding(.trailing, 6).frame(height: 24).contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .help("Commit: the Changes panel with the message box")
-            Rectangle().fill(T.border).frame(width: 1, height: 14)
-            Menu {
-                Button("Commit…") { UserDefaults.standard.set("Changes", forKey: "octomux.rightTab"); model.setRightPanel(true) }
-                Button("Create Pull Request…") { DispatchQueue.main.async { PullRequestWindow.show(model: model) } }
-            } label: {
-                Image(systemName: "chevron.down").font(.system(size: T.k * 8, weight: .bold)).foregroundStyle(T.text3).menuHitBox(18, 24)
-            }
-            .plainMenu().fixedSize()
-        }
-        .background(RoundedRectangle(cornerRadius: R.md, style: .continuous).fill(hover ? T.hover : .clear))
-        .overlay(RoundedRectangle(cornerRadius: R.md, style: .continuous).stroke(T.border))
-        .onHover { hover = $0 }
-        .pointerCursor()
-        .fixedSize()
-    }
-}

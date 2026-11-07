@@ -337,6 +337,11 @@ enum DebugActions {
             case "toggle_sidebar": m.toggleSidebar()
             case "toggle_dock": m.toggleDock()
             case "toggle_right_panel": m.toggleRightPanel()
+            case "panel_snapshot":
+                if let r = FloatingPanelController.shared.snapshot(to: p["value"] as? String ?? "/tmp/octomux-panel.png") { return r }
+            case "git_refresh": if let p = m.currentWorkPath { GitInfo.shared.invalidate(p) }
+            case "open_panel":   // a floating panel: workspace | keep_awake | commit
+                NotificationCenter.default.post(name: .octomuxDebugOpenPanel, object: p["value"] as? String)
             case "add_action":
                 guard let pid = m.currentProject?.id else { throw DebugServer.DebugError.bad("no project") }
                 m.saveActions(pid, m.actions(pid) + [ProjectAction(name: p["value"] as? String ?? "Test", icon: "flask", command: p["command"] as? String ?? "echo hi")])

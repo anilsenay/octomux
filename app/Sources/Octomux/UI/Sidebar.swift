@@ -8,6 +8,7 @@ struct SidebarView: View {
     @ObservedObject var wt = Worktrees.shared
     @State private var collapsed: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "octomux.collapsed") ?? [])
     @State private var workspaceHover = false
+    @State private var workspaceMenu = false
 
     var body: some View {
         GeometryReader { geo in
@@ -84,22 +85,7 @@ struct SidebarView: View {
     private var header: some View {
         VStack(spacing: 8) {
             WindowDragArea().frame(height: floating ? 6 : 38)  // traffic lights row: drags the window
-            Menu {
-                ForEach(model.orderedWorkspaces) { w in
-                    let a = model.attention(workspace: w.id)
-                    let note = attentionText(a)
-                    Button((w.id == model.selectedWorkspaceId ? "✓ " : "") + w.name + (note.isEmpty ? "" : "   ·  " + note)) { model.selectWorkspace(w.id) }
-                }
-                Divider()
-                if (model.setting("features.remote")?.bool ?? true) || model.host.isRemote { Section("Host") {
-                    ForEach(HostStore.withLocal) { h in
-                        Button((h.id == model.hostId ? "✓ " : "") + h.name) { model.switchHost(h.id) }
-                    }
-                    Button("Manage Hosts…") { SettingsWindow.show(section: .hosts) }
-                } }
-                Divider()
-                Button("Workspace Settings…") { SettingsWindow.show(section: .workspaces) }
-            } label: {
+            Button { workspaceMenu.toggle() } label: {
                 HStack(spacing: 8) {
                     if let w = model.workspace { WorkspaceIcon(workspace: w, size: 12).frame(width: 14) }
                     Text(model.workspace?.name ?? "Octomux").font(T.headline).foregroundStyle(T.text)
@@ -114,13 +100,15 @@ struct SidebarView: View {
                     Image(systemName: "chevron.up.chevron.down").font(.system(size: T.k * 9, weight: .semibold)).foregroundStyle(T.text3)
                 }
                 .padding(.horizontal, 10).frame(height: 30)
-                .background(RoundedRectangle(cornerRadius: T.m.rowR, style: .continuous).fill(workspaceHover ? T.hover : .clear))
+                .background(RoundedRectangle(cornerRadius: T.m.rowR, style: .continuous).fill(workspaceHover || workspaceMenu ? T.hover : .clear))
                 .contentShape(Rectangle())
                 .onHover { workspaceHover = $0 }
             }
-            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden)
+            .buttonStyle(.plain)
             .pointerCursor()
             .help("Switch workspace (⌃⌘← →, or swipe) or host")
+            .floatingPanel(isPresented: $workspaceMenu) { WorkspacePanel() }
+            .debugOpens("workspace", $workspaceMenu)
             if model.host.isRemote {
                 HStack(spacing: 6) {
                     Image(systemName: "server.rack").font(.system(size: T.k * 10))
@@ -935,5 +923,72 @@ struct NameAndBranch: Layout {
             v.place(at: CGPoint(x: x, y: bounds.midY), anchor: .leading, proposal: ProposedViewSize(width: w[k], height: bounds.height))
             x += w[k] + spacing
         }
+    }
+}
+
+
+/// The workspace switcher under the sidebar's header: each workspace with its color, what waits there and its
+/// shortcut; hosts; settings.
+struct WorkspacePanel: View {
+    @EnvironmentObject var model: AppModel
+    @StateObject private var nav = PanelNav()
+
+    private struct Item { let action: () -> Void }
+
+    var body: some View {
+        let workspaces = model.orderedWorkspaces
+        let showHosts = (model.setting("features.remote")?.bool ?? true) || model.host.isRemote
+        let hosts = showHosts ? HostStore.withLocal : []
+        // Rows in order, for the keys: workspaces, hosts, Manage Hosts, New Workspace, Workspace Settings.
+        var actions: [() -> Void] = workspaces.map { w in { model.selectWorkspace(w.id) } }
+        actions += hosts.map { h in { model.switchHost(h.id) } }
+        if showHosts { actions.append { SettingsWindow.show(section: .hosts) } }
+        actions.append { WorkspaceEditor.create() }
+        actions.append { SettingsWindow.show(section: .workspaces) }
+        let hostBase = workspaces.count
+        let tail = hostBase + hosts.count + (showHosts ? 1 : 0)
+        return PanelCard(width: 288) {
+            PanelSectionTitle("Workspaces")
+            ForEach(Array(workspaces.enumerated()), id: \.element.id) { i, w in
+                let a = model.attention(workspace: w.id)
+                row(i, PanelRow(title: w.name, detail: detail(a), detailColor: a.waiting > 0 ? T.amber : T.green,
+                                shortcut: KeyBindings.shared.current("cmd.workspace-\(i + 1)")?.display,
+                                checked: w.id == model.selectedWorkspaceId, highlighted: nav.index == i) {
+                    WorkspaceIcon(workspace: w, size: 12)
+                })
+            }
+            if showHosts {
+                PanelDivider()
+                PanelSectionTitle("Host")
+                ForEach(Array(hosts.enumerated()), id: \.element.id) { j, h in
+                    row(hostBase + j, PanelRow(title: h.name, detail: h.id == model.hostId && h.isRemote ? (model.connected ? "connected" : "connecting…") : nil,
+                                               checked: h.id == model.hostId, highlighted: nav.index == hostBase + j) {
+                        Image(systemName: h.isRemote ? "server.rack" : "laptopcomputer").font(T.icon(11)).foregroundStyle(T.text3)
+                    })
+                }
+                row(tail - 1, PanelRow(title: "Manage Hosts…", highlighted: nav.index == tail - 1) {
+                    Image(systemName: "slider.horizontal.3").font(T.icon(11)).foregroundStyle(T.text3)
+                })
+            }
+            PanelDivider()
+            row(tail, PanelRow(title: "New Workspace…", highlighted: nav.index == tail) {
+                Image(systemName: "plus").font(T.icon(11)).foregroundStyle(T.text3)
+            })
+            row(tail + 1, PanelRow(title: "Workspace Settings…", highlighted: nav.index == tail + 1) {
+                Image(systemName: "gearshape").font(T.icon(11)).foregroundStyle(T.text3)
+            })
+        }
+        .onAppear { nav.set(actions); nav.attach() }
+    }
+
+    private func detail(_ a: (waiting: Int, unread: Int)) -> String? {
+        if a.waiting > 0 { return "\(a.waiting) waiting" }
+        if a.unread > 0 { return "\(a.unread) new" }
+        return nil
+    }
+
+    private func row<V: View>(_ i: Int, _ v: V) -> some View {
+        v.onHover { if $0 { nav.index = i } }
+            .onTapGesture { nav.run(i) }
     }
 }

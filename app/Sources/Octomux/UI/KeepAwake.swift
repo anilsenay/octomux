@@ -180,68 +180,145 @@ final class KeepAwake: ObservableObject {
     }
 }
 
-/// The status bar's cup: mode menu, lit while the Mac is kept awake.
+/// The status bar's cup: lit while the Mac is kept awake; opens the keep-awake panel.
 struct KeepAwakeControl: View {
     @ObservedObject var awake = KeepAwake.shared
+    @State private var open = false
+    @State private var hover = false
     private var cupColor: Color { awake.status.active ? T.amber : awake.status.mode == "off" ? T.text3 : T.text2 }
     var body: some View {
         let s = awake.status
-        Menu {
-            Section("Keep Mac awake") {
-                ForEach(KeepAwake.modes, id: \.id) { m in
-                    Button { awake.setMode(m.id) } label: {
-                        if s.mode == m.id && (m.id != "always" || s.until == nil) { Label(m.title, systemImage: "checkmark") } else { Text(m.title) }
-                    }
-                }
-                Menu {
-                    ForEach(KeepAwake.durations, id: \.seconds) { d in
-                        Button(d.title) { awake.keepAwake(for: d.seconds) }
-                    }
-                } label: {
-                    if let u = s.until { Label("For a While (until \(KeepAwake.clock(u)))", systemImage: "checkmark") } else { Text("For a While") }
-                }
-            }
-            Divider()
-            if s.lidSetup {
-                let title = "Also with the Lid Closed" + (s.lidMaxHours > 0 ? " (up to \(KeepAwake.lidLimitTitle(s.lidMaxHours)) on power)" : "")
-                Button { awake.setLid(!s.lidEnabled) } label: {
-                    if s.lidEnabled { Label(title, systemImage: "checkmark") } else { Text(title) }
-                }
-                .disabled(s.mode == "off")
-                Menu("Lid Closed at Most") {
-                    Section("On the power adapter") {
-                        ForEach(KeepAwake.lidLimits, id: \.hours) { l in
-                            Button { awake.setLidMax(l.hours) } label: {
-                                if s.lidMaxHours == l.hours { Label(l.title, systemImage: "checkmark") } else { Text(l.title) }
-                            }
-                        }
-                    }
-                    if s.lidOnBattery {
-                        Section("On battery") {
-                            ForEach(KeepAwake.lidLimitsBattery, id: \.hours) { l in
-                                Button { awake.setLidMax(l.hours, battery: true) } label: {
-                                    if s.lidMaxHoursBattery == l.hours { Label(l.title, systemImage: "checkmark") } else { Text(l.title) }
-                                }
-                            }
-                        }
-                    }
-                }
-            } else {
-                Button("Set Up Closed-Lid Mode…") { awake.installRule() }
-            }
-            Divider()
-            Button("Settings…") { SettingsWindow.show(section: .sessions) }
-            Button("Hide from Status Bar") { UserDefaults.standard.set(true, forKey: KeepAwake.hiddenKey) }
-        } label: {
+        Button { open.toggle() } label: {
             Image(systemName: s.active ? "cup.and.saucer.fill" : "cup.and.saucer")
                 .font(.system(size: T.k * 11))
                 .foregroundStyle(cupColor)
+                .frame(width: 22, height: 20)
+                .background(RoundedRectangle(cornerRadius: R.sm, style: .continuous).fill(open || hover ? T.hover : .clear))
+                .contentShape(Rectangle())
         }
-        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-        .tint(cupColor)   // a borderless menu draws its label in the tint, not the label's own color
+        .buttonStyle(.plain)
+        .onHover { hover = $0 }
         .pointerCursor()
         .help(awake.tooltip)
+        .floatingPanel(isPresented: $open, edge: .top) { KeepAwakePanel() }
+        .debugOpens("keep_awake", $open)
         .onAppear { awake.start() }
+    }
+}
+
+/// Keep Mac awake: what it does now, the modes, a timer, the closed-lid rule.
+struct KeepAwakePanel: View {
+    @ObservedObject var awake = KeepAwake.shared
+    @StateObject private var nav = PanelNav()
+    @State private var now = Date()
+
+    private var headline: (String, Color) {
+        let s = awake.status
+        if let u = s.until { return ("Awake until \(KeepAwake.clock(u))", T.amber) }
+        if s.mode == "off" { return ("Off · the Mac sleeps as usual", T.text3) }
+        if s.active {
+            if s.mode == "always" { return ("Keeping this Mac awake", T.amber) }
+            return (s.working > 0 ? "Awake · \(s.working) agent\(s.working == 1 ? "" : "s") working" : "Awake a little longer after the agents", T.amber)
+        }
+        return ("Waiting for an agent to work", T.text2)
+    }
+
+    var body: some View {
+        let s = awake.status
+        let modes = KeepAwake.modes
+        // Keys: the three modes, Settings, Hide.
+        let actions: [() -> Void] = modes.map { m in { awake.setMode(m.id) } } + [
+            { SettingsWindow.show(section: .sessions) },
+            { UserDefaults.standard.set(true, forKey: KeepAwake.hiddenKey) }]
+        let h = headline
+        return PanelCard(width: 300) {
+            HStack(spacing: 10) {
+                Image(systemName: s.active ? "cup.and.saucer.fill" : "cup.and.saucer").font(T.icon(15))
+                    .foregroundStyle(s.active ? T.amber : T.text2)
+                    .frame(width: 32, height: 32)
+                    .background(RoundedRectangle(cornerRadius: R.md, style: .continuous).fill((s.active ? T.amber : T.text).opacity(0.1)))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Keep Mac awake").font(.system(size: T.k * 13, weight: .semibold)).foregroundStyle(T.text)
+                    Text(h.0).font(T.meta).foregroundStyle(h.1).lineLimit(1)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 7).padding(.top, 5).padding(.bottom, 7)
+            PanelDivider()
+            ForEach(Array(modes.enumerated()), id: \.element.id) { i, m in
+                row(i, PanelRow(title: m.title, detail: m.id == "agents" ? "until they stop" : nil,
+                                checked: s.mode == m.id && (m.id != "always" || s.until == nil), highlighted: nav.index == i) {
+                    Image(systemName: m.id == "off" ? "moon.zzz" : m.id == "agents" ? "sparkles" : "sun.max").font(T.icon(11)).foregroundStyle(T.text3)
+                })
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    Image(systemName: "timer").font(T.icon(11)).foregroundStyle(T.text3).frame(width: 16)
+                    Text("For a while").font(.system(size: T.k * 13)).foregroundStyle(T.text)
+                    Spacer(minLength: 4)
+                    if s.until != nil {
+                        Button("Stop") { awake.stopTimer() }.buttonStyle(.plain).font(.system(size: T.k * 11, weight: .medium)).foregroundStyle(T.accent).pointerCursor()
+                    }
+                }
+                HStack(spacing: 5) {
+                    ForEach(KeepAwake.durations, id: \.seconds) { d in
+                        PanelChip(title: d.title.replacingOccurrences(of: " hours", with: " h").replacingOccurrences(of: " hour", with: " h")) { awake.keepAwake(for: d.seconds) }
+                    }
+                }
+                .padding(.leading, 24)
+            }
+            .padding(.horizontal, 9).padding(.vertical, 6)
+            PanelDivider()
+            if s.lidSetup {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "laptopcomputer").font(T.icon(11)).foregroundStyle(T.text3).frame(width: 16)
+                        Text("Also with the lid closed").font(.system(size: T.k * 13)).foregroundStyle(s.mode == "off" ? T.text3 : T.text)
+                        Spacer(minLength: 4)
+                        Toggle("", isOn: Binding(get: { s.lidEnabled }, set: { awake.setLid($0) }))
+                            .toggleStyle(.switch).controlSize(.mini).labelsHidden().disabled(s.mode == "off")
+                    }
+                    if s.lidEnabled {
+                        Text("At most, on power").font(T.meta).foregroundStyle(T.text3).padding(.leading, 24)
+                        HStack(spacing: 5) {
+                            ForEach(KeepAwake.lidLimits, id: \.hours) { l in
+                                PanelChip(title: l.hours == 0 ? "∞" : "\(l.hours) h", on: s.lidMaxHours == l.hours) { awake.setLidMax(l.hours) }
+                            }
+                        }
+                        .padding(.leading, 24)
+                        if s.lidOnBattery {
+                            Text("On battery").font(T.meta).foregroundStyle(T.text3).padding(.leading, 24)
+                            HStack(spacing: 5) {
+                                ForEach(KeepAwake.lidLimitsBattery, id: \.hours) { l in
+                                    PanelChip(title: "\(l.hours) h", on: s.lidMaxHoursBattery == l.hours) { awake.setLidMax(l.hours, battery: true) }
+                                }
+                            }
+                            .padding(.leading, 24)
+                        }
+                    }
+                }
+                .padding(.horizontal, 9).padding(.vertical, 6)
+            } else {
+                Button { FloatingPanelController.shared.close(); awake.installRule() } label: {
+                    PanelRow(title: "Set Up Closed-Lid Mode…") {
+                        Image(systemName: "laptopcomputer").font(T.icon(11)).foregroundStyle(T.text3)
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+            PanelDivider()
+            row(modes.count, PanelRow(title: "Settings…", highlighted: nav.index == modes.count) {
+                Image(systemName: "gearshape").font(T.icon(11)).foregroundStyle(T.text3)
+            })
+            row(modes.count + 1, PanelRow(title: "Hide from Status Bar", highlighted: nav.index == modes.count + 1) {
+                Image(systemName: "eye.slash").font(T.icon(11)).foregroundStyle(T.text3)
+            })
+        }
+        .onAppear { nav.set(actions); nav.attach(); awake.refresh() }
+    }
+
+    private func row<V: View>(_ i: Int, _ v: V) -> some View {
+        v.onHover { if $0 { nav.index = i } }.onTapGesture { nav.run(i) }
     }
 }
 

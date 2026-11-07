@@ -5,8 +5,13 @@
 - **Start screen**: a new tab (New Chat) shows what waits for you and what ran last in the project, with starter
   chips; the composer stays at the bottom, in the same column as the chat, so nothing moves when it starts.
 - **Every pane has a header** (also when a tab has one pane): which session and folder, with split, chat ↔
-  terminal, browser and dock buttons. The top bar keeps the tabs and project-wide actions: diff, Open in and a new
-  **Commit ▾** (the Changes panel with its message box, or Create Pull Request).
+  terminal, browser and dock buttons. The top bar keeps the tabs and project-wide actions: diff, Open in and a git
+  button that shows the next step: **Commit** (a panel with the changed files and a message the commit-message
+  agent writes, Commit or Commit & Push, Amend), **Push ↑n**, **Create PR**, or the branch's open **PR #n** (from
+  the Inbox, its checks' color). ▾ has all of them and Show Changes.
+- **Workspace switcher and Keep Mac awake** open Octomux's own panels instead of system menus: each workspace with
+  its color, what waits there and its shortcut; the cup shows what it does now, the modes, "for a while" and the
+  closed-lid limits as chips. Arrow keys, ↩ and esc work as in a menu.
 - **Sidebar**: Search (⌘K) is the first row under the workspace, then Inbox and Projects.
 
 - **⌃Tab tab switcher**: hold ⌃ and press Tab to see the project's tabs, most recent first, each with a picture of

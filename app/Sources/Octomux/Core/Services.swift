@@ -164,6 +164,17 @@ final class GitInfo: ObservableObject {
 
     @Published private var branches: [String: String] = [:]
     @Published private var stats: [String: Stat] = [:]
+    /// Where a checkout stands against its remote, for the top bar's Commit / Push / PR button.
+    struct Sync: Equatable {
+        var dirty = 0            // uncommitted files (untracked ones too)
+        var ahead = 0            // commits not pushed (no upstream: not on any remote)
+        var upstream = false
+        var base = ""            // the branch pull requests go to
+        var sinceBase = 0        // commits on this branch that the base doesn't have
+    }
+    @Published private var syncs: [String: Sync] = [:]
+    /// Paths someone asked `sync(for:)` about (only those pay for its git calls).
+    private var syncWanted: Set<String> = []
     private var lastFetch: [String: Date] = [:]
     private let queue = DispatchQueue(label: "octomux.git", qos: .utility)
 
@@ -177,9 +188,33 @@ final class GitInfo: ObservableObject {
         return stats[path]
     }
 
+    func sync(for path: String) -> Sync? {
+        if syncWanted.insert(path).inserted { lastFetch[path] = nil }
+        refreshIfStale(path)
+        return syncs[path]
+    }
+
+    private static func readSync(_ path: String, branch: String) -> Sync {
+        var y = Sync()
+        y.dirty = (git(["status", "--porcelain=v1", "--untracked-files=all"], in: path) ?? "").split(separator: "\n").count
+        let up = git(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"], in: path)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        y.upstream = !(up ?? "").isEmpty
+        let count = { (args: [String]) in Int(git(["rev-list", "--count"] + args, in: path)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "") ?? 0 }
+        // No remote at all: nothing to push to (and no pull request).
+        guard !(git(["remote"], in: path) ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return y }
+        y.ahead = y.upstream ? count(["@{u}..HEAD"]) : count(["HEAD", "--not", "--remotes"])
+        y.base = PullRequest.defaultBase(path)
+        if branch != y.base {
+            let ref = git(["rev-parse", "--verify", "--quiet", "origin/\(y.base)"], in: path) != nil ? "origin/\(y.base)" : y.base
+            y.sinceBase = count(["\(ref)..HEAD"])
+        }
+        return y
+    }
+
     private func refreshIfStale(_ path: String) {
         if let t = lastFetch[path], Date().timeIntervalSince(t) < 5 { return }
         lastFetch[path] = Date()
+        let wantsSync = syncWanted.contains(path)
         queue.async {
             let branch = Self.git(["rev-parse", "--abbrev-ref", "HEAD"], in: path)?.trimmingCharacters(in: .whitespacesAndNewlines)
             var stat: Stat?
@@ -202,7 +237,9 @@ final class GitInfo: ObservableObject {
                 }
                 stat = s
             }
+            let sync = wantsSync ? branch.map { Self.readSync(path, branch: $0) } : nil
             DispatchQueue.main.async {
+                if self.syncs[path] != sync { self.syncs[path] = sync }
                 if self.branches[path] != branch { self.branches[path] = branch }
                 if self.stats[path] != stat { self.stats[path] = stat }
             }

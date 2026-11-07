@@ -82,7 +82,11 @@ A closed scale with no half points (`DesignTokenTests` fails on `N.5` sizes in `
 - **Buttons** — icon buttons in three sizes only (`IconButtonStyle.snap`: 18 rows/tabs, 22 panel tools,
   26 window chrome), radius 6; `PrimaryButton` (accent fill, white 12 semibold), `SecondaryButton` (hairline).
 - **Chip** — 22 px, radius 6, `hover` fill; used for dock tabs, diff stat, filters.
-- **Popover / menu** — native menus; custom popovers use `raised` + system shadow, radius 10.
+- **Popover / menu** — short command menus (context menus, + menus, ▾ lists of actions) stay native. Pickers that
+  show state use `floatingPanel` (UI/FloatingPanel.swift): `PanelCard` (`raised`, hairline, radius 12, the window's
+  shadow), `PanelSectionTitle`, `PanelRow` (icon, title, detail, shortcut, check; 28 tall), `PanelChip`,
+  `PanelNav` for ↑↓ ↩; esc or a click outside closes (the click does nothing else). Workspace switcher, Keep Mac
+  awake and the top bar's Commit panel use it.
 - **Command palette** — 620 wide, radius 14; without a query, grouped (Waiting for you / Sessions / Commands)
   with `SectionHeader`s; footer with key hints and the result count.
 - **Tab switcher** — ⌃Tab / ⌃⇧Tab while ⌃ is held: the project's tabs most recent first, each with a picture of
