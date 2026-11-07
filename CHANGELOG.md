@@ -12,7 +12,8 @@
   for you, Working, Done, Idle) with their last words and project filter chips, a breadcrumb instead of tabs
   ("Home · Personal", "agent · project · branch" with a Chat / Terminal switch), and Home in the middle: a greeting,
   a big composer (project, checkout or a new worktree, agent), the agents waiting for you answered in place, recent
-  sessions and usage. Home isn't a tab: ⌘0 or ⌘T comes back to it. ⌘1…9 and ⇧⌘[ / ⇧⌘] move over the rail.
+  sessions and usage. Home isn't a tab: ⌘0 or ⌘T comes back to it. ⌘1…9 and ⌘[ / ⌘] move over the rail; after a
+  click on the rail (or ⌥⌘A) ↑ ↓ ↩ do too.
 - **Layouts as data**: a layout's window can be a tree of rows, columns and stacks over Octomux's own blocks, read
   from a JSON file (the Agents layout is the first); a tree that doesn't read or breaks a block's rules falls back to
   the built-in one. Groundwork for sharing layouts later.

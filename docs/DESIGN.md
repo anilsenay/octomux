@@ -143,8 +143,9 @@ A closed scale with no half points (`DesignTokenTests` fails on `N.5` sizes in `
   Home together, after the first frame, and only while the engine window shows.
 - A user's own tree goes in `custom.<layout>.tree`, dragged widths in `custom.<layout>.sizes`; both go over the
   built-in tree, which keeps getting our updates.
-- In the engine window the tab keys work on the rail: ⌘1…8 / ⌘9, ⇧⌘[ ⇧⌘], ⌘T Home + composer, ⌘0 Home, ⌘W closes the
-  pane (nothing on Home); the menu names follow.
+- In the engine window the tab keys work on the rail: ⌘1…8 / ⌘9, ⌘[ ⌘] (and ⇧⌘[ ⇧⌘]), ⌘T Home + composer, ⌘0 Home,
+  ⌘W closes the pane (nothing on Home); the menu names follow. The rail takes ↑ ↓ ↩ only after a click on it or ⌥⌘A
+  (an app-local key monitor that listens only then; a terminal keeps every key otherwise).
 
 ## Terminal theme
 Each preset carries a terminal palette matched to its `surface` color (background = `surface`, so the card
