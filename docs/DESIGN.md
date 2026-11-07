@@ -118,35 +118,74 @@ A closed scale with no half points (`DesignTokenTests` fails on `N.5` sizes in `
   live in one layout only.
 
 ### Layout engine
-- A layout can be a window of its own: a JSON tree (`app/Resources/layouts/<layout>.json`, schema 1) that
-  `Core/LayoutTree.swift` reads and `UI/Shell.swift` draws. Today the engine draws Agents; Terminal and the other
-  layouts are the classic window (`MainView.classicWindow`), unchanged.
+- A layout's window is a JSON tree (`app/Resources/layouts/<layout>.json`, schema 1) that `Core/LayoutTree.swift`
+  reads and `UI/Shell.swift` draws. The engine draws Agents, Workday, Minimal, Editor, Tasks and Aquarium.
+  Terminal keeps the classic window (`MainView.classicWindow`): drawn by the engine it was not the same to the pixel
+  (with a file open the sidebar's list sat a point lower), and the default look never moves. Its tree
+  (`terminal.json`) is the starting point of a layout saved from Terminal.
 - Nodes: `row` / `column` (children side by side / stacked) and `stack` (one child shows: Home while the window is on
   its Home, else the first other one); each child may have a `size` along its parent's axis: `{"fixed": pt}`,
-  `{"min": pt}` or `{"flex": weight}`. Leaves are blocks; there is no code in a layout, only data.
+  `{"min": pt}` or `{"flex": weight}`. Leaves are blocks, optionally with a `variant`; there is no code in a layout,
+  only data.
 - Blocks and their rules (a tree that breaks one is not used; the layout's built-in tree is, else the classic window):
 
   | Block | What | Kind | Minimum |
   |---|---|---|---|
   | `agentRail` | sessions by state (Waiting / Working / Done / Idle), project chips, New session | rail (in a row) | 220 |
-  | `projectTree` | the classic sidebar | rail | 200 |
+  | `tasksRail` | the workspace's tasks by state, status filters, the assistant, New task | rail | 240 |
+  | `projectTree` | the classic sidebar (its width and resize handle) | rail | 200 |
   | `sidePanel` | the right panel (Files / Changes / Sessions / Tasks), shown with ⌘⌥B | rail | 260 |
+  | `taskDetail` | the picked task: state, agents and what they last said, PR, subtasks, next step (⌘⌥B) | rail | 280 |
+  | `sideAgent` | the project's agent beside the work area (the layout's "Agent beside the work area") | rail | 280 |
   | `tabStrip` | the classic top bar with tabs | bar (in a column) | — |
-  | `breadcrumb` | Home · workspace, or agent · project · branch, and the project's buttons | bar | — |
+  | `breadcrumb` | Home · workspace (Tasks · task), or agent · project · branch, and the project's buttons | bar | — |
+  | `aquariumStrip` | the aquarium above the panes (the layout's views switch; not while its tab is open) | bar | 120 |
   | `statusBar` | the status bar (the layout's on/off) | bar | — |
-  | `workArea` | the current tab's panes or doc, browser, dock, aquarium strip; required | main | 320 |
-  | `home` | the engine window's Home (greeting, composer, waiting, recent, usage) | main (also in a stack) | 320 |
+  | `workArea` | the current tab's panes or doc, browser, dock; required | main | 320 |
+  | `home` | the window's Home; variants `agents` (greeting, composer, waiting, recent, usage) and `workday` (the day page) | main (also in a stack) | 320 |
 
-  Every block at most once; a stack holds main blocks and containers.
-- The terminal views are the classic window's, moved into the work area block; a layout switch makes none.
-  The resolved layout is cached per change of the setting; the agents' transcripts are read once for the rail and
-  Home together, after the first frame, and only while one of them is on screen (⌘B hides the rail as it hides the
-  classic sidebar; a session with the rail hidden reads nothing).
+  Every block at most once; a stack holds main blocks and containers; `agentRail` and `tasksRail` not together. An
+  unknown variant reads as the block's first (a later version's variant shows as today's block).
+- How the window moves follows its list: with `agentRail` ⌘1…8 / ⌘9 and ⌘[ ⌘] go through the agents (⌘T Home's
+  composer, ⌘0 Home, ⌘W nothing on Home); with `tasksRail` through the tasks (⌘T a new task, ⌘0 the assistant);
+  otherwise tabs, as in the classic window. Menu titles follow (Agent 3, Task 3, Tab 3). A rail takes ↑ ↓ ↩ only
+  after a click on it or ⌥⌘A (an app-local key monitor that listens only then).
+- The terminal views are the classic window's, moved: each terminal area has a slot, and the slot in the window holds
+  the shared pane container, so a window rebuilt (another layout, a theme change) never drops or remakes them. A
+  container keeps every child in its list and leaves one that is off out by its own `if` (identity by block).
+- Performance: the resolved layout is cached per change of the settings; the agents' transcripts are read once for
+  every block that shows them (rail, Home, task detail), after the first frame, and only while one is on screen.
+  Measured per layout: idle CPU as the classic window (the Aquarium's animation aside), +5–30 MB, switches 100–250 ms
+  (Tasks' first switch also makes the assistant's terminal), no terminal view made by a switch.
 - A user's own tree goes in `custom.<layout>.tree`, dragged widths in `custom.<layout>.sizes`; both go over the
   built-in tree, which keeps getting our updates.
-- In the engine window the tab keys work on the rail: ⌘1…8 / ⌘9, ⌘[ ⌘] (and ⇧⌘[ ⇧⌘]), ⌘T Home + composer, ⌘0 Home,
-  ⌘W closes the pane (nothing on Home); the menu names follow. The rail takes ↑ ↓ ↩ only after a click on it or ⌥⌘A
-  (an app-local key monitor that listens only then; a terminal keeps every key otherwise).
+
+### Layouts as files (format v1)
+- One file, `.octomux-layout.json`, data only:
+
+  ```json
+  {"schema": 1, "name": "Review desk", "author": "Ada", "base": "agents",
+   "tree": {"row": [{"block": "agentRail"}, {"column": [{"block": "breadcrumb"},
+            {"stack": [{"block": "home", "variant": "workday"}, {"block": "workArea"}]}, {"block": "statusBar"}]}]},
+   "settings": {"regions": {"statusRight": [{"id": "usage", "on": false}]}, "statusBar": true, "chat": true},
+   "theme": {"id": "ink", "mode": "dark"}, "keys": {"cmd.next-tab": "cmd+shift+]"},
+   "preview": "data:image/png;base64,…"}
+  ```
+
+  `base` is a built-in layout: what the file doesn't say comes from it, and an older version (or a Mac without the
+  saved layout) opens it. `tree` is optional (none: the base's window). `settings` are the layout's region items and
+  switches. `theme`, `keys` and `preview` are optional.
+- Reading (`Core/LayoutFile.swift`): unknown fields are ignored. Refused, with the reason shown: not JSON, over 2 MB,
+  another schema, no name, an unknown base, a tree that breaks the blocks' rules. Left out with a note: a theme this
+  Mac doesn't have, a shortcut for an unknown command or that isn't modifiers + one key, a preview that isn't a PNG
+  or JPEG in the file (nothing remote).
+- Saved layouts live in the global setting `ui.layouts` (`{"<id>": <file without its preview>}`); their pictures
+  in `<Octomux home>/layout-previews/<id>.png`. The layout in use is `ui.layout` with `"user": "<id>"` (and its base
+  in `layout`); your changes to a saved layout go to `custom["user:<id>"]`, not to its base.
+- Settings → Layout → Your layouts: Save Current as New, Import (a sheet: the window drawn from the tree or its
+  picture, name, author, base, its blocks, what was left out; its theme and shortcuts only when ticked), Export (your
+  theme and shortcuts only when ticked), Duplicate, Delete, Use the Window as Picture. Saved layouts are in the
+  View menu under the built-in ones (⌃⌘8, ⌃⌘9 for the first two) and in the status bar's Layout panel.
 
 ## Terminal theme
 Each preset carries a terminal palette matched to its `surface` color (background = `surface`, so the card

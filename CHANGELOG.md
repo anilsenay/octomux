@@ -3,26 +3,37 @@
 ## Unreleased
 
 - **Layouts**: pick how the window is arranged for the way you work, for the whole app: **Terminal** (the window as
-  it always was, still the default), **Agents** (the Agents home below; new Claude and Codex sessions open as
-  chats), **Workday** (the Workday home below), **Minimal** (only the panes) or **Editor** (code next to its agent:
-  its chat on the left, the file in the middle, the Files panel on the right) or **Tasks** (the workspace
-  assistant in the middle, the Tasks panel on the right) or **Aquarium** (the aquarium above the panes). Switch with ⌃⌘1…,
-  the command palette (View → … Layout), or the Layout button the other layouts show in the status bar.
+  it always was, still the default), **Agents** (the agents' window below; new Claude and Codex sessions open as
+  chats), **Workday** (the agents' window with the Workday home as its Home), **Minimal** (only the panes) or
+  **Editor** (code next to its agent: its chat on the left, the file in the middle, the Files panel on the right) or
+  **Tasks** (a window of its own, below) or **Aquarium** (the aquarium above the panes). Switch with ⌃⌘1…7, the
+  command palette (View → … Layout), or the Layout button the other layouts show in the status bar.
 - **The Agents layout is a window of its own**: a rail of agents on the left by what they need from you (Waiting
   for you, Working, Done, Idle) with their last words and project filter chips, a breadcrumb instead of tabs
   ("Home · Personal", "agent · project · branch" with a Chat / Terminal switch), and Home in the middle: a greeting,
   a big composer (project, checkout or a new worktree, agent), the agents waiting for you answered in place, recent
   sessions and usage. Home isn't a tab: ⌘0 or ⌘T comes back to it. ⌘1…9 and ⌘[ / ⌘] move over the rail; after a
   click on the rail (or ⌥⌘A) ↑ ↓ ↩ do too.
-- **Layouts as data**: a layout's window can be a tree of rows, columns and stacks over Octomux's own blocks, read
-  from a JSON file (the Agents layout is the first); a tree that doesn't read or breaks a block's rules falls back to
-  the built-in one. Groundwork for sharing layouts later.
+- **The Tasks layout is a window of its own**: your tasks on a rail on the left by what they need from you (with
+  status filters and a New task field, ⌘T), the assistant — or the picked task's agent — in the middle, and the
+  picked task in detail on the right: its state, where it works, its agents and what they last said or ask, its pull
+  request and source, subtasks and the next step. ⌘1…9 and ⌘[ / ⌘] go through the tasks, ⌘0 opens the assistant.
+- **Layouts as data**: every layout but Terminal is a tree of rows, columns and stacks over Octomux's own blocks
+  (agent rail, tasks rail, project tree, tabs, breadcrumb, work area, Home and its Workday variant, side panel, task
+  detail, agent column, aquarium, status bar), read from a JSON file; a tree that doesn't read or breaks a block's
+  rules falls back to the built-in one. Terminal stays the window it always was.
+- **Your own layouts, as files**: Settings → Layout → Your layouts. Save the layout you arranged under a name, then
+  switch to it from the View menu (⌃⌘8, ⌃⌘9) or the status bar's Layout panel. Export it as a small
+  `.octomux-layout.json` (your theme and shortcuts too, if you tick them) and import someone else's: a sheet shows
+  its window, name, author and base, and what this Mac can't use; its theme and shortcuts apply only if you tick
+  them. A layout file is data only — it arranges Octomux's own parts and can't run anything; a broken one is refused
+  with the reason. Duplicate, delete, and use the window as a layout's picture.
 - **Agents home** (in other layouts, View → Open Agents Home): every agent at a glance, in three ways to try: **Board**
   (who waits for you, who works, who finished, recent), **Columns** (one column per state) and **Inbox** (agents by
   urgency on the left, the selected one's chat on the right, ↑↓ to move). Cards show the agent's last words, the
   steps and files of its turn, and what it waits for: allow or deny a tool, or pick an answer, right on the card.
   "What should an agent work on?" continues on the start screen.
-- **Workday home** (the Workday layout opens it; View → Open Workday in any layout): your day on one page. Who
+- **Workday home** (the Workday layout's Home; View → Open Workday in any other layout): your day on one page. Who
   needs you, answered right there; what happened while you were away (agents that finished, with the files they
   changed since you last looked, and automations that started work); your pull requests with their next step
   (fix the checks with an agent, mark ready, merge), reviews waiting for you, and your issues ("Work on it").
