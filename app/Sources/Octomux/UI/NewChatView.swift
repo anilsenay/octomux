@@ -508,18 +508,52 @@ struct StatusPill: View {
     }
 }
 
-/// The octopus, bobbing slowly (still with Reduce Motion).
+/// The octopus, bobbing slowly (still with Reduce Motion). The bob is a Core Animation layer animation, so the
+/// window server moves it: a repeating SwiftUI animation re-renders the view every frame (~17% CPU while the
+/// start screen shows).
 struct FloatingOctoMark: View {
     var size: CGFloat = 60
-    @State private var up = false
+    private static let glow: CGFloat = 20   // room for the glow inside the bobbing layer
     var body: some View {
-        OctoMark(size: size)
-            .offset(y: up ? -3 : 3)
-            .shadow(color: Color(hex: "#8B5CF6").opacity(0.35), radius: 14, y: 4)
-            .onAppear {
-                guard !Motion.reduced else { return }
-                withAnimation(.easeInOut(duration: 2.4).repeatForever(autoreverses: true)) { up = true }
-            }
+        let h = size * 13 / 16
+        BobbingHost(content: AnyView(
+            OctoMark(size: size)
+                .shadow(color: Color(hex: "#8B5CF6").opacity(0.35), radius: 14, y: 4)
+                .padding(Self.glow)))
+            .frame(width: size + Self.glow * 2, height: h + Self.glow * 2)
+            .padding(-Self.glow)
+            .accessibilityLabel("Octomux")
+    }
+}
+
+/// Hosts SwiftUI content in a layer that moves up and down by 3 pt, forever (nothing with Reduce Motion).
+private struct BobbingHost: NSViewRepresentable {
+    let content: AnyView
+    func makeNSView(context: Context) -> BobbingView { BobbingView(content: content) }
+    func updateNSView(_ v: BobbingView, context: Context) { v.hosting.rootView = content }
+
+    final class BobbingView: NSView {
+        let hosting: NSHostingView<AnyView>
+        init(content: AnyView) {
+            hosting = NSHostingView(rootView: content)
+            super.init(frame: .zero)
+            wantsLayer = true
+            hosting.wantsLayer = true
+            addSubview(hosting)
+        }
+        required init?(coder: NSCoder) { fatalError() }
+        override func layout() { super.layout(); hosting.frame = bounds }
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard let layer = hosting.layer else { return }
+            layer.removeAnimation(forKey: "bob")
+            guard window != nil, !Motion.reduced else { return }
+            let a = CABasicAnimation(keyPath: "transform.translation.y")
+            a.fromValue = -3; a.toValue = 3
+            a.duration = 2.4; a.autoreverses = true; a.repeatCount = .infinity
+            a.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            layer.add(a, forKey: "bob")
+        }
     }
 }
 
