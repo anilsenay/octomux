@@ -179,9 +179,11 @@ struct TaskRow: View {
         }
     }
 
-    /// One glyph per state (the Tasks panel, the sidebar, the task chip).
-    @ViewBuilder static func glyph(_ s: TaskState) -> some View {
+    /// One glyph per state (the Tasks panel, the sidebar, the task chip). `still`: no spinning ring for Working
+    /// (a list of states, not of work going on — an animation costs CPU for as long as it shows).
+    @ViewBuilder static func glyph(_ s: TaskState, still: Bool = false) -> some View {
         switch s {
+        case .working where still: Image(systemName: "circle.dashed.inset.filled").font(T.icon(12)).foregroundStyle(T.accent)
         case .working: WorkingRing().scaleEffect(0.75)
         case .planned: Image(systemName: "circle.dashed").font(T.icon(12)).foregroundStyle(T.text3)
         case .needsYou: Image(systemName: "exclamationmark.circle.fill").font(T.icon(12)).foregroundStyle(T.amber)

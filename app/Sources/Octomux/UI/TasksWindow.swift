@@ -281,7 +281,7 @@ struct TaskDetailPanel: View {
                 ForEach(Array(TaskState.shown.enumerated()), id: \.element) { i, st in
                     if i > 0 { Hairline() }
                     HStack(spacing: 8) {
-                        TaskRow.glyph(st).frame(width: 16)
+                        TaskRow.glyph(st, still: true).frame(width: 16)
                         Text(st.title).font(.system(size: T.k * 12))
                         Spacer()
                         Text("\(all.filter { $0.state == st }.count)").font(T.meta).foregroundStyle(T.text3).monospacedDigit()
