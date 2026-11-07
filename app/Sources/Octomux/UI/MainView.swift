@@ -4,58 +4,11 @@ import SwiftUI
 struct MainView: View {
     @EnvironmentObject var model: AppModel
     @ObservedObject var theme = ThemeStore.shared
-    @AppStorage("octomux.dockPosition") private var dockPosition = "bottom"
 
     var body: some View {
-        let m = T.m
-        let flat = m.inset == 0
-        HStack(spacing: 0) {
-            if model.sidebarVisible {
-                sidebar()
-                    .frame(width: model.sidebarWidth)
-                    .overlay(alignment: .trailing) { SidebarResizeHandle() }
-                if flat { Hairline(vertical: true) }
-            }
-            // Top bar and status bar span the window (the right panel opens below the top bar, so the
-            // bar's tools stay at the right edge).
-            VStack(spacing: 0) {
-                TopBar()
-                if flat { Hairline() }
-                HStack(spacing: 0) {
-                    if model.layout.sideChat {
-                        SideAgentColumn()
-                            .frame(width: 380)
-                            .background(CanvasBackground(minOpacity: 0.9))
-                            .clipShape(RoundedRectangle(cornerRadius: m.cardR, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: m.cardR, style: .continuous).stroke(T.border))
-                            .padding(.leading, model.sidebarVisible ? 0 : m.inset)
-                            .padding(.trailing, m.inset)
-                    }
-                    workAreaWithExtras
-                        .padding(.trailing, model.rightPanelVisible ? 0 : m.inset)
-                        .padding(.leading, model.sidebarVisible || model.layout.sideChat ? 0 : m.inset)
-                        .frame(minWidth: 0, maxWidth: .infinity)
-                    if model.rightPanelVisible {
-                        if flat { Hairline(vertical: true) }
-                        RightPanel()
-                            .frame(width: model.rightPanelWidth)
-                            .background(CanvasBackground(minOpacity: 0.9))
-                            .clipShape(RoundedRectangle(cornerRadius: m.cardR, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: m.cardR, style: .continuous).stroke(T.border))
-                            .overlay(alignment: .leading) { RightPanelResizeHandle() }
-                            .padding(.leading, m.inset)
-                            .padding(.trailing, m.inset)
-                            .transition(.move(edge: .trailing).combined(with: .opacity))
-                    }
-                }
-                if model.layout.statusBar {
-                    if flat { Hairline() }
-                    StatusBar()
-                } else {
-                    Color.clear.frame(height: m.inset)   // the cards keep their margin at the window's bottom
-                }
-            }
-            .frame(minWidth: 0, maxWidth: .infinity)
+        // The layout engine draws the Agents layout; every other layout is the classic window below.
+        Group {
+            if let tree = model.shellTree { ShellView(tree: tree) } else { classicWindow }
         }
         // Stopped (Settings → Stop Octomux): the window stays, blurred and out of reach, behind a Start card.
         .blur(radius: model.power == .running || model.stopFalling ? 0 : 18)
@@ -93,6 +46,61 @@ struct MainView: View {
         .id(theme.revision)
     }
 
+    /// The classic window: sidebar, top bar with tabs, work area, right panel, status bar (Terminal and every layout
+    /// the engine doesn't draw).
+    @ViewBuilder private var classicWindow: some View {
+        let m = T.m
+        let flat = m.inset == 0
+        HStack(spacing: 0) {
+            if model.sidebarVisible {
+                sidebar()
+                    .frame(width: model.sidebarWidth)
+                    .overlay(alignment: .trailing) { SidebarResizeHandle() }
+                if flat { Hairline(vertical: true) }
+            }
+            // Top bar and status bar span the window (the right panel opens below the top bar, so the
+            // bar's tools stay at the right edge).
+            VStack(spacing: 0) {
+                TopBar()
+                if flat { Hairline() }
+                HStack(spacing: 0) {
+                    if model.layout.sideChat {
+                        SideAgentColumn()
+                            .frame(width: 380)
+                            .background(CanvasBackground(minOpacity: 0.9))
+                            .clipShape(RoundedRectangle(cornerRadius: m.cardR, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: m.cardR, style: .continuous).stroke(T.border))
+                            .padding(.leading, model.sidebarVisible ? 0 : m.inset)
+                            .padding(.trailing, m.inset)
+                    }
+                    WorkAreaBlock()
+                        .padding(.trailing, model.rightPanelVisible ? 0 : m.inset)
+                        .padding(.leading, model.sidebarVisible || model.layout.sideChat ? 0 : m.inset)
+                        .frame(minWidth: 0, maxWidth: .infinity)
+                    if model.rightPanelVisible {
+                        if flat { Hairline(vertical: true) }
+                        RightPanel()
+                            .frame(width: model.rightPanelWidth)
+                            .background(CanvasBackground(minOpacity: 0.9))
+                            .clipShape(RoundedRectangle(cornerRadius: m.cardR, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: m.cardR, style: .continuous).stroke(T.border))
+                            .overlay(alignment: .leading) { RightPanelResizeHandle() }
+                            .padding(.leading, m.inset)
+                            .padding(.trailing, m.inset)
+                            .transition(.move(edge: .trailing).combined(with: .opacity))
+                    }
+                }
+                if model.layout.statusBar {
+                    if flat { Hairline() }
+                    StatusBar()
+                } else {
+                    Color.clear.frame(height: m.inset)   // the cards keep their margin at the window's bottom
+                }
+            }
+            .frame(minWidth: 0, maxWidth: .infinity)
+        }
+    }
+
     private func sidebar(floating: Bool = false) -> some View {
         SidebarView(floating: floating)
             // With a scene the root background already carries the chrome veil (one layer for sidebar and bars).
@@ -112,39 +120,6 @@ struct MainView: View {
             return AnyView(backdrop.overlay(Color(nsColor: s.colors.frame).opacity(s.dark ? 0.4 : 0.35)))
         }
         return T.m.glass ? AnyView(VisualEffect(material: .underWindowBackground)) : AnyView(WorkspaceTintedFrame())
-    }
-
-    /// Terminal area plus the dock on the chosen side.
-    @ViewBuilder private var workArea: some View {
-        let m = T.m
-        let open = model.isDockOpen(model.currentProject?.id)
-        switch dockPosition {
-        case "top":
-            VStack(spacing: m.inset) { if open { DockView(position: "top") }; WorkAreaWithBrowser { TerminalArea() } }
-        case "left":
-            HStack(spacing: m.inset) { if open { DockView(position: "left") }; WorkAreaWithBrowser { TerminalArea() } }
-        case "right":
-            HStack(spacing: m.inset) { WorkAreaWithBrowser { TerminalArea() }; if open { DockView(position: "right") } }
-        default:
-            VStack(spacing: m.inset) { WorkAreaWithBrowser { TerminalArea() }; if open { DockView(position: "bottom") } }
-        }
-    }
-
-    /// The work area, with the aquarium above it when the layout has it.
-    @ViewBuilder private var workAreaWithExtras: some View {
-        // Not while the Aquarium tab itself is open (one aquarium on screen).
-        if model.layout.has("aquarium", in: .views), !{ if case .aquarium? = model.activeDoc?.kind { return true }; return false }() {
-            VStack(spacing: T.m.inset) {
-                AquariumView(style: .strip)
-                    .overlay(alignment: .top) { AquariumHeader().padding(.horizontal, 14).padding(.top, 10) }
-                    .frame(height: 210)
-                    .clipShape(RoundedRectangle(cornerRadius: T.m.cardR, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: T.m.cardR, style: .continuous).stroke(T.border))
-                workArea
-            }
-        } else {
-            workArea
-        }
     }
 
     /// Hidden sidebar: a strip at the left edge reveals it floating over the content.
@@ -519,7 +494,18 @@ struct TopBar: View {
         .clipped()
     }
 
-    @ViewBuilder private func toolItem(_ id: String, compact: Bool) -> some View {
+    private func toolItem(_ id: String, compact: Bool) -> some View { TopBarTool(id: id, compact: compact) }
+}
+
+/// One of the top bar's project-wide buttons (diff, Open in, git, right panel); the layout engine's breadcrumb uses
+/// them too.
+struct TopBarTool: View {
+    @EnvironmentObject var model: AppModel
+    @ObservedObject var git = GitInfo.shared
+    let id: String
+    let compact: Bool
+
+    var body: some View {
         switch id {
         case "diff":
                 if !compact {
@@ -1478,3 +1464,44 @@ struct BranchPicker: View {
 }
 
 
+
+/// The work area: the current tab's panes (or doc), the browser beside them, the dock on its side, and the aquarium
+/// strip above when the layout has it. The classic window and the layout engine's workArea block both use it.
+struct WorkAreaBlock: View {
+    @EnvironmentObject var model: AppModel
+    @AppStorage("octomux.dockPosition") private var dockPosition = "bottom"
+
+    /// Terminal area plus the dock on the chosen side.
+    @ViewBuilder private var workArea: some View {
+        let m = T.m
+        let open = model.isDockOpen(model.currentProject?.id)
+        switch dockPosition {
+        case "top":
+            VStack(spacing: m.inset) { if open { DockView(position: "top") }; WorkAreaWithBrowser { TerminalArea() } }
+        case "left":
+            HStack(spacing: m.inset) { if open { DockView(position: "left") }; WorkAreaWithBrowser { TerminalArea() } }
+        case "right":
+            HStack(spacing: m.inset) { WorkAreaWithBrowser { TerminalArea() }; if open { DockView(position: "right") } }
+        default:
+            VStack(spacing: m.inset) { WorkAreaWithBrowser { TerminalArea() }; if open { DockView(position: "bottom") } }
+        }
+    }
+
+    /// The work area, with the aquarium above it when the layout has it.
+    var body: some View {
+        // Not while the Aquarium tab itself is open (one aquarium on screen).
+        if model.layout.has("aquarium", in: .views), !{ if case .aquarium? = model.activeDoc?.kind { return true }; return false }() {
+            VStack(spacing: T.m.inset) {
+                AquariumView(style: .strip)
+                    .overlay(alignment: .top) { AquariumHeader().padding(.horizontal, 14).padding(.top, 10) }
+                    .frame(height: 210)
+                    .clipShape(RoundedRectangle(cornerRadius: T.m.cardR, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: T.m.cardR, style: .continuous).stroke(T.border))
+                workArea
+            }
+        } else {
+            workArea
+        }
+    }
+
+}
