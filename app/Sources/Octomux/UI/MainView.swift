@@ -29,17 +29,22 @@ struct MainView: View {
                     if model.rightPanelVisible {
                         if flat { Hairline(vertical: true) }
                         RightPanel()
-                            .frame(width: 320)
+                            .frame(width: model.rightPanelWidth)
                             .background(CanvasBackground(minOpacity: 0.9))
                             .clipShape(RoundedRectangle(cornerRadius: m.cardR, style: .continuous))
                             .overlay(RoundedRectangle(cornerRadius: m.cardR, style: .continuous).stroke(T.border))
+                            .overlay(alignment: .leading) { RightPanelResizeHandle() }
                             .padding(.leading, m.inset)
                             .padding(.trailing, m.inset)
                             .transition(.move(edge: .trailing).combined(with: .opacity))
                     }
                 }
-                if flat { Hairline() }
-                StatusBar()
+                if model.layout.statusBar {
+                    if flat { Hairline() }
+                    StatusBar()
+                } else {
+                    Color.clear.frame(height: m.inset)   // the cards keep their margin at the window's bottom
+                }
             }
             .frame(minWidth: 0, maxWidth: .infinity)
         }
@@ -470,7 +475,23 @@ struct TopBar: View {
             // swallow their mouse-down and drag the window instead of the tab.
             WindowDragArea().frame(minWidth: 8, maxWidth: .infinity)
             HStack(spacing: 4) {
-                if !fit.compact {
+                // The layout's buttons (Terminal: diff, Open in, git, right panel); diff and Open in only when wide.
+                ForEach(model.layout.shown(.topBar), id: \.self) { id in toolItem(id, compact: fit.compact) }
+            }
+            .fixedSize()
+        }
+        .font(.system(size: T.k * 13))
+        .foregroundStyle(T.text2)
+        .padding(.leading, model.sidebarVisible ? 8 : 0)
+        .padding(.trailing, 10)
+        .frame(width: width, height: m.topH, alignment: .leading)
+        .clipped()
+    }
+
+    @ViewBuilder private func toolItem(_ id: String, compact: Bool) -> some View {
+        switch id {
+        case "diff":
+                if !compact {
                     if let wp = model.currentWorkPath, let stat = git.diffStat(for: wp), stat.files > 0 {
                         Button { model.toggleChangesPanel() } label: {
                             HStack(spacing: 4) {
@@ -481,23 +502,18 @@ struct TopBar: View {
                         }
                         .buttonStyle(ChromeButtonStyle()).help("\(stat.files) changed files")
                     }
-                    if let p = model.currentProject, !model.host(for: p.id).isRemote {
-                        OpenInButton(path: p.path)
-                    }
                 }
-                // Split, chat and browser live in each pane's header now; the bar keeps project-wide actions.
-                if model.currentWorkPath != nil { TopBarCommitButton() }
+        case "openIn":
+                if !compact, let p = model.currentProject, !model.host(for: p.id).isRemote {
+                    OpenInButton(path: p.path)
+                }
+        // Split, chat and browser live in each pane's header now; the bar keeps project-wide actions.
+        case "git": if model.currentWorkPath != nil { TopBarCommitButton() }
+        case "rightPanel":
                 Button { model.toggleRightPanel() } label: { Image(systemName: "sidebar.right") }
                     .buttonStyle(ChromeButtonStyle(active: model.rightPanelVisible)).help("Files / Changes / Sessions (⌘⌥B)")
-            }
-            .fixedSize()
+        default: EmptyView()
         }
-        .font(.system(size: T.k * 13))
-        .foregroundStyle(T.text2)
-        .padding(.leading, model.sidebarVisible ? 8 : 0)
-        .padding(.trailing, 10)
-        .frame(width: width, height: m.topH, alignment: .leading)
-        .clipped()
     }
 }
 
@@ -934,7 +950,6 @@ struct EmptyStateView: View {
 struct StatusBar: View {
     @EnvironmentObject var model: AppModel
     @ObservedObject var git = GitInfo.shared
-    @AppStorage(KeepAwake.hiddenKey) private var keepAwakeHidden = false
 
     var body: some View {
         let m = T.m
@@ -952,7 +967,18 @@ struct StatusBar: View {
     }
 
     private func bar(full: Bool) -> some View {
-        HStack(spacing: 12) {
+        let layout = model.layout
+        return HStack(spacing: 12) {
+            // The layout's items (Terminal: agents, branch | cup, usage, actions, dock).
+            ForEach(layout.shown(.statusLeft), id: \.self) { id in leftItem(id, full: full) }
+            Spacer(minLength: 8)
+            ForEach(layout.shown(.statusRight), id: \.self) { id in rightItem(id, full: full) }
+        }
+    }
+
+    @ViewBuilder private func leftItem(_ id: String, full: Bool) -> some View {
+        switch id {
+        case "agents":
             let working = model.state.sessions.filter { $0.activity == .working && $0.state == .running }.count
             let waiting = model.state.sessions.filter { $0.activity == .needsInput }.count
             if working > 0 {
@@ -969,19 +995,28 @@ struct StatusBar: View {
                 Text(full ? "No agents busy" : "Idle").foregroundStyle(T.text3).fixedSize()
                     .help("No agent is working or waiting for input, in any project")
             }
+        case "git":
             if let wp = model.currentWorkPath, let branch = git.branch(for: wp) {
                 GitStatusControls(path: wp, branch: branch, full: full)
             }
-            Spacer(minLength: 8)
-            if !model.host.isRemote && !keepAwakeHidden { KeepAwakeControl() }
-            UsageStatus(compact: !full)
-            ActionsControl().fixedSize()
+        default: EmptyView()
+        }
+    }
+
+    @ViewBuilder private func rightItem(_ id: String, full: Bool) -> some View {
+        switch id {
+        case "layout": LayoutControl(full: full)
+        case "keepAwake": if !model.host.isRemote { KeepAwakeControl() }
+        case "usage": UsageStatus(compact: !full)
+        case "actions": ActionsControl().fixedSize()
+        case "dock":
             Button { model.toggleDock() } label: {
                 HStack(spacing: 5) { Image(systemName: "terminal").font(.system(size: T.k * 11)); if full { Text("Terminal") } }
             }
             .buttonStyle(ChromeButtonStyle(active: model.isDockOpen(model.currentProject?.id)))
             .fixedSize()
             .help("Toggle dock (⌘J)").disabled(model.currentProject == nil)
+        default: EmptyView()
         }
     }
 }

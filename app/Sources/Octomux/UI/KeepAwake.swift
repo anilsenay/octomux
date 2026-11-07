@@ -40,7 +40,7 @@ final class KeepAwake: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { self.refresh() }
     }
 
-    /// The cup is hidden from the status bar (Settings → Sessions brings it back).
+    /// Before layouts: the cup hidden from the status bar, per Mac. Read once and moved into the layout.
     static let hiddenKey = "octomux.keepAwakeHidden"
 
     @Published private(set) var status = Status()
@@ -229,7 +229,7 @@ struct KeepAwakePanel: View {
         // Keys: the three modes, Settings, Hide.
         let actions: [() -> Void] = modes.map { m in { awake.setMode(m.id) } } + [
             { SettingsWindow.show(section: .sessions) },
-            { UserDefaults.standard.set(true, forKey: KeepAwake.hiddenKey) }] + (s.lidSetup ? [] : [{ awake.installRule() }])
+            { AppModel.shared.setKeepAwakeShown(false) }] + (s.lidSetup ? [] : [{ awake.installRule() }])
         let h = headline
         return PanelCard(width: 300) {
             HStack(spacing: 10) {
@@ -324,7 +324,7 @@ struct KeepAwakePanel: View {
 /// Settings → Sessions → Keep Mac awake.
 struct KeepAwakeSettings: View {
     @ObservedObject var awake = KeepAwake.shared
-    @AppStorage(KeepAwake.hiddenKey) private var hidden = false
+    @EnvironmentObject var model: AppModel
     var body: some View {
         let s = awake.status
         SettingsGroup("Keep Mac awake", desc: "Stops the Mac from sleeping on its own while agents run, so long jobs finish. The display can still turn off. Also in the status bar (the cup).") {
@@ -351,7 +351,7 @@ struct KeepAwakeSettings: View {
                 }
             }
             SettingRow("Show in the status bar", desc: "The cup next to the usage meters: the mode at a click, lit while the Mac is kept awake.") {
-                Toggle("", isOn: Binding(get: { !hidden }, set: { hidden = !$0 })).labelsHidden().toggleStyle(.switch)
+                Toggle("", isOn: Binding(get: { model.layout.has("keepAwake", in: .statusRight) }, set: { model.setKeepAwakeShown($0) })).labelsHidden().toggleStyle(.switch)
             }
             SettingRow("Also with the lid closed", desc: (s.lidSetup && s.lidEnabled ? (s.lidMaxHours > 0 ? "Up to \(KeepAwake.lidLimitTitle(s.lidMaxHours)) each time on the power adapter. " : "No time limit on the power adapter. ") : "") + "macOS sleeps when the lid closes whatever apps ask. This turns that off (pmset disablesleep) only while Octomux keeps the Mac awake, and turns it back on after. It stops after a time limit you choose (12 hours on the power adapter, 4 on battery, unless you change them), below 20% battery, or when the Mac gets hot. Needs your administrator password once. A closed Mac in a bag gets hot: leave it on a desk.") {
                 if s.lidSetup {

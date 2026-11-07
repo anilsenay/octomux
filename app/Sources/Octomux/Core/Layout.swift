@@ -1,0 +1,346 @@
+import AppKit
+import SwiftUI
+
+/// Layouts: which parts of the window show, in what order, and what a few defaults are — one choice for the whole
+/// app (global setting `ui.layout`), never per workspace. Terminal is today's window and the default; every other
+/// layout and every change is opt-in, so the default look never moves.
+///
+/// Stored as `{"layout": "agents", "custom": {"agents": {"regions": {"statusRight": [{"id": "usage", "on": false}, …]},
+/// "statusBar": true, "chat": true}}}`: each layout keeps only what was changed in it, so a later version's
+/// change to a built-in layout still reaches everyone who didn't touch that part. Anything unreadable falls back
+/// to the built-in values (a wrong type, an unknown layout or item), never to a broken window.
+enum LayoutPreset: String, CaseIterable, Identifiable, Codable {
+    case terminal, agents, review, minimal
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .terminal: return "Terminal"
+        case .agents: return "Agents"
+        case .review: return "Review"
+        case .minimal: return "Minimal"
+        }
+    }
+    var icon: String {
+        switch self {
+        case .terminal: return "terminal"
+        case .agents: return "sparkles"
+        case .review: return "plus.forwardslash.minus"
+        case .minimal: return "rectangle"
+        }
+    }
+    var summary: String {
+        switch self {
+        case .terminal: return "Octomux as it comes: projects and their sessions, terminals first."
+        case .agents: return "Agents up front: the agent list open and tall, new agents open as chats."
+        case .review: return "Changes up front: the Changes panel open and wide, the Inbox first."
+        case .minimal: return "Only the panes: no sidebar, no status bar, a quiet top bar."
+        }
+    }
+    /// ⌃⌘1…4.
+    var number: Int { (Self.allCases.firstIndex(of: self) ?? 0) + 1 }
+}
+
+/// The parts of the window whose items can be turned off and put in another order.
+enum LayoutRegion: String, CaseIterable, Identifiable, Codable {
+    case sidebar, sidebarFooter, statusLeft, statusRight, topBar
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .sidebar: return "Sidebar"
+        case .sidebarFooter: return "Sidebar bottom"
+        case .statusLeft: return "Status bar, left"
+        case .statusRight: return "Status bar, right"
+        case .topBar: return "Top bar, right"
+        }
+    }
+    var desc: String {
+        switch self {
+        case .sidebar: return "Rows and sections under the workspace name, top to bottom. With Agents above Projects, the agent list opens at the top."
+        case .sidebarFooter: return "The buttons in the sidebar's bottom row, left to right."
+        case .statusLeft: return "What the status bar starts with, left to right."
+        case .statusRight: return "What the status bar ends with, left to right."
+        case .topBar: return "Project-wide buttons after the tabs, left to right."
+        }
+    }
+    /// Every item this region knows, in Terminal's order.
+    var items: [String] {
+        switch self {
+        case .sidebar: return ["search", "inbox", "projects", "agents"]
+        case .sidebarFooter: return ["add", "workspaces", "settings"]
+        case .statusLeft: return ["agents", "git"]
+        case .statusRight: return ["layout", "keepAwake", "usage", "actions", "dock"]
+        case .topBar: return ["diff", "openIn", "git", "rightPanel"]
+        }
+    }
+    static func itemTitle(_ id: String, in region: LayoutRegion) -> String {
+        switch (region, id) {
+        case (.sidebar, "search"): return "Search"
+        case (.sidebar, "inbox"): return "Inbox"
+        case (.sidebar, "projects"): return "Projects"
+        case (.sidebar, "agents"): return "Agents"
+        case (_, "add"): return "New (+)"
+        case (_, "workspaces"): return "Workspace dots"
+        case (_, "settings"): return "Settings"
+        case (.statusLeft, "agents"): return "Agents working and waiting"
+        case (.statusLeft, "git"): return "Branch and Compare with"
+        case (_, "layout"): return "Layout"
+        case (_, "keepAwake"): return "Keep Mac awake"
+        case (_, "usage"): return "Usage limits"
+        case (_, "actions"): return "Actions"
+        case (_, "dock"): return "Terminal (dock)"
+        case (_, "diff"): return "Changed lines (+ −)"
+        case (_, "openIn"): return "Open in"
+        case (.topBar, "git"): return "Commit / Push / PR"
+        case (_, "rightPanel"): return "Right panel button"
+        default: return id
+        }
+    }
+}
+
+struct LayoutItem: Equatable, Codable {
+    var id: String
+    var on: Bool
+}
+
+/// What a layout resolves to: the regions' items, and the few switches.
+struct LayoutConfig: Equatable {
+    var preset: LayoutPreset
+    var regions: [LayoutRegion: [LayoutItem]]
+    /// The status bar shows.
+    var statusBar: Bool
+    /// New agent sessions open in the chat view (when the agent has one).
+    var chat: Bool
+
+    func items(_ r: LayoutRegion) -> [LayoutItem] { regions[r] ?? LayoutConfig.builtIn(preset).regions[r] ?? [] }
+    /// The ids shown in a region, in order.
+    func shown(_ r: LayoutRegion) -> [String] { items(r).filter(\.on).map(\.id) }
+    func has(_ id: String, in r: LayoutRegion) -> Bool { items(r).contains { $0.id == id && $0.on } }
+
+    static let `default` = builtIn(.terminal)
+
+    /// A layout as it ships.
+    static func builtIn(_ p: LayoutPreset) -> LayoutConfig {
+        func all(_ r: LayoutRegion, off: Set<String> = [], order: [String]? = nil) -> [LayoutItem] {
+            (order ?? r.items).map { LayoutItem(id: $0, on: !off.contains($0)) }
+        }
+        var regions: [LayoutRegion: [LayoutItem]] = [:]
+        for r in LayoutRegion.allCases { regions[r] = all(r) }
+        // Terminal: today's window. The Layout button stays out of its status bar (the window looks as it always did);
+        // the other layouts show it, so the way back is in sight.
+        regions[.statusRight] = all(.statusRight, off: ["layout"])
+        switch p {
+        case .terminal:
+            return LayoutConfig(preset: p, regions: regions, statusBar: true, chat: false)
+        case .agents:
+            regions[.statusRight] = all(.statusRight)
+            return LayoutConfig(preset: p, regions: regions, statusBar: true, chat: true)
+        case .review:
+            regions[.sidebar] = all(.sidebar, order: ["inbox", "search", "projects", "agents"])
+            regions[.statusRight] = all(.statusRight)
+            return LayoutConfig(preset: p, regions: regions, statusBar: true, chat: false)
+        case .minimal:
+            regions[.topBar] = all(.topBar, off: ["diff", "openIn"])
+            regions[.statusRight] = all(.statusRight)
+            return LayoutConfig(preset: p, regions: regions, statusBar: false, chat: false)
+        }
+    }
+
+    /// Reads the stored setting; anything it can't read falls back to the built-in values.
+    static func resolve(_ stored: JSONValue?) -> LayoutConfig {
+        guard case .object(let o)? = stored else { return .default }
+        let preset = o["layout"]?.string.flatMap(LayoutPreset.init(rawValue:)) ?? .terminal
+        var c = builtIn(preset)
+        guard case .object(let customs)? = o["custom"], case .object(let mine)? = customs[preset.rawValue] else { return c }
+        if case .object(let regions)? = mine["regions"] {
+            for r in LayoutRegion.allCases {
+                if case .array(let list)? = regions[r.rawValue] { c.regions[r] = merge(list, into: c.items(r), known: r.items) }
+            }
+        }
+        if let b = mine["statusBar"]?.bool { c.statusBar = b }
+        if let b = mine["chat"]?.bool { c.chat = b }
+        return c
+    }
+
+    /// A stored item list over the built-in one: its known items in its order (each once), then any item it
+    /// doesn't mention (one a later version added) where the built-in list has it.
+    static func merge(_ list: [JSONValue], into base: [LayoutItem], known: [String]) -> [LayoutItem] {
+        var out: [LayoutItem] = []
+        for v in list {
+            guard case .object(let o) = v, let id = o["id"]?.string, known.contains(id), !out.contains(where: { $0.id == id }) else { continue }
+            out.append(LayoutItem(id: id, on: o["on"]?.bool ?? true))
+        }
+        for (i, b) in base.enumerated() where !out.contains(where: { $0.id == b.id }) {
+            // After the item that precedes it in the built-in list, or first.
+            let prev = base[..<i].last { p in out.contains { $0.id == p.id } }
+            let at = prev.flatMap { p in out.firstIndex { $0.id == p.id } }.map { $0 + 1 } ?? 0
+            out.insert(b, at: at)
+        }
+        return out
+    }
+}
+
+/// Changes to the stored layout (pure: JSON in, JSON out), used by the app and by tests.
+enum LayoutEdit {
+    static func object(_ v: JSONValue?) -> [String: JSONValue] {
+        if case .object(let o)? = v { return o }
+        return [:]
+    }
+
+    /// The layout in use becomes `p`; what was changed in each layout stays.
+    static func choose(_ p: LayoutPreset, in stored: JSONValue?) -> JSONValue {
+        var o = object(stored)
+        o["layout"] = .string(p.rawValue)
+        return .object(o)
+    }
+
+    /// The current layout's custom part, changed by `f`.
+    static func custom(in stored: JSONValue?, _ f: (inout [String: JSONValue]) -> Void) -> JSONValue {
+        var o = object(stored)
+        let p = o["layout"]?.string.flatMap(LayoutPreset.init(rawValue:)) ?? .terminal
+        o["layout"] = .string(p.rawValue)
+        var customs = object(o["custom"])
+        var mine = object(customs[p.rawValue])
+        f(&mine)
+        customs[p.rawValue] = mine.isEmpty ? nil : .object(mine)
+        o["custom"] = customs.isEmpty ? nil : .object(customs)
+        return .object(o)
+    }
+
+    static func encode(_ items: [LayoutItem]) -> JSONValue {
+        .array(items.map { .object(["id": .string($0.id), "on": .bool($0.on)]) })
+    }
+
+    /// A region's items, stored whole (order and on/off).
+    static func set(_ r: LayoutRegion, _ items: [LayoutItem], in stored: JSONValue?) -> JSONValue {
+        custom(in: stored) { mine in
+            var regions = object(mine["regions"])
+            regions[r.rawValue] = encode(items)
+            mine["regions"] = .object(regions)
+        }
+    }
+
+    static func toggle(_ id: String, in r: LayoutRegion, on: Bool, stored: JSONValue?) -> JSONValue {
+        var items = LayoutConfig.resolve(stored).items(r)
+        if let i = items.firstIndex(where: { $0.id == id }) { items[i].on = on }
+        return set(r, items, in: stored)
+    }
+
+    /// Moves an item one place up (-1) or down (+1).
+    static func move(_ id: String, in r: LayoutRegion, by d: Int, stored: JSONValue?) -> JSONValue {
+        var items = LayoutConfig.resolve(stored).items(r)
+        guard let i = items.firstIndex(where: { $0.id == id }), items.indices.contains(i + d) else { return stored ?? .object([:]) }
+        items.swapAt(i, i + d)
+        return set(r, items, in: stored)
+    }
+
+    static func flag(_ key: String, _ value: Bool, stored: JSONValue?) -> JSONValue {
+        custom(in: stored) { $0[key] = .bool(value) }
+    }
+
+    /// The current layout as it ships (its changes forgotten).
+    static func reset(stored: JSONValue?) -> JSONValue {
+        custom(in: stored) { $0 = [:] }
+    }
+
+    /// Whether the current layout has changes.
+    static func isCustomized(_ stored: JSONValue?) -> Bool {
+        let o = object(stored)
+        let p = o["layout"]?.string ?? LayoutPreset.terminal.rawValue
+        return !object(object(o["custom"])[p]).isEmpty
+    }
+
+    /// The old per-Mac "hide the cup" switch becomes the Keep Mac awake item turned off in Terminal's status bar.
+    /// Only when nothing is stored yet (the first launch of this version); nil = nothing to write.
+    static func migrate(stored: JSONValue?, keepAwakeHidden: Bool) -> JSONValue? {
+        guard stored == nil, keepAwakeHidden else { return nil }
+        return toggle("keepAwake", in: .statusRight, on: false, stored: .object(["layout": .string(LayoutPreset.terminal.rawValue)]))
+    }
+
+    /// Reads an exported file: a layout object (`layout`, `custom`) or nil when it isn't one.
+    static func importing(_ data: Data) -> JSONValue? {
+        guard let v = try? JSONDecoder().decode(JSONValue.self, from: data), case .object(let o) = v else { return nil }
+        guard let name = o["layout"]?.string, LayoutPreset(rawValue: name) != nil else { return nil }
+        if let c = o["custom"] { guard case .object = c else { return nil } }
+        return .object(o.filter { $0.key == "layout" || $0.key == "custom" })
+    }
+
+    static func exporting(_ stored: JSONValue?) -> Data {
+        let v: JSONValue = stored ?? .object(["layout": .string(LayoutPreset.terminal.rawValue)])
+        let enc = JSONEncoder()
+        enc.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return (try? enc.encode(v)) ?? Data()
+    }
+}
+
+// MARK: - In the app
+
+extension AppModel {
+    static let layoutKey = "ui.layout"
+    static let rightPanelDefaultWidth: CGFloat = 320
+    static let rightPanelWidths: ClosedRange<CGFloat> = 260...900
+
+    var layoutStored: JSONValue? { settingValue(Self.layoutKey, scope: "global") }
+    var layout: LayoutConfig { LayoutConfig.resolve(layoutStored) }
+
+    /// Stores the layout (global only) and shows it right away.
+    func storeLayout(_ v: JSONValue) {
+        setSettingLocally(Self.layoutKey, v, scope: "global")
+        setSetting(Self.layoutKey, v.any, scope: "global")
+    }
+
+    func editLayout(_ f: (JSONValue?) -> JSONValue) { storeLayout(f(layoutStored)) }
+
+    /// Switches the whole app to a layout and sets the window up for it (panels open or closed, their sizes).
+    func chooseLayout(_ p: LayoutPreset) {
+        storeLayout(LayoutEdit.choose(p, in: layoutStored))
+        withAnimation(.easeOut(duration: 0.18)) {
+            switch p {
+            case .terminal:
+                sidebarVisible = true
+                sidebarAgents = false
+                rightPanelVisible = false
+                rightPanelWidth = Self.rightPanelDefaultWidth
+            case .agents:
+                sidebarVisible = true
+                sidebarAgents = true
+                // About half the sidebar: the projects keep room for a few rows.
+                UserDefaults.standard.set(Double((NSApp.mainWindow?.frame.height ?? 820) * 0.55), forKey: "octomux.agentsPanelHeight")
+                rightPanelVisible = false
+            case .review:
+                sidebarVisible = true
+                sidebarAgents = false
+                UserDefaults.standard.set("Changes", forKey: "octomux.rightTab")
+                rightPanelWidth = 560
+                rightPanelVisible = true
+            case .minimal:
+                sidebarVisible = false
+                rightPanelVisible = false
+            }
+        }
+        sidebarPeek = false
+        saveSelection()
+    }
+
+    /// The first state after this version starts: the old "hide the cup" switch moves into the layout.
+    func migrateLayoutIfNeeded() {
+        guard !Self.layoutMigrated, !host.isRemote else { return }
+        Self.layoutMigrated = true
+        let hidden = UserDefaults.standard.bool(forKey: KeepAwake.hiddenKey)
+        if let v = LayoutEdit.migrate(stored: layoutStored, keepAwakeHidden: hidden) { storeLayout(v) }
+        if hidden { UserDefaults.standard.removeObject(forKey: KeepAwake.hiddenKey) }
+    }
+    nonisolated(unsafe) static var layoutMigrated = false
+
+    /// The status bar's cup on or off (its panel's Hide, Settings → Sessions).
+    func setKeepAwakeShown(_ on: Bool) {
+        editLayout { LayoutEdit.toggle("keepAwake", in: .statusRight, on: on, stored: $0) }
+    }
+
+    /// A new agent session opens as a chat in a layout that wants it (when the agent has a chat view).
+    func layoutWantsChat(profileId: String?) -> Bool {
+        guard layout.chat, (setting("features.chat")?.bool ?? true), let p = profile(profileId) else { return false }
+        return p.kind == .claude || p.kind == .codex || p.icon == "claude" || p.icon == "codex"
+    }
+}

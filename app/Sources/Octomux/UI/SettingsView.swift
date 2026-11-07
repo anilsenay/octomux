@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 enum SettingsSection: String, CaseIterable, Identifiable {
-    case general = "General", appearance = "Appearance", terminal = "Terminal", notifications = "Notifications", permissions = "Permissions", keyboard = "Keyboard"
+    case general = "General", appearance = "Appearance", layout = "Layout", terminal = "Terminal", notifications = "Notifications", permissions = "Permissions", keyboard = "Keyboard"
     case agents = "Agents", mcp = "MCP", prompts = "Prompts", inbox = "Inbox", workspaces = "Workspaces", projects = "Projects", sessions = "Sessions", hosts = "Hosts"
     case features = "Features", advanced = "Advanced"
     var id: String { rawValue }
@@ -20,6 +20,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .inbox: return "tray"
         case .projects: return "folder"
         case .appearance: return "paintbrush"
+        case .layout: return "rectangle.3.group"
         case .terminal: return "terminal"
         case .notifications: return "bell"
         case .permissions: return "lock.shield"
@@ -34,6 +35,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         switch self {
         case .general: return "The version you run, how Octomux updates itself, and the apps it opens projects in."
         case .appearance: return "Theme, scene, and the icons in the Dock and the menu bar."
+        case .layout: return "Which parts of the window show and in what order: Terminal, Agents, Review or Minimal, and your changes to each."
         case .terminal: return "Font, cursor and scrollback of every terminal, and what happens when you close one."
         case .notifications: return "When Octomux tells you an agent finished or needs you."
         case .permissions: return "What macOS lets the programs in your sessions do, such as an agent taking a screenshot."
@@ -55,7 +57,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
 
     /// Sidebar groups, in order.
     static let groups: [(title: String, items: [SettingsSection])] = [
-        ("App", [.general, .appearance, .terminal, .notifications, .permissions, .keyboard]),
+        ("App", [.general, .appearance, .layout, .terminal, .notifications, .permissions, .keyboard]),
         ("Work", [.agents, .mcp, .prompts, .inbox, .workspaces, .projects, .sessions, .hosts]),
         ("Advanced", [.features, .advanced]),
     ]
@@ -173,6 +175,7 @@ struct SettingsView: View {
         case .workspaces: WorkspacesSettings()
         case .agents: AgentsSettings()
         case .appearance: AppearanceSettings()
+        case .layout: LayoutSettings()
         case .terminal: TerminalSettings()
         case .notifications: NotificationSettings()
         case .permissions: SessionPermissionsGroup()
@@ -538,6 +541,11 @@ enum SettingsIndex {
             e(.appearance, "Behind terminals", "scene transparent translucent opacity"),
             e(.appearance, "React to agents", "scene glow working"),
             e(.appearance, "Your scenes", "custom import template"),
+            e(.layout, "Layout", "focus agents review minimal terminal mode preset window arrange"),
+            e(.layout, "Status bar", "bottom bar hide show items order customize"),
+            e(.layout, "Open new agents as chats", "chat view default agent"),
+            e(.layout, "Sidebar", "search inbox projects agents order hide customize"),
+            e(.layout, "Top bar, right", "diff open in commit right panel buttons"),
             e(.terminal, "Font", "family typeface mono jetbrains"),
             e(.sessions, "Keep Mac awake", "caffeinate sleep awake lid closed clamshell battery power"),
             e(.mcp, "Octomux browser", "browser web page agent tools playwright click screenshot cookies browsing data"),

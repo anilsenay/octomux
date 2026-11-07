@@ -14,14 +14,32 @@ struct SidebarView: View {
         GeometryReader { geo in
         VStack(spacing: 0) {
             header
-            SearchSidebarRow().padding(.top, 6)
-            InboxSidebarRow().padding(.top, 1)
+            // The layout's rows and sections, in its order (Terminal: Search, Inbox, Projects, Agents).
+            let sections = model.layout.shown(.sidebar)
+            let agentsOnTop = (sections.firstIndex(of: "agents") ?? .max) < (sections.firstIndex(of: "projects") ?? .max)
+            ForEach(Array(sections.enumerated()), id: \.element) { i, id in
+                section(id, after: i == 0 ? nil : sections[i - 1], agentsOnTop: agentsOnTop, height: geo.size.height)
+            }
+            if !sections.contains("projects") { Spacer(minLength: 0) }
+            footer
+        }
+        }
+    }
+
+    /// Rows (Search, Inbox) sit close under each other and further from a section.
+    @ViewBuilder private func section(_ id: String, after prev: String?, agentsOnTop: Bool, height: CGFloat) -> some View {
+        let rowGap: CGFloat = prev == "search" || prev == "inbox" ? 1 : 6
+        switch id {
+        case "search": SearchSidebarRow().padding(.top, rowGap)
+        case "inbox": InboxSidebarRow().padding(.top, rowGap)
+        case "projects":
             HStack { SectionLabel("Projects"); Spacer() }.padding(.horizontal, 20).padding(.top, 14)
             WorkspacePages(current: model.selectedWorkspaceId) { ws in projectList(ws) }
             .frame(maxHeight: .infinity)
-            AgentsPanel(maxHeight: max(AgentsPanel.minHeight, geo.size.height - 260))
-            footer
-        }
+        case "agents":
+            AgentsPanel(maxHeight: max(AgentsPanel.minHeight, height - 260), onTop: agentsOnTop)
+                .padding(.top, agentsOnTop ? 8 : 0)
+        default: EmptyView()
         }
     }
 
@@ -128,13 +146,21 @@ struct SidebarView: View {
 
     private var footer: some View {
         HStack(spacing: 0) {
-            AddMenu()
-            Spacer(minLength: 4)
-            WorkspaceSwitcher()
-            Spacer(minLength: 4)
-            Button { NSApp.sendAction(#selector(AppDelegate.showSettings(_:)), to: nil, from: nil) } label: {
-                Image(systemName: "gearshape").font(.system(size: T.k * 13))
-            }.buttonStyle(IconButtonStyle(size: 26)).help("Settings (⌘,)")
+            // The layout's buttons, spread out (Terminal: +, the workspace dots, Settings).
+            let items = model.layout.shown(.sidebarFooter)
+            ForEach(Array(items.enumerated()), id: \.element) { i, id in
+                if i > 0 { Spacer(minLength: 4) }
+                switch id {
+                case "add": AddMenu()
+                case "workspaces": WorkspaceSwitcher()
+                case "settings":
+                    Button { NSApp.sendAction(#selector(AppDelegate.showSettings(_:)), to: nil, from: nil) } label: {
+                        Image(systemName: "gearshape").font(.system(size: T.k * 13))
+                    }.buttonStyle(IconButtonStyle(size: 26)).help("Settings (⌘,)")
+                default: EmptyView()
+                }
+            }
+            if items.count < 2 { Spacer(minLength: 0) }
         }
         .padding(.horizontal, 8)
         .frame(height: 40)

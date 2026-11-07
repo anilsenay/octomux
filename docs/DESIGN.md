@@ -101,6 +101,17 @@ A closed scale with no half points (`DesignTokenTests` fails on `N.5` sizes in `
   done = green dot (unread); error = red dot; restoring = amber arrow. Usage limits in the status bar: 12 px rings.
 - **Chat** — the user's messages in a neutral bubble (white 7.5% / black 5%), never the accent.
 
+## Layouts
+
+- The window's chrome is read from the layout (`Core/Layout.swift`, global setting `ui.layout`): sidebar rows and
+  sections, the sidebar's bottom row, the status bar's left and right items, the top bar's buttons. Terminal is
+  the default and is the window as designed; a change to it changes the default look for everyone, so it needs
+  the same review as any redesign. Other layouts and user changes are opt-in.
+- A new item in one of those regions is added to `LayoutRegion.items` (and its title), placed in each built-in
+  layout, and drawn by the region's switch. Stored layouts that don't mention it get it where the built-in layout
+  has it.
+- Layouts tile only; nothing floats over a terminal (its Metal surface stops drawing under a SwiftUI layer).
+
 ## Terminal theme
 Each preset carries a terminal palette matched to its `surface` color (background = `surface`, so the card
 and the terminal are one plane). Applied by writing `$OCTOMUX_HOME/theme.conf` (Ghostty syntax) and loading it

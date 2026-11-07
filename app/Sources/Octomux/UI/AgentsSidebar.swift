@@ -8,6 +8,8 @@ import SwiftUI
 struct AgentsPanel: View {
     @EnvironmentObject var model: AppModel
     let maxHeight: CGFloat
+    /// Above the projects (a layout put it there): opens downward, the grip at its bottom edge.
+    var onTop = false
     static let minHeight: CGFloat = 140
     @AppStorage("octomux.agentsPanelHeight") private var height: Double = 300
     @AppStorage(AgentsMenu.onlyHereKey) private var onlyHere = false
@@ -22,6 +24,19 @@ struct AgentsPanel: View {
                             waiting: live.filter { $0.activity == .needsInput }.count,
                             failed: live.filter { $0.activity == .error }.count,
                             finished: live.filter { AgentsList.Group.of($0) == .finished }.count)
+        if onTop {
+            VStack(spacing: 0) {
+                headerBar(open: open, total: agents.count, counts: counts)
+                if open {
+                    AgentsList(embedded: true)
+                        .frame(height: CGFloat(min(max(height, Self.minHeight), maxHeight)))
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+                Rectangle().fill(T.border).frame(height: 1)
+                    .overlay { if open { resizeHandle.offset(y: 0) } }
+            }
+            .clipped()
+        } else {
         VStack(spacing: 0) {
             Rectangle().fill(T.border).frame(height: 1)
             headerBar(open: open, total: agents.count, counts: counts)
@@ -33,6 +48,7 @@ struct AgentsPanel: View {
             }
         }
         .clipped()
+        }
     }
 
     private func toggle() {
@@ -105,7 +121,8 @@ struct AgentsPanel: View {
     private var resizeHandle: some View {
         VerticalResizeGrip { dy in
             if dragStart == nil { dragStart = min(max(height, Self.minHeight), maxHeight) }
-            height = Double(min(maxHeight, max(Self.minHeight, CGFloat(dragStart ?? height) + dy)))
+            // dy is upward: grows a bottom panel, shrinks one on top.
+            height = Double(min(maxHeight, max(Self.minHeight, CGFloat(dragStart ?? height) + (onTop ? -dy : dy))))
         } onEnd: { dragStart = nil }
         .frame(height: 7)
     }

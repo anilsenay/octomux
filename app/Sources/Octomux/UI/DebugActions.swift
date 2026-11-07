@@ -75,6 +75,15 @@ enum DebugActions {
                 "decisions": BrowserAccess.decisions, "access": BrowserAccess.mode.rawValue, "sites": BrowserAccess.allowedSites,
             ] as [String: Any]
         } }
+        d.register("layout_state") { _ in
+            let c = m.layout
+            var regions: [String: Any] = [:]
+            for r in LayoutRegion.allCases { regions[r.rawValue] = c.items(r).map { ["id": $0.id, "on": $0.on] } }
+            let stored: Any = m.layoutStored.map { $0.any } ?? NSNull()
+            return ["layout": c.preset.rawValue, "status_bar": c.statusBar, "chat": c.chat, "regions": regions, "stored": stored,
+                    "sidebar_visible": m.sidebarVisible, "right_panel": m.rightPanelVisible, "right_panel_width": Double(m.rightPanelWidth),
+                    "agents_open": m.sidebarAgents]
+        }
         d.register("ui_state") { _ in
             [
                 "connected": m.connected,
@@ -337,6 +346,24 @@ enum DebugActions {
             case "toggle_sidebar": m.toggleSidebar()
             case "toggle_dock": m.toggleDock()
             case "toggle_right_panel": m.toggleRightPanel()
+            case "right_panel": m.rightPanelVisible = (p["value"] as? Bool) ?? true   // set, not toggle
+            case "right_panel_width": if let w = p["value"] as? Double { m.rightPanelWidth = CGFloat(w) }
+            case "layout":            // value: terminal | agents | review | minimal (as the menu / ⌃⌘n)
+                if let v = p["value"] as? String, let l = LayoutPreset(rawValue: v) { m.chooseLayout(l) }
+            case "layout_store":      // value: the stored JSON as a string (null = nothing stored)
+                if let str = p["value"] as? String, let d = str.data(using: .utf8), let v = try? JSONDecoder().decode(JSONValue.self, from: d) { m.storeLayout(v) }
+                else { m.setSettingLocally(AppModel.layoutKey, nil, scope: "global"); m.setSetting(AppModel.layoutKey, nil) }
+            case "layout_toggle":     // region, value: item id, on
+                if let r = (p["region"] as? String).flatMap(LayoutRegion.init(rawValue:)), let v = p["value"] as? String {
+                    m.editLayout { LayoutEdit.toggle(v, in: r, on: (p["on"] as? Bool) ?? true, stored: $0) }
+                }
+            case "layout_move":       // region, value: item id, by: -1 | 1
+                if let r = (p["region"] as? String).flatMap(LayoutRegion.init(rawValue:)), let v = p["value"] as? String {
+                    m.editLayout { LayoutEdit.move(v, in: r, by: (p["by"] as? Int) ?? -1, stored: $0) }
+                }
+            case "layout_reset": m.editLayout { LayoutEdit.reset(stored: $0) }
+            case "layout_import": if let path = p["value"] as? String { NSLog("layout import: \(LayoutSettings.importLayout(from: URL(fileURLWithPath: path), model: m))") }
+            case "layout_export": if let path = p["value"] as? String { try? LayoutEdit.exporting(m.layoutStored).write(to: URL(fileURLWithPath: path)) }
             case "panel_snapshot":
                 if let r = FloatingPanelController.shared.snapshot(to: p["value"] as? String ?? "/tmp/octomux-panel.png") { return r }
             case "git_refresh": if let p = m.currentWorkPath { GitInfo.shared.invalidate(p) }
@@ -420,6 +447,19 @@ enum DebugActions {
                             NSApp.postEvent(e, atStart: false)
                         }
                     }
+                }
+            case "mouse_drag":  // in-app mouse events (the event queue, not the real pointer): x, y → to_x, to_y, top-left window points
+                if let win = NSApp.mainWindow, let x = p["x"] as? Double, let y = p["y"] as? Double,
+                   let tx = p["to_x"] as? Double, let ty = p["to_y"] as? Double {
+                    let h = win.contentView?.frame.height ?? win.frame.height
+                    func ev(_ t: NSEvent.EventType, _ px: Double, _ py: Double) -> NSEvent? {
+                        NSEvent.mouseEvent(with: t, location: NSPoint(x: px, y: h - py), modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                           windowNumber: win.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: t == .leftMouseUp ? 0 : 1)
+                    }
+                    var events = [ev(.leftMouseDown, x, y)]
+                    for i in 1...8 { events.append(ev(.leftMouseDragged, x + (tx - x) * Double(i) / 8, y + (ty - y) * Double(i) / 8)) }
+                    events.append(ev(.leftMouseUp, tx, ty))
+                    for e in events.compactMap({ $0 }) { NSApp.postEvent(e, atStart: false) }
                 }
             case "inbox_fake_merge": InboxFixture.mergePR()
             case "inbox_fake_bb_decline": InboxFixture.declineBitbucket()

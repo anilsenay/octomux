@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- **Layouts**: pick how the window is arranged for the way you work, for the whole app: **Terminal** (the window as
+  it always was, still the default), **Agents** (the agent list open and tall, new Claude and Codex sessions open as
+  chats), **Review** (Changes open and wide, the Inbox first) or **Minimal** (only the panes). Switch with ⌃⌘1…4,
+  the command palette (View → … Layout), or the Layout button the other layouts show in the status bar.
+- **Settings → Layout**: in each layout, turn off and reorder what the sidebar, its bottom row, the status bar and
+  the top bar show; hide the status bar; open new agents as chats. Each layout keeps its own changes (Reset brings
+  it back as it comes), and a layout can be exported to a file and imported on another Mac.
+- **The right panel can be made wider**: drag its left edge (320 points until you do).
+- Hiding the Keep Mac awake cup now belongs to the layout (it was per Mac); a hidden cup stays hidden.
+
 ## 0.4.0
 
 Highlights:

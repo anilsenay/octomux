@@ -161,6 +161,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         view.addItem(ag)
         view.addItem(item("Change Scene…", #selector(changeScene(_:)), ""))
         view.addItem(.separator())
+        for p in LayoutPreset.allCases {   // ⌃⌘1…4
+            let i = item("\(p.title) Layout", #selector(chooseLayout(_:)), "\(p.number)")
+            i.keyEquivalentModifierMask = [.control, .command]
+            i.tag = p.number
+            view.addItem(i)
+        }
+        view.addItem(item("Customize Layout…", #selector(customizeLayout(_:)), ""))
+        view.addItem(.separator())
         let prev = item("Previous Tab", #selector(prevTab(_:)), "{")
         view.addItem(prev)
         view.addItem(item("Next Tab", #selector(nextTab(_:)), "}"))
@@ -224,6 +232,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         model.paletteVisible.toggle()
     }
     @objc func showMain(_ s: Any?) { openMainWindow() }
+    @objc func chooseLayout(_ s: Any?) {
+        guard let n = (s as? NSMenuItem)?.tag, LayoutPreset.allCases.indices.contains(n - 1) else { return }
+        model.chooseLayout(LayoutPreset.allCases[n - 1])
+    }
+    @objc func customizeLayout(_ s: Any?) { SettingsWindow.show(section: .layout) }
     @objc func newTerminal(_ s: Any?) { model.newSession(profileId: nil) }
     @objc func newAgent(_ s: Any?) { model.newSession(profileId: (model.profile(model.lastNewSessionProfile) ?? model.pinnedProfiles.first ?? model.enabledProfiles.first)?.id) }
     @objc func splitRight(_ s: Any?) { model.newSession(profileId: nil, split: .right) }

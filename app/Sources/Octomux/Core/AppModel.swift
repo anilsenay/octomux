@@ -71,6 +71,10 @@ final class AppModel: ObservableObject {
     @Published var sidebarWidth: CGFloat = CGFloat(UserDefaults.standard.object(forKey: "octomux.sidebarWidth") as? Double ?? 252) {
         didSet { UserDefaults.standard.set(Double(sidebarWidth), forKey: "octomux.sidebarWidth") }
     }
+    /// The right panel's width (drag its left edge); 320 until changed.
+    @Published var rightPanelWidth: CGFloat = CGFloat(UserDefaults.standard.object(forKey: "octomux.rightPanelWidth") as? Double ?? 320) {
+        didSet { UserDefaults.standard.set(Double(rightPanelWidth), forKey: "octomux.rightPanelWidth") }
+    }
     @Published var rightPanelVisible = UserDefaults.standard.bool(forKey: "octomux.rightPanel") {
         didSet { UserDefaults.standard.set(rightPanelVisible, forKey: "octomux.rightPanel") }
     }
@@ -124,7 +128,7 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func saveSelection() {
+    func saveSelection() {
         defaults.set(selectedWorkspaceId, forKey: "octomux.ws")
         defaults.set(selectedProjectId, forKey: "octomux.project")
         defaults.set(activeTabId, forKey: "octomux.tab")
@@ -263,6 +267,7 @@ final class AppModel: ObservableObject {
             power = .running
         }
         state = s
+        migrateLayoutIfNeeded()
         // Keep selection valid.
         if selectedWorkspaceId == nil || !s.workspaces.contains(where: { $0.id == selectedWorkspaceId }) {
             selectedWorkspaceId = s.workspaces.first?.id
@@ -625,6 +630,8 @@ final class AppModel: ObservableObject {
     /// `select: false` starts it without switching to it (Inbox automations run in the background).
     func newSession(profileId: String?, projectId: String? = nil, split: SplitDir? = nil, command: String? = nil, title: String? = nil, placement: Placement = .tab, worktree: String? = nil, resume: String? = nil, prompt: String? = nil, chat: Bool = false, extraArgs: [String] = [], select: Bool = true, done: ((String) -> Void)? = nil) {
         guard ensureManageable() else { return }
+        // The Agents layout opens new agents as chats (a resumed or prompted one too: the same session).
+        let chat = chat || (placement == .tab && command == nil && layoutWantsChat(profileId: profileId))
         guard let pid = projectId ?? currentProject?.id else {
             lastError = "Add a project first (⌘⇧O)."
             return
