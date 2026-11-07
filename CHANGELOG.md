@@ -70,6 +70,8 @@
 - **Who may use the browser**: Settings → MCP → Octomux browser: Off, Ask (a session asks the first time; your
   answer holds for it, listed in Settings to forget) or On, and an optional list of allowed sites (wildcards):
   agents can't open others, nor follow links to them.
+- Fixed: two background services could start at once for the same data (the app and a command starting it at
+  the same moment); the extra one kept running unseen. Now only one starts, and a leftover one stops by itself.
 - Fixed: the chat composer could freeze or close Octomux when a long text arrived in it (a pasted log, an element
   from the browser).
 

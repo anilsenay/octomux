@@ -187,12 +187,57 @@ fn binary_replaced() -> bool {
     }
 }
 
+/// Takes the daemon lock (`flock`, exclusive), retrying until `wait` passes. The file is opened close-on-exec, so
+/// holders and agents started by the daemon don't inherit it; the lock goes away with the process.
+fn acquire_lock(path: &std::path::Path, wait: Duration) -> Result<std::fs::File> {
+    use std::os::unix::io::AsRawFd;
+    let f = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(path)
+        .with_context(|| format!("open {}", path.display()))?;
+    let until = Instant::now() + wait;
+    loop {
+        if unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0 {
+            return Ok(f);
+        }
+        if Instant::now() >= until {
+            bail!("daemon already running");
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
+/// A daemon whose socket path now points at another daemon's socket can't be reached any more: it exits instead
+/// of running on unseen (left over by older versions that could start twice). A missing socket is left alone.
+fn watch_socket(sock: std::path::PathBuf, lock: std::fs::File) {
+    use std::os::unix::fs::MetadataExt;
+    let Ok(ours) = std::fs::metadata(&sock).map(|m| (m.dev(), m.ino())) else {
+        std::mem::forget(lock); // keep the lock for the process's life
+        return;
+    };
+    std::thread::spawn(move || {
+        let _lock = lock;
+        loop {
+            std::thread::sleep(Duration::from_secs(20));
+            if let Ok(m) = std::fs::metadata(&sock) {
+                if (m.dev(), m.ino()) != ours {
+                    eprintln!("[ade-daemon] pid {}: {} belongs to another daemon now; exiting", std::process::id(), sock.display());
+                    std::process::exit(0);
+                }
+            }
+        }
+    });
+}
+
 pub fn run(paths: Paths) -> Result<()> {
     let _ = STARTED_EXE.set(exe_identity());
     util::ensure_dir_0700(&paths.home)?;
     util::ensure_dir_0700(&paths.run_dir())?;
     util::ensure_dir_0700(&paths.logs_dir())?;
     let sock = paths.daemon_socket();
+    // One daemon per home: an exclusive lock held for the process's life. Checking the socket alone raced when
+    // two starts came at once (the app and an `octomux ctl` both spawning): both bound and published, and the
+    // one whose socket got replaced kept running unreachable. While an old daemon hands over (exits after an
+    // update), wait a little for its lock.
+    let lock = acquire_lock(&paths.run_dir().join("daemon.lock"), Duration::from_secs(3))?;
     if UnixStream::connect(&sock).is_ok() {
         bail!("daemon already running");
     }
@@ -249,6 +294,7 @@ pub fn run(paths: Paths) -> Result<()> {
     util::set_mode_0600(&tmp);
     std::fs::rename(&tmp, &sock)?;
     eprintln!("[ade-daemon] pid {} listening on {}", std::process::id(), sock.display());
+    watch_socket(sock.clone(), lock);
     // Hook events sent while we were down. One that is older than a state change seen since (a live hook
     // that got here first) is stale and skipped.
     for (ts, id, event, payload) in crate::hook_spool::take(&paths) {
@@ -2550,4 +2596,22 @@ fn process_table() -> Vec<(i32, i32)> {
             Some((it.next()?.parse().ok()?, it.next()?.parse().ok()?))
         })
         .collect()
+}
+
+#[cfg(test)]
+mod lock_tests {
+    use super::acquire_lock;
+    use std::time::Duration;
+
+    #[test]
+    fn one_daemon_lock_per_home() {
+        let dir = std::env::temp_dir().join(format!("octomux-lock-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("daemon.lock");
+        let first = acquire_lock(&path, Duration::from_millis(0)).expect("first daemon gets the lock");
+        assert!(acquire_lock(&path, Duration::from_millis(250)).is_err(), "a second daemon must not start");
+        drop(first);
+        assert!(acquire_lock(&path, Duration::from_millis(250)).is_ok(), "the lock is free once the first one goes");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
