@@ -171,7 +171,7 @@ struct AquariumView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in active = true; refreshLively() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in active = false; refreshLively() }
         // Looks every 2 s whether anyone is around (cheap: one system call).
-        .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in if !still { refreshLively() } }
+        .onReceive(Timer.publish(every: 2, tolerance: 0.5, on: .main, in: .common).autoconnect()) { _ in if !still, active { refreshLively() } }
         .onChange(of: list.map { "\($0.id)\($0.mood)" }) { _, _ in moodChanged = Date(); refreshLively() }
     }
 

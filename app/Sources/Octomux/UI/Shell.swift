@@ -44,6 +44,8 @@ struct ShellView: View {
     @ObservedObject var theme = ThemeStore.shared
     let tree: ShellTree
     @StateObject private var digests = AgentDigests()
+    /// On screen (a start queued on appearing does nothing once the view is gone).
+    @State private var appeared = false
 
     /// Which neighbours a block has: the classic window's insets depend on them (no gap next to a rail, no inset
     /// before the side panel).
@@ -71,9 +73,9 @@ struct ShellView: View {
             .environmentObject(digests)
             // Readers only while a block that shows them is on screen, and after the first frame (the window shows the
             // layout first, then reads the agents' transcripts).
-            .onAppear { if wants { DispatchQueue.main.async { if wants { digests.start() } } } }
-            .onChange(of: wants) { _, w in if w { digests.start() } else { digests.stop() } }
-            .onDisappear { digests.stop() }
+            .onAppear { appeared = true; if wants { DispatchQueue.main.async { if appeared, wants { digests.start() } } } }
+            .onChange(of: wants) { _, w in if w, appeared { digests.start() } else { digests.stop() } }
+            .onDisappear { appeared = false; digests.stop() }
     }
 
     private func node(_ k: ShellChild, edges: Edges) -> AnyView {

@@ -61,6 +61,7 @@ final class ChatModel: ObservableObject {
     }
 
     func stop() { timer?.invalidate(); timer = nil }
+    deinit { timer?.invalidate() }
 
     /// Reads whatever was appended since the last poll (local file, or `fs.read` on a remote host).
     func poll() {

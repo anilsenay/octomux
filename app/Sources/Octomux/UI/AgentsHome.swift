@@ -34,6 +34,8 @@ final class AgentDigests: ObservableObject {
         timer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in self?.refresh() }
     }
 
+    deinit { if timer != nil { Self.running -= 1 }; timer?.invalidate() }
+
     func stop() {
         if timer != nil { Self.running -= 1 }
         timer?.invalidate(); timer = nil
