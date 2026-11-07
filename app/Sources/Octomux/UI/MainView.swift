@@ -684,17 +684,11 @@ struct TabChip: View {
             Rectangle().fill(hover && !selected ? T.hover : .clear)
         case .pill, .segment:
             let dark = ThemeStore.shared.isDark
-            // Active tab: a raised card with a hairline. Others keep a quiet fill so they stay readable; over a
-            // scene (busy backdrop) that fill is the window color, so the art doesn't run through the titles.
-            let scene = ThemeStore.shared.activeScene != nil
-            let idle: Color = scene ? T.frame.opacity(0.72) : (dark ? Color.white.opacity(0.04) : Color.black.opacity(0.035))
             RoundedRectangle(cornerRadius: R.md, style: .continuous)
-                .fill(selected ? (scene ? T.raised.opacity(0.95) : dark ? Color.white.opacity(0.11) : T.raised)
-                      : hover ? (scene ? T.frame.opacity(0.9) : dark ? Color.white.opacity(0.07) : Color.black.opacity(0.06))
-                      : idle)
-                .overlay(RoundedRectangle(cornerRadius: R.md, style: .continuous)
-                    .strokeBorder(selected ? (dark ? Color.white.opacity(0.08) : Color.black.opacity(0.07)) : .clear, lineWidth: 1))
-                .shadow(color: .black.opacity(selected && !dark ? 0.10 : 0), radius: 1.5, y: 1)
+                .fill(selected ? (dark ? Color.white.opacity(0.13) : T.raised)
+                      : hover ? (dark ? Color.white.opacity(0.07) : Color.black.opacity(0.06))
+                      : (dark ? Color.white.opacity(0.03) : Color.black.opacity(0.03)))
+                .shadow(color: .black.opacity(selected && !dark ? 0.14 : 0), radius: 1.5, y: 1)
         }
     }
 }
