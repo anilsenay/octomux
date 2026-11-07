@@ -71,7 +71,8 @@ struct AgentRail: View {
     @EnvironmentObject var digests: AgentDigests
     static let filterKey = "octomux.railFilter"
     @AppStorage(AgentRail.filterKey) private var filter = ""
-    @FocusState private var focused: Bool
+    @ObservedObject private var keys = RailKeys.shared
+    private var focused: Bool { keys.active }
     @State private var cursor: String?
     @State private var moreIdle = false
     /// Idle sessions shown before "Show N more".
@@ -116,13 +117,20 @@ struct AgentRail: View {
             .scrollIndicators(.never)
             RailFooter()
         }
-        .focusable()
-        .focusEffectDisabled()
-        .focused($focused)
-        .onKeyPress(.downArrow) { move(1, flat); return .handled }
-        .onKeyPress(.upArrow) { move(-1, flat); return .handled }
-        .onKeyPress(.return) { if let id = cursor { model.selectSession(id) }; return .handled }
-        .onChange(of: focused) { _, f in if f, cursor == nil { cursor = model.shellHome ? flat.first?.id : model.focusedSessionId } }
+        .contentShape(Rectangle())
+        .onTapGesture { keys.active = true }            // a click on the rail's free space gives it the keys
+        .background(RailKeyMonitor(active: keys.active) { code in
+            switch code {
+            case 125: move(1, flat)
+            case 126: move(-1, flat)
+            case 36, 76: if let id = cursor { keys.active = false; model.selectSession(id) }
+            case 53: keys.active = false
+            default: return false
+            }
+            return true
+        })
+        .onReceive(NotificationCenter.default.publisher(for: .octomuxRailFocus)) { _ in keys.active = true }
+        .onChange(of: keys.active) { _, f in if f { cursor = model.shellHome ? flat.first?.id : (model.focusedSessionId ?? flat.first?.id) } }
     }
 
     private func isSelected(_ s: Session) -> Bool { !model.shellHome && model.focusedSessionId == s.id }
@@ -167,7 +175,7 @@ struct AgentRail: View {
                 return s.firstPrompt ?? ""
             }
         }()
-        return Button { model.selectSession(s.id) } label: {
+        return Button { keys.active = false; model.selectSession(s.id) } label: {
             HStack(alignment: .top, spacing: 8) {
                 AgentIcon(icon: iconName(for: s, model: model), size: 12).frame(width: 16).padding(.top, 2)
                 VStack(alignment: .leading, spacing: 2) {
@@ -209,4 +217,34 @@ struct RailFooter: View {
         .padding(.horizontal, 8)
         .frame(height: 40)
     }
+}
+
+/// Whether the agent rail has the keys (↑ ↓ ↩ Esc). On: a click on the rail, ⌥⌘A; off: opening a session, a click in a
+/// terminal, Esc.
+final class RailKeys: ObservableObject {
+    static let shared = RailKeys()
+    @Published var active = false
+}
+
+/// Sees key presses while the rail has the keys (an app-local monitor, so it works whatever the first responder is,
+/// and only then: the terminal gets every key otherwise). `handle` returns whether it used the key.
+struct RailKeyMonitor: NSViewRepresentable {
+    let active: Bool
+    let handle: (UInt16) -> Bool
+    final class V: NSView {
+        var handle: ((UInt16) -> Bool)?
+        var monitor: Any?
+        func set(_ on: Bool) {
+            if on, monitor == nil {
+                monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
+                    guard let self, e.modifierFlags.intersection([.command, .control, .option]).isEmpty,
+                          !(e.window?.firstResponder is NSTextView) else { return e }   // typing in a field: its keys
+                    return self.handle?(e.keyCode) == true ? nil : e
+                }
+            } else if !on, let m = monitor { NSEvent.removeMonitor(m); monitor = nil }
+        }
+        override func viewDidMoveToWindow() { if window == nil { set(false) } }
+    }
+    func makeNSView(context: Context) -> V { let v = V(); v.handle = handle; v.set(active); return v }
+    func updateNSView(_ v: V, context: Context) { v.handle = handle; v.set(active) }
 }

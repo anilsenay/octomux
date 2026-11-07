@@ -105,6 +105,9 @@ enum DebugActions {
                 "shell_home": m.shellHome,
                 "surfaces_made": TerminalHost.shared.surfacesMade,
                 "rail": m.railSessions.map(\.id),
+                "rail_keys": RailKeys.shared.active,
+                "agent_menu": NSApp.mainMenu?.items.flatMap { $0.submenu?.items ?? [] }.filter { $0.action == #selector(AppDelegate.nextAgent(_:)) }
+                    .map { "\($0.title) key=\($0.keyEquivalent) mods=\($0.keyEquivalentModifierMask.rawValue) enabled=\($0.isEnabled)" } ?? [],
                 "dock_open": m.isDockOpen(m.currentProject?.id),
                 "dock_sessions": m.dockSessions(m.currentProject?.id).map { ["id": $0.id, "title": $0.displayTitle, "kind": $0.kind.rawValue, "state": $0.state.rawValue] },
                 "dock_selected": m.dockSelection(m.currentProject?.id) ?? NSNull(),
@@ -369,6 +372,7 @@ enum DebugActions {
                 if let v = p["value"] as? String { UserDefaults.standard.set(v, forKey: "octomux.agentsHomeStyle") }
                 m.openAgentsHome()
             case "workday": m.openWorkday()
+            case "rail_focus": NotificationCenter.default.post(name: .octomuxRailFocus, object: nil)
             case "layout_timing":     // value: layout; switches and logs how long until the window has drawn it (ms)
                 if let v = p["value"] as? String, let l = LayoutPreset(rawValue: v), let w = (NSApp.delegate as? AppDelegate)?.mainWindow {
                     let t0 = CACurrentMediaTime()
@@ -473,7 +477,8 @@ enum DebugActions {
             case "inbox_refresh": InboxStore.shared.refresh()
             case "inbox_fake": InboxFixture.load()
             case "key_event":   // posts a key press to the key window, through the event queue (local monitors see it)
-                if let win = NSApp.keyWindow ?? NSApp.mainWindow {
+                // The app's own window when it isn't key (the fixture runs in the background).
+                if let win = NSApp.keyWindow ?? NSApp.mainWindow ?? (NSApp.delegate as? AppDelegate)?.mainWindow {
                     let chars = p["chars"] as? String ?? ""
                     let code = UInt16(p["code"] as? Int ?? 0)
                     var flags: NSEvent.ModifierFlags = []

@@ -597,6 +597,7 @@ final class AppModel: ObservableObject {
     }
 
     func sessionFocused(_ id: String) {
+        RailKeys.shared.active = false   // a click in a terminal: the keys are the terminal's again
         guard focusedSessionId != id || session(id)?.unread == true else { return }
         focusedSessionId = id
         markRead(id)

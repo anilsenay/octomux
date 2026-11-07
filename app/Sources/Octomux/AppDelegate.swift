@@ -177,6 +177,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let prev = item("Previous Tab", #selector(prevTab(_:)), "{")
         view.addItem(prev)
         view.addItem(item("Next Tab", #selector(nextTab(_:)), "}"))
+        // The engine window's own: ⌘[ / ⌘] step through the rail (hidden and off in the classic window, so the keys
+        // reach the terminal and the browser there as before).
+        view.addItem(item("Previous Agent", #selector(prevAgent(_:)), "["))
+        view.addItem(item("Next Agent", #selector(nextAgent(_:)), "]"))
         for n in 1...9 {
             let i = item("Tab \(n)", #selector(goToTab(_:)), "\(n)")
             i.tag = n
@@ -263,6 +267,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc func changeScene(_ s: Any?) { ScenePickerPanel.shared.toggle() }
 
     @objc func toggleAgentsView(_ s: Any?) {
+        if model.shellTree != nil { RailKeys.shared.active = true; return }   // the engine window: the rail takes the keys
         withAnimation(.easeOut(duration: 0.15)) { model.sidebarAgents.toggle() }
         if !model.sidebarVisible { model.toggleSidebar() }
     }
@@ -283,6 +288,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc func toggleDock(_ s: Any?) { model.toggleDock() }
     @objc func toggleRightPanel(_ s: Any?) { model.toggleRightPanel() }
     @objc func prevTab(_ s: Any?) { if !shellStep(-1) { model.cycleTab(-1) } }
+    @objc func prevAgent(_ s: Any?) { _ = shellStep(-1) }
+    @objc func nextAgent(_ s: Any?) { _ = shellStep(1) }
     @objc func nextTab(_ s: Any?) { if !shellStep(1) { model.cycleTab(1) } }
     @objc func goToTab(_ s: NSMenuItem) {
         if model.shellTree != nil {   // the engine window: the rail's agents instead of tabs
@@ -345,6 +352,7 @@ extension AppDelegate: NSMenuItemValidation {
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         let shell = model.shellTree != nil
         if let names = ShellKeys.menuNames(item.action, tag: item.tag) { item.title = shell ? names.shell : names.classic }
+        if ShellKeys.shellOnly(item.action) { return shell }   // off in the classic window: the keys go on to the terminal
         return true
     }
 }

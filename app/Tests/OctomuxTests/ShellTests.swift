@@ -51,6 +51,9 @@ final class ShellTests: XCTestCase {
         XCTAssertEqual(ShellKeys.menuNames(#selector(AppDelegate.newTerminal(_:)), tag: 0)?.classic, "New Terminal Tab")
         XCTAssertEqual(ShellKeys.menuNames(#selector(AppDelegate.showMain(_:)), tag: 0)?.shell, "Home")
         XCTAssertNil(ShellKeys.menuNames(#selector(AppDelegate.toggleSidebar(_:)), tag: 0))
+        XCTAssertTrue(ShellKeys.shellOnly(#selector(AppDelegate.prevAgent(_:))))   // ⌘[ / ⌘]: engine window only
+        XCTAssertTrue(ShellKeys.shellOnly(#selector(AppDelegate.nextAgent(_:))))
+        XCTAssertFalse(ShellKeys.shellOnly(#selector(AppDelegate.prevTab(_:))))
     }
 
     // MARK: Home

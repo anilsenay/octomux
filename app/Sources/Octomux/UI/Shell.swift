@@ -3,6 +3,8 @@ import SwiftUI
 extension Notification.Name {
     /// The layout engine's Home: put the keys in its composer (⌘T in the Agents layout).
     static let octomuxShellComposer = Notification.Name("octomux.shellComposer")
+    /// Give the keys to the agent rail (↑ ↓ ↩ then move and open).
+    static let octomuxRailFocus = Notification.Name("octomux.railFocus")
 }
 
 extension AppModel {
@@ -161,6 +163,11 @@ enum ShellKeys {
         guard !rail.isEmpty else { return nil }
         guard let c = current, let i = rail.firstIndex(where: { $0.id == c }) else { return d > 0 ? rail.first?.id : rail.last?.id }
         return rail[(i + d + rail.count) % rail.count].id
+    }
+
+    /// Commands of the engine window only (hidden and off in the classic window).
+    static func shellOnly(_ action: Selector?) -> Bool {
+        action == #selector(AppDelegate.prevAgent(_:)) || action == #selector(AppDelegate.nextAgent(_:))
     }
 
     /// Menu titles that change with the window (nil: the item keeps its title).
