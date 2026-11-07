@@ -973,3 +973,201 @@ fn closing_a_tab_keeps_its_sessions() {
     assert!(st["tabs"].as_array().unwrap().is_empty());
     assert_eq!(e.session(&term)["state"], "running");
 }
+
+/// A subscribed connection: the state now, then events as they come.
+struct Subscriber {
+    r: BufReader<UnixStream>,
+}
+
+impl Subscriber {
+    fn new(e: &Env) -> Subscriber {
+        let mut s = UnixStream::connect(e.home.join("run/daemon.sock")).unwrap();
+        s.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+        writeln!(s, "{}", json!({ "id": 1, "method": "subscribe" })).unwrap();
+        let mut r = BufReader::new(s);
+        let mut line = String::new();
+        r.read_line(&mut line).unwrap();
+        Subscriber { r }
+    }
+
+    /// The first event named `name` whose data passes `f`.
+    fn wait(&mut self, name: &str, f: impl Fn(&Value) -> bool) -> Value {
+        loop {
+            let mut line = String::new();
+            self.r.read_line(&mut line).unwrap_or_else(|e| panic!("waiting for {name}: {e}"));
+            let v: Value = serde_json::from_str(&line).unwrap();
+            if v["event"] == name && f(&v["data"]) {
+                return v["data"].clone();
+            }
+        }
+    }
+}
+
+fn has_task(state: &Value, id: &str, f: impl Fn(&Value) -> bool) -> bool {
+    state["tasks"].as_array().is_some_and(|ts| ts.iter().any(|t| t["id"] == id && f(t)))
+}
+
+#[test]
+fn tasks_are_stored_broadcast_and_go_with_their_project() {
+    let mut e = Env::new();
+    let p = e.project();
+    let mut sub = Subscriber::new(&e);
+    let t = e.call("task.create", json!({ "project_id": p, "title": "Fix login", "source": "jira:SHOP-12" }));
+    let id = t["id"].as_str().unwrap().to_string();
+    assert_eq!((t["state"].as_str(), t["created_by"].as_str(), t["turns"].as_i64()), (Some("planned"), Some("user"), Some(0)));
+    sub.wait("state", |s| has_task(s, &id, |_| true));
+
+    let sid = create_terminal(&e, &p);
+    let t = e.call("task.add_session", json!({ "id": id, "session_id": sid }));
+    assert_eq!(t["sessions"], json!([sid]));
+    let t = e.call("task.update", json!({ "id": id, "state": "working", "branch": "fix/login", "turns": 1 }));
+    assert_eq!((t["state"].as_str(), t["branch"].as_str(), t["source"].as_str()), (Some("working"), Some("fix/login"), Some("jira:SHOP-12")));
+    sub.wait("state", |s| has_task(s, &id, |t| t["state"] == "working"));
+    let sub_task = e.call("task.create", json!({ "project_id": p, "title": "Tests", "parent_id": id }));
+    let err = e.try_call("task.create", json!({ "project_id": p, "title": "Deeper", "parent_id": sub_task["id"] })).unwrap_err();
+    assert!(err.contains("subtasks can't have subtasks"), "{err}");
+    assert_eq!(e.call("task.list", json!({ "project_id": p, "state": "working" }))["tasks"].as_array().unwrap().len(), 1);
+    assert_eq!(e.call("task.get", json!({ "id": id }))["sessions"], json!([sid]));
+
+    // Kept across a daemon restart.
+    e.kill_daemon();
+    e.start_daemon();
+    let st = e.call("state.get", json!({}));
+    assert!(has_task(&st, &id, |t| t["branch"] == "fix/login" && t["turns"] == 1));
+    let t = e.call("task.remove_session", json!({ "id": id, "session_id": sid }));
+    assert_eq!(t["sessions"], json!([]));
+
+    // Deleting the project deletes its tasks, now and after a restart.
+    e.call("project.delete", json!({ "id": p }));
+    assert_eq!(e.call("state.get", json!({}))["tasks"], json!([]));
+    e.kill_daemon();
+    e.start_daemon();
+    assert_eq!(e.call("state.get", json!({}))["tasks"], json!([]));
+}
+
+fn cli(e: &Env, args: &[&str]) -> (bool, String) {
+    let o = Command::new(BIN).args(args).env("OCTOMUX_HOME", &e.home).output().unwrap();
+    (o.status.success(), format!("{}{}", String::from_utf8_lossy(&o.stdout), String::from_utf8_lossy(&o.stderr)))
+}
+
+#[test]
+fn task_cli() {
+    let e = Env::new();
+    let p = e.project();
+    let (ok, out) = cli(&e, &["task", "create", "--project", &p, "--title", "Ship it", "--description", "all of it", "--json"]);
+    assert!(ok, "{out}");
+    let id = serde_json::from_str::<Value>(&out).unwrap()["id"].as_str().unwrap().to_string();
+    let (ok, out) = cli(&e, &["task", "create", "--project", &p, "--title", "Part one", "--parent", &id, "--source", "manual"]);
+    assert!(ok && out.contains("Part one"), "{out}");
+    let (_, out) = cli(&e, &["task", "list", "--project", &p]);
+    let lines: Vec<&str> = out.lines().collect();
+    assert_eq!(lines.len(), 2, "{out}");
+    assert!(lines[0].contains("planned") && lines[0].ends_with("Ship it") && lines[1].ends_with("└ Part one"), "{out}");
+    let (ok, out) = cli(&e, &["task", "update", &id, "--state", "done", "--pr", "https://example.com/pr/1", "--json"]);
+    assert!(ok, "{out}");
+    let t: Value = serde_json::from_str(&out).unwrap();
+    assert_eq!((t["state"].as_str(), t["state_manual"].as_bool(), t["pr_url"].as_str()), (Some("done"), Some(true), Some("https://example.com/pr/1")));
+    let (_, out) = cli(&e, &["task", "show", &id]);
+    assert!(out.contains("pr_url: https://example.com/pr/1") && out.contains("all of it"), "{out}");
+    let (_, out) = cli(&e, &["task", "list", "--state", "done", "--json"]);
+    assert_eq!(serde_json::from_str::<Value>(&out).unwrap().as_array().unwrap().len(), 1, "{out}");
+    let (ok, out) = cli(&e, &["task", "update", &id, "--state", "someday"]);
+    assert!(!ok && out.contains("unknown state"), "{out}");
+    let (ok, out) = cli(&e, &["task", "delete", &id]);
+    assert!(ok && out.starts_with("deleted"), "{out}");
+    assert_eq!(e.call("task.list", json!({}))["tasks"], json!([]), "subtasks go with their parent");
+}
+
+/// `octomux mcp` as an agent runs it: JSON-RPC lines on stdin and stdout.
+struct Mcp {
+    child: Child,
+    out: BufReader<std::process::ChildStdout>,
+    n: u64,
+}
+
+impl Mcp {
+    fn new(e: &Env, session: &str) -> Mcp {
+        let mut child = Command::new(BIN)
+            .args(["mcp", "--session", session])
+            .env("OCTOMUX_HOME", &e.home)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let out = BufReader::new(child.stdout.take().unwrap());
+        Mcp { child, out, n: 0 }
+    }
+
+    /// Calls a tool; returns (is error, text).
+    fn tool(&mut self, name: &str, args: Value) -> (bool, String) {
+        self.n += 1;
+        let msg = json!({ "jsonrpc": "2.0", "id": self.n, "method": "tools/call", "params": { "name": name, "arguments": args } });
+        writeln!(self.child.stdin.as_mut().unwrap(), "{msg}").unwrap();
+        let mut line = String::new();
+        self.out.read_line(&mut line).unwrap();
+        let v: Value = serde_json::from_str(&line).unwrap();
+        assert_eq!(v["id"], self.n);
+        (v["result"]["isError"] == true, v["result"]["content"][0]["text"].as_str().unwrap_or("").to_string())
+    }
+}
+
+impl Drop for Mcp {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+#[test]
+fn mcp_task_tools_for_agents_and_the_assistant() {
+    let e = Env::new();
+    let p = e.project();
+    let worker = plain_shell(&e, &p);
+    let assistant = create_terminal(&e, &p);
+    let mut agent = Mcp::new(&e, &worker);
+
+    // An agent's tasks start planned and are marked as its own.
+    let (err, text) = agent.tool("task_create", json!({ "title": "Write docs", "description": "README" }));
+    assert!(!err, "{text}");
+    let t: Value = serde_json::from_str(&text).unwrap();
+    let me = format!("agent:{worker}");
+    assert_eq!((t["state"].as_str(), t["created_by"].as_str(), t["project_id"].as_str()), (Some("planned"), Some(me.as_str()), Some(p.as_str())));
+    let id = t["id"].as_str().unwrap().to_string();
+    let (err, text) = agent.tool("task_create", json!({ "title": "x", "state": "done" }));
+    assert!(err && text.contains("unknown argument state"), "{text}");
+    let (err, text) = agent.tool("task_update", json!({ "id": id, "state": "ready_to_review" }));
+    assert!(!err && text.contains("ready_to_review"), "{text}");
+    let (err, text) = agent.tool("task_list", json!({}));
+    assert!(!err && text.contains(&id), "{text}");
+    let (err, _) = agent.tool("task_get", json!({ "id": "nope" }));
+    assert!(err);
+
+    // The assistant reaches the worker's session only through a task it owns.
+    let mut asst = Mcp::new(&e, &assistant);
+    let (err, text) = asst.tool("session_summary", json!({ "session_id": worker }));
+    assert!(err && text.contains("isn't part of a task you own"), "{text}");
+    let (err, _) = asst.tool("session_send", json!({ "session_id": worker, "text": "echo hi" }));
+    assert!(err);
+    e.call("task.update", json!({ "id": id, "assistant_session": assistant, "sessions": [worker] }));
+    let (err, text) = asst.tool("session_summary", json!({ "session_id": worker }));
+    assert!(!err, "{text}");
+    let s: Value = serde_json::from_str(&text).unwrap();
+    assert_eq!((s["state"].as_str(), s["tasks"].clone()), (Some("running"), json!([id])));
+    assert!(s["last_activity_at"].as_u64().unwrap() > 0 && s["cwd"].as_str().is_some());
+    let (err, text) = asst.tool("session_send", json!({ "session_id": worker, "text": "echo relayed-$((6*7))" }));
+    assert!(!err && text == "sent", "{text}");
+    e.wait_screen(&worker, "[from assistant] echo relayed-$((6*7))");
+    // The worker agent is not an assistant of anything.
+    let (err, _) = agent.tool("session_summary", json!({ "session_id": assistant }));
+    assert!(err);
+
+    // Starting is a request the app acts on.
+    let planned = e.call("task.create", json!({ "project_id": p, "title": "Later", "assistant_session": assistant }));
+    let mut sub = Subscriber::new(&e);
+    let (err, text) = asst.tool("task_start", json!({ "id": planned["id"] }));
+    assert!(!err && text == "requested", "{text}");
+    let ev = sub.wait("task.start_requested", |_| true);
+    assert_eq!(ev, json!({ "task_id": planned["id"], "project_id": p, "requested_by": format!("agent:{assistant}"), "caller_session": assistant }));
+    let (err, text) = asst.tool("task_start", json!({ "id": id }));
+    assert!(err && text.contains("only planned tasks"), "{text}");
+}

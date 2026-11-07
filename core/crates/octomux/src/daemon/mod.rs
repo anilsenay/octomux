@@ -10,6 +10,7 @@ pub mod power;
 pub mod resources;
 pub mod events;
 pub mod store;
+pub mod tasks;
 
 use crate::holder::HolderClient;
 use crate::util;
@@ -433,6 +434,26 @@ impl Daemon {
     fn emit(&self, event: &str, data: Value) {
         let line = serde_json::to_string(&json!({ "event": event, "data": data })).unwrap();
         self.subs.lock().unwrap().retain(|tx| tx.send(line.clone()).is_ok());
+    }
+
+    fn put_tasks(&self, list: &[Task]) -> Result<()> {
+        let store = self.store.lock().unwrap();
+        for t in list {
+            store.put("task", &t.id, t)?;
+        }
+        Ok(())
+    }
+
+    /// Types `text` into a session and presses Enter, the way the app sends a message: as a paste when the
+    /// program takes bracketed paste (an agent's prompt), then Enter a moment later so it isn't part of it.
+    fn type_text(&self, id: &str, text: &str) -> Result<()> {
+        let screen = HolderClient::request(&self.paths, id, &HolderRequest::ScreenText)?;
+        let data = if screen["bracketed_paste"].as_bool() == Some(true) { format!("\x1b[200~{text}\x1b[201~") } else { text.to_string() };
+        let mut c = HolderClient::connect(&self.paths, id, Role::Control, 0, 0)?;
+        c.send(&Frame::new(Kind::Input, data.into_bytes()))?;
+        std::thread::sleep(Duration::from_millis(120));
+        c.send(&Frame::new(Kind::Input, b"\r".to_vec()))?;
+        Ok(())
     }
 
     fn with_session<R>(&self, id: &str, f: impl FnOnce(&mut Session) -> R) -> Option<R> {
@@ -2107,6 +2128,73 @@ impl Daemon {
                 c.send(&Frame::new(Kind::Input, data.into_bytes()))?;
                 Ok(json!({ "ok": true }))
             }
+            "task.list" => {
+                let st = self.state.lock().unwrap();
+                Ok(json!({ "tasks": tasks::list(&st, p)? }))
+            }
+            "task.get" => {
+                let id = req("id")?;
+                let st = self.state.lock().unwrap();
+                let t = st.tasks.iter().find(|t| t.id == id).ok_or_else(|| anyhow!("no task {id}"))?;
+                Ok(serde_json::to_value(t)?)
+            }
+            "task.create" => {
+                let mut st = self.state.lock().unwrap();
+                let t = tasks::create(&st, p, util::now_secs())?;
+                st.tasks.push(t.clone());
+                self.store.lock().unwrap().put("task", &t.id, &t)?;
+                drop(st);
+                self.changed();
+                Ok(serde_json::to_value(t)?)
+            }
+            "task.update" => {
+                let id = req("id")?;
+                let mut st = self.state.lock().unwrap();
+                let changed = tasks::update(&mut st, &id, p, util::now_secs())?;
+                self.put_tasks(&changed)?;
+                drop(st);
+                self.changed();
+                Ok(serde_json::to_value(&changed[0])?)
+            }
+            "task.delete" => {
+                let id = req("id")?;
+                let gone = tasks::delete(&mut self.state.lock().unwrap(), &id)?;
+                let store = self.store.lock().unwrap();
+                for t in &gone {
+                    store.delete("task", t)?;
+                }
+                drop(store);
+                self.changed();
+                Ok(json!({ "ok": true, "deleted": gone }))
+            }
+            "task.add_session" | "task.remove_session" => {
+                let id = req("id")?;
+                let sid = req("session_id")?;
+                let mut st = self.state.lock().unwrap();
+                let t = tasks::set_session(&mut st, &id, &sid, method == "task.add_session", util::now_secs())?;
+                self.store.lock().unwrap().put("task", &t.id, &t)?;
+                drop(st);
+                self.changed();
+                Ok(serde_json::to_value(t)?)
+            }
+            // A task/session tool call from `octomux mcp`, made by the agent running in `session`.
+            "mcp.call" => {
+                let caller = req("session")?;
+                let tool = req("tool")?;
+                let args = p.get("args").cloned().unwrap_or_else(|| json!({}));
+                let out = tasks::agent_call(&mut self.state.lock().unwrap(), &caller, &tool, &args, util::now_secs())?;
+                if !out.changed.is_empty() {
+                    self.put_tasks(&out.changed)?;
+                    self.changed();
+                }
+                if let Some((id, text)) = &out.send {
+                    self.type_text(id, text)?;
+                }
+                if let Some((event, data)) = out.event {
+                    self.emit(&event, data);
+                }
+                Ok(out.reply)
+            }
             "session.screen_text" => {
                 let id = req("id")?;
                 Ok(HolderClient::request(&self.paths, &id, &HolderRequest::ScreenText)?)
@@ -2489,10 +2577,14 @@ impl Daemon {
         let tabs: Vec<String> = st.tabs.iter().filter(|t| t.project_id == id).map(|t| t.id.clone()).collect();
         st.tabs.retain(|t| t.project_id != id);
         st.projects.retain(|p| p.id != id);
+        let gone_tasks = tasks::remove_project(&mut st, id);
         drop(st);
         let store = self.store.lock().unwrap();
         for t in tabs {
             store.delete("tab", &t)?;
+        }
+        for t in gone_tasks {
+            store.delete("task", &t)?;
         }
         store.delete("project", id)?;
         Ok(())

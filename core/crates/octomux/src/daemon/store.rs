@@ -1,5 +1,6 @@
 //! Persistence: the in-memory `State` is the source of truth while running;
-//! every mutation is written through to SQLite as JSON documents.
+//! every mutation is written through to SQLite as JSON documents. A new kind of object (tasks) needs no
+//! migration: it is one more `kind` in `objects`, and fields added later load through serde defaults.
 
 use octomux_proto::control::{Notification, Session, State, StoredNotification};
 use anyhow::Result;
@@ -53,12 +54,14 @@ impl Store {
             tabs: self.load_kind("tab")?,
             settings: self.load_kind("setting")?,
             usage: self.load_kind("usage")?,
+            tasks: self.load_kind("task")?,
         };
         s.workspaces.sort_by_key(|w| w.sort);
         s.projects.sort_by_key(|p| p.sort);
         s.profiles.sort_by_key(|p| p.sort);
         s.sessions.sort_by_key(|x| x.created_at);
         s.tabs.sort_by_key(|t| t.sort);
+        s.tasks.sort_by(|a, b| a.created_at.cmp(&b.created_at).then_with(|| a.id.cmp(&b.id)));
         Ok(s)
     }
 
@@ -196,7 +199,102 @@ impl Store {
         for st in &s.settings {
             self.put("setting", &format!("{}|{}", st.scope, st.key), st)?;
         }
+        for t in &s.tasks {
+            self.put("task", &t.id, t)?;
+        }
         tx.commit()?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use octomux_proto::control::{Task, TaskState};
+
+    struct TempDb(std::path::PathBuf);
+
+    impl TempDb {
+        fn new(tag: &str) -> TempDb {
+            let dir = std::env::temp_dir().join(format!("octomux-store-{tag}-{}-{}", std::process::id(), crate::util::short_id()));
+            std::fs::create_dir_all(&dir).unwrap();
+            TempDb(dir)
+        }
+        fn db(&self) -> std::path::PathBuf {
+            self.0.join("octomux.sqlite3")
+        }
+    }
+
+    impl Drop for TempDb {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn task(id: &str, created_at: u64) -> Task {
+        serde_json::from_value(serde_json::json!({
+            "id": id, "project_id": "p1", "title": format!("task {id}"), "state": "planned", "created_by": "user",
+            "created_at": created_at, "updated_at": created_at,
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn tasks_round_trip_and_survive_save_all() {
+        let tmp = TempDb::new("tasks");
+        let store = Store::open(&tmp.db()).unwrap();
+        let mut b = task("b", 20);
+        b.sessions = vec!["s1".into(), "s2".into()];
+        b.parent_id = Some("a".into());
+        b.state = TaskState::ReadyToReview;
+        b.pr_url = Some("https://example.com/pr/3".into());
+        b.turns = 4;
+        store.put("task", &b.id, &b).unwrap();
+        store.put("task", "a", &task("a", 10)).unwrap();
+        let st = store.load().unwrap();
+        assert_eq!(st.tasks.iter().map(|t| t.id.as_str()).collect::<Vec<_>>(), vec!["a", "b"], "oldest first");
+        assert_eq!(st.tasks[1], b);
+        // Update in place, then delete.
+        b.title = "renamed".into();
+        store.put("task", &b.id, &b).unwrap();
+        assert_eq!(store.load().unwrap().tasks[1].title, "renamed");
+        store.delete("task", "a").unwrap();
+        // save_all rewrites every object: tasks must be among them.
+        let st = store.load().unwrap();
+        store.save_all(&st).unwrap();
+        drop(store);
+        let st = Store::open(&tmp.db()).unwrap().load().unwrap();
+        assert_eq!(st.tasks, vec![b]);
+    }
+
+    #[test]
+    fn a_database_from_before_tasks_opens() {
+        // Written by an older daemon: no tasks at all; later a task row lacking the optional fields.
+        let tmp = TempDb::new("old");
+        {
+            let c = Connection::open(tmp.db()).unwrap();
+            c.execute_batch(
+                r##"CREATE TABLE objects(kind TEXT NOT NULL, id TEXT NOT NULL, json TEXT NOT NULL, PRIMARY KEY(kind, id));
+                 INSERT INTO objects VALUES ('workspace', 'w1', '{"id":"w1","name":"Personal","color":"#E8704A","sort":0}');"##,
+            )
+            .unwrap();
+        }
+        let store = Store::open(&tmp.db()).unwrap();
+        let st = store.load().unwrap();
+        assert_eq!(st.workspaces.len(), 1);
+        assert!(st.tasks.is_empty());
+        store
+            .conn
+            .execute(
+                "INSERT INTO objects VALUES ('task', 't1', ?1)",
+                params![r#"{"id":"t1","project_id":"p1","title":"bare","state":"done","created_by":"assistant","created_at":1,"updated_at":2}"#],
+            )
+            .unwrap();
+        let t = &store.load().unwrap().tasks[0];
+        assert_eq!((t.state, t.turns, t.description.as_str(), t.state_manual), (TaskState::Done, 0, "", false));
+        assert!(t.sessions.is_empty() && t.parent_id.is_none());
+        // The state the app gets always has the tasks array.
+        let v = serde_json::to_value(State::default()).unwrap();
+        assert_eq!(v["tasks"], serde_json::json!([]));
     }
 }

@@ -838,7 +838,9 @@ fn serve_client(shared: Arc<Shared>, stream: UnixStream) -> Result<()> {
                     HolderRequest::Info => serde_json::to_value(shared.info())?,
                     HolderRequest::ScreenText => {
                         let inner = shared.inner.lock().unwrap();
-                        serde_json::json!({ "text": inner.parser.screen().contents(), "cursor": inner.parser.screen().cursor_position(), "alt": inner.parser.screen().alternate_screen() })
+                        let screen = inner.parser.screen();
+                        serde_json::json!({ "text": screen.contents(), "cursor": screen.cursor_position(), "alt": screen.alternate_screen(),
+                            "bracketed_paste": screen.bracketed_paste() })
                     }
                     HolderRequest::Snapshot => {
                         let inner = shared.inner.lock().unwrap();

@@ -434,6 +434,83 @@ pub struct State {
     /// Latest rate-limit readings, one per (profile, window). Added in UI phase L.
     #[serde(default)]
     pub usage: Vec<UsageReading>,
+    /// Octomux's own work items (not Jira/GitHub issues), oldest first.
+    #[serde(default)]
+    pub tasks: Vec<Task>,
+}
+
+/// Where a task stands. The app derives the automatic ones (working, needs_you, ready_to_review, in_review)
+/// from its sessions and PR; the daemon stores what it is told.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TaskState {
+    Planned,
+    Working,
+    NeedsYou,
+    ReadyToReview,
+    InReview,
+    Done,
+}
+
+impl TaskState {
+    pub const ALL: [TaskState; 6] =
+        [TaskState::Planned, TaskState::Working, TaskState::NeedsYou, TaskState::ReadyToReview, TaskState::InReview, TaskState::Done];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            TaskState::Planned => "planned",
+            TaskState::Working => "working",
+            TaskState::NeedsYou => "needs_you",
+            TaskState::ReadyToReview => "ready_to_review",
+            TaskState::InReview => "in_review",
+            TaskState::Done => "done",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<TaskState> {
+        TaskState::ALL.into_iter().find(|t| t.as_str() == s)
+    }
+}
+
+/// An Octomux task. Subtasks are tasks with a `parent_id` (one level only).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Task {
+    pub id: String,
+    pub project_id: String,
+    pub title: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub parent_id: Option<String>,
+    #[serde(default)]
+    pub worktree: Option<String>,
+    #[serde(default)]
+    pub branch: Option<String>,
+    /// Agent sessions working on it.
+    #[serde(default)]
+    pub sessions: Vec<String>,
+    pub state: TaskState,
+    /// The user set `state` by hand (planned / done).
+    #[serde(default)]
+    pub state_manual: bool,
+    #[serde(default)]
+    pub pr_url: Option<String>,
+    /// Where it came from: "jira:SHOP-12", "gh:owner/repo#12", "inbox:<item id>" or "manual".
+    #[serde(default)]
+    pub source: Option<String>,
+    /// Profile to start its agent with, instead of the default one.
+    #[serde(default)]
+    pub agent_profile: Option<String>,
+    /// "user", "assistant" or "agent:<session id>".
+    pub created_by: String,
+    /// The assistant session that started or owns it; it may read and write this task's sessions.
+    #[serde(default)]
+    pub assistant_session: Option<String>,
+    /// How many times the assistant was woken for it (Autopilot's loop limit).
+    #[serde(default)]
+    pub turns: u32,
+    pub created_at: u64,
+    pub updated_at: u64,
 }
 
 /// One rate-limit window reading reported by an agent (Claude statusline payload,

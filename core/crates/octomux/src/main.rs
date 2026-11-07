@@ -55,6 +55,11 @@ enum Cmd {
         #[arg(default_value = "{}")]
         params: String,
     },
+    /// List, add and change Octomux tasks.
+    Task {
+        #[command(subcommand)]
+        cmd: TaskCmd,
+    },
     /// Internal: stdio MCP server with the Octomux browser tools (started by agents for their session).
     #[command(hide = true)]
     Mcp {
@@ -69,6 +74,77 @@ enum Cmd {
     InstallAgent,
     /// Remove the launchd agent.
     UninstallAgent,
+}
+
+#[derive(Subcommand)]
+enum TaskCmd {
+    /// List tasks (subtasks under their parent).
+    List {
+        #[arg(long)]
+        project: Option<String>,
+        #[arg(long)]
+        workspace: Option<String>,
+        /// planned | working | needs_you | ready_to_review | in_review | done
+        #[arg(long)]
+        state: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Add a task (planned unless --state says otherwise).
+    Create {
+        #[arg(long)]
+        project: String,
+        #[arg(long)]
+        title: String,
+        #[arg(long)]
+        description: Option<String>,
+        /// Make it a subtask of this task.
+        #[arg(long)]
+        parent: Option<String>,
+        /// Where it came from: jira:KEY-1, gh:owner/repo#12, inbox:<id> or manual.
+        #[arg(long)]
+        source: Option<String>,
+        #[arg(long)]
+        state: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Print one task.
+    Show {
+        id: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Change a task. An empty value clears an optional field (e.g. --pr "").
+    Update {
+        id: String,
+        #[arg(long)]
+        state: Option<String>,
+        /// Whether the state was set by hand (default: yes for planned and done).
+        #[arg(long)]
+        manual: Option<bool>,
+        #[arg(long)]
+        title: Option<String>,
+        #[arg(long)]
+        description: Option<String>,
+        #[arg(long)]
+        pr: Option<String>,
+        #[arg(long)]
+        branch: Option<String>,
+        #[arg(long)]
+        worktree: Option<String>,
+        #[arg(long)]
+        parent: Option<String>,
+        #[arg(long)]
+        source: Option<String>,
+        /// Agent profile id to start it with.
+        #[arg(long)]
+        profile: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Delete a task (and its subtasks).
+    Delete { id: String },
 }
 
 fn main() {
@@ -134,6 +210,7 @@ fn run(cli: Cli, paths: Paths) -> anyhow::Result<i32> {
             println!("{}", serde_json::to_string_pretty(&v)?);
             Ok(0)
         }
+        Cmd::Task { cmd } => task_cmd(&paths, cmd),
         Cmd::Status => match client::Control::connect(&paths) {
             Ok(mut c) => {
                 let v = c.call("hello", serde_json::json!({}))?;
@@ -164,6 +241,101 @@ fn run(cli: Cli, paths: Paths) -> anyhow::Result<i32> {
             Ok(0)
         }
     }
+}
+
+fn task_cmd(paths: &Paths, cmd: TaskCmd) -> anyhow::Result<i32> {
+    use serde_json::{Value, json};
+    let mut c = client::Control::connect_or_spawn(paths)?;
+    let print = |v: &Value, as_json: bool| -> anyhow::Result<i32> {
+        if as_json {
+            println!("{}", serde_json::to_string_pretty(v)?);
+        } else {
+            print!("{}", task_text(v));
+        }
+        Ok(0)
+    };
+    match cmd {
+        TaskCmd::List { project, workspace, state, json } => {
+            let v = c.call("task.list", json!({ "project_id": project, "workspace_id": workspace, "state": state }))?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&v["tasks"])?);
+            } else {
+                print!("{}", task_table(v["tasks"].as_array().map(Vec::as_slice).unwrap_or_default()));
+            }
+            Ok(0)
+        }
+        TaskCmd::Create { project, title, description, parent, source, state, json } => {
+            let mut p = json!({ "project_id": project, "title": title, "created_by": "user" });
+            for (k, v) in [("description", description), ("parent_id", parent), ("source", source), ("state", state)] {
+                if let Some(v) = v {
+                    p[k] = json!(v);
+                }
+            }
+            print(&c.call("task.create", p)?, json)
+        }
+        TaskCmd::Show { id, json } => print(&c.call("task.get", json!({ "id": id }))?, json),
+        TaskCmd::Update { id, state, manual, title, description, pr, branch, worktree, parent, source, profile, json } => {
+            let mut p = json!({ "id": id });
+            let manual = manual.or_else(|| state.as_deref().map(|s| s == "planned" || s == "done"));
+            if let Some(m) = manual {
+                p["state_manual"] = json!(m);
+            }
+            let fields = [
+                ("state", state), ("title", title), ("description", description), ("pr_url", pr), ("branch", branch),
+                ("worktree", worktree), ("parent_id", parent), ("source", source), ("agent_profile", profile),
+            ];
+            for (k, v) in fields {
+                if let Some(v) = v {
+                    p[k] = json!(v);
+                }
+            }
+            print(&c.call("task.update", p)?, json)
+        }
+        TaskCmd::Delete { id } => {
+            let v = c.call("task.delete", json!({ "id": id }))?;
+            println!("deleted {}", v["deleted"].as_array().map(|a| a.iter().filter_map(|x| x.as_str()).collect::<Vec<_>>().join(" ")).unwrap_or_default());
+            Ok(0)
+        }
+    }
+}
+
+/// `task list`: one line per task, subtasks under their parent.
+fn task_table(tasks: &[serde_json::Value]) -> String {
+    let line = |t: &serde_json::Value, indent: &str| {
+        format!("{}  {:<15}  {indent}{}\n", t["id"].as_str().unwrap_or(""), t["state"].as_str().unwrap_or(""), t["title"].as_str().unwrap_or(""))
+    };
+    let mut out = String::new();
+    let ids: Vec<&str> = tasks.iter().filter_map(|t| t["id"].as_str()).collect();
+    for t in tasks {
+        // Subtasks whose parent is filtered out stand on their own.
+        if t["parent_id"].as_str().is_some_and(|p| ids.contains(&p)) {
+            continue;
+        }
+        out += &line(t, "");
+        for s in tasks.iter().filter(|s| s["parent_id"] == t["id"]) {
+            out += &line(s, "└ ");
+        }
+    }
+    out
+}
+
+/// `task show`: the fields that are set, one per line.
+fn task_text(t: &serde_json::Value) -> String {
+    let mut out = format!("{}  {}\n", t["id"].as_str().unwrap_or(""), t["title"].as_str().unwrap_or(""));
+    for k in ["state", "state_manual", "project_id", "parent_id", "branch", "worktree", "pr_url", "source", "agent_profile", "created_by", "assistant_session", "turns"] {
+        match &t[k] {
+            serde_json::Value::Null => {}
+            serde_json::Value::String(s) => out += &format!("{k}: {s}\n"),
+            v => out += &format!("{k}: {v}\n"),
+        }
+    }
+    if let Some(s) = t["sessions"].as_array().filter(|a| !a.is_empty()) {
+        out += &format!("sessions: {}\n", s.iter().filter_map(|x| x.as_str()).collect::<Vec<_>>().join(" "));
+    }
+    if let Some(d) = t["description"].as_str().filter(|d| !d.is_empty()) {
+        out += &format!("\n{d}\n");
+    }
+    out
 }
 
 fn install_launch_agent(paths: &Paths) -> anyhow::Result<()> {
