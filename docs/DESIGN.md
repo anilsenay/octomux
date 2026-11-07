@@ -117,6 +117,35 @@ A closed scale with no half points (`DesignTokenTests` fails on `N.5` sizes in `
   layouts, which choose what is primary and the defaults. New items start off in Terminal. A pure visualisation may
   live in one layout only.
 
+### Layout engine
+- A layout can be a window of its own: a JSON tree (`app/Resources/layouts/<layout>.json`, schema 1) that
+  `Core/LayoutTree.swift` reads and `UI/Shell.swift` draws. Today the engine draws Agents; Terminal and the other
+  layouts are the classic window (`MainView.classicWindow`), unchanged.
+- Nodes: `row` / `column` (children side by side / stacked) and `stack` (one child shows: Home while the window is on
+  its Home, else the first other one); each child may have a `size` along its parent's axis: `{"fixed": pt}`,
+  `{"min": pt}` or `{"flex": weight}`. Leaves are blocks; there is no code in a layout, only data.
+- Blocks and their rules (a tree that breaks one is not used; the layout's built-in tree is, else the classic window):
+
+  | Block | What | Kind | Minimum |
+  |---|---|---|---|
+  | `agentRail` | sessions by state (Waiting / Working / Done / Idle), project chips, New session | rail (in a row) | 220 |
+  | `projectTree` | the classic sidebar | rail | 200 |
+  | `sidePanel` | the right panel (Files / Changes / Sessions / Tasks), shown with ⌘⌥B | rail | 260 |
+  | `tabStrip` | the classic top bar with tabs | bar (in a column) | — |
+  | `breadcrumb` | Home · workspace, or agent · project · branch, and the project's buttons | bar | — |
+  | `statusBar` | the status bar (the layout's on/off) | bar | — |
+  | `workArea` | the current tab's panes or doc, browser, dock, aquarium strip; required | main | 320 |
+  | `home` | the engine window's Home (greeting, composer, waiting, recent, usage) | main (also in a stack) | 320 |
+
+  Every block at most once; a stack holds main blocks and containers.
+- The terminal views are the classic window's, moved into the work area block; a layout switch makes none.
+  The resolved layout is cached per change of the setting; the agents' transcripts are read once for the rail and
+  Home together, after the first frame, and only while the engine window shows.
+- A user's own tree goes in `custom.<layout>.tree`, dragged widths in `custom.<layout>.sizes`; both go over the
+  built-in tree, which keeps getting our updates.
+- In the engine window the tab keys work on the rail: ⌘1…8 / ⌘9, ⇧⌘[ ⇧⌘], ⌘T Home + composer, ⌘0 Home, ⌘W closes the
+  pane (nothing on Home); the menu names follow.
+
 ## Terminal theme
 Each preset carries a terminal palette matched to its `surface` color (background = `surface`, so the card
 and the terminal are one plane). Applied by writing `$OCTOMUX_HOME/theme.conf` (Ghostty syntax) and loading it
