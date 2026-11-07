@@ -170,7 +170,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         view.addItem(item("Open Aquarium", #selector(openAquarium(_:)), ""))
         view.addItem(item("Open Assistant", #selector(openAssistant(_:)), ""))
         view.addItem(.separator())
-        for p in LayoutPreset.allCases {   // ⌃⌘1…4
+        for p in LayoutPreset.allCases {   // ⌃⌘1…7
             let i = item("\(p.title) Layout", #selector(chooseLayout(_:)), "\(p.number)")
             i.keyEquivalentModifierMask = [.control, .command]
             i.tag = p.number

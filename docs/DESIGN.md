@@ -155,10 +155,12 @@ A closed scale with no half points (`DesignTokenTests` fails on `N.5` sizes in `
 - Performance: the resolved layout is cached per change of the settings; the agents' transcripts are read once for
   every block that shows them (rail, Home, task detail), after the first frame, and only while one is on screen.
   Measured per layout: idle CPU as the classic window (the Aquarium swims at 12 frames a second while you're at
-  it, one a second behind other apps or after 30 s without input and no agent changing state: ~0.4–0.8%), +5–30 MB, switches mostly 90–230 ms, no terminal view made by a switch. A terminal area that
-  takes the panes draws them on the next turn; the Tasks window selects its assistant just after its first frame;
-  the engine's blocks are drawn once off screen a few seconds after launch (no readers, no key monitors), so the
-  first switch to a layout doesn't pay for loading them.
+  it, one a second behind other apps or after 30 s without input and no agent changing state: ~0.4–0.8%), +5–30 MB,
+  switches mostly 90–230 ms, no terminal view made by a switch. A terminal area that takes the panes draws them on
+  the next turn; while two are in the window (one animating out), the one that arrived last keeps them. The Tasks
+  window selects its assistant just after its first frame (unless you moved on). The engine's blocks are drawn once
+  off screen a few seconds after launch (no readers, no key monitors, not the side agent's live chat), so the first
+  switch to a layout doesn't pay for loading them.
 - A user's own tree goes in `custom.<layout>.tree`, dragged widths in `custom.<layout>.sizes`; both go over the
   built-in tree, which keeps getting our updates.
 
@@ -178,12 +180,16 @@ A closed scale with no half points (`DesignTokenTests` fails on `N.5` sizes in `
   saved layout) opens it. `tree` is optional (none: the base's window). `settings` are the layout's region items and
   switches. `theme`, `keys` and `preview` are optional.
 - Reading (`Core/LayoutFile.swift`): unknown fields are ignored. Refused, with the reason shown: not JSON, over 2 MB,
-  another schema, no name, an unknown base, a tree that breaks the blocks' rules. Left out with a note: a theme this
-  Mac doesn't have, a shortcut for an unknown command or that isn't modifiers + one key, a preview that isn't a PNG
-  or JPEG in the file (nothing remote).
-- Saved layouts live in the global setting `ui.layouts` (`{"<id>": <file without its preview>}`); their pictures
-  in `<Octomux home>/layout-previews/<id>.png`. The layout in use is `ui.layout` with `"user": "<id>"` (and its base
-  in `layout`); your changes to a saved layout go to `custom["user:<id>"]`, not to its base.
+  another schema, no name, an unknown base, a tree that breaks the blocks' rules or is deeper than 12 levels or has
+  more than 64 nodes. Sizes are capped (4000 points, flex 100). Left out with a note: a theme this Mac doesn't have,
+  a shortcut for an unknown command or that isn't modifiers + one key, one that turns a command off or takes ⌘Q ⌘W
+  ⌘H ⌥⌘H ⌘M ⌘, or ⌘ with the backquote, a preview that isn't one PNG or JPEG in the file (nothing remote) of at most 4096 px a side and
+  16 MP (read from its header before it is drawn). On import, a shortcut on a key another command has is left out
+  (the sheet lists each one).
+- Saved layouts live in the global setting `ui.layouts` (`{"<id>": <file without its preview>}`, ids `u` + 8
+  hex; any other key is ignored, as ids name files); their pictures in `<Octomux home>/layout-previews/<id>.png`. The layout in use is `ui.layout` with `"user": "<id>"` (and its base
+  in `layout`); your changes to a saved layout go to `custom["user:<id>"]`, not to its base. A saved layout in use that isn't
+  there (deleted, another Mac) reads as its base, and changes go to the base.
 - Settings → Layout → Your layouts: Save Current as New, Import (a sheet: the window drawn from the tree or its
   picture, name, author, base, its blocks, what was left out; its theme and shortcuts only when ticked), Export (your
   theme and shortcuts only when ticked), Duplicate, Delete, Use the Window as Picture. Saved layouts are in the

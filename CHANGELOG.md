@@ -12,22 +12,26 @@
   for you, Working, Done, Idle) with their last words and project filter chips, a breadcrumb instead of tabs
   ("Home · Personal", "agent · project · branch" with a Chat / Terminal switch), and Home in the middle: a greeting,
   a big composer (project, checkout or a new worktree, agent), the agents waiting for you answered in place, recent
-  sessions and usage. Home isn't a tab: ⌘0 or ⌘T comes back to it. ⌘1…9 and ⌘[ / ⌘] move over the rail; after a
+  sessions and usage. Home isn't a tab: ⌘0 or ⌘T comes back to it. ⌘1…8 and ⌘[ / ⌘] move over the rail (⌘9: the
+  last); after a
   click on the rail (or ⌥⌘A) ↑ ↓ ↩ do too.
 - **The Tasks layout is a window of its own**: your tasks on a rail on the left by what they need from you (with
   status filters and a New task field, ⌘T), the assistant — or the picked task's agent — in the middle, and the
   picked task in detail on the right: its state, where it works, its agents and what they last said or ask, its pull
-  request and source, subtasks and the next step. ⌘1…9 and ⌘[ / ⌘] go through the tasks, ⌘0 opens the assistant.
-- **Layouts as data**: every layout but Terminal is a tree of rows, columns and stacks over Octomux's own blocks
+  request and source, subtasks and the next step. ⌘1…8 and ⌘[ / ⌘] go through the tasks (⌘9: the last), ⌘0 opens
+  the assistant (and starts it when there is none).
+- **Layouts as data**: every layout is a tree of rows, columns and stacks over Octomux's own blocks
   (agent rail, tasks rail, project tree, tabs, breadcrumb, work area, Home and its Workday variant, side panel, task
   detail, agent column, aquarium, status bar), read from a JSON file; a tree that doesn't read or breaks a block's
   rules falls back to the built-in one. Terminal's tree draws the window it always was, to the pixel.
 - **Your own layouts, as files**: Settings → Layout → Your layouts. Save the layout you arranged under a name, then
-  switch to it from the View menu (⌃⌘8, ⌃⌘9) or the status bar's Layout panel. Export it as a small
+  switch to it from the View menu (⌃⌘8 and ⌃⌘9 for the first two by name) or the status bar's Layout panel. Export it as a small
   `.octomux-layout.json` (your theme and shortcuts too, if you tick them) and import someone else's: a sheet shows
   its window, name, author and base, and what this Mac can't use; its theme and shortcuts apply only if you tick
-  them. A layout file is data only — it arranges Octomux's own parts and can't run anything; a broken one is refused
-  with the reason. Duplicate, delete, and use the window as a layout's picture.
+  them; the sheet lists each shortcut, and one on a key another command already has is left out. A file can't turn a
+  command off or take ⌘Q, ⌘W, ⌘H, ⌘M or ⌘,. A layout file is data only — it arranges Octomux's own parts and can't
+  run anything; a broken one (or one too big, too deep, or with a picture over 4096 px a side) is refused with the
+  reason. Duplicate, delete, and use the window as a layout's picture.
 - **Agents home** (in other layouts, View → Open Agents Home): every agent at a glance, in three ways to try: **Board**
   (who waits for you, who works, who finished, recent), **Columns** (one column per state) and **Inbox** (agents by
   urgency on the left, the selected one's chat on the right, ↑↓ to move). Cards show the agent's last words, the
