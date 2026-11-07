@@ -128,7 +128,7 @@ struct ModelEffortPicker: View {
                     .foregroundStyle(isDefault ? T.amber : T.text2)
                     .padding(.horizontal, 10).frame(height: 24).contentShape(Rectangle())
                 }
-                .buttonStyle(.plain).disabled(isDefault).pointerCursor()
+                .buttonStyle(.plain).disabled(isDefault).panelPointer()
                 .help("New chats in this workspace start with this agent (change it in Settings → Workspaces)")
             }
             Hairline().padding(.vertical, 4)
@@ -149,7 +149,7 @@ struct ModelEffortPicker: View {
             if !efforts.isEmpty {
                 Hairline().padding(.vertical, 4)
                 HStack(spacing: 8) {
-                    Text("Effort").font(.system(size: T.k * 11, weight: .semibold)).foregroundStyle(T.text3)
+                    Text("EFFORT").font(.system(size: T.k * 10, weight: .semibold)).tracking(0.6).foregroundStyle(T.text3)
                     Spacer(minLength: 4)
                     HStack(spacing: 2) {
                         ForEach(efforts) { c in
@@ -161,7 +161,7 @@ struct ModelEffortPicker: View {
                                     .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(on ? T.border : .clear))
                                     .contentShape(Rectangle())
                             }
-                            .buttonStyle(.plain).pointerCursor()
+                            .buttonStyle(.plain).panelPointer()
                         }
                     }
                     .padding(2)
@@ -173,9 +173,7 @@ struct ModelEffortPicker: View {
         .padding(5).frame(width: 380)
     }
 
-    private func header(_ t: String) -> some View {
-        Text(t).font(.system(size: T.k * 11, weight: .semibold)).foregroundStyle(T.text3).padding(.horizontal, 10).padding(.top, 6).padding(.bottom, 3)
-    }
+    private func header(_ t: String) -> some View { PanelSectionTitle(t) }
 }
 
 /// Permission mode dropdown (numbered; ⓘ shows what each does).
@@ -186,8 +184,7 @@ struct PermissionPicker: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
-            Text("Permissions").font(.system(size: T.k * 11, weight: .semibold)).foregroundStyle(T.text3)
-                .padding(.horizontal, 10).padding(.top, 6).padding(.bottom, 3)
+            PanelSectionTitle("Permissions")
             ForEach(Array(ChatLaunchOptions.permissions(kind).enumerated()), id: \.offset) { i, c in
                 OptionRow(number: i + 1, title: c.title, detail: c.detail, checked: options.permission == c.id, warn: c.warn, info: true) {
                     options.permission = c.id; done()
@@ -218,7 +215,7 @@ struct OptionRow: View {
                     if !detail.isEmpty && !info { Text(detail).font(.system(size: T.k * 11)).foregroundStyle(T.text3).lineLimit(1) }
                 }
                 Spacer(minLength: 6)
-                if checked { Image(systemName: "checkmark").font(.system(size: T.k * 10, weight: .bold)).foregroundStyle(T.text) }
+                if checked { Image(systemName: "checkmark").font(.system(size: T.k * 10, weight: .bold)).foregroundStyle(T.accent) }
                 if info, !detail.isEmpty {
                     Image(systemName: "info.circle").font(.system(size: T.k * 11)).foregroundStyle(T.text3).help(detail)
                 }
@@ -227,7 +224,7 @@ struct OptionRow: View {
             .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(checked ? T.hover : .clear))
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain).background(HoverFill()).pointerCursor()
+        .buttonStyle(.plain).background(HoverFill()).panelPointer()
         .help(detail)
     }
 }

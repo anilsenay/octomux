@@ -876,7 +876,7 @@ struct DormantPaneView: View {
                         Button("Resume with Flags…") { flags = true }
                             .buttonStyle(SecondaryButtonStyle())
                             .help("Resume with other command-line flags, such as --chrome")
-                            .background(PopoverAnchor(isPresented: $flags) {
+                            .background(DropdownAnchor(isPresented: $flags) {
                                 ResumeFlagsView(model: model, session: s) { flags = false }
                             })
                     }
@@ -1250,7 +1250,7 @@ struct GitStatusControls: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain).pointerCursor().help("Switch branch")
-            .background(PopoverAnchor(isPresented: $picking) {
+            .background(DropdownAnchor(isPresented: $picking) {
                 BranchPicker(path: path, mode: .checkout, current: branch) { picking = false }
             })
             if let stat = git.diffStat(for: path), stat.files > 0 {
@@ -1282,7 +1282,7 @@ struct GitStatusControls: View {
                 .help(base.map { "Changes compared against \($0): everything since this branch diverged from it" }
                       ?? "Changes compared against \(branch) (HEAD): uncommitted work only. Click to compare against another branch")
                 .opacity(base != nil || hover || pickingBase ? 1 : 0)
-                .background(PopoverAnchor(isPresented: $pickingBase) {
+                .background(DropdownAnchor(isPresented: $pickingBase) {
                     BranchPicker(path: path, mode: .base, current: GitInfo.compareBase(for: path)) { pickingBase = false }
                 })
             }
@@ -1323,9 +1323,9 @@ struct BranchPicker: View {
                 VStack(alignment: .leading, spacing: 1) {
                     if mode == .base {
                         row("HEAD · uncommitted changes only", selected: current == nil, mono: false) { choose(nil) }
-                        Text("Since branch").font(T.label).foregroundStyle(T.text3).padding(.horizontal, 10).padding(.top, 8).padding(.bottom, 3)
+                        PanelSectionTitle("Since branch")
                     } else {
-                        Text("Recent").font(T.label).foregroundStyle(T.text3).padding(.horizontal, 10).padding(.top, 6).padding(.bottom, 3)
+                        PanelSectionTitle("Recent")
                     }
                     ForEach(filtered, id: \.self) { b in row(b, selected: b == current) { pick(b) } }
                     if mode == .checkout, !query.isEmpty, !branches.contains(query) {
@@ -1371,7 +1371,7 @@ struct BranchPicker: View {
         }
         .buttonStyle(.plain)
         .background(HoverFill())
-        .pointerCursor()
+        .panelPointer()
     }
 
     private func pick(_ b: String) {

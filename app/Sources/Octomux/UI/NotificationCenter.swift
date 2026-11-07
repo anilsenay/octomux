@@ -339,7 +339,7 @@ struct NotificationRow: View {
         .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(hover ? T.hover : item.read ? .clear : T.hover.opacity(0.45)))
         .contentShape(Rectangle())
         .onHover { hover = $0 }
-        .pointerCursor()
+        .panelPointer()
         .onTapGesture(perform: open)
         .help(session == nil ? "This session was closed" : "Go to this session")
     }
@@ -446,8 +446,8 @@ struct DropdownAnchor<Content: View>: NSViewRepresentable {
         if isPresented, c.panel == nil, let win = v.window {
             let host = Host(rootView: AnyView(content()
                 .background(T.m.glass ? AnyView(VisualEffect(material: .popover)) : AnyView(T.raised))
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(T.border))
+                .clipShape(RoundedRectangle(cornerRadius: R.xl, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: R.xl, style: .continuous).stroke(T.border))
                 .foregroundStyle(T.text)
                 .environmentObject(AppModel.shared)))
             let p = Panel(contentRect: NSRect(origin: .zero, size: host.fittingSize), styleMask: [.borderless, .nonactivatingPanel],

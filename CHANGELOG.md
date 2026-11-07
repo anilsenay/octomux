@@ -11,7 +11,8 @@
   the Inbox, its checks' color). ▾ has all of them and Show Changes.
 - **Workspace switcher and Keep Mac awake** open Octomux's own panels instead of system menus: each workspace with
   its color, what waits there and its shortcut; the cup shows what it does now, the modes, "for a while" and the
-  closed-lid limits as chips. Arrow keys, ↩ and esc work as in a menu.
+  closed-lid limits as chips. Arrow keys, ↩ and esc work as in a menu. The status bar's branch and Compare with pickers
+  open the same kind of panel (no more system popovers), and every picker shares one look.
 - **Readability**: with a scene, art passing behind the sidebar is drawn faint there (it no longer sits as
   bright as the rows' text); the Changes list keeps room for about five files when History is open; disabled Commit buttons
   are neutral (they couldn't be read in light themes). Translucent terminals over a scene default to 85% opacity (was 82%):

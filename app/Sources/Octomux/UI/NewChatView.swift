@@ -390,7 +390,7 @@ struct WorkspaceChoice: View {
             .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(checked ? T.hover : .clear))
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain).background(HoverFill()).pointerCursor()
+        .buttonStyle(.plain).background(HoverFill()).panelPointer()
     }
 
     private func create() {

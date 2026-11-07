@@ -378,7 +378,7 @@ struct ChangesPanel: View {
                 .buttonStyle(.plain).hoverHighlight(radius: 6, padding: 0).pointerCursor()
                 .help(base.map { "Also listing everything since this branch left \($0). Click to pick another branch or go back to uncommitted changes only." }
                       ?? "Only uncommitted changes. Click to also see everything since this branch left another one (like main).")
-                .background(PopoverAnchor(isPresented: $pickingBase) {
+                .background(DropdownAnchor(isPresented: $pickingBase) {
                     BranchPicker(path: path, mode: .base, current: base) { pickingBase = false }
                 })
                 Spacer(minLength: 0)
