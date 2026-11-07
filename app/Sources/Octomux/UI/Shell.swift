@@ -295,7 +295,7 @@ enum ShellPrewarm {
             TasksRail()
             VStack(spacing: 0) { ShellBreadcrumb(); ShellHome(); WorkdayHomeContent(surface: false) }
             TaskDetailPanel()
-            SideAgentColumn()
+            // Not the side agent: its chat is live (it attaches to a session and takes pending text when it appears).
         }
         .environmentObject(model)
         .environmentObject(digests)
