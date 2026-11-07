@@ -1,4 +1,6 @@
 import XCTest
+import ImageIO
+import UniformTypeIdentifiers
 @testable import Octomux
 
 final class LayoutFileTests: XCTestCase {
@@ -51,20 +53,38 @@ final class LayoutFileTests: XCTestCase {
         for bad in ["t", "cmd+", "not a key ++", "cmd+tt", "hyper+t", "cmd+ "] { XCTAssertFalse(LayoutFile.isShortcut(bad), bad) }
     }
 
+    /// A real PNG of that many pixels (blank: it packs into a few bytes whatever its size).
+    static func png(_ w: Int, _ h: Int) -> Data {
+        let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceGray(),
+                            bitmapInfo: CGImageAlphaInfo.none.rawValue)!
+        let out = NSMutableData()
+        let dest = CGImageDestinationCreateWithData(out, UTType.png.identifier as CFString, 1, nil)!
+        CGImageDestinationAddImage(dest, ctx.makeImage()!, nil)
+        CGImageDestinationFinalize(dest)
+        return out as Data
+    }
+
     func testPreviewOnlyAPictureInTheFile() {
-        let png = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3])
+        let png = Self.png(40, 30)
         XCTAssertEqual(LayoutFile.image(fromDataURL: "data:image/png;base64," + png.base64EncodedString()), png)
         XCTAssertNil(LayoutFile.image(fromDataURL: "https://example.com/x.png"))                       // nothing remote
         XCTAssertNil(LayoutFile.image(fromDataURL: "data:image/svg+xml;base64,PHN2Zz4="))               // no SVG
         XCTAssertNil(LayoutFile.image(fromDataURL: "data:image/png;base64," + Data("<html>".utf8).base64EncodedString()))
         XCTAssertNil(LayoutFile.image(fromDataURL: "data:image/png;base64," + Data(count: LayoutFile.maxPreviewBytes + 1).base64EncodedString()))
+        // Small files that would unpack into a huge picture, and bytes that only start like a PNG.
+        let bomb = Self.png(LayoutFile.maxPreviewSide + 1, 8)
+        XCTAssertLessThan(bomb.count, LayoutFile.maxPreviewBytes)
+        XCTAssertNil(LayoutFile.image(fromDataURL: "data:image/png;base64," + bomb.base64EncodedString()))
+        XCTAssertNil(LayoutFile.image(fromDataURL: "data:image/png;base64," + Self.png(4096, 4096).base64EncodedString()))   // 16.7 MP
+        XCTAssertNotNil(LayoutFile.image(fromDataURL: "data:image/png;base64," + Self.png(2880, 1800).base64EncodedString()))  // a Retina window
+        XCTAssertNil(LayoutFile.image(fromDataURL: "data:image/png;base64," + Data([0x89, 0x50, 0x4E, 0x47, 1, 2, 3]).base64EncodedString()))
     }
 
     func testWritesWhatItReads() throws {
         var f = try read(#"{"schema":1,"name":"Review desk","author":"Ada","base":"agents","tree":\#(tree),"settings":{"chat":false}}"#).get().file
         f.theme = .init(id: "grid", mode: "light")
         f.keys = ["cmd.next-tab": "cmd+]"]
-        f.preview = Data([0x89, 0x50, 0x4E, 0x47, 9, 9])
+        f.preview = Self.png(16, 10)
         let back = try LayoutFile.read(f.data(), themes: themes, commands: commands).get()
         XCTAssertEqual(back.file, f)
         XCTAssertTrue(back.notes.isEmpty)

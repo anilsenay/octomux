@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 
 // A layout as a file people share (.octomux-layout.json), format v1. Data only — no code, no paths, no commands:
 //
@@ -119,10 +120,21 @@ struct LayoutFile: Equatable {
             guard let d = Data(base64Encoded: String(s.dropFirst(prefix.count))), d.count <= maxPreviewBytes else { return nil }
             let png: [UInt8] = [0x89, 0x50, 0x4E, 0x47], jpg: [UInt8] = [0xFF, 0xD8, 0xFF]
             let head = [UInt8](d.prefix(4))
-            guard head.starts(with: png) || head.starts(with: jpg) else { return nil }
+            guard head.starts(with: png) || head.starts(with: jpg), isSmallPicture(d) else { return nil }
             return d
         }
         return nil
+    }
+
+    /// Biggest picture a preview may be once drawn (a small file can still unpack to gigabytes).
+    static let maxPreviewSide = 4096, maxPreviewPixels = 16_000_000
+    /// One picture that reads, no bigger than that, judged from its header before anything is drawn.
+    static func isSmallPicture(_ d: Data) -> Bool {
+        guard let src = CGImageSourceCreateWithData(d as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
+              CGImageSourceGetCount(src) == 1,
+              let p = CGImageSourceCopyPropertiesAtIndex(src, 0, [kCGImageSourceShouldCache: false] as CFDictionary) as? [CFString: Any],
+              let w = p[kCGImagePropertyPixelWidth] as? Int, let h = p[kCGImagePropertyPixelHeight] as? Int else { return false }
+        return w > 0 && h > 0 && w <= maxPreviewSide && h <= maxPreviewSide && w * h <= maxPreviewPixels
     }
 
     // MARK: Writing
