@@ -122,21 +122,31 @@ struct NewChatView: View {
     }
 
     /// What waits for you (any project) and what ran last in this project; each row opens its session.
+    /// At most three rows each; the header counts them all. Both cards keep the same height, so the block (and
+    /// the composer under it) doesn't move with the numbers.
     @ViewBuilder private var lists: some View {
-        let waiting = Array(model.agentSessions(onlyCurrentWorkspace: false).filter { $0.activity == .needsInput && !$0.isDormant }
-            .sorted { $0.lastActivityAt > $1.lastActivityAt }.prefix(3))
-        let recent = Array((project.map { model.sessions(ofProject: $0.id) } ?? [])
-            .filter { s in !waiting.contains { $0.id == s.id } }
-            .sorted { $0.lastActivityAt > $1.lastActivityAt }.prefix(3))
-        if !waiting.isEmpty || !recent.isEmpty {
+        let waitingAll = model.agentSessions(onlyCurrentWorkspace: false).filter { $0.activity == .needsInput && !$0.isDormant }
+            .sorted { $0.lastActivityAt > $1.lastActivityAt }
+        let recentAll = (project.map { model.sessions(ofProject: $0.id) } ?? [])
+            .filter { s in !waitingAll.contains { $0.id == s.id } }
+            .sorted { $0.lastActivityAt > $1.lastActivityAt }
+        if !waitingAll.isEmpty || !recentAll.isEmpty {
             HStack(alignment: .top, spacing: 12) {
-                if !waiting.isEmpty {
-                    StartList(title: "Waiting for you", tint: T.amber, sessions: waiting, showProject: true)
+                if !waitingAll.isEmpty {
+                    StartList(title: "Waiting for you", tint: T.amber, sessions: Array(waitingAll.prefix(3)), total: waitingAll.count,
+                              showProject: true, showAll: {
+                                  if !model.sidebarVisible { model.toggleSidebar() }
+                                  withAnimation(.easeOut(duration: 0.18)) { model.sidebarAgents = true }
+                              })
+                    .frame(maxHeight: .infinity, alignment: .top)
                 }
-                if !recent.isEmpty {
-                    StartList(title: "Recent in \(project?.name ?? "this project")", tint: nil, sessions: recent, showProject: false)
+                if !recentAll.isEmpty {
+                    StartList(title: "Recent in \(project?.name ?? "this project")", tint: nil, sessions: Array(recentAll.prefix(3)),
+                              total: recentAll.count, showProject: false, showAll: nil)
+                    .frame(maxHeight: .infinity, alignment: .top)
                 }
             }
+            .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -448,20 +458,37 @@ struct StartList: View {
     let title: String
     let tint: Color?
     let sessions: [Session]
+    var total: Int
     let showProject: Bool
+    /// Shown as "Show all ›" when there are more than the rows (nil: no link).
+    var showAll: (() -> Void)?
+    @State private var linkHover = false
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 6) {
                 Image(systemName: tint == nil ? "clock" : "hand.raised.fill").font(T.icon(10)).foregroundStyle(tint ?? T.text3)
                 Text(title).font(.system(size: T.k * 12, weight: .semibold)).foregroundStyle(tint ?? T.text2).lineLimit(1)
                 Spacer(minLength: 4)
-                Text("\(sessions.count)").font(T.meta).monospacedDigit().foregroundStyle(T.text3)
+                Text("\(total)").font(T.meta).monospacedDigit().foregroundStyle(T.text3)
+                if let showAll, total > sessions.count {
+                    Button(action: showAll) {
+                        HStack(spacing: 2) {
+                            Text("Show all")
+                            Image(systemName: "chevron.right").font(T.icon(8, .bold))
+                        }
+                        .font(.system(size: T.k * 11, weight: .medium))
+                        .foregroundStyle(linkHover ? T.text : T.text2)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain).onHover { linkHover = $0 }.pointerCursor()
+                    .help("All \(total) in the Agents list")
+                }
             }
             .padding(.horizontal, 8).padding(.bottom, 4)
             ForEach(sessions) { s in StartListRow(session: s, showProject: showProject) }
         }
         .padding(.top, 10).padding(.bottom, 6).padding(.horizontal, 6)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .startCard()
     }
 }
