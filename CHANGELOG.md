@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- **⌃Tab tab switcher**: hold ⌃ and press Tab to see the project's tabs, most recent first, each with a picture of
+  what it last showed, its activity and agent; ⌃⇧Tab goes back, letting go of ⌃ (or ↩) opens it, esc cancels.
+- **Command palette**: without a query it is grouped (Waiting for you, Sessions, Commands); key hints and the
+  result count at the bottom. Esc, arrows and ↩ work right away, even before the search field has focus.
+- **Calmer window**: one Split menu in the top bar instead of two buttons, wider tabs (inactive tabs without a
+  fill), usage limits as small rings in a slimmer status bar, segmented Files / Changes / Sessions tabs, open
+  sessions marked with a dot instead of an "Open" badge.
+- **New chat** suggests a few starters above the composer (they fill it, nothing is sent). Your messages in the
+  chat view sit in a neutral bubble.
+- **Consistent sizes**: one type scale and one corner-radius scale across the app (text that was half a point
+  smaller is now whole sizes).
+
 - **Chat view**: the conversation is drawn with full markdown (lists, tables, code blocks with highlighting and
   Copy), tool calls grouped per step ("Read 2 files · Ran 1 command") and folded once the turn ends, edit diffs,
   command output, todo lists, plans and questions as cards, "worked for" time per turn, and a "Latest" button
