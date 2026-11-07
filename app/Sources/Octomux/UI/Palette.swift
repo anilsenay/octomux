@@ -122,6 +122,9 @@ struct CommandPalette: View {
     @EnvironmentObject var model: AppModel
     @FocusState private var focused: Bool
     @State private var selected = 0
+    /// Esc, arrows and Return work while the palette is open even if the search field has not taken focus yet
+    /// (the terminal can keep first responder for a moment after ⌘K).
+    @State private var keyMonitor: Any?
 
     var body: some View {
         let results = Array(PaletteSource.search(model.paletteQuery, model: model).prefix(50))
@@ -183,7 +186,29 @@ struct CommandPalette: View {
             .shadow(color: .black.opacity(0.35), radius: 36, y: 16)
             .padding(.top, 70)
         }
-        .onAppear { focused = true; selected = 0 }
+        .onAppear {
+            selected = 0
+            focused = true
+            for d in [0.05, 0.15, 0.35] { DispatchQueue.main.asyncAfter(deadline: .now() + d) { if !focused { focused = true } } }
+            keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { e in
+                guard model.paletteVisible else { return e }
+                let flags = e.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.numericPad, .function])
+                guard flags.isEmpty else { return e }
+                // An input method composing text keeps its own Return / arrows / Esc.
+                if let tv = NSApp.keyWindow?.firstResponder as? NSTextView, tv.hasMarkedText() { return e }
+                let results = Array(PaletteSource.search(model.paletteQuery, model: model).prefix(50))
+                switch e.keyCode {
+                case 53: close(); return nil                                                          // esc
+                case 125: selected = min(selected + 1, max(0, results.count - 1)); return nil         // ↓
+                case 126: selected = max(selected - 1, 0); return nil                                // ↑
+                case 36, 76: run(results); return nil                                                // return
+                default:
+                    if !focused { focused = true }   // typing goes to the search field
+                    return e
+                }
+            }
+        }
+        .onDisappear { if let m = keyMonitor { NSEvent.removeMonitor(m); keyMonitor = nil } }
         .onChange(of: model.paletteQuery) { _, _ in selected = 0 }
     }
 
