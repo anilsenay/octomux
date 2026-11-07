@@ -438,8 +438,24 @@ impl Daemon {
             working,
             lid: b("power.lid"),
             lid_on_battery: b("power.lid_on_battery"),
+            lid_max: match self.setting("power.lid_max_hours", None).and_then(|v| v.as_u64()) {
+                Some(0) => None,
+                Some(h) => Some(Duration::from_secs(h * 3600)),
+                None => Some(Duration::from_secs(power::DEFAULT_LID_HOURS * 3600)),
+            },
         };
-        let mut st = self.power.apply(inputs, &self.paths.run_dir().join("lid-awake"));
+        let hours = inputs.lid_max.map(|d| d.as_secs() / 3600).unwrap_or(0);
+        let (mut st, tripped) = self.power.apply(inputs, &self.paths.run_dir().join("lid-awake"));
+        if let Some(t) = tripped {
+            self.events.push(util::now_millis(), "", "power", t.reason, "closed-lid keep-awake stopped");
+            self.notify(Notification {
+                session_id: String::new(),
+                project_id: String::new(),
+                kind: "power".into(),
+                title: "Octomux let your Mac sleep".into(),
+                body: power::trip_message(t.reason, hours),
+            });
+        }
         if let Some(until) = self.setting("power.until", None) {
             st["until"] = until;
         }

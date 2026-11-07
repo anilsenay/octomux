@@ -29,6 +29,8 @@
   a crash).
   "For a while" keeps it awake 1–8 hours, then goes back to the mode before; the cup can be hidden (Settings brings
   it back).
+  Closed-lid safety: at most a time you choose per lid closing (8 hours by default, up to 24 or no limit), never
+  below 20% battery or under heavy thermal pressure; a notification says when a limit let the Mac sleep.
 - **Changes panel** has "Compare with" at the top: the same branch choice as the status bar's "→ branch".
 
 ## 0.3.0

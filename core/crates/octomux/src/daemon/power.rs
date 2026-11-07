@@ -8,6 +8,11 @@
 //! `pmset -a disablesleep 1` (root) holds it, through a sudoers rule limited to that command that the user
 //! installs once from Settings (admin prompt). It is set only while keeping awake, only on the power adapter
 //! unless `power.lid_on_battery`, and put back to 0 when that ends, on daemon start (after a crash) and exit.
+//!
+//! Safety limits, whatever the mode (so a forgotten setting or a stuck "working" agent can't keep a closed Mac
+//! up for days): the lid may stay closed awake for at most `power.lid_max_hours` (default 8; 0 = no limit),
+//! never below 20 % battery, and never under heavy thermal pressure. A limit ends it until the lid is opened
+//! again, and says so in a notification.
 
 use serde_json::{json, Value};
 use std::process::{Child, Command, Stdio};
@@ -29,6 +34,37 @@ struct Inner {
     lid_set: bool,
     last_working: Option<Instant>,
     last: Value,
+    /// When the lid was seen closed (while it matters).
+    lid_closed_since: Option<Instant>,
+    /// A safety limit ended the closed-lid mode; cleared when the lid opens.
+    tripped: Option<&'static str>,
+}
+
+pub const BATTERY_FLOOR: u32 = 20;
+pub const DEFAULT_LID_HOURS: u64 = 8;
+
+/// What a safety limit says when it stops the closed-lid mode.
+pub fn trip_message(reason: &str, hours: u64) -> String {
+    match reason {
+        "time" => format!("Your Mac was kept awake with the lid closed for {hours} hour{}, the limit you set, so Octomux let it sleep.", if hours == 1 { "" } else { "s" }),
+        "battery" => format!("The battery fell below {BATTERY_FLOOR}% with the lid closed, so Octomux let your Mac sleep."),
+        _ => "Your Mac was getting hot with the lid closed, so Octomux let it sleep.".into(),
+    }
+}
+
+/// Which limit (if any) applies now to a closed lid: closed for `closed`, battery `battery` (None on AC),
+/// thermal pressure level `thermal` (0 nominal … 4).
+pub fn limit_hit(closed: Duration, max: Option<Duration>, battery: Option<u32>, thermal: u64) -> Option<&'static str> {
+    if thermal >= 2 {
+        return Some("thermal");
+    }
+    if battery.is_some_and(|b| b < BATTERY_FLOOR) {
+        return Some("battery");
+    }
+    if max.is_some_and(|m| closed >= m) {
+        return Some("time");
+    }
+    None
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -62,11 +98,18 @@ pub struct Inputs {
     pub working: usize,
     pub lid: bool,
     pub lid_on_battery: bool,
+    /// None: no limit.
+    pub lid_max: Option<Duration>,
+}
+
+/// A safety limit stopped the closed-lid mode just now (to notify about).
+pub struct Tripped {
+    pub reason: &'static str,
 }
 
 impl Keeper {
     /// Applies the settings and the agents' state; returns the status the app shows.
-    pub fn apply(&self, i: Inputs, marker: &std::path::Path) -> Value {
+    pub fn apply(&self, i: Inputs, marker: &std::path::Path) -> (Value, Option<Tripped>) {
         let mut s = self.inner.lock().unwrap();
         if i.working > 0 {
             s.last_working = Some(Instant::now());
@@ -98,7 +141,27 @@ impl Keeper {
         let on_ac = on_ac_power();
         // `sudo -n -l` only while the option is on (or the app asks, `power.rule_changed`).
         let setup = if i.lid { lid_rule_installed() } else { lid_rule_cached() };
-        let want_lid = hold && i.lid && setup && (on_ac || i.lid_on_battery);
+        let mut want_lid = hold && i.lid && setup && (on_ac || i.lid_on_battery);
+        // Safety limits: only looked at while the closed-lid mode is wanted or on.
+        let mut tripped_now = None;
+        if want_lid || s.lid_set {
+            if lid_closed() {
+                let since = *s.lid_closed_since.get_or_insert_with(Instant::now);
+                if s.tripped.is_none() {
+                    let battery = if on_ac { None } else { battery_percent() };
+                    if let Some(r) = limit_hit(since.elapsed(), i.lid_max, battery, thermal_pressure()) {
+                        s.tripped = Some(r);
+                        tripped_now = Some(Tripped { reason: r });
+                    }
+                }
+            } else {
+                s.lid_closed_since = None;
+                s.tripped = None;
+            }
+        }
+        if s.tripped.is_some() {
+            want_lid = false;
+        }
         if want_lid != s.lid_set {
             if set_disablesleep(want_lid) {
                 s.lid_set = want_lid;
@@ -115,14 +178,11 @@ impl Keeper {
             "active": hold && s.caffeinate.is_some(),
             "working": i.working,
             "grace": i.mode == Mode::Agents && hold && i.working == 0,
-            "lid": { "enabled": i.lid, "setup": setup, "active": s.lid_set, "on_ac": on_ac, "on_battery_allowed": i.lid_on_battery },
+            "lid": { "enabled": i.lid, "setup": setup, "active": s.lid_set, "on_ac": on_ac, "on_battery_allowed": i.lid_on_battery,
+                     "max_hours": i.lid_max.map(|d| d.as_secs() / 3600).unwrap_or(0), "stopped": s.tripped },
         });
         s.last = st.clone();
-        st
-    }
-
-    pub fn status(&self) -> Value {
-        self.inner.lock().unwrap().last.clone()
+        (st, tripped_now)
     }
 
     /// Daemon exit: lets the lid sleep again (caffeinate goes away with the daemon on its own).
@@ -220,6 +280,77 @@ fn on_ac_power() -> bool {
     true
 }
 
+/// The built-in display's lid is closed (IOPMrootDomain's AppleClamshellState; no privileges needed).
+#[cfg(target_os = "macos")]
+fn lid_closed() -> bool {
+    use std::ffi::c_void;
+    #[link(name = "IOKit", kind = "framework")]
+    unsafe extern "C" {
+        fn IOServiceMatching(name: *const i8) -> *mut c_void;
+        fn IOServiceGetMatchingService(port: u32, matching: *mut c_void) -> u32;
+        fn IORegistryEntryCreateCFProperty(entry: u32, key: *const c_void, alloc: *const c_void, opts: u32) -> *const c_void;
+        fn IOObjectRelease(o: u32) -> i32;
+    }
+    #[link(name = "CoreFoundation", kind = "framework")]
+    unsafe extern "C" {
+        fn CFStringCreateWithCString(alloc: *const c_void, s: *const i8, enc: u32) -> *const c_void;
+        fn CFBooleanGetValue(b: *const c_void) -> bool;
+        fn CFRelease(cf: *const c_void);
+    }
+    unsafe {
+        let svc = IOServiceGetMatchingService(0, IOServiceMatching(c"IOPMrootDomain".as_ptr()));
+        if svc == 0 {
+            return false;
+        }
+        let key = CFStringCreateWithCString(std::ptr::null(), c"AppleClamshellState".as_ptr(), 0x0800_0100);
+        let v = IORegistryEntryCreateCFProperty(svc, key, std::ptr::null(), 0);
+        CFRelease(key);
+        IOObjectRelease(svc);
+        if v.is_null() {
+            return false;
+        }
+        let closed = CFBooleanGetValue(v);
+        CFRelease(v);
+        closed
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn lid_closed() -> bool {
+    false
+}
+
+/// Battery charge in percent (`pmset -g batt`), None when unknown.
+fn battery_percent() -> Option<u32> {
+    let out = Command::new(PMSET).args(["-g", "batt"]).stderr(Stdio::null()).output().ok()?;
+    let text = String::from_utf8_lossy(&out.stdout);
+    let i = text.find('%')?;
+    let digits: String = text[..i].chars().rev().take_while(|c| c.is_ascii_digit()).collect::<Vec<_>>().into_iter().rev().collect();
+    digits.parse().ok()
+}
+
+/// macOS thermal pressure level (0 nominal, 1 moderate, 2 heavy, 3 trapping, 4 sleeping).
+#[cfg(target_os = "macos")]
+fn thermal_pressure() -> u64 {
+    unsafe extern "C" {
+        fn notify_register_check(name: *const i8, token: *mut i32) -> u32;
+        fn notify_get_state(token: i32, state: *mut u64) -> u32;
+    }
+    static TOKEN: std::sync::OnceLock<Option<i32>> = std::sync::OnceLock::new();
+    let token = *TOKEN.get_or_init(|| {
+        let mut t = 0i32;
+        (unsafe { notify_register_check(c"com.apple.system.thermalpressurelevel".as_ptr(), &mut t) } == 0).then_some(t)
+    });
+    let Some(t) = token else { return 0 };
+    let mut v = 0u64;
+    if unsafe { notify_get_state(t, &mut v) } == 0 { v } else { 0 }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn thermal_pressure() -> u64 {
+    0
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -235,5 +366,18 @@ mod tests {
         assert_eq!(Mode::parse(Some(&json!("agents"))), Mode::Agents);
         assert_eq!(Mode::parse(Some(&json!("nonsense"))), Mode::Off);
         assert_eq!(Mode::parse(None), Mode::Off);
+    }
+
+    #[test]
+    fn closed_lid_limits() {
+        let h = |n: u64| Duration::from_secs(n * 3600);
+        assert_eq!(limit_hit(h(1), Some(h(8)), None, 0), None);
+        assert_eq!(limit_hit(h(8), Some(h(8)), None, 0), Some("time"));
+        assert_eq!(limit_hit(h(30), None, None, 0), None, "no limit set");
+        assert_eq!(limit_hit(h(1), Some(h(8)), Some(19), 0), Some("battery"));
+        assert_eq!(limit_hit(h(1), Some(h(8)), Some(60), 0), None);
+        assert_eq!(limit_hit(h(1), None, Some(60), 2), Some("thermal"));
+        assert_eq!(limit_hit(h(1), None, Some(60), 1), None);
+        assert!(trip_message("time", 8).contains("8 hours"));
     }
 }
