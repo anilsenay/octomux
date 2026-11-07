@@ -59,7 +59,7 @@ struct ShellHome: View {
                         }
                         VStack(alignment: .leading, spacing: 10) {
                             HomeSection(title: "Usage")
-                            UsageStatus().frame(maxWidth: .infinity, alignment: .leading).homeCard()
+                            UsageBars().homeCard()
                         }
                     }
                     .frame(width: 300, alignment: .topLeading)
@@ -98,7 +98,7 @@ struct ShellHome: View {
     }
 
     private func recentRow(_ s: Session) -> some View {
-        HoverRow(pinned: false) {
+        HoverRow(pinned: true) {
             AgentIcon(icon: iconName(for: s, model: model), size: 12).frame(width: 14)
             Text(s.displayTitle).font(.system(size: T.k * 12)).lineLimit(1)
         } actions: {
@@ -196,5 +196,35 @@ struct HomeComposer: View {
             model.newSession(profileId: prof.id, projectId: p.id, worktree: checkout, prompt: t, chat: true,
                              extraArgs: ChatLaunchOptions.load(prof.kind).args(prof.kind)) { ChatFirstMessage.set($0, t) }
         }
+    }
+}
+
+/// Usage as bars: each agent's limits with how much is used (Home's Usage card).
+struct UsageBars: View {
+    @EnvironmentObject var model: AppModel
+    @AppStorage(UsageReading.windowsKey) private var windows = "all"
+    var body: some View {
+        let shown = model.usageProfilesShown()
+        VStack(alignment: .leading, spacing: 10) {
+            if shown.isEmpty { Text("No usage readings yet.").font(T.meta).foregroundStyle(T.text3) }
+            ForEach(shown, id: \.0.id) { prof, readings in
+                HStack(spacing: 14) {
+                    ForEach(UsageReading.shown(readings, windows)) { r in
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text(r.window == "five_hour" ? "\(prof.name) · \(r.shortName)" : r.shortName).font(T.meta).foregroundStyle(T.text2).lineLimit(1)
+                                Spacer(minLength: 4)
+                                Text(r.isReset ? "—" : r.label(left: false)).font(T.mono(11)).foregroundStyle(r.isReset ? T.text3 : T.text)
+                            }
+                            UsageMeter(used: r.effectivePercent, primary: r.window == "five_hour")
+                        }
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .onTapGesture { model.usagePopoverOpen = true }
+        .help("Usage limits")
     }
 }

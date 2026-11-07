@@ -73,6 +73,9 @@ struct AgentRail: View {
     @AppStorage(AgentRail.filterKey) private var filter = ""
     @FocusState private var focused: Bool
     @State private var cursor: String?
+    @State private var moreIdle = false
+    /// Idle sessions shown before "Show N more".
+    static let idleShown = 6
 
     var body: some View {
         let ps = Set(model.projects.map(\.id))
@@ -99,7 +102,9 @@ struct AgentRail: View {
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(groups, id: \.0) { g, sessions in
                         HomeSection(title: g.title, count: sessions.count, dot: g.tone).padding(.horizontal, 14).padding(.top, 12).padding(.bottom, 4)
-                        ForEach(sessions) { s in row(s, selected: isSelected(s), cursor: focused && cursor == s.id) }
+                        let cut = g == .idle && !moreIdle ? Array(sessions.prefix(Self.idleShown)) : sessions
+                        ForEach(cut) { s in row(s, selected: isSelected(s), cursor: focused && cursor == s.id) }
+                        if g == .idle { MoreToggle(hidden: sessions.count - cut.count, expanded: $moreIdle) }
                     }
                     if flat.isEmpty {
                         Text(model.projects.isEmpty ? "Add a project to start (⌘⇧O)." : "No sessions yet. Start one above.")
@@ -156,8 +161,9 @@ struct AgentRail: View {
             case .permission(let p)?: return "Allow \(p)?"
             case .question(let q, _)?: return q
             case nil:
+                if RailGroup.of(s) == .waiting { return s.activity == .error ? "Stopped on an error" : "Waiting for your answer" }
                 if let sm = d?.summary, !sm.isEmpty { return sm }
-                if !s.isAgent { return s.cwd.isEmpty ? "terminal" : PaneHeader.shortPath(s.cwd) }
+                if !s.isAgent { return "terminal" }
                 return s.firstPrompt ?? ""
             }
         }()
