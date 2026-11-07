@@ -1,6 +1,19 @@
 # Changelog
 
-## Unreleased
+## 0.4.0
+
+Highlights:
+- **Chat view**: full markdown, tool calls grouped per step, diffs, plans and questions as cards; answer a question
+  or allow a tool right on its card; `/` and `@` menus, the model and a context ring in the composer, Stop.
+- **Browser for agents**: Claude and Codex sessions get browser tools from Octomux's own MCP server; the page opens
+  beside the agent's tab and you watch it click and type. Send any element of a page to an agent.
+- **New look for the window**: a header on every pane, a git button that shows the next step (Commit, Push, Create
+  PR, the open PR), Octomux's own panels for workspaces, Keep Mac awake and branch pickers, a start screen for new
+  tabs and a **⌃Tab** tab switcher with pictures.
+- **Keep Mac awake** while agents work (or always, or for a while), optionally with the lid closed, with limits.
+- **Permissions**: sessions run under a small "Octomux Sessions" app, so macOS asks screen recording in its name.
+
+All changes:
 
 - **Start screen**: a new tab (New Chat) shows what waits for you and what ran last in the project, with starter
   chips; the composer stays at the bottom, in the same column as the chat, so nothing moves when it starts.
