@@ -33,12 +33,23 @@ enum AquariumMotion {
     }
 
     /// Where an octopus is at time `t` (its top-left), for `count` octopuses in `size`. Sand is the bottom 18%.
+    /// More than this many: two rows, the back one higher up the sand.
+    static let oneRow = 8
+
     static func position(_ f: AquariumFish, index: Int, count: Int, t: Double, size: CGSize, sprite: CGSize) -> CGPoint {
         let s = seed(f.id)
-        let lane = (CGFloat(index) + 0.5) / CGFloat(max(1, count))
+        let rows = count > oneRow ? 2 : 1
+        let row = rows == 2 ? index % 2 : 0                     // 1 = back row
+        let inRow = rows == 2 ? (row == 0 ? (count + 1) / 2 : count / 2) : count
+        let slot = rows == 2 ? index / 2 : index
+        let start: CGFloat = row == 1 ? 0.75 : 0.5
+        let lanes = CGFloat(max(1, inRow)) + (row == 1 ? 0.5 : 0)
+        let lane = (CGFloat(slot) + start) / lanes
         let baseX = lane * size.width - sprite.width / 2
         let sandTop = size.height * 0.82
-        let restY = sandTop - sprite.height * 0.55
+        // The back row sits a sprite and its label higher, so the front row never covers its names.
+        let back = max(size.height * 0.1, sprite.height + 16)
+        let restY = sandTop - sprite.height * 0.55 - (row == 1 ? back : 0)
         switch f.mood {
         case .working:
             let span = min(size.width / CGFloat(max(1, count)) * 0.9, 140)
@@ -108,10 +119,15 @@ struct AquariumView: View {
                 Canvas { ctx, size in
                     if style != .backdrop { water(ctx, size, t) }
                     sand(ctx, size, t)
-                    for (i, f) in list.enumerated() {
+                    // The back row (odd places, when there are two) first, so the front row covers it.
+                    let two = list.count > AquariumMotion.oneRow
+                    let order = Array(list.enumerated()).filter { two && $0.offset % 2 == 1 } + Array(list.enumerated()).filter { !two || $0.offset % 2 == 0 }
+                    let room = size.width / CGFloat(max(1, list.count > AquariumMotion.oneRow ? (list.count + 1) / 2 : list.count))
+                    for (i, f) in order {
                         let o = AquariumMotion.position(f, index: i, count: list.count, t: t, size: size, sprite: sprite)
-                        draw(f, at: o, ctx: ctx, t: t)
-                        if style != .backdrop { label(f, at: o, sprite: sprite, ctx: ctx, room: size.width / CGFloat(max(1, list.count))) }
+                        draw(f, at: o, ctx: ctx, t: t, bubble: style != .backdrop)
+                        // A waiting one's name is in its bubble already.
+                        if style != .backdrop && f.mood != .waiting { label(f, at: o, sprite: sprite, ctx: ctx, room: room) }
                     }
                 }
                 .contentShape(Rectangle())
@@ -121,11 +137,6 @@ struct AquariumView: View {
                     if s?.isDormant == true { model.restart(f.id) }
                     model.selectSession(f.id)
                 })
-            }
-            .overlay(alignment: .topLeading) {
-                if style == .full && list.isEmpty {
-                    Text("No agents swimming yet. Start one (⌘N) and it shows up here.").font(T.meta).foregroundStyle(.white.opacity(0.7)).padding(16)
-                }
             }
         }
         .allowsHitTesting(style != .backdrop)
@@ -179,7 +190,7 @@ struct AquariumView: View {
         }
     }
 
-    private func draw(_ f: AquariumFish, at o: CGPoint, ctx: GraphicsContext, t: Double) {
+    private func draw(_ f: AquariumFish, at o: CGPoint, ctx: GraphicsContext, t: Double, bubble: Bool) {
         let body = f.color
         let light = f.color.opacity(0.55), shade = f.color.opacity(0.75)
         let sleeping = f.mood == .finished || f.mood == .idle
@@ -213,7 +224,21 @@ struct AquariumView: View {
                 ctx.stroke(Path(ellipseIn: CGRect(x: x, y: y, width: r * 2, height: r * 2)), with: .color(.white.opacity(0.7 * (1 - ph))), lineWidth: 1)
             }
         case .waiting:
-            ctx.draw(Text("!").font(.system(size: px * 6, weight: .heavy)).foregroundColor(Color(hex: "#F59E0B")), at: CGPoint(x: o.x + w * 0.5, y: o.y - px * 4))
+            if bubble {
+                // A speech bubble with its name: "! Review PR #42".
+                let name = f.title.count > 18 ? String(f.title.prefix(17)) + "…" : f.title
+                let text = ctx.resolve(Text("! " + name).font(.system(size: 11, weight: .semibold)).foregroundColor(Color(hex: "#B45309")))
+                let ts = text.measure(in: CGSize(width: 400, height: 40))
+                let box = CGRect(x: o.x + w * 0.5 - ts.width / 2 - 8, y: o.y - ts.height - 16, width: ts.width + 16, height: ts.height + 8)
+                ctx.fill(Path(roundedRect: box, cornerRadius: 10), with: .color(Color(hex: "#FFF7E6")))
+                ctx.stroke(Path(roundedRect: box, cornerRadius: 10), with: .color(Color(hex: "#F59E0B")), lineWidth: 1.5)
+                var tail = Path()
+                tail.move(to: CGPoint(x: box.midX - 5, y: box.maxY)); tail.addLine(to: CGPoint(x: box.midX, y: box.maxY + 6)); tail.addLine(to: CGPoint(x: box.midX + 5, y: box.maxY))
+                ctx.fill(tail, with: .color(Color(hex: "#FFF7E6")))
+                ctx.draw(text, at: CGPoint(x: box.midX, y: box.midY))
+            } else {
+                ctx.draw(Text("!").font(.system(size: px * 6, weight: .heavy)).foregroundColor(Color(hex: "#F59E0B")), at: CGPoint(x: o.x + w * 0.5, y: o.y - px * 4))
+            }
         case .finished:
             let ph = (t * 0.4).truncatingRemainder(dividingBy: 1)
             ctx.draw(Text("z").font(.system(size: px * 3.5, weight: .bold)).foregroundColor(.white.opacity(0.8 * (1 - ph))),
@@ -234,22 +259,39 @@ struct AquariumView: View {
     }
 }
 
-/// The Aquarium tab: the aquarium, with a legend.
+/// The Aquarium tab: the aquarium, with a line saying who does what.
 struct AquariumHomeView: View {
     @EnvironmentObject var model: AppModel
     var body: some View {
         AquariumView(style: .full)
-            .overlay(alignment: .topTrailing) {
-                HStack(spacing: 12) {
-                    legend("swims", "working"); legend("!", "waiting for you"); legend("z z", "finished"); legend("on the sand", "idle")
-                }
-                .font(T.meta).foregroundStyle(.white.opacity(0.75))
-                .padding(.horizontal, 10).padding(.vertical, 6)
-                .background(Capsule().fill(.black.opacity(0.25)))
-                .padding(12)
-            }
+            .overlay(alignment: .top) { AquariumHeader(big: true).padding(.horizontal, 20).padding(.top, 16) }
     }
-    private func legend(_ a: String, _ b: String) -> some View {
-        HStack(spacing: 4) { Text(a).fontWeight(.semibold); Text(b) }
+}
+
+/// "Aquarium · 9 agents, one reef" and "2 swimming · 1 needs you · 6 resting".
+struct AquariumHeader: View {
+    @ObservedObject private var model = AppModel.shared
+    var big = false
+
+    static func counts(_ moods: [AquariumFish.Mood]) -> String {
+        let swim = moods.filter { $0 == .working }.count, wait = moods.filter { $0 == .waiting || $0 == .error }.count
+        let rest = moods.count - swim - wait
+        return [swim > 0 ? "\(swim) swimming" : nil, wait > 0 ? "\(wait) need\(wait == 1 ? "s" : "") you" : nil, rest > 0 ? "\(rest) resting" : nil]
+            .compactMap { $0 }.joined(separator: " · ")
+    }
+
+    var body: some View {
+        let agents = model.agentSessions(onlyCurrentWorkspace: !big).filter { !$0.isDormant || $0.lastActivityAt > Int(Date().timeIntervalSince1970) - 6 * 3600 }
+        let moods = agents.map(AquariumFish.moodOf)
+        HStack(alignment: .firstTextBaseline) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Aquarium").font(.system(size: big ? 20 : 13, weight: .semibold))
+                if big { Text(agents.isEmpty ? "An empty reef: start an agent (⌘N)." : "\(agents.count) agent\(agents.count == 1 ? "" : "s"), one reef.").font(T.meta) }
+            }
+            Spacer()
+            Text(Self.counts(moods)).font(T.meta)
+        }
+        .foregroundStyle(.white.opacity(0.85))
+        .shadow(color: .black.opacity(0.35), radius: 3, y: 1)
     }
 }

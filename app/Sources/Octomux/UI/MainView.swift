@@ -132,9 +132,11 @@ struct MainView: View {
 
     /// The work area, with the aquarium above it when the layout has it.
     @ViewBuilder private var workAreaWithExtras: some View {
-        if model.layout.has("aquarium", in: .views) {
+        // Not while the Aquarium tab itself is open (one aquarium on screen).
+        if model.layout.has("aquarium", in: .views), !{ if case .aquarium? = model.activeDoc?.kind { return true }; return false }() {
             VStack(spacing: T.m.inset) {
                 AquariumView(style: .strip)
+                    .overlay(alignment: .top) { AquariumHeader().padding(.horizontal, 14).padding(.top, 10) }
                     .frame(height: 210)
                     .clipShape(RoundedRectangle(cornerRadius: T.m.cardR, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: T.m.cardR, style: .continuous).stroke(T.border))
