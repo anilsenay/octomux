@@ -15,6 +15,9 @@ enum BrowserTools {
 
     static func run(tool: String, args: [String: Any], session: String?) async -> [String: Any] {
         let session = session ?? "unknown"
+        if let refused = await BrowserAccess.check(session: session) {
+            return Result(text: ["### Error", refused], isError: true).mcp
+        }
         do {
             return try await perform(tool: tool, args: args, session: session).mcp
         } catch let f as Failure {
@@ -45,27 +48,31 @@ enum BrowserTools {
             guard let raw = args["url"] as? String, let url = BrowserStore.normalize(raw) else {
                 throw Failure(message: "Not a URL: \(args["url"] as? String ?? "(none)"). Pass a full URL like https://example.com or localhost:3000.")
             }
+            try checkSite(url)
             let page = store.currentPage(of: session) ?? newPage(for: session)
+            let before = Before(page)
             page.show(BrowserActivity(sessionId: session, label: "Opening \(url.host ?? url.absoluteString)"))
             defer { page.endActivity() }
             let ok = await page.load(url)
             if !ok, let e = page.lastError { throw Failure(message: "Couldn't open \(url.absoluteString): \(e)") }
-            return try await afterAction(page, session: session, note: ok ? nil : "The page is still loading; the snapshot may be incomplete.")
+            return try await afterAction(page, session: session, before: before, note: ok ? nil : "The page is still loading; the snapshot may be incomplete.")
 
         case "browser_navigate_back":
             let page = try await pageFor(session)
             guard page.web.canGoBack else { throw Failure(message: "This page has no earlier page to go back to.") }
+            let before = Before(page)
             page.show(BrowserActivity(sessionId: session, label: "Going back"))
             defer { page.endActivity() }
             page.web.goBack()
             _ = await page.waitForNavigation(timeout: 15)
-            return try await afterAction(page, session: session)
+            return try await afterAction(page, session: session, before: before)
 
         case "browser_snapshot":
             let page = try await pageFor(session)
             page.show(BrowserActivity(sessionId: session, label: "Reading the page"))
             defer { page.endActivity(after: 0.8) }
-            return try await afterAction(page, session: session, settle: false, depth: (args["depth"] as? Double).map(Int.init) ?? (args["depth"] as? Int))
+            let depth = (args["depth"] as? Double).map(Int.init) ?? (args["depth"] as? Int)
+            return try await afterAction(page, session: session, settle: false, depth: depth, mode: (args["diff"] as? Bool) == true ? .diff : .full)
 
         case "browser_click", "browser_hover", "browser_type", "browser_select_option":
             let page = try await pageFor(session)
@@ -78,6 +85,7 @@ enum BrowserTools {
             case "browser_type": label = "Typing " + quoted(short((args["text"] as? String) ?? "", 40))
             default: label = "Choosing " + quoted(((args["values"] as? [Any]) ?? []).map { "\($0)" }.joined(separator: ", "))
             }
+            let before = Before(page)
             let loc = try await js(page, "return __octomux.locate(ref)", ["ref": ref]) as? [String: Any]
             let point = (loc?["center"] as? [String: Any]).flatMap(cgPoint)
             let box = (loc?["box"] as? [String: Any]).flatMap(cgRect)
@@ -97,15 +105,16 @@ enum BrowserTools {
                 guard !values.isEmpty else { throw Failure(message: "Pass the option(s) to choose in values.") }
                 _ = try await js(page, "return __octomux.selectOption(ref, values)", ["ref": ref, "values": values])
             }
-            return try await afterAction(page, session: session)
+            return try await afterAction(page, session: session, before: before)
 
         case "browser_press_key":
             let page = try await pageFor(session)
             let key = try string(args, "key")
+            let before = Before(page)
             page.show(BrowserActivity(sessionId: session, label: "Pressing \(key)"))
             defer { page.endActivity() }
             _ = try await js(page, "return __octomux.press(key)", ["key": key])
-            return try await afterAction(page, session: session)
+            return try await afterAction(page, session: session, before: before)
 
         case "browser_take_screenshot":
             let page = try await pageFor(session)
@@ -128,8 +137,9 @@ enum BrowserTools {
             if let text { o["text"] = text }
             if let gone { o["textGone"] = gone }
             if let time { o["time"] = min(time, 30) }
+            let before = Before(page)
             _ = try await js(page, "return await __octomux.waitFor(o)", ["o": o])
-            return try await afterAction(page, session: session)
+            return try await afterAction(page, session: session, before: before)
 
         case "browser_evaluate":
             let page = try await pageFor(session)
@@ -167,6 +177,7 @@ enum BrowserTools {
                 let page = newPage(for: session)
                 if let raw = args["url"] as? String, !raw.isEmpty {
                     guard let url = BrowserStore.normalize(raw) else { throw Failure(message: "Not a URL: \(raw).") }
+                    try checkSite(url)
                     page.show(BrowserActivity(sessionId: session, label: "Opening \(url.host ?? url.absoluteString)"))
                     defer { page.endActivity() }
                     _ = await page.load(url)
@@ -187,10 +198,64 @@ enum BrowserTools {
                 return Result(text: tabsList(session: session))
             }
 
+        case "browser_resize":
+            let page = try await pageFor(session)
+            let before = Before(page)
+            let preset = (args["preset"] as? String)?.lowercased()
+            let w = (args["width"] as? Double) ?? (args["width"] as? Int).map(Double.init)
+            let h = (args["height"] as? Double) ?? (args["height"] as? Int).map(Double.init)
+            if preset == "fit" || preset == "reset" {
+                page.viewport = nil
+            } else if let preset {
+                guard let v = BrowserViewport.preset(preset) else { throw Failure(message: "No preset \(preset). Presets: \(BrowserViewport.presets.map { $0.name.lowercased() }.joined(separator: ", ")), fit.") }
+                page.viewport = v
+            } else if let w, let h {
+                guard (200...3840).contains(w), (200...3840).contains(h) else { throw Failure(message: "Width and height must be between 200 and 3840.") }
+                page.viewport = BrowserViewport(name: "Custom", width: w, height: h, userAgent: nil)
+            } else {
+                throw Failure(message: "Pass a preset (mobile, tablet, laptop, desktop, fit) or width and height.")
+            }
+            page.show(BrowserActivity(sessionId: session, label: "Resizing to " + (page.viewport?.label ?? "the browser's size")))
+            defer { page.endActivity(after: 0.8) }
+            // A new user agent (phone / tablet) only reaches the site with a reload.
+            if (before.userAgent ?? "") != (page.web.customUserAgent ?? ""), page.web.url != nil { page.web.reload(); _ = await page.waitForNavigation(timeout: 15) }
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            var r = try await afterAction(page, session: session, before: before)
+            let m = try? await js(page, "return __octomux.metrics()", [:]) as? [String: Any]
+            let vw = (m?["viewportWidth"] as? Double).map { Int($0) } ?? 0, vh = (m?["viewportHeight"] as? Double).map { Int($0) } ?? 0
+            r.text.insert(contentsOf: ["### Viewport", "- \(page.viewport?.label ?? "Follows the browser's size") (the page sees \(vw)×\(vh))"], at: 0)
+            return r
+
         default:
             throw Failure(message: "Unknown tool \(tool).")
         }
     }
+
+    /// Allowed sites (Settings → MCP → Octomux browser): refuse anything else with what *is* allowed.
+    private static func checkSite(_ url: URL) throws {
+        let sites = BrowserAccess.allowedSites
+        guard !BrowserAccess.allows(url, patterns: sites) else { return }
+        throw Failure(message: "\(url.host ?? url.absoluteString) isn't one of the sites the user allows for agents (Settings → MCP → Octomux browser). Allowed: \(sites.joined(separator: ", ")). Don't try other ways to reach it; ask the user if you need it.")
+    }
+
+    /// The page before an action, to tell the agent what the action changed.
+    struct Before {
+        var url: String
+        var title: String
+        var pages: Set<String>
+        var userAgent: String?
+        @MainActor init(_ page: BrowserPage) {
+            url = page.web.url?.absoluteString ?? ""
+            title = page.web.title ?? ""
+            pages = Set(BrowserStore.shared.pages.map(\.id))
+            userAgent = page.web.customUserAgent
+        }
+    }
+
+    enum SnapshotMode { case full, diff, auto }
+
+    /// Up to this size an action's result carries the whole page (a diff saves little); above it, only what changed.
+    static let smallSnapshot = 6_000
 
     // MARK: Pages
 
@@ -217,44 +282,89 @@ enum BrowserTools {
 
     // MARK: Results
 
-    /// After an action: wait for a navigation it started and for the page to settle, then report it with a snapshot.
-    private static func afterAction(_ page: BrowserPage, session: String, settle: Bool = true, note: String? = nil, depth: Int? = nil) async throws -> Result {
+    /// After an action: wait for a navigation it started and for the page to settle, then report what changed and
+    /// the page (whole, or only what changed since this session's last snapshot of it: see `snapshotText`).
+    private static func afterAction(_ page: BrowserPage, session: String, before: Before? = nil, settle: Bool = true, note: String? = nil,
+                                    depth: Int? = nil, mode: SnapshotMode = .auto) async throws -> Result {
         if settle {
             try? await Task.sleep(nanoseconds: 120_000_000)
             if page.web.isLoading { _ = await page.waitForNavigation(timeout: 10) }
             _ = try? await js(page, "return await __octomux.settle(120, 2000)", [:])
         }
-        var text = pageLines(page, session: session)
+        var text = pageLines(page, session: session, before: before)
         if let note { text.append("- Note: \(note)") }
         var opts: [String: Any] = [:]
         if let depth { opts["depth"] = depth }
         let snap = try await js(page, "return __octomux.snapshot(opts)", ["opts": opts]) as? [String: Any]
-        var yaml = (snap?["yaml"] as? String) ?? ""
-        if yaml.count > maxSnapshot {
-            // Cut at a line end, so the last element stays whole.
-            let head = yaml.prefix(maxSnapshot)
-            yaml = String(head[..<(head.lastIndex(of: "\n") ?? head.endIndex)])
-                + "\n# … the page is longer: snapshot cut at \(maxSnapshot / 1000)k characters. browser_snapshot with depth gives an overview; browser_evaluate reads one part."
-        }
-        text += ["### Snapshot", "```yaml", yaml, "```"]
+        let yaml = (snap?["yaml"] as? String) ?? ""
+        let url = page.web.url?.absoluteString ?? ""
+        let previous = depth == nil ? page.lastSnapshot[session] : nil
+        if depth == nil { page.lastSnapshot[session] = (url, yaml) }
+        text += snapshotText(yaml: yaml, previous: previous?.url == url ? previous?.yaml : nil, mode: mode, urlChanged: before.map { $0.url != url } ?? false)
         return Result(text: text)
     }
 
+    /// The snapshot section. `.full` and `.diff` do what the agent asked (a diff without an earlier snapshot of this
+    /// page gives the whole page). `.auto` (after actions): the whole page when it is small, new (another address)
+    /// or changed a lot; else only what changed, said so in the result.
+    static func snapshotText(yaml: String, previous: String?, mode: SnapshotMode, urlChanged: Bool) -> [String] {
+        func full(_ head: String? = nil) -> [String] {
+            var y = yaml
+            if y.count > maxSnapshot {
+                // Cut at a line end, so the last element stays whole.
+                let headPart = y.prefix(maxSnapshot)
+                y = String(headPart[..<(headPart.lastIndex(of: "\n") ?? headPart.endIndex)])
+                    + "\n# … the page is longer: snapshot cut at \(maxSnapshot / 1000)k characters. browser_snapshot with depth gives an overview; browser_evaluate reads one part."
+            }
+            return ["### Snapshot" + (head.map { " (\($0))" } ?? ""), "```yaml", y, "```"]
+        }
+        switch mode {
+        case .full: return full()
+        case .diff:
+            guard let previous else { return full("no earlier snapshot of this page, so the whole page") }
+            guard let d = SnapshotDiff.diff(old: previous, new: yaml) else { return full("it changed too much for a diff, so the whole page") }
+            return diffText(d)
+        case .auto:
+            guard !urlChanged, let previous, yaml.count > smallSnapshot,
+                  let d = SnapshotDiff.diff(old: previous, new: yaml), d.text.count < yaml.count / 2 else { return full() }
+            return diffText(d)
+        }
+    }
+
+    private static func diffText(_ d: SnapshotDiff.Result) -> [String] {
+        if d.isEmpty { return ["### Snapshot (changes)", "Nothing changed since your last snapshot of this page; its refs still work."] }
+        return ["### Snapshot (changes)",
+                "Only what changed since your last snapshot of this page (\(d.added) line\(d.added == 1 ? "" : "s") + new or changed, \(d.removed) - gone; unmarked lines are their unchanged parents). Refs not listed still work. browser_snapshot gives the whole page.",
+                "```diff", d.text, "```"]
+    }
+
     /// The "### Page" section, plus what happened since the last call (dialogs, popups, console errors).
-    static func pageLines(_ page: BrowserPage, session: String) -> [String] {
+    static func pageLines(_ page: BrowserPage, session: String, before: Before? = nil) -> [String] {
         var out = ["### Page", "- Page: \(page.id)" + (store.pages.count > 1 ? " (\(store.pages.count) pages open; browser_tabs lists them)" : ""),
                    "- URL: \(page.web.url?.absoluteString ?? page.url)", "- Title: \(page.web.title ?? page.title)"]
-        let fresh = page.console.dropFirst(page.consoleSeen)
-        let errors = fresh.filter { $0.level == "error" }.count, warnings = fresh.filter { $0.level == "warn" }.count
-        if errors + warnings > 0 {
-            let parts = [errors > 0 ? "\(errors) error\(errors == 1 ? "" : "s")" : nil, warnings > 0 ? "\(warnings) warning\(warnings == 1 ? "" : "s")" : nil].compactMap { $0 }
-            out.append("- Console: \(parts.joined(separator: ", ")) since the last look (browser_console_messages shows them)")
+        if let v = page.viewport { out.append("- Viewport: \(v.label)") }
+        // What happened since this session's last result: the action's effects, then the page's own events.
+        var changes: [String] = []
+        if let before {
+            let url = page.web.url?.absoluteString ?? ""
+            if !before.url.isEmpty, before.url != url { changes.append("URL changed: \(before.url) → \(url)") }
+            let title = page.web.title ?? ""
+            if !before.title.isEmpty, before.title != title { changes.append("Title changed: “\(before.title)” → “\(title)”") }
+            for p in store.pages where !before.pages.contains(p.id) && p.id != page.id {
+                changes.append("New page \(p.id) opened: \(p.web.url?.absoluteString ?? "loading…") (browser_tabs select to use it)")
+            }
         }
-        if !page.events.isEmpty {
-            out.append("### Events")
-            out += page.events.map { "- \($0)" }
-            page.events.removeAll()
+        changes += page.events
+        page.events.removeAll()
+        let seen = min(page.consoleReported[session] ?? 0, page.console.count)
+        let fresh = page.console.dropFirst(seen)
+        page.consoleReported[session] = page.console.count
+        let errors = fresh.filter { $0.level == "error" }, warnings = fresh.filter { $0.level == "warn" }.count
+        if let first = errors.first {
+            changes.append("New console error: \(short(first.text, 300))" + (errors.count > 1 ? " (and \(errors.count - 1) more; browser_console_messages lists them)" : ""))
         }
+        if warnings > 0 { changes.append("\(warnings) new console warning\(warnings == 1 ? "" : "s") (browser_console_messages)") }
+        if !changes.isEmpty { out.append("### Changes"); out += changes.map { "- \($0)" } }
         return out
     }
 

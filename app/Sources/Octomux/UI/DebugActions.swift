@@ -9,6 +9,72 @@ enum DebugActions {
         registerMenuBar()
         let d = DebugServer.shared
         let m = AppModel.shared
+        // The browser beside the active tab: state, and the user's actions (pick/send an element, find, sizes, links).
+        d.register("browser") { p in MainActor.assumeIsolated { () -> Any in
+            let store = BrowserStore.shared
+            let page = store.splitPage(tab: m.activeTabId)
+            switch p["op"] as? String ?? "state" {
+            case "focus_web": if let page { page.web.window?.makeFirstResponder(page.web) }
+            case "focus_terminal": TerminalHost.shared.focusCurrent()
+            case "toggle": BrowserUI.toggle()
+            case "deliver": if let sid = p["session"] as? String { BrowserSend.deliver(p["text"] as? String ?? "hello", to: sid) }
+            case "hover":  // the pointer over the element `selector` finds (as the picker sees it)
+                if let page, let sel = p["selector"] as? String {
+                    Task { _ = try? await BrowserTools.js(page, "const e = document.querySelector(s); const r = e.getBoundingClientRect(); e.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, composed: true, clientX: r.left + 4, clientY: r.top + 4 }))", ["s": sel]) }
+                }
+            case "key":   // a ⌘-key through the window's key-equivalent path (as AppKit does), with whatever has focus
+                if let win = (NSApp.delegate as? AppDelegate)?.mainWindow, let ch = p["chars"] as? String,
+                   let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: (p["cmd"] as? Bool) == false ? [] : [.command],
+                                            timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: win.windowNumber, context: nil,
+                                            characters: ch, charactersIgnoringModifiers: ch, isARepeat: false, keyCode: 0) {
+                    return ["handled": win.performKeyEquivalent(with: e), "first_responder": String(describing: type(of: win.firstResponder as Any))]
+                }
+            case "type":  // text into whatever field has focus (its field editor)
+                if let tv = (NSApp.delegate as? AppDelegate)?.mainWindow?.firstResponder as? NSTextView, let t = p["text"] as? String {
+                    tv.insertText(t, replacementRange: tv.selectedRange())
+                }
+            case "pick_start": page?.startPicking()
+            case "pick":   // as if the user clicked the element `selector` finds while picking
+                if let page, let sel = p["selector"] as? String {
+                    Task { if let info = try? await BrowserTools.js(page, "return __octomux.pickElement(s)", ["s": sel]) as? [String: Any] { await page.didPick(info) } }
+                }
+            case "send":   // the send panel's Send: note + session (default: the first target)
+                if let page, let picked = page.picked, let tab = m.activeTabId {
+                    let sid = p["session"] as? String ?? BrowserSend.targets(tab: tab).first?.id
+                    if let sid {
+                        let kind = m.profile(m.session(sid)?.profileId)?.kind ?? .claude
+                        let text = BrowserSend.message(note: p["note"] as? String ?? "", info: picked.info, image: picked.image.flatMap(BrowserSend.saveImage), kind: kind)
+                        page.picked = nil
+                        BrowserSend.deliver(text, to: sid)
+                        return ["sent": text, "to": sid]
+                    }
+                }
+            case "find": if let page { page.findVisible = true; page.find(p["text"] as? String ?? "") }
+            case "viewport": page?.viewport = (p["name"] as? String).flatMap(BrowserViewport.preset)
+            case "zoom": if let z = p["value"] as? Double { page?.zoom = z }
+            case "open_link":
+                if let u = (p["url"] as? String).flatMap(URL.init(string:)) {
+                    return ["in_app": BrowserLinks.open(u, session: p["session"] as? String, flipped: (p["shift"] as? Bool) == true)]
+                }
+            case "load":
+                if let page, let u = (p["url"] as? String).flatMap(URL.init(string:)) { Task { await page.load(u) } }
+            case "access_answer":   // answers the next Ask prompts in automation: true / false / null (ask)
+                if let v = p["value"] as? Bool { BrowserAccess.autoAnswer = { _ in v } } else { BrowserAccess.autoAnswer = nil }
+            default: break
+            }
+            let fr = (page?.web.window?.firstResponder as? NSView).map { v in page.map { v === $0.web || v.isDescendant(of: $0.web) } ?? false } ?? false
+            return [
+                "page": page?.id ?? "", "url": page?.web.url?.absoluteString ?? "", "title": page?.web.title ?? "",
+                "zoom": page?.zoom ?? 1, "viewport": page?.viewport?.label ?? "", "web_frame": page.map { NSStringFromRect($0.web.frame) } ?? "", "web_parent": page.flatMap { $0.web.superview.map { "\(type(of: $0)) \(NSStringFromRect($0.frame)) bounds \(NSStringFromRect($0.bounds))" } } ?? "none", "web_in_window": page?.web.window != nil,
+                "find_visible": page?.findVisible ?? false, "find_count": page?.findCount ?? -1,
+                "load_error": page?.loadError?.message ?? "", "picking": page?.picking ?? false,
+                "picked": page?.picked?.selector ?? "", "picked_image": page?.picked?.image != nil,
+                "address_focus_requests": page?.addressFocusRequest ?? 0, "web_has_focus": fr,
+                "downloads": BrowserDownloads.shared.items.map { ["name": $0.name, "path": $0.file?.path ?? "", "done": $0.done, "error": $0.error ?? ""] },
+                "pages": store.pages.map(\.id), "split_open": store.splitOpen(tab: m.activeTabId),
+                "decisions": BrowserAccess.decisions, "access": BrowserAccess.mode.rawValue, "sites": BrowserAccess.allowedSites,
+            ] as [String: Any]
+        } }
         d.register("ui_state") { _ in
             [
                 "connected": m.connected,
@@ -338,8 +404,11 @@ enum DebugActions {
                 if let win = NSApp.keyWindow ?? NSApp.mainWindow {
                     let chars = p["chars"] as? String ?? ""
                     let code = UInt16(p["code"] as? Int ?? 0)
+                    var flags: NSEvent.ModifierFlags = []
+                    if (p["cmd"] as? Bool) == true { flags.insert(.command) }
+                    if (p["shift"] as? Bool) == true { flags.insert(.shift) }
                     for type in [NSEvent.EventType.keyDown, .keyUp] {
-                        if let e = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                        if let e = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: flags, timestamp: ProcessInfo.processInfo.systemUptime,
                                                     windowNumber: win.windowNumber, context: nil, characters: chars,
                                                     charactersIgnoringModifiers: chars, isARepeat: false, keyCode: code) {
                             NSApp.postEvent(e, atStart: false)
@@ -635,9 +704,11 @@ enum DebugActions {
                     // before the down is sent: a view that tracks the mouse inside mouseDown (a split divider)
                     // pulls it from the queue; sent after, it would wait forever.
                     func ev(_ t: NSEvent.EventType, _ n: Int) -> NSEvent? {
-                        NSEvent.mouseEvent(with: t, location: pt, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                        NSEvent.mouseEvent(with: t, location: pt, modifierFlags: (p["cmd"] as? Bool) == true ? [.command] : [], timestamp: ProcessInfo.processInfo.systemUptime,
                                            windowNumber: w.windowNumber, context: nil, eventNumber: 0, clickCount: n, pressure: 1)
                     }
+                    // "move": the pointer arrives first (a terminal finds the link under it on a ⌘ hover).
+                    if (p["move"] as? Bool) == true, let mv = ev(.mouseMoved, 0) { w.contentView?.hitTest(pt)?.mouseMoved(with: mv) }
                     for n in 1...max(1, (p["count"] as? Int) ?? 1) {
                         if let up = ev(.leftMouseUp, n) { NSApp.postEvent(up, atStart: false) }
                         if let down = ev(.leftMouseDown, n) { w.sendEvent(down) }
@@ -924,7 +995,12 @@ enum DebugActions {
         // pressing one by title (performClick: no hit testing).
         d.register("sheet_buttons") { p in
             // "window": "settings" lists the Settings window's own buttons instead of its sheet's.
-            let win = (p["window"] as? String) == "settings" ? SettingsWindow.window : SettingsWindow.window?.attachedSheet
+            // "main": the main window's sheet (e.g. the browser's Ask prompt).
+            let win = switch p["window"] as? String {
+            case "settings": SettingsWindow.window
+            case "main": (NSApp.delegate as? AppDelegate)?.mainWindow?.attachedSheet
+            default: SettingsWindow.window?.attachedSheet
+            }
             guard let sheet = win, let root = sheet.contentView else { return ["buttons": []] }
             var out: [[String: Any]] = []
             func walk(_ v: NSView) {

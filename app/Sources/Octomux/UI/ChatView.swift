@@ -356,6 +356,12 @@ struct ChatView: View {
         .onChange(of: model.session(sessionId)?.activity) { _, a in if a == .idle || a == .done { DispatchQueue.main.asyncAfter(deadline: .now() + 20) { if model.session(sessionId)?.activity != .working { queued.removeAll() } } } }
         .onChange(of: s?.transcriptPath) { _, _ in chat.attach(resolvePath(model.session(sessionId))) }
         .onChange(of: s?.agentSessionId) { _, _ in chat.attach(resolvePath(model.session(sessionId))) }
+        // Something to send from elsewhere (an element picked in the browser): added to the draft, not sent.
+        .onReceive(NotificationCenter.default.publisher(for: .octomuxComposerAppend)) { n in
+            guard (n.object as? String) == sessionId else { return }
+            takeSent()
+        }
+        .onAppear { takeSent() }
     }
 
     /// Before the transcript has anything: the first message (started from the chat screen) and a spinner,
@@ -496,6 +502,14 @@ struct ChatView: View {
               let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
         let r = ContextReading(statusLine: o)
         if r != statusContext { statusContext = r }
+    }
+
+    /// Text sent here from elsewhere (an element picked in the browser): added to the draft, not sent.
+    private func takeSent() {
+        for t in BrowserSend.takePending(sessionId) {
+            draft += (draft.isEmpty ? "" : draft.hasSuffix("\n") ? "\n" : "\n\n") + t
+            composerFocused = true
+        }
     }
 
     private func send() {

@@ -102,7 +102,12 @@ final class GhosttyRuntime {
             let data = Data(bytes: ptr, count: Int(u.len))
             if let str = String(data: data, encoding: .utf8) {
                 let url = URL(string: str) ?? URL(fileURLWithPath: str)
-                NSWorkspace.shared.open(url)
+                let session = view?.sessionId
+                let flipped = NSEvent.modifierFlags.contains(.shift)
+                // Web links may open in the Octomux browser beside the tab (Settings → MCP → Octomux browser).
+                DispatchQueue.main.async {
+                    if !BrowserLinks.open(url, session: session, flipped: flipped) { NSWorkspace.shared.open(url) }
+                }
             }
             return true
         case GHOSTTY_ACTION_MOUSE_SHAPE:

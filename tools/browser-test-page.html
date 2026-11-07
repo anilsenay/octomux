@@ -14,4 +14,16 @@ button{background:#5b5bd6;color:#fff;border:0;border-radius:6px} #out{padding:10
 <p id="out">Not submitted</p>
 <p><a href="#details" onclick="document.getElementById('details').hidden=false">Show details</a></p>
 <div id="details" hidden><h2>Details</h2><p>Hidden until the link is clicked.</p></div>
+<h2>More</h2>
+<p><a href="browser-test-page.html#popup" target="_blank">Open in a new page</a> ·
+<a href="data:text/plain;charset=utf-8,Hello%20from%20the%20Octomux%20browser%20test" download="octomux-test.txt">Download a file</a> ·
+<button type="button" onclick="console.error('Something broke on purpose')">Log an error</button> ·
+<button type="button" onclick="addItem()">Add an item</button> ·
+<a href="https://example.org/">Example.org</a></p>
+<ol id="items"></ol>
+<script>
+  const list = document.getElementById('items');
+  for (let i = 1; i <= 120; i++) { const li = document.createElement('li'); li.textContent = 'Item ' + i + ' of the long list'; list.appendChild(li); }
+  function addItem() { const li = document.createElement('li'); li.textContent = 'A new item, added by the button'; list.insertBefore(li, list.firstChild); }
+</script>
 </body></html>

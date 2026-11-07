@@ -77,8 +77,9 @@ struct ComposerField: NSViewRepresentable {
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, nsView: ComposerScrollView, context: Context) -> CGSize? {
-        nsView.recalcHeight(width: proposal.width)
-        return CGSize(width: proposal.width ?? 300, height: nsView.height)
+        // Only measures: SwiftUI asks with several widths in one pass, and changing anything here (or asking for
+        // another layout) made long text loop forever.
+        CGSize(width: proposal.width ?? 300, height: nsView.measure(width: proposal.width))
     }
 
     private func apply(to sv: ComposerScrollView, _ tv: ComposerTextView) {
@@ -149,16 +150,35 @@ final class ComposerScrollView: NSScrollView {
     var maxHeight: CGFloat = 220
     private(set) var height: CGFloat = 36
 
-    /// Height of the text at `width` (or the current width), clamped; scrolls past the maximum.
-    func recalcHeight(width: CGFloat? = nil) {
-        guard let tv = textView, let lm = tv.layoutManager, let tc = tv.textContainer else { return }
-        if let w = width, w > 0, abs(tc.containerSize.width - w) > 0.5 {
-            tc.containerSize = NSSize(width: w, height: .greatestFiniteMagnitude)
-        }
-        lm.ensureLayout(for: tc)
-        var used = lm.usedRect(for: tc).height
-        if tv.string.hasSuffix("\n") || tv.string.isEmpty { used = max(used, lm.extraLineFragmentRect.maxY) }
+    /// Height of the text at `width` (or the width it wraps at now), clamped; scrolls past the maximum. Measured on
+    /// an off-screen copy: changing the field's own text system here made it lay out again while drawing, which
+    /// resized it, which made SwiftUI measure again (long text looped until AppKit gave up).
+    func measure(width: CGFloat?) -> CGFloat {
+        guard let tv = textView, let tc = tv.textContainer else { return height }
+        let w = (width ?? 0) > 0 ? width! : tc.containerSize.width
+        guard w > 0, w < 100_000 else { return height }
+        let key = MeasureKey(text: tv.string, width: w, font: tv.font)
+        if let last = lastMeasure, last.key == key { return last.height }
+        let storage = NSTextStorage(string: tv.string.isEmpty ? " " : tv.string, attributes: [.font: tv.font ?? NSFont.systemFont(ofSize: 13)])
+        let lm = NSLayoutManager()
+        let c = NSTextContainer(size: NSSize(width: w, height: .greatestFiniteMagnitude))
+        c.lineFragmentPadding = tc.lineFragmentPadding
+        lm.addTextContainer(c)
+        storage.addLayoutManager(lm)
+        lm.ensureLayout(for: c)
+        var used = lm.usedRect(for: c).height
+        if tv.string.hasSuffix("\n") { used = max(used, lm.extraLineFragmentRect.maxY) }
         let h = min(max(ceil(used), minHeight), maxHeight)
+        lastMeasure = (key, h)
+        return h
+    }
+
+    private struct MeasureKey: Equatable { var text: String; var width: CGFloat; var font: NSFont? }
+    private var lastMeasure: (key: MeasureKey, height: CGFloat)?
+
+    /// After the text or the width on screen changed: a new height asks SwiftUI to lay the field out again.
+    func recalcHeight(width: CGFloat? = nil) {
+        let h = measure(width: width)
         if abs(h - height) > 0.5 {
             height = h
             invalidateIntrinsicContentSize()
@@ -167,11 +187,8 @@ final class ComposerScrollView: NSScrollView {
     }
 
     override var intrinsicContentSize: NSSize { NSSize(width: NSView.noIntrinsicMetric, height: height) }
-
-    override func layout() {
-        super.layout()
-        recalcHeight()
-    }
+    // No height work in layout(): SwiftUI measures the field with sizeThatFits for every width it tries, and asking
+    // for another layout from inside one (long text, a field that just appeared) looped until AppKit gave up.
 }
 
 final class ComposerTextView: NSTextView {

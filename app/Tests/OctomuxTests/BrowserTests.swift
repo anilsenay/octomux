@@ -3,6 +3,8 @@ import WebKit
 import XCTest
 @testable import Octomux
 
+struct Failure: Error {}
+
 final class BrowserAddressTests: XCTestCase {
     func testNormalize() {
         XCTAssertEqual(BrowserStore.normalize("https://example.com/a")?.absoluteString, "https://example.com/a")
@@ -50,7 +52,7 @@ final class BrowserToolsTests: XCTestCase {
     private func ref(_ snapshot: String, _ pattern: String) throws -> String {
         let re = try NSRegularExpression(pattern: pattern + #"[^\n]*?\[ref=(\w+)\]"#)
         guard let m = re.firstMatch(in: snapshot, range: NSRange(snapshot.startIndex..., in: snapshot)),
-              let r = Range(m.range(at: 1), in: snapshot) else { throw XCTSkip("no \(pattern) in snapshot:\n\(snapshot)") }
+              let r = Range(m.range(at: 1), in: snapshot) else { XCTFail("no \(pattern) in snapshot:\n\(snapshot)"); throw Failure() }
         return String(snapshot[r])
     }
 
@@ -72,18 +74,19 @@ final class BrowserToolsTests: XCTestCase {
         XCTAssertNil(r["isError"], text)
         XCTAssertTrue(text.contains("text: a@b.co"), text)
 
-        let agree = try ref(text, #"checkbox "I agree to the terms""#)
+        let full = (await call("browser_snapshot")).text
+        let agree = try ref(full, #"checkbox "I agree to the terms""#)
         (text, _) = await call("browser_click", ["ref": agree, "element": "I agree"])
         XCTAssertTrue(text.contains(#"checkbox "I agree to the terms" [checked]"#), text)
 
-        let plan = try ref(text, #"combobox "Plan""#)
+        let plan = try ref(full, #"combobox "Plan""#)
         (text, _) = await call("browser_select_option", ["ref": plan, "element": "Plan", "values": ["Pro"]])
         XCTAssertTrue(text.contains(#"option "Pro" [selected]"#), text)
 
-        let create = try ref(text, #"button "Create account""#)
+        let create = try ref(full, #"button "Create account""#)
         (text, _) = await call("browser_click", ["ref": create, "element": "Create account"])
         XCTAssertTrue(text.contains("Submitted: a@b.co / pro / true"), text)
-        XCTAssertTrue(text.contains("1 warning"), "the page's console.warn is reported: \(text)")
+        XCTAssertTrue(text.contains("1 new console warning"), "the page's console.warn is reported: \(text)")
 
         (text, _) = await call("browser_console_messages")
         XCTAssertTrue(text.contains("[warn] form submitted"), text)
@@ -165,13 +168,14 @@ final class BrowserToolsTests: XCTestCase {
     func testWaitAndKeys() async throws {
         var (text, _) = await call("browser_navigate", ["url": Self.testPage.path])
         let link = try ref(text, #"link "Show details""#)
-        (text, _) = await call("browser_click", ["ref": link, "element": "Show details"])
+        let clicked = await call("browser_click", ["ref": link, "element": "Show details"]).text
         (text, _) = await call("browser_wait_for", ["text": "Hidden until the link is clicked."])
-        XCTAssertTrue(text.contains(#"heading "Details""#), text)
+        // The click's result already shows it (the wait's then says nothing changed since).
+        XCTAssertTrue((clicked + text).contains(#"heading "Details""#), clicked + text)
         let (gone, r) = await call("browser_wait_for", ["text": "never there", "time": 1])
         XCTAssertEqual(r["isError"] as? Bool, true, gone)
 
-        let email = try ref(text, #"textbox "Email""#)
+        let email = try ref((await call("browser_snapshot")).text, #"textbox "Email""#)
         _ = await call("browser_type", ["ref": email, "element": "Email", "text": "k@x.io", "submit": true])
         (text, _) = await call("browser_snapshot")
         XCTAssertTrue(text.contains("Submitted: k@x.io"), "Enter submits the form: \(text)")

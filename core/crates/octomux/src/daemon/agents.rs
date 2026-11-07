@@ -494,6 +494,15 @@ pub fn build_launch(paths: &Paths, session: &Session, profile: Option<&Profile>,
     build_launch_with_prompt(paths, session, profile, restoring, aliases, None, false)
 }
 
+/// Whether new sessions get the browser tools: Settings → MCP → Octomux browser access (off / ask / on), or the
+/// switch it replaced.
+pub fn browser_tools_enabled(access: Option<&str>, legacy_switch: Option<bool>) -> bool {
+    match access {
+        Some(m) => m != "off",
+        None => legacy_switch.unwrap_or(true),
+    }
+}
+
 /// Flags that give a Claude or Codex agent the Octomux browser: our stdio MCP server (`octomux mcp`), added for
 /// this launch only. The user's own MCP settings are never touched. The session id goes in the arguments since
 /// Codex starts MCP servers with a trimmed environment.
@@ -843,6 +852,15 @@ mod tests {
         let l = line(&p);
         assert!(!l.contains("--settings"), "{l}");
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn browser_access_setting() {
+        assert!(browser_tools_enabled(None, None));
+        assert!(!browser_tools_enabled(None, Some(false)));
+        assert!(browser_tools_enabled(Some("ask"), Some(false)), "the new setting wins");
+        assert!(browser_tools_enabled(Some("on"), None));
+        assert!(!browser_tools_enabled(Some("off"), Some(true)));
     }
 
     #[test]

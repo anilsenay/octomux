@@ -125,7 +125,7 @@ final class ChatWebController: NSObject, WKScriptMessageHandler, WKNavigationDel
             }
         case "link":
             if let href = m["href"] as? String, let u = URL(string: href), let s = u.scheme?.lowercased(), ["http", "https", "mailto"].contains(s) {
-                NSWorkspace.shared.open(u)
+                if !BrowserLinks.open(u, session: sessionId) { NSWorkspace.shared.open(u) }
             }
         case "open":
             if let p = m["path"] as? String { open(path: p) }

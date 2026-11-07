@@ -44,10 +44,13 @@ struct WorkAreaWithBrowser<Content: View>: View {
 
     var body: some View {
         let tab = model.activeDoc == nil ? model.activeTabId : nil
-        if let tab, store.splitOpen(tab: tab) {
-            GeometryReader { g in
-                HStack(spacing: T.m.inset) {
-                    content.frame(maxWidth: .infinity)
+        let open = tab.map { store.splitOpen(tab: $0) } ?? false
+        // One structure whether the browser shows or not: the terminals keep their place (and their shared view)
+        // when it opens or closes.
+        GeometryReader { g in
+            HStack(spacing: open ? T.m.inset : 0) {
+                content.frame(maxWidth: .infinity)
+                if open, let tab {
                     BrowserSplit(tab: tab)
                         .frame(width: max(320, min(g.size.width - 260, g.size.width * ratio)))
                         .background(T.surface)
@@ -56,8 +59,6 @@ struct WorkAreaWithBrowser<Content: View>: View {
                         .overlay(alignment: .leading) { BrowserResizeHandle(ratio: $ratio, total: g.size.width) }
                 }
             }
-        } else {
-            content
         }
     }
 }
@@ -123,110 +124,6 @@ struct BrowserResizeHandle: View {
     }
 }
 
-struct BrowserPageView: View {
-    @EnvironmentObject var model: AppModel
-    @ObservedObject var page: BrowserPage
-    let tab: String
-    @ObservedObject var store = BrowserStore.shared
-    @State private var address = ""
-    @FocusState private var addressFocused: Bool
-
-    var body: some View {
-        VStack(spacing: 0) {
-            toolbar.padding(.horizontal, 6).frame(height: 36)
-            ZStack(alignment: .top) {
-                Hairline()
-                if page.isLoading {
-                    GeometryReader { g in
-                        Rectangle().fill(T.accent).frame(width: max(8, g.size.width * page.progress), height: 2)
-                            .animation(.easeOut(duration: 0.2), value: page.progress)
-                    }.frame(height: 2)
-                }
-            }
-            AgentBanner(page: page)
-            ZStack(alignment: .topLeading) {
-                BrowserWebHost(page: page)
-                AgentCursorOverlay(page: page)
-            }
-            .overlay {
-                // A soft frame while an agent drives the page.
-                RoundedRectangle(cornerRadius: 2).strokeBorder(T.accent.opacity(page.activity == nil ? 0 : 0.55), lineWidth: 2)
-                    .animation(.easeOut(duration: 0.25), value: page.activity == nil).allowsHitTesting(false)
-            }
-        }
-        .onAppear {
-            address = page.url
-            Task { await page.loadPending() }
-            if BrowserUI.focusAddress == page.id { BrowserUI.focusAddress = nil; DispatchQueue.main.async { addressFocused = true } }
-        }
-        .onChange(of: page.url) { _, u in if !addressFocused { address = u } }
-    }
-
-    private var toolbar: some View {
-        HStack(spacing: 2) {
-            Button { page.web.goBack() } label: { Image(systemName: "chevron.left") }
-                .buttonStyle(IconButtonStyle(size: 24)).disabled(!page.canGoBack).help("Back")
-            Button { page.web.goForward() } label: { Image(systemName: "chevron.right") }
-                .buttonStyle(IconButtonStyle(size: 24)).disabled(!page.canGoForward).help("Forward")
-            Button { if page.isLoading { page.web.stopLoading() } else { page.web.reload() } } label: {
-                Image(systemName: page.isLoading ? "xmark" : "arrow.clockwise")
-            }
-            .buttonStyle(IconButtonStyle(size: 24)).help(page.isLoading ? "Stop" : "Reload")
-            TextField("Search or enter address", text: $address)
-                .textFieldStyle(.plain).font(T.small)
-                .focused($addressFocused)
-                .padding(.horizontal, 8).frame(height: 24)
-                .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(T.hover))
-                .onSubmit {
-                    guard let u = BrowserStore.addressBarURL(address) else { return }
-                    addressFocused = false
-                    Task { await page.load(u) }
-                }
-                .onExitCommand { address = page.url; addressFocused = false }
-            pagesMenu
-            Button { BrowserUI.newUserPage(tab: tab) } label: { Image(systemName: "plus") }
-                .buttonStyle(IconButtonStyle(size: 24)).help("New Page")
-            Button { store.closeSplit(tab: tab) } label: { Image(systemName: "xmark") }
-                .buttonStyle(IconButtonStyle(size: 24)).help("Close Browser (the page stays open; the globe in the top bar brings it back)")
-        }
-        .font(.system(size: T.k * 12, weight: .medium))
-    }
-
-    private var pagesMenu: some View {
-        Menu {
-            Section("Pages") {
-                ForEach(store.pages) { p in
-                    Button {
-                        store.show(p, in: tab)
-                    } label: {
-                        Text((p.id == page.id ? "✓ " : "") + BrowserTools.short(p.displayTitle, 50) + "  —  " + (p.owner.map(BrowserUI.agentLabel) ?? "You"))
-                    }
-                }
-            }
-            Divider()
-            Button("Open in Default Browser") { if let u = page.web.url { NSWorkspace.shared.open(u) } }.disabled(page.web.url == nil)
-            Button("Copy Address") {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(page.url, forType: .string)
-            }
-            Button("Web Inspector") { BrowserUI.inspect(page) }
-            Divider()
-            Button("Close Page") { store.close(page.id) }
-        } label: {
-            HStack(spacing: 3) {
-                Image(systemName: "square.on.square")
-                if store.pages.count > 1 { Text("\(store.pages.count)").font(T.mono(10, .semibold)) }
-            }
-            .foregroundStyle(T.text2)
-        }
-        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-        .tint(T.text2)
-        .padding(.horizontal, 4).frame(height: 24)
-        .pointerCursor()
-        .help("Pages")
-    }
-}
-
 extension BrowserUI {
     /// Opens the Web Inspector for the page (private API, as Safari's Develop menu does; harmless if it's gone).
     @MainActor static func inspect(_ page: BrowserPage) {
@@ -276,36 +173,7 @@ struct AgentBanner: View {
     }
 }
 
-/// The agent's pointer: glides to where the action lands, rings on arrival, and frames the element.
-struct AgentCursorOverlay: View {
-    @ObservedObject var page: BrowserPage
-
-    var body: some View {
-        ZStack(alignment: .topLeading) {
-            if let a = page.activity {
-                if let box = a.box {
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .strokeBorder(T.accent, lineWidth: 1.5)
-                        .background(RoundedRectangle(cornerRadius: 4, style: .continuous).fill(T.accent.opacity(0.08)))
-                        .frame(width: max(box.width + 6, 8), height: max(box.height + 6, 8))
-                        .offset(x: box.minX - 3, y: box.minY - 3)
-                        .transition(.opacity)
-                }
-                if let p = a.point {
-                    PressRing(seq: a.seq).offset(x: p.x - 14, y: p.y - 14)
-                    AgentPointer(label: BrowserUI.agentLabel(a.sessionId).components(separatedBy: " · ").first ?? "Agent")
-                        .offset(x: p.x - 3, y: p.y - 2)
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .animation(.spring(response: BrowserTools.cursorTravel, dampingFraction: 0.82), value: page.activity?.point)
-        .animation(.easeOut(duration: 0.2), value: page.activity?.box)
-        .allowsHitTesting(false)
-    }
-}
-
-private struct AgentPointer: View {
+struct AgentPointer: View {
     let label: String
     var body: some View {
         HStack(alignment: .top, spacing: 2) {
@@ -323,7 +191,7 @@ private struct AgentPointer: View {
     }
 }
 
-private struct PressRing: View {
+struct PressRing: View {
     let seq: Int
     @State private var grow = false
     var body: some View {
@@ -336,34 +204,6 @@ private struct PressRing: View {
     private func animate() {
         grow = false
         withAnimation(.easeOut(duration: 0.6).delay(BrowserTools.cursorTravel)) { grow = true }
-    }
-}
-
-/// Hosts the page's own WKWebView (pages keep running, and agents keep using them, when not on screen).
-struct BrowserWebHost: NSViewRepresentable {
-    let page: BrowserPage
-
-    func makeNSView(context: Context) -> NSView {
-        let v = NSView()
-        attach(page.web, to: v)
-        return v
-    }
-
-    func updateNSView(_ v: NSView, context: Context) {
-        if page.web.superview !== v { attach(page.web, to: v) }
-    }
-
-    private func attach(_ web: WKWebView, to v: NSView) {
-        v.subviews.forEach { $0.removeFromSuperview() }
-        web.removeFromSuperview()
-        web.frame = v.bounds
-        web.autoresizingMask = [.width, .height]
-        v.addSubview(web)
-    }
-
-    static func dismantleNSView(_ v: NSView, coordinator: ()) {
-        // Off screen the page keeps its size, so an agent's snapshots and screenshots stay the same.
-        v.subviews.forEach { $0.removeFromSuperview() }
     }
 }
 

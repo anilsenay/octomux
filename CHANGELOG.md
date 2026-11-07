@@ -41,6 +41,25 @@
   Clicking “Sign in”"), and the element is framed. The globe in the top bar shows or hides the browser of a tab;
   you can browse yourself (address bar, back, forward) and hand a page to an agent. Each session works in its own
   page; pages keep cookies apart from your other browsers and come back after a relaunch.
+- **Send an element to an agent**: the browser's pick button (target) highlights what's under the pointer; click
+  one, add a note, and it goes to an agent's message box (the tab's, or one you choose; terminal or chat view) with
+  its selector, role and name, text, main styles, the page and a crop of it, for you to read and send.
+- **Links in terminals and the chat view** to local addresses (localhost, 127.0.0.1, *.local…) open in the
+  browser beside the tab, or bring forward the page already showing them; others still open in your default
+  browser. Settings → MCP → Octomux browser picks which (local, all web links, none); ⇧-click does the other.
+- **Browser basics**: find in page (⌘F, with the number of matches), zoom (⌘+ ⌘− ⌘0), ⌘L for the address bar,
+  ⌘[ ⌘] back and forward, ⌘R reload, only while the page has the keyboard; address suggestions from the pages
+  you visited (↑↓ ↩); a page that can't load says why, with Try Again; downloads go to ~/Downloads, listed under
+  the browser's download button with Show in Finder; screen sizes (mobile, tablet, laptop, desktop) the page is
+  laid out at, scaled to fit.
+- **Agents hear what their actions changed**: a new address or title, pages opened, downloads, new console errors
+  (each once). On long pages a result carries only the lines that changed (said so, with their parents), the whole
+  page when it is new or small; browser_snapshot takes `diff`. New tool browser_resize for mobile/tablet layouts.
+- **Who may use the browser**: Settings → MCP → Octomux browser: Off, Ask (a session asks the first time; your
+  answer holds for it, listed in Settings to forget) or On, and an optional list of allowed sites (wildcards):
+  agents can't open others, nor follow links to them.
+- Fixed: the chat composer could freeze or close Octomux when a long text arrived in it (a pasted log, an element
+  from the browser).
 
 ## 0.3.0
 

@@ -3,6 +3,7 @@
 // snapshot (Playwright's format, with [ref=eN] on elements an agent can act on) and to act on those elements.
 import { generateAriaTree, renderAriaTreeAsJSON } from '../vendor/playwright/injected/ariaSnapshot';
 import { renderAriaSnapshotAsYaml } from '../vendor/playwright/isomorphic/ariaSnapshotRenderer';
+import { getAriaRole, getElementAccessibleNameText, beginAriaCaches, endAriaCaches } from '../vendor/playwright/injected/roleUtils';
 
 const MAX_TEXT = 300;
 /** Elements of the last snapshot, by ref (iframe contents too, "f1e3"). */
@@ -396,5 +397,143 @@ function metrics() {
     viewportWidth: innerWidth, viewportHeight: innerHeight, scrollX, scrollY };
 }
 
-globalThis.__octomux = { snapshot, resolve, locate, click, hover, type, press, selectOption, settle, waitFor, mark, box, metrics,
+// ---------- the user picks an element (to send it to an agent) ----------
+
+const STYLE_KEYS = ['color', 'background-color', 'font-family', 'font-size', 'font-weight', 'line-height', 'display', 'position',
+  'width', 'height', 'margin', 'padding', 'border', 'border-radius', 'box-shadow', 'opacity', 'gap', 'flex-direction', 'justify-content', 'align-items'];
+const STYLE_SKIP = { 'box-shadow': 'none', 'opacity': '1', 'gap': 'normal', 'border': ['0px none', 'medium none'], 'margin': '0px', 'padding': '0px',
+  'border-radius': '0px', 'position': 'static', 'flex-direction': 'row', 'justify-content': 'normal', 'align-items': 'normal' };
+
+function cssEscape(s) { return (globalThis.CSS && CSS.escape) ? CSS.escape(s) : String(s).replace(/[^a-zA-Z0-9_-]/g, '\\$&'); }
+
+/** A CSS selector that finds just this element in its document (id when unique, else a short path). */
+function selectorFor(el) {
+  const doc = el.ownerDocument;
+  const unique = (sel) => { try { return doc.querySelectorAll(sel).length === 1; } catch { return false; } };
+  if (el.id && unique('#' + cssEscape(el.id))) return '#' + cssEscape(el.id);
+  for (const a of ['data-testid', 'data-test', 'data-cy', 'name', 'aria-label']) {
+    const v = el.getAttribute && el.getAttribute(a);
+    if (v) { const sel = `${el.tagName.toLowerCase()}[${a}="${v.replace(/"/g, '\\"')}"]`; if (unique(sel)) return sel; }
+  }
+  const parts = [];
+  let e = el;
+  while (e && e.nodeType === 1 && e !== doc.documentElement) {
+    let part = e.tagName.toLowerCase();
+    if (e.id && unique('#' + cssEscape(e.id))) { parts.unshift('#' + cssEscape(e.id)); break; }
+    const cls = typeof e.className === 'string' ? e.className.trim().split(/\s+/).filter(c => c && !/^(css|sc|jsx|svelte)-|\d{3,}/.test(c)).slice(0, 2) : [];
+    if (cls.length) part += '.' + cls.map(cssEscape).join('.');
+    const parent = e.parentElement;
+    if (parent) {
+      const same = [...parent.children].filter(c => c.tagName === e.tagName && (!cls.length || cls.every(k => c.classList.contains(k))));
+      if (same.length > 1) part += `:nth-of-type(${[...parent.children].filter(c => c.tagName === e.tagName).indexOf(e) + 1})`;
+    }
+    parts.unshift(part);
+    const sel = parts.join(' > ');
+    if (unique(sel)) return sel;
+    e = parent;
+  }
+  return parts.join(' > ');
+}
+
+function elementInfo(el) {
+  const W = el.ownerDocument.defaultView;
+  const cs = W.getComputedStyle(el);
+  const styles = {};
+  for (const k of STYLE_KEYS) {
+    let v = cs.getPropertyValue(k);
+    if (k === 'border') v = `${cs.borderTopWidth} ${cs.borderTopStyle} ${cs.borderTopColor}`;
+    if (k === 'margin') v = cs.margin || `${cs.marginTop} ${cs.marginRight} ${cs.marginBottom} ${cs.marginLeft}`;
+    if (k === 'padding') v = cs.padding || `${cs.paddingTop} ${cs.paddingRight} ${cs.paddingBottom} ${cs.paddingLeft}`;
+    const skip = STYLE_SKIP[k];
+    if (!v || (Array.isArray(skip) ? skip.some(x => v.startsWith(x)) : v === skip)) continue;
+    styles[k] = v;
+  }
+  let role = '', name = '';
+  try { beginAriaCaches(); role = getAriaRole(el) || ''; name = getElementAccessibleNameText(el, false) || ''; } catch { /* odd element */ } finally { try { endAriaCaches(); } catch {} }
+  const r = el.getBoundingClientRect();
+  const off = frameOffset(el);
+  const html = el.outerHTML || '';
+  return {
+    selector: selectorFor(el), tag: el.tagName.toLowerCase(), role, name: name.slice(0, 200),
+    text: (el.innerText || el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 400),
+    styles, box: { x: r.left + off.x, y: r.top + off.y, width: r.width, height: r.height },
+    html: html.length > 800 ? html.slice(0, 800) + '…' : html,
+    url: location.href, title: document.title, frame: el.ownerDocument !== document,
+  };
+}
+
+const pick = { on: false, hover: null, cleanup: null };
+
+function pickPost(msg) {
+  try { globalThis.webkit.messageHandlers.octomuxPick.postMessage(msg); } catch { /* app gone */ }
+}
+
+function pickLabel(el) {
+  let role = '', name = '';
+  try { beginAriaCaches(); role = getAriaRole(el) || el.tagName.toLowerCase(); name = getElementAccessibleNameText(el, false) || ''; } catch { role = el.tagName.toLowerCase(); } finally { try { endAriaCaches(); } catch {} }
+  return name ? `${role} “${name.slice(0, 50)}”` : role;
+}
+
+function pickStart() {
+  if (pick.on) return;
+  pick.on = true;
+  const docs = [document, ...frameDocs().map(f => f.contentDocument)];
+  const target = (e) => { const p = e.composedPath ? e.composedPath()[0] : e.target; return p && p.nodeType === 1 ? p : p && p.parentElement; };
+  const move = (e) => {
+    const el = target(e);
+    if (!el || el === pick.hover) return;
+    pick.hover = el;
+    const r = el.getBoundingClientRect(), off = frameOffset(el);
+    pickPost({ type: 'hover', box: { x: r.left + off.x, y: r.top + off.y, width: r.width, height: r.height }, label: pickLabel(el) });
+  };
+  const swallow = (e) => { e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation(); };
+  const click = (e) => { swallow(e); const el = target(e); if (el) { pickStop(); pickPost({ type: 'picked', info: elementInfo(el) }); } };
+  const key = (e) => { if (e.key === 'Escape') { swallow(e); pickStop(); pickPost({ type: 'cancel' }); } };
+  const opts = { capture: true };
+  for (const d of docs) {
+    d.addEventListener('mousemove', move, opts);
+    for (const t of ['mousedown', 'mouseup', 'pointerdown', 'pointerup', 'auxclick', 'dblclick', 'contextmenu']) d.addEventListener(t, swallow, opts);
+    d.addEventListener('click', click, opts);
+    d.addEventListener('keydown', key, opts);
+  }
+  const prevCursor = document.documentElement.style.cursor;
+  document.documentElement.style.cursor = 'crosshair';
+  pick.cleanup = () => {
+    for (const d of docs) {
+      d.removeEventListener('mousemove', move, opts);
+      for (const t of ['mousedown', 'mouseup', 'pointerdown', 'pointerup', 'auxclick', 'dblclick', 'contextmenu']) d.removeEventListener(t, swallow, opts);
+      d.removeEventListener('click', click, opts);
+      d.removeEventListener('keydown', key, opts);
+    }
+    document.documentElement.style.cursor = prevCursor;
+  };
+}
+
+function pickStop() {
+  if (!pick.on) return;
+  pick.on = false; pick.hover = null;
+  if (pick.cleanup) pick.cleanup();
+  pick.cleanup = null;
+}
+
+/** For automation and tests: picks the element a selector (or a snapshot ref) finds, as a click would. */
+function pickElement(target) {
+  let el = refs.get(target);
+  if (!el) { el = document.querySelector(target); }
+  if (!el) throw new Error(`Nothing matches ${target}.`);
+  el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
+  pickStop();
+  return elementInfo(el);
+}
+
+/** Visible matches of `text` in the page (case-insensitive), for the find bar's count. */
+function countText(text) {
+  if (!text) return 0;
+  const hay = pageText().toLowerCase(), needle = text.toLowerCase();
+  let n = 0, i = 0;
+  while ((i = hay.indexOf(needle, i)) >= 0) { n++; i += needle.length; if (n > 9999) break; }
+  return n;
+}
+
+globalThis.__octomux = { pickStart, pickStop, pickElement, elementInfo, countText, snapshot, resolve, locate, click, hover, type, press, selectOption, settle, waitFor, mark, box, metrics,
   get snapshotCount() { return snapshotCount; }, MAX_TEXT };

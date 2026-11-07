@@ -104,8 +104,10 @@ fn call_app(paths: &Paths, session: Option<&str>, tool: &str, args: &Value) -> V
 
 const INSTRUCTIONS: &str = "Octomux browser: a real web browser inside the Octomux app that the user watches live in its Browser panel. \
 Use it to open and check web pages (local dev servers, docs, the app you are building): navigate, read the page with browser_snapshot, \
-act on elements by their ref from the latest snapshot, and take screenshots to check how things look. Pages keep cookies between \
-sessions, so sites the user signed in to stay signed in; don't sign in, buy, post or send anything unless the user asked you to.";
+act on elements by their ref from the latest snapshot, and take screenshots to check how things look. After each action the result \
+says what changed (address, title, new pages, downloads, console errors) and shows the page: whole when it is small or new, else only \
+the lines that changed (marked so). Pages keep cookies between sessions, so sites the user signed in to stay signed in; don't sign in, \
+buy, post or send anything unless the user asked you to.";
 
 fn s(desc: &str) -> Value {
     json!({ "type": "string", "description": desc })
@@ -142,6 +144,7 @@ pub fn tools() -> Vec<Value> {
             "description": "Read the current page as an accessibility snapshot (roles, names, text) with a ref for each element you can act on. Better than a screenshot for finding and using elements.",
             "inputSchema": obj(json!({
                 "depth": { "type": "number", "description": "Only this many levels of the tree (for a quick overview of a large page)." },
+                "diff": { "type": "boolean", "description": "Only what changed since your last snapshot of this page (+ new or changed lines, - gone ones, under their parents)." },
             }), &[]),
             "annotations": read_only,
         }),
@@ -217,6 +220,15 @@ pub fn tools() -> Vec<Value> {
             "annotations": read_only,
         }),
         json!({
+            "name": "browser_resize",
+            "description": "Lay the page out at a screen size, to check a mobile or tablet layout: a preset (mobile 390×844 and tablet 820×1180 also send a phone/tablet user agent, laptop 1280×800, desktop 1920×1080, fit = the browser's own size) or width and height.",
+            "inputSchema": obj(json!({
+                "preset": { "type": "string", "enum": ["mobile", "tablet", "laptop", "desktop", "fit"], "description": "A screen size preset." },
+                "width": { "type": "number", "description": "Width in CSS pixels (with height, instead of a preset)." },
+                "height": { "type": "number", "description": "Height in CSS pixels." },
+            }), &[]),
+        }),
+        json!({
             "name": "browser_tabs",
             "description": "List, open, select or close browser pages. Each session works in its own current page; list shows every page, including the user's and other sessions'.",
             "inputSchema": obj(json!({
@@ -248,7 +260,7 @@ mod tests {
         assert!(handle(&json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }), &mut never).is_none());
         let r = handle(&rpc("tools/list", json!({})), &mut never).unwrap();
         let names: Vec<&str> = r["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
-        for n in ["browser_navigate", "browser_snapshot", "browser_click", "browser_type", "browser_take_screenshot", "browser_tabs"] {
+        for n in ["browser_navigate", "browser_snapshot", "browser_click", "browser_type", "browser_take_screenshot", "browser_tabs", "browser_resize"] {
             assert!(names.contains(&n), "{n}");
         }
         for t in r["result"]["tools"].as_array().unwrap() {

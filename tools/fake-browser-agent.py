@@ -32,7 +32,7 @@ def call(name, **arguments):
     text = "\n".join(c["text"] for c in r["content"] if c["type"] == "text")
     print(f"=== {name} {json.dumps(arguments)}{' (ERROR)' if r.get('isError') else ''} [{len(text)} chars]")
     print(text[:3000])
-    if r.get("isError"):
+    if r.get("isError") and not os.environ.get("FAKE_AGENT_CONTINUE"):
         sys.exit(1)
     return r, text
 
@@ -47,7 +47,7 @@ p.stdin.write(json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized
 tools = [t["name"] for t in rpc("tools/list")["tools"]]
 print("server:", info["serverInfo"], "tools:", len(tools))
 
-snap = ""
+snap = full = ""
 for step in steps:
     if step == "navigate":
         _, snap = call("browser_navigate", url=url)
@@ -79,6 +79,17 @@ for step in steps:
         call("browser_evaluate", function=step[5:])
     elif step.startswith("key:"):
         _, snap = call("browser_press_key", key=step[4:])
+    elif step.startswith("press:"):     # press:<pattern in the last whole snapshot>, e.g. press:button "Add an item"
+        _, out = call("browser_click", element=step[6:], ref=ref(full, re.escape(step[6:])))
+        snap = out
+    elif step.startswith("resize:"):
+        _, snap = call("browser_resize", preset=step[7:])
+    elif step == "snapdiff":
+        _, snap = call("browser_snapshot", diff=True)
+    elif step.startswith("goto:"):
+        _, snap = call("browser_navigate", url=step[5:])
+    if "### Snapshot\n" in snap:
+        full = snap
 p.stdin.close()
 p.wait()
 print("OK")

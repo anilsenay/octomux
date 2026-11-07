@@ -16,6 +16,38 @@ struct BrowserActivity: Equatable {
     var seq = 0
 }
 
+/// A screen size a page is laid out at (instead of the browser's own size), scaled down to fit when needed.
+struct BrowserViewport: Equatable {
+    var name: String
+    var width: CGFloat
+    var height: CGFloat
+    /// The user agent sites see (phones and tablets get Safari's, so they serve their mobile pages).
+    var userAgent: String?
+
+    static let iPhoneUA = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1"
+    static let iPadUA = "Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1"
+    static let presets: [BrowserViewport] = [
+        BrowserViewport(name: "Mobile", width: 390, height: 844, userAgent: iPhoneUA),
+        BrowserViewport(name: "Tablet", width: 820, height: 1180, userAgent: iPadUA),
+        BrowserViewport(name: "Laptop", width: 1280, height: 800, userAgent: nil),
+        BrowserViewport(name: "Desktop", width: 1920, height: 1080, userAgent: nil),
+    ]
+    static func preset(_ name: String) -> BrowserViewport? { presets.first { $0.name.lowercased() == name.lowercased() } }
+    var label: String { "\(name) \(Int(width))×\(Int(height))" }
+}
+
+/// The element the user picked to send to an agent.
+struct PickedElement {
+    var info: [String: Any]
+    var image: Data?
+    var selector: String { info["selector"] as? String ?? "" }
+    var box: CGRect? {
+        guard let b = info["box"] as? [String: Any], let x = b["x"] as? Double, let y = b["y"] as? Double,
+              let w = b["width"] as? Double, let h = b["height"] as? Double else { return nil }
+        return CGRect(x: x, y: y, width: w, height: h)
+    }
+}
+
 struct BrowserConsoleEntry {
     var level: String
     var text: String
@@ -41,8 +73,25 @@ final class BrowserPage: NSObject, ObservableObject, Identifiable, WKNavigationD
     @Published var lastAgentAt: Date?
     /// A page brought back after a relaunch loads its address when first shown or used.
     var pendingURL: URL?
+    /// Laid out at this size (nil: the browser's own size).
+    @Published var viewport: BrowserViewport? { didSet { web.customUserAgent = viewport?.userAgent; BrowserStore.shared.relayout(self) } }
+    @Published var zoom: Double = 1 { didSet { web.pageZoom = zoom } }
+    @Published var findVisible = false
+    @Published var findCount: Int?
+    /// The page couldn't be loaded: shown over it with Try Again.
+    @Published var loadError: (url: URL?, message: String)?
+    /// The user is picking an element (hover highlights, a click picks).
+    @Published var picking = false
+    @Published var pickHover: (box: CGRect, label: String)?
+    @Published var picked: PickedElement?
+    /// Bumped to move the keyboard into the address bar (⌘L).
+    @Published var addressFocusRequest = 0
+    /// Each session's last snapshot of this page (for "only what changed").
+    var lastSnapshot: [String: (url: String, yaml: String)] = [:]
     var console: [BrowserConsoleEntry] = []
     var consoleSeen = 0
+    /// Console messages already reported to each session (each error is "new" once).
+    var consoleReported: [String: Int] = [:]
     /// Things the agent should hear about with its next result (dialogs handled, pages opened…).
     var events: [String] = []
     private var navWaiters: [(Bool) -> Void] = []
@@ -61,7 +110,10 @@ final class BrowserPage: NSObject, ObservableObject, Identifiable, WKNavigationD
         web.isInspectable = true
         observers = [
             web.observe(\.url, options: [.new]) { [weak self] w, _ in Task { @MainActor in self?.url = w.url?.absoluteString ?? ""; BrowserStore.shared.save() } },
-            web.observe(\.title, options: [.new]) { [weak self] w, _ in Task { @MainActor in self?.title = w.title ?? "" } },
+            web.observe(\.title, options: [.new]) { [weak self] w, _ in Task { @MainActor in
+                self?.title = w.title ?? ""
+                if let u = w.url, let t = w.title { BrowserHistory.shared.setTitle(t, for: u) }
+            } },
             web.observe(\.isLoading, options: [.new]) { [weak self] w, _ in Task { @MainActor in self?.isLoading = w.isLoading } },
             web.observe(\.estimatedProgress, options: [.new]) { [weak self] w, _ in Task { @MainActor in self?.progress = w.estimatedProgress } },
             web.observe(\.canGoBack, options: [.new]) { [weak self] w, _ in Task { @MainActor in self?.canGoBack = w.canGoBack } },
@@ -124,20 +176,50 @@ final class BrowserPage: NSObject, ObservableObject, Identifiable, WKNavigationD
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
         lastError = nil
+        loadError = nil
         console.removeAll()
         consoleSeen = 0
+        consoleReported = [:]
+        if picking { picking = false; pickHover = nil }
     }
 
-    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { finishNavigation(true) }
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        loadError = nil
+        if let u = webView.url { BrowserHistory.shared.record(url: u, title: webView.title ?? "") }
+        finishNavigation(true)
+    }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-        if (error as NSError).code != NSURLErrorCancelled { lastError = error.localizedDescription }
-        finishNavigation(false)
+        failed(error)
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-        if (error as NSError).code != NSURLErrorCancelled { lastError = error.localizedDescription }
+        failed(error)
+    }
+
+    private func failed(_ error: Error) {
+        let e = error as NSError
+        // Cancelled (a newer navigation) and "frame load interrupted" (a download took over) aren't failures.
+        if e.code != NSURLErrorCancelled && !(e.domain == "WebKitErrorDomain" && e.code == 102) {
+            lastError = e.localizedDescription
+            let failing = (e.userInfo[NSURLErrorFailingURLErrorKey] as? URL) ?? (e.userInfo["NSErrorFailingURLKey"] as? URL)
+            loadError = (failing ?? web.url, e.localizedDescription)
+        }
         finishNavigation(false)
+    }
+
+    func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse, decisionHandler: @escaping @MainActor (WKNavigationResponsePolicy) -> Void) {
+        // What a page can't show (zip, dmg, a PDF sent as an attachment) is saved instead.
+        let attachment = (navigationResponse.response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Disposition")?.lowercased().hasPrefix("attachment") == true
+        decisionHandler(navigationResponse.canShowMIMEType && !attachment ? .allow : .download)
+    }
+
+    func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
+        BrowserDownloads.shared.track(download, page: self)
+    }
+
+    func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
+        BrowserDownloads.shared.track(download, page: self)
     }
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
@@ -153,6 +235,14 @@ final class BrowserPage: NSObject, ObservableObject, Identifiable, WKNavigationD
             decisionHandler(.cancel)
             return
         }
+        // Allowed sites (Settings) bind what an agent's actions open, in the page and its frames.
+        if agentDriving, navigationAction.targetFrame?.isMainFrame != false, let u = navigationAction.request.url,
+           !BrowserAccess.allows(u, patterns: BrowserAccess.allowedSites) {
+            events.append("Blocked opening \(u.absoluteString.prefix(160)): \(u.host ?? "that address") isn't one of the sites allowed in Settings (\(BrowserAccess.allowedSites.joined(separator: ", "))).")
+            decisionHandler(.cancel)
+            return
+        }
+        if navigationAction.shouldPerformDownload { decisionHandler(.download); return }
         decisionHandler(.allow)
     }
 
@@ -224,7 +314,11 @@ final class BrowserPage: NSObject, ObservableObject, Identifiable, WKNavigationD
 
     func log(level: String, text: String) {
         console.append(BrowserConsoleEntry(level: level, text: text, at: Date()))
-        if console.count > 300 { console.removeFirst(console.count - 300); consoleSeen = max(0, consoleSeen - 1) }
+        if console.count > 300 {
+            console.removeFirst(console.count - 300)
+            consoleSeen = max(0, consoleSeen - 1)
+            for k in consoleReported.keys { consoleReported[k] = max(0, (consoleReported[k] ?? 0) - 1) }
+        }
     }
 
     // MARK: Live view
@@ -244,6 +338,77 @@ final class BrowserPage: NSObject, ObservableObject, Identifiable, WKNavigationD
         let w = DispatchWorkItem { [weak self] in self?.activity = nil }
         activityClear = w
         DispatchQueue.main.asyncAfter(deadline: .now() + after, execute: w)
+    }
+
+    // MARK: Picking an element for an agent
+
+    func startPicking() {
+        picked = nil
+        picking = true
+        Task { _ = try? await BrowserTools.js(self, "return __octomux.pickStart()", [:]) }
+    }
+
+    func stopPicking() {
+        picking = false
+        pickHover = nil
+        Task { _ = try? await BrowserTools.js(self, "return __octomux.pickStop()", [:]) }
+    }
+
+    /// The picked element, with a crop of the page around it (what is on screen of it).
+    func didPick(_ info: [String: Any]) async {
+        picking = false
+        pickHover = nil
+        var info = info
+        info["page"] = id
+        var p = PickedElement(info: info)
+        if let box = p.box {
+            let visible = box.insetBy(dx: -8, dy: -8).intersection(CGRect(origin: .zero, size: web.bounds.size))
+            if !visible.isNull, visible.width > 2, visible.height > 2 {
+                let cfg = WKSnapshotConfiguration()
+                cfg.rect = visible
+                if let img = try? await web.takeSnapshot(configuration: cfg) { p.image = BrowserTools.encode(img)?.0 }
+            }
+        }
+        picked = p
+    }
+
+    // MARK: Find, zoom
+
+    func find(_ text: String, backwards: Bool = false) {
+        guard !text.isEmpty else { findCount = nil; return }
+        let cfg = WKFindConfiguration()
+        cfg.backwards = backwards
+        cfg.caseSensitive = false
+        cfg.wraps = true
+        web.find(text, configuration: cfg) { _ in }
+        Task { findCount = (try? await BrowserTools.js(self, "return __octomux.countText(t)", ["t": text])) as? Int }
+    }
+
+    static let zoomSteps: [Double] = [0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3]
+    func zoomIn() { zoom = Self.zoomSteps.first { $0 > zoom + 0.001 } ?? zoom }
+    func zoomOut() { zoom = Self.zoomSteps.last { $0 < zoom - 0.001 } ?? zoom }
+}
+
+/// The element picker's messages (hover, picked, cancel), from the agent script's world.
+private final class BrowserPickRouter: NSObject, WKScriptMessageHandler {
+    func userContentController(_ uc: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard let m = message.body as? [String: Any], let type = m["type"] as? String else { return }
+        let web = message.webView
+        MainActor.assumeIsolated {
+            guard let page = BrowserStore.shared.pages.first(where: { $0.web === web }) else { return }
+            switch type {
+            case "hover":
+                if let b = m["box"] as? [String: Any], let x = b["x"] as? Double, let y = b["y"] as? Double,
+                   let w = b["width"] as? Double, let h = b["height"] as? Double {
+                    page.pickHover = (CGRect(x: x, y: y, width: w, height: h), m["label"] as? String ?? "")
+                }
+            case "picked":
+                if let info = m["info"] as? [String: Any] { Task { await page.didPick(info) } }
+            default:
+                page.picking = false
+                page.pickHover = nil
+            }
+        }
     }
 }
 
@@ -312,6 +477,7 @@ final class BrowserStore: ObservableObject {
         let uc = WKUserContentController()
         Self.addScripts(to: uc, world: world)
         uc.add(BrowserConsoleRouter(), contentWorld: .page, name: "octomuxConsole")
+        uc.add(BrowserPickRouter(), contentWorld: world, name: "octomuxPick")
         return uc
     }()
 
@@ -407,6 +573,12 @@ final class BrowserStore: ObservableObject {
 
     func select(_ id: String, for session: String) { current[session] = id; save() }
 
+    /// Gives a page with a viewport preset that size when it isn't on screen (on screen, its host sizes it).
+    func relayout(_ page: BrowserPage) {
+        if let v = page.viewport, page.web.superview == nil { page.web.frame = NSRect(x: 0, y: 0, width: v.width, height: v.height) }
+        page.web.superview?.needsLayout = true
+    }
+
     func close(_ id: String) {
         guard let i = pages.firstIndex(where: { $0.id == id }) else { return }
         let p = pages.remove(at: i)
@@ -450,5 +622,85 @@ final class BrowserStore: ObservableObject {
         guard !q.isEmpty, var c = URLComponents(string: "https://duckduckgo.com/") else { return nil }
         c.queryItems = [URLQueryItem(name: "q", value: q)]
         return c.url
+    }
+}
+
+/// Files the browser's pages save (links to downloads, files sites send as attachments): into ~/Downloads.
+@MainActor
+final class BrowserDownloads: NSObject, ObservableObject, WKDownloadDelegate {
+    static let shared = BrowserDownloads()
+
+    struct Item: Identifiable {
+        let id = UUID()
+        var name: String
+        var source: String
+        var file: URL?
+        var pageId: String?
+        var done = false
+        var error: String?
+        var bytes: Int64 = 0
+        var at = Date()
+    }
+
+    @Published private(set) var items: [Item] = []
+    private var byDownload: [ObjectIdentifier: UUID] = [:]
+    private var pages: [ObjectIdentifier: String] = [:]
+    var folder: URL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first ?? URL(fileURLWithPath: NSHomeDirectory() + "/Downloads")
+
+    func track(_ d: WKDownload, page: BrowserPage) {
+        d.delegate = self
+        let item = Item(name: d.originalRequest?.url?.lastPathComponent ?? "download", source: d.originalRequest?.url?.absoluteString ?? "", pageId: page.id)
+        items.insert(item, at: 0)
+        if items.count > 30 { items.removeLast(items.count - 30) }
+        byDownload[ObjectIdentifier(d)] = item.id
+        pages[ObjectIdentifier(d)] = page.id
+    }
+
+    private func update(_ d: WKDownload, _ f: (inout Item) -> Void) {
+        guard let id = byDownload[ObjectIdentifier(d)], let i = items.firstIndex(where: { $0.id == id }) else { return }
+        f(&items[i])
+    }
+
+    /// A free name in the folder: "report.pdf", then "report 2.pdf"…
+    static func unique(_ name: String, in folder: URL) -> URL {
+        let clean = name.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
+        let base = (clean as NSString).deletingPathExtension, ext = (clean as NSString).pathExtension
+        var url = folder.appendingPathComponent(clean.isEmpty ? "download" : clean)
+        var n = 2
+        while FileManager.default.fileExists(atPath: url.path) {
+            url = folder.appendingPathComponent(ext.isEmpty ? "\(base) \(n)" : "\(base) \(n).\(ext)")
+            n += 1
+        }
+        return url
+    }
+
+    func download(_ download: WKDownload, decideDestinationUsing response: URLResponse, suggestedFilename: String) async -> URL? {
+        let url = Self.unique(suggestedFilename, in: folder)
+        update(download) { $0.name = url.lastPathComponent; $0.file = url; $0.bytes = max(0, response.expectedContentLength) }
+        return url
+    }
+
+    func downloadDidFinish(_ download: WKDownload) {
+        update(download) { item in
+            item.done = true
+            if let f = item.file, let size = (try? FileManager.default.attributesOfItem(atPath: f.path))?[.size] as? Int64 { item.bytes = size }
+        }
+        report(download)
+    }
+
+    func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
+        update(download) { $0.error = error.localizedDescription; $0.done = true }
+        report(download)
+    }
+
+    /// The page's agent hears about it with its next result.
+    private func report(_ d: WKDownload) {
+        guard let id = byDownload[ObjectIdentifier(d)], let item = items.first(where: { $0.id == id }),
+              let page = BrowserStore.shared.page(pages[ObjectIdentifier(d)]) else { return }
+        if let e = item.error {
+            page.events.append("Download of \(item.name) failed: \(e)")
+        } else if let f = item.file {
+            page.events.append("Downloaded \(item.name) (\(ByteCountFormatter.string(fromByteCount: item.bytes, countStyle: .file))) to \(f.path)")
+        }
     }
 }

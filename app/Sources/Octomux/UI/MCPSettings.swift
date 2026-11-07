@@ -322,22 +322,58 @@ struct MCPAddSheet: View {
     }
 }
 
-/// The browser tools Octomux gives Claude and Codex sessions (its own MCP server, added per launch).
+/// The browser tools Octomux gives Claude and Codex sessions (its own MCP server, added per launch), who may use
+/// them and where, and which links open in the browser.
 struct BrowserToolsSettings: View {
     @EnvironmentObject var model: AppModel
     @State private var cleared = false
+    @State private var sites = ""
+    @State private var decisions = BrowserAccess.decisions
+    @AppStorage(BrowserLinks.key) private var links = BrowserLinks.Mode.local.rawValue
 
     var body: some View {
-        SettingsGroup("Octomux browser", desc: "Claude and Codex sessions started in Octomux get browser tools (open a page, read it, click, type, take screenshots) that drive the Browser panel, where you watch them work. Added to each session as it starts; your own MCP settings stay as they are.") {
-            SettingRow("Give agents the browser", desc: "Takes effect for sessions started (or resumed) from now on.") {
-                SettingSwitch(isOn: Binding(get: { model.setting("browser.agent_tools")?.bool ?? true },
-                                            set: { v in model.setSettingLocally("browser.agent_tools", .bool(v), scope: "global"); model.setSetting("browser.agent_tools", v) }))
+        SettingsGroup("Octomux browser", desc: "Claude and Codex sessions started in Octomux get browser tools (open a page, read it, click, type, take screenshots) that drive the browser beside their tab, where you watch them work. Added to each session as it starts; your own MCP settings stay as they are.") {
+            SettingRow("Agents can use it", desc: accessDesc) {
+                Picker("", selection: Binding(get: { BrowserAccess.mode.rawValue },
+                                              set: { v in model.setSettingLocally("browser.access", .string(v), scope: "global"); model.setSetting("browser.access", v) })) {
+                    ForEach(BrowserAccess.Mode.allCases, id: \.self) { Text($0.title).tag($0.rawValue) }
+                }
+                .labelsHidden().pickerStyle(.segmented).fixedSize()
+            }
+            SettingRow("Allowed sites", desc: "Agents can open only these (one per line or comma separated): example.com, *.example.com (and its subdomains), localhost:3000, file:// for local files. Empty: any site. Links they follow elsewhere are blocked too.") {
+                VStack(alignment: .trailing, spacing: 4) {
+                    TextField("Any site", text: $sites, axis: .vertical)
+                        .textFieldStyle(.roundedBorder).font(T.mono(11.5)).lineLimit(1...5).frame(width: 260)
+                        .onSubmit(saveSites)
+                    if sites != BrowserAccess.allowedSites.joined(separator: ", ") {
+                        Button("Save", action: saveSites).buttonStyle(SecondaryButtonStyle()).controlSize(.small)
+                    }
+                }
+            }
+            if !decisions.isEmpty {
+                SettingRow("Asked sessions", desc: "What you answered when a session first wanted the browser. Forget one and it asks again.") {
+                    VStack(alignment: .trailing, spacing: 4) {
+                        ForEach(decisions.keys.sorted(), id: \.self) { sid in
+                            HStack(spacing: 8) {
+                                Text(BrowserUI.agentLabel(sid)).font(.system(size: T.k * 12)).lineLimit(1).frame(maxWidth: 220, alignment: .trailing)
+                                Text(decisions[sid] == true ? "Allowed" : "Not allowed").font(T.caption).foregroundStyle(decisions[sid] == true ? T.green : T.text3)
+                                Button("Forget") { BrowserAccess.forget(sid) }.buttonStyle(SecondaryButtonStyle()).controlSize(.small)
+                            }
+                        }
+                    }
+                }
+            }
+            SettingRow("Links that open in it", desc: "Clicking a link in a terminal or the chat view opens it beside the tab instead of in your default browser. Hold ⇧ while clicking to do the other.") {
+                Picker("", selection: $links) {
+                    ForEach(BrowserLinks.Mode.allCases, id: \.self) { Text($0.title).tag($0.rawValue) }
+                }
+                .labelsHidden().fixedSize()
             }
             SettingRow("Browsing data", desc: "Pages keep cookies and logins between launches, apart from your other browsers.") {
                 Button(cleared ? "Cleared" : "Clear Browsing Data…") {
                     let a = NSAlert()
                     a.messageText = "Clear the Octomux browser's cookies, logins and cache?"
-                    a.informativeText = "Sites you signed in to in the Browser panel will ask you to sign in again."
+                    a.informativeText = "Sites you signed in to in the Octomux browser will ask you to sign in again."
                     a.addButton(withTitle: "Clear")
                     a.addButton(withTitle: "Cancel")
                     guard a.runModal() == .alertFirstButtonReturn else { return }
@@ -346,5 +382,22 @@ struct BrowserToolsSettings: View {
                 .buttonStyle(SecondaryButtonStyle()).disabled(cleared)
             }
         }
+        .onAppear { sites = BrowserAccess.allowedSites.joined(separator: ", ") }
+        .onReceive(NotificationCenter.default.publisher(for: .octomuxBrowserAccess)) { _ in decisions = BrowserAccess.decisions }
+    }
+
+    private var accessDesc: String {
+        switch BrowserAccess.mode {
+        case .off: return "Sessions don't get the browser tools (from the next session on)."
+        case .ask: return "A session asks you the first time it wants the browser; your answer holds for that session."
+        case .on: return "Every Claude and Codex session can use it."
+        }
+    }
+
+    private func saveSites() {
+        let list = sites.split(whereSeparator: { $0 == "," || $0 == "\n" }).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        model.setSettingLocally("browser.allowed_sites", .array(list.map { .string($0) }), scope: "global")
+        model.setSetting("browser.allowed_sites", list)
+        sites = list.joined(separator: ", ")
     }
 }
