@@ -6,7 +6,7 @@
   it always was, still the default), **Agents** (the Agents home below; new Claude and Codex sessions open as
   chats), **Workday** (the Workday home below), **Minimal** (only the panes) or **Editor** (code next to its agent:
   its chat on the left, the file in the middle, the Files panel on the right) or **Tasks** (the workspace
-  assistant in the middle, the Tasks panel on the right). Switch with ⌃⌘1…,
+  assistant in the middle, the Tasks panel on the right) or **Aquarium** (the aquarium above the panes). Switch with ⌃⌘1…,
   the command palette (View → … Layout), or the Layout button the other layouts show in the status bar.
 - **Agents home** (the Agents layout opens it as a tab): every agent at a glance, in three ways to try: **Board**
   (who waits for you, who works, who finished, recent), **Columns** (one column per state) and **Inbox** (agents by
@@ -34,6 +34,9 @@
   pull requests; never merging).
 - **Default agent** (Settings → Agents) for tasks, the assistant and "Work on it"; each can be started once with
   another agent.
+- **Aquarium**: every agent as a pixel octopus in its project's color, swimming while it works, with a "!" when it
+  waits for you, asleep on the sand when it finished; click one to open it. As a tab (View → Open Aquarium), a
+  strip above the panes, a status bar button, or the Aquarium scene behind the sidebar.
 - **Settings → Layout**: in each layout, turn off and reorder what the sidebar, its bottom row, the status bar and
   the top bar show; hide the status bar; open new agents as chats. Each layout keeps its own changes (Reset brings
   it back as it comes), and a layout can be exported to a file and imported on another Mac.

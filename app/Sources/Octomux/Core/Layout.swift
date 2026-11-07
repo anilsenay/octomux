@@ -10,7 +10,7 @@ import SwiftUI
 /// change to a built-in layout still reaches everyone who didn't touch that part. Anything unreadable falls back
 /// to the built-in values (a wrong type, an unknown layout or item), never to a broken window.
 enum LayoutPreset: String, CaseIterable, Identifiable, Codable {
-    case terminal, agents, workday, minimal, editor, tasks
+    case terminal, agents, workday, minimal, editor, tasks, aquarium
     var id: String { rawValue }
 
     var title: String {
@@ -21,6 +21,7 @@ enum LayoutPreset: String, CaseIterable, Identifiable, Codable {
         case .minimal: return "Minimal"
         case .editor: return "Editor"
         case .tasks: return "Tasks"
+        case .aquarium: return "Aquarium"
         }
     }
     var icon: String {
@@ -31,6 +32,7 @@ enum LayoutPreset: String, CaseIterable, Identifiable, Codable {
         case .minimal: return "rectangle"
         case .editor: return "chevron.left.forwardslash.chevron.right"
         case .tasks: return "checklist"
+        case .aquarium: return "fish"
         }
     }
     var summary: String {
@@ -41,6 +43,7 @@ enum LayoutPreset: String, CaseIterable, Identifiable, Codable {
         case .minimal: return "Only the panes: no sidebar, no status bar, a quiet top bar."
         case .editor: return "Code next to its agent: the agent's chat on the left, the file in the middle with its changed lines marked, the files it touched on the right. Notes on lines go to the agent."
         case .tasks: return "Work in tasks: the workspace assistant in the middle plans and starts them, the Tasks panel on the right shows what needs you, what is ready to review and what works."
+        case .aquarium: return "Every agent as an octopus above the panes: swimming while it works, \"!\" when it waits, asleep when it finished. Click one to open it below."
         }
     }
     /// ⌃⌘1…
@@ -192,6 +195,11 @@ struct LayoutConfig: Equatable {
             regions[.paneHeader] = items(.paneHeader, with: ["work"])
             regions[.views] = items(.views, with: ["tasks"])
             regions[.sidebar] = items(.sidebar, with: ["tasks"], order: ["search", "inbox", "tasks", "projects", "agents"])
+            return LayoutConfig(preset: p, regions: regions, statusBar: true, chat: true)
+        case .aquarium:
+            regions[.statusRight] = items(.statusRight)   // the aquarium is on screen already
+            regions[.paneHeader] = items(.paneHeader, with: ["work"])
+            regions[.views] = items(.views, with: ["aquarium"])
             return LayoutConfig(preset: p, regions: regions, statusBar: true, chat: true)
         }
     }
@@ -370,6 +378,10 @@ extension AppModel {
                 UserDefaults.standard.set(RightTab.files.rawValue, forKey: "octomux.rightTab")
                 rightPanelWidth = 300
                 rightPanelVisible = true
+            case .aquarium:
+                sidebarVisible = true
+                sidebarAgents = false
+                rightPanelVisible = false
             case .tasks:
                 sidebarVisible = true
                 sidebarAgents = false
