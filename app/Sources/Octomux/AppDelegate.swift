@@ -8,6 +8,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Saved layouts' menu items (and their ⌃⌘8 / ⌃⌘9) once the daemon's settings are in.
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in self?.refreshLayoutMenu() }
+        // The layout engine's blocks, drawn once off screen while idle (the first layout switch is then quick).
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { ShellPrewarm.run() }
         Paths.exportVariant()
         guard GhosttyRuntime.shared.start() else {
             let alert = NSAlert()

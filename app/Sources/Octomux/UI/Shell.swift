@@ -279,3 +279,29 @@ enum ShellKeys {
         }
     }
 }
+
+/// The engine's blocks drawn once off screen a few seconds after launch, while idle: the first switch to a layout
+/// then doesn't pay for loading their code and SwiftUI's type data (the first Tasks switch after launch took
+/// 250–300 ms, later ones ~200). Nothing is started: no digests read, no key monitors (the rail's keys are off).
+enum ShellPrewarm {
+    nonisolated(unsafe) static var done = false
+
+    static func run(model: AppModel = .shared) {
+        guard !done else { return }
+        done = true
+        let digests = AgentDigests()
+        let root = HStack(spacing: 0) {
+            AgentRail()
+            TasksRail()
+            VStack(spacing: 0) { ShellBreadcrumb(); ShellHome(); WorkdayHomeContent(surface: false) }
+            TaskDetailPanel()
+            SideAgentColumn()
+        }
+        .environmentObject(model)
+        .environmentObject(digests)
+        let host = NSHostingView(rootView: AnyView(root))
+        host.frame = NSRect(x: 0, y: 0, width: 1600, height: 820)
+        host.layoutSubtreeIfNeeded()
+        if let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) { host.cacheDisplay(in: host.bounds, to: rep) }
+    }
+}

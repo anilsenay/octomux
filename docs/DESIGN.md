@@ -156,7 +156,9 @@ A closed scale with no half points (`DesignTokenTests` fails on `N.5` sizes in `
   every block that shows them (rail, Home, task detail), after the first frame, and only while one is on screen.
   Measured per layout: idle CPU as the classic window (the Aquarium swims at 12 frames a second while Octomux is in
   front, one a second behind other apps: ~0.4% then, as the others), +5–30 MB, switches mostly 90–230 ms, no terminal view made by a switch. A terminal area that
-  takes the panes draws them on the next turn; the Tasks window selects its assistant after its first frame.
+  takes the panes draws them on the next turn; the Tasks window selects its assistant just after its first frame;
+  the engine's blocks are drawn once off screen a few seconds after launch (no readers, no key monitors), so the
+  first switch to a layout doesn't pay for loading them.
 - A user's own tree goes in `custom.<layout>.tree`, dragged widths in `custom.<layout>.sizes`; both go over the
   built-in tree, which keeps getting our updates.
 
