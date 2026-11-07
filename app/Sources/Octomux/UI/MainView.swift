@@ -615,6 +615,7 @@ struct DocChip: View {
         case .newChat: return "New chat session"
         case .inbox: return "Pull requests, reviews and issues"
         case .agents: return "Every agent: what it did, what it waits for"
+        case .workday: return "Your day: who needs you, what happened, your pull requests and issues"
         }
     }
 }

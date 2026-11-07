@@ -131,6 +131,12 @@ final class TerminalHost {
                 container.setRoot(pane)
                 return
             }
+            if case .workday = doc.kind {
+                let pane = PaneView(sessionId: "")
+                pane.setContent(NSHostingView(rootView: WorkdayHomeView().environmentObject(model)))
+                container.setRoot(pane)
+                return
+            }
             if case .newChat = doc.kind {
                 let pane = PaneView(sessionId: "")
                 pane.setContent(NSHostingView(rootView: NewChatView(docId: doc.id).environmentObject(model)))
@@ -753,6 +759,7 @@ struct PaneHeader: View {
                         .lineLimit(1).truncationMode(.head)
                 }
                 ActivityIndicator(session: s)
+                if roomy, model.layout.has("work", in: .paneHeader) { WorkChips(session: s, limit: 2) }
                 Spacer(minLength: 6)
                 Group {
                     if s.placement == .tab && !zoomed && roomy {

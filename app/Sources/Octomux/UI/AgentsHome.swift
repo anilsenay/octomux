@@ -356,6 +356,8 @@ struct AgentsHomeView: View {
                 if let p { ProjectIconView(project: p, size: 14) }
                 Text(p?.name ?? "").font(T.meta).foregroundStyle(T.text3)
                 if let b = branch(s) { Text("· \(b)").font(T.mono(11)).foregroundStyle(T.text3).lineLimit(1) }
+                Spacer(minLength: 4)
+                WorkChips(session: s, limit: compact ? 1 : 2)
             }
             if !d.summary.isEmpty {
                 Text(d.summary).font(.system(size: T.k * 12)).foregroundStyle(T.text2).lineLimit(compact ? 3 : 2)
@@ -373,6 +375,7 @@ struct AgentsHomeView: View {
                 .background(RoundedRectangle(cornerRadius: R.md, style: .continuous).fill(T.amber.opacity(0.08)))
             }
             if g == .working, !d.steps.isEmpty { Text(d.steps).font(T.meta).foregroundStyle(T.text3) }
+            SinceLookedBadge(session: s)
             if g == .finished || (!compact && g != .working && !d.files.isEmpty) {
                 if !d.files.isEmpty && !compact {
                     Text(d.files.prefix(4).joined(separator: ", ") + (d.files.count > 4 ? " +\(d.files.count - 4)" : ""))
@@ -444,6 +447,7 @@ struct AgentsHomeView: View {
         let base = s.worktree ?? model.project(s.projectId)?.path ?? s.cwd
         if model.selectedProjectId != s.projectId { model.selectedProjectId = s.projectId }
         model.openDoc(.changes, workPath: base)
+        model.lookedAt(s.id)
     }
 
     private func branch(_ s: Session) -> String? {
@@ -482,7 +486,7 @@ private struct StartBox: View {
 }
 
 /// Answer buttons that wrap.
-private struct FlowButtons: View {
+struct FlowButtons: View {
     let options: [String]
     let action: (Int) -> Void
     var body: some View {

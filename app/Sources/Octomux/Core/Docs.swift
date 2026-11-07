@@ -11,6 +11,7 @@ struct DocTab: Codable, Identifiable, Equatable {
         case newChat                 // start screen of a chat session (no agent running yet)
         case inbox                   // pull requests, reviews and issues (InboxView)
         case agents                  // the Agents layout's home: every agent at a glance (AgentsHomeView)
+        case workday                 // Workday's home: who needs you, while you were away, your PRs and issues
     }
     var id: String
     var projectId: String
@@ -29,6 +30,7 @@ struct DocTab: Codable, Identifiable, Equatable {
         case .newChat: return "New session"
         case .inbox: return "Inbox"
         case .agents: return "Agents"
+        case .workday: return "Workday"
         }
     }
 
@@ -40,6 +42,7 @@ struct DocTab: Codable, Identifiable, Equatable {
         case .newChat: return "bubble.left.and.text.bubble.right"
         case .inbox: return "tray"
         case .agents: return "sparkles"
+        case .workday: return "sun.max"
         }
     }
 
@@ -117,6 +120,8 @@ extension AppModel {
     var showsInboxWithoutProject: Bool { currentProject == nil && inboxWithoutProject != nil && inboxWithoutProject == selectedWorkspaceId }
     /// The Agents home (one per project's tab row, showing every agent).
     func openAgentsHome() { openDoc(.agents, workPath: currentProject?.path) }
+    /// Workday's home: your day on one page (any layout can open it).
+    func openWorkday() { openDoc(.workday, workPath: currentProject?.path) }
     func openChanges(scrollTo: String? = nil) { openDoc(.changes, scrollTo: scrollTo) }
     func openCommit(_ hash: String, subject: String) { openDoc(.commit(hash, subject)) }
 

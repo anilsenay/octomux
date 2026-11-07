@@ -160,6 +160,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         ag.keyEquivalentModifierMask = [.command, .option]
         view.addItem(ag)
         view.addItem(item("Change Scene…", #selector(changeScene(_:)), ""))
+        view.addItem(item("Open Agents Home", #selector(openAgentsHome(_:)), ""))
+        view.addItem(item("Open Workday", #selector(openWorkday(_:)), ""))
         view.addItem(.separator())
         for p in LayoutPreset.allCases {   // ⌃⌘1…4
             let i = item("\(p.title) Layout", #selector(chooseLayout(_:)), "\(p.number)")
@@ -237,6 +239,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         model.chooseLayout(LayoutPreset.allCases[n - 1])
     }
     @objc func customizeLayout(_ s: Any?) { SettingsWindow.show(section: .layout) }
+    @objc func openAgentsHome(_ s: Any?) { openMainWindow(); model.openAgentsHome() }
+    @objc func openWorkday(_ s: Any?) { openMainWindow(); model.openWorkday() }
     @objc func newTerminal(_ s: Any?) { model.newSession(profileId: nil) }
     @objc func newAgent(_ s: Any?) { model.newSession(profileId: (model.profile(model.lastNewSessionProfile) ?? model.pinnedProfiles.first ?? model.enabledProfiles.first)?.id) }
     @objc func splitRight(_ s: Any?) { model.newSession(profileId: nil, split: .right) }

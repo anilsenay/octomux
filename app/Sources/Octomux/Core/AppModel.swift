@@ -266,6 +266,9 @@ final class AppModel: ObservableObject {
             DaemonClient.held = false
             power = .running
         }
+        ActivityLog.shared.observe(old: state.sessions, new: s.sessions) { [weak self] x in
+            "\(x.displayTitle)" + (self?.project(x.projectId).map { " · \($0.name)" } ?? "")
+        }
         state = s
         migrateLayoutIfNeeded()
         // Keep selection valid.
@@ -574,13 +577,24 @@ final class AppModel: ObservableObject {
         }
         focusedSessionId = id
         markRead(id)
+        lookedAt(id)
         TerminalHost.shared.focusCurrent()
+    }
+
+    /// The checkout an agent works in (its worktree, else its project).
+    func workPath(of s: Session) -> String { s.worktree ?? project(s.projectId)?.path ?? s.cwd }
+
+    /// You looked at an agent: what it changes from now on is "since you looked".
+    func lookedAt(_ id: String) {
+        guard let s = session(id), s.isAgent, !host(for: id).isRemote else { return }
+        SinceLooked.shared.seen(id, path: workPath(of: s))
     }
 
     func sessionFocused(_ id: String) {
         guard focusedSessionId != id || session(id)?.unread == true else { return }
         focusedSessionId = id
         markRead(id)
+        lookedAt(id)
         if let t = tab(containing: id), t.activeSessionId != id {
             client(for: t.id).call("tab.update", ["id": t.id, "active_session_id": id])
         }

@@ -43,7 +43,7 @@ enum LayoutPreset: String, CaseIterable, Identifiable, Codable {
 
 /// The parts of the window whose items can be turned off and put in another order.
 enum LayoutRegion: String, CaseIterable, Identifiable, Codable {
-    case sidebar, sidebarFooter, statusLeft, statusRight, topBar
+    case sidebar, sidebarFooter, statusLeft, statusRight, topBar, paneHeader
     var id: String { rawValue }
 
     var title: String {
@@ -53,6 +53,7 @@ enum LayoutRegion: String, CaseIterable, Identifiable, Codable {
         case .statusLeft: return "Status bar, left"
         case .statusRight: return "Status bar, right"
         case .topBar: return "Top bar, right"
+        case .paneHeader: return "Pane header"
         }
     }
     var desc: String {
@@ -62,6 +63,15 @@ enum LayoutRegion: String, CaseIterable, Identifiable, Codable {
         case .statusLeft: return "What the status bar starts with, left to right."
         case .statusRight: return "What the status bar ends with, left to right."
         case .topBar: return "Project-wide buttons after the tabs, left to right."
+        case .paneHeader: return "What a pane's title row shows besides its name."
+        }
+    }
+    /// Items added after the default look was set: off in Terminal (the default look never changes), each other
+    /// layout turns on what it wants.
+    var optIn: Set<String> {
+        switch self {
+        case .paneHeader: return ["work"]
+        default: return []
         }
     }
     /// Every item this region knows, in Terminal's order.
@@ -72,6 +82,7 @@ enum LayoutRegion: String, CaseIterable, Identifiable, Codable {
         case .statusLeft: return ["agents", "git"]
         case .statusRight: return ["layout", "keepAwake", "usage", "actions", "dock"]
         case .topBar: return ["diff", "openIn", "git", "rightPanel"]
+        case .paneHeader: return ["work"]
         }
     }
     static func itemTitle(_ id: String, in region: LayoutRegion) -> String {
@@ -94,6 +105,7 @@ enum LayoutRegion: String, CaseIterable, Identifiable, Codable {
         case (_, "openIn"): return "Open in"
         case (.topBar, "git"): return "Commit / Push / PR"
         case (_, "rightPanel"): return "Right panel button"
+        case (.paneHeader, "work"): return "Pull request and issue chips"
         default: return id
         }
     }
@@ -126,15 +138,16 @@ struct LayoutConfig: Equatable {
             (order ?? r.items).map { LayoutItem(id: $0, on: !off.contains($0)) }
         }
         var regions: [LayoutRegion: [LayoutItem]] = [:]
-        for r in LayoutRegion.allCases { regions[r] = all(r) }
+        for r in LayoutRegion.allCases { regions[r] = all(r, off: r.optIn) }
         // Terminal: today's window. The Layout button stays out of its status bar (the window looks as it always did);
         // the other layouts show it, so the way back is in sight.
-        regions[.statusRight] = all(.statusRight, off: ["layout"])
+        regions[.statusRight] = all(.statusRight, off: Set(["layout"]).union(LayoutRegion.statusRight.optIn))
         switch p {
         case .terminal:
             return LayoutConfig(preset: p, regions: regions, statusBar: true, chat: false)
         case .agents:
             regions[.statusRight] = all(.statusRight)
+            regions[.paneHeader] = all(.paneHeader)
             return LayoutConfig(preset: p, regions: regions, statusBar: true, chat: true)
         case .review:
             regions[.sidebar] = all(.sidebar, order: ["inbox", "search", "projects", "agents"])

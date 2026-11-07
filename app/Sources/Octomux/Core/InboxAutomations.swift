@@ -108,6 +108,7 @@ final class InboxAutomations: ObservableObject {
                 } else {
                     started += 1
                     notify("Started an agent on \(item.key)", "\(r.name): \(item.title)")
+                    ActivityLog.shared.record(.automation, "\(r.name) started an agent on \(item.key)", detail: item.title, item: item.id)
                 }
                 break            // one rule per item
             }
@@ -138,6 +139,7 @@ final class InboxAutomations: ObservableObject {
             } else {
                 started += 1
                 notify("Reviewing new commits on \(item.key)", "\(r.name): \(item.title)")
+                ActivityLog.shared.record(.automation, "\(r.name) is reviewing new commits on \(item.key)", detail: item.title, item: item.id)
             }
         }
     }

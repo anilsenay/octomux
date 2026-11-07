@@ -348,7 +348,7 @@ enum DebugActions {
             case "toggle_right_panel": m.toggleRightPanel()
             case "right_panel": m.rightPanelVisible = (p["value"] as? Bool) ?? true   // set, not toggle
             case "right_panel_width": if let w = p["value"] as? Double { m.rightPanelWidth = CGFloat(w) }
-            case "layout":            // value: terminal | agents | review | minimal (as the menu / ⌃⌘n)
+            case "layout":            // value: terminal | agents | workday | minimal | … (as the menu / ⌃⌘n)
                 if let v = p["value"] as? String, let l = LayoutPreset(rawValue: v) { m.chooseLayout(l) }
             case "layout_store":      // value: the stored JSON as a string (null = nothing stored)
                 if let str = p["value"] as? String, let d = str.data(using: .utf8), let v = try? JSONDecoder().decode(JSONValue.self, from: d) { m.storeLayout(v) }
@@ -364,6 +364,15 @@ enum DebugActions {
             case "agents_home":       // value: board | columns | inbox; opens the Agents home
                 if let v = p["value"] as? String { UserDefaults.standard.set(v, forKey: "octomux.agentsHomeStyle") }
                 m.openAgentsHome()
+            case "workday": m.openWorkday()
+            case "activity_fake":     // a few "while you were away" events (fixture screenshots)
+                let ids = m.agentSessions(onlyCurrentWorkspace: false).map(\.id)
+                let log = ActivityLog.shared
+                log.record(WorkEvent(date: Date().addingTimeInterval(-50 * 60), kind: .automation, title: "Review new PRs started an agent on #42", detail: "Cart total rounds wrong", itemId: "gh:octo/storefront#42"))
+                log.record(WorkEvent(date: Date().addingTimeInterval(-34 * 60), kind: .finished, title: "Fix flaky checkout test · web-shop", sessionId: ids.first))
+                log.record(WorkEvent(date: Date().addingTimeInterval(-12 * 60), kind: .waiting, title: "Payment retries · payments-api", sessionId: ids.dropFirst().first))
+            case "looked":            // value: session id; "since you looked" starts now for it
+                if let v = p["value"] as? String { m.lookedAt(v) }
             case "layout_reset": m.editLayout { LayoutEdit.reset(stored: $0) }
             case "layout_import": if let path = p["value"] as? String { NSLog("layout import: \(LayoutSettings.importLayout(from: URL(fileURLWithPath: path), model: m))") }
             case "layout_export": if let path = p["value"] as? String { try? LayoutEdit.exporting(m.layoutStored).write(to: URL(fileURLWithPath: path)) }

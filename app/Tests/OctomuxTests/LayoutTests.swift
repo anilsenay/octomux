@@ -22,6 +22,18 @@ final class LayoutTests: XCTestCase {
         XCTAssertEqual(c.shown(.statusLeft), ["agents", "git"])
         XCTAssertEqual(c.shown(.statusRight), ["keepAwake", "usage", "actions", "dock"])   // no Layout button
         XCTAssertEqual(c.shown(.topBar), ["diff", "openIn", "git", "rightPanel"])
+        XCTAssertEqual(c.shown(.paneHeader), [])   // opt-in items stay off
+    }
+
+    /// Items added later are off in Terminal, also for a Terminal whose stored list predates them.
+    func testNewItemsStayOffInTerminal() {
+        for r in LayoutRegion.allCases {
+            for id in r.optIn { XCTAssertFalse(LayoutConfig.builtIn(.terminal).has(id, in: r), "\(r).\(id)") }
+        }
+        let old = json(#"{"layout":"terminal","custom":{"terminal":{"regions":{"statusRight":[{"id":"usage","on":false}]}}}}"#)
+        let c = LayoutConfig.resolve(old)
+        for id in LayoutRegion.statusRight.optIn { XCTAssertFalse(c.has(id, in: .statusRight), id) }
+        XCTAssertTrue(LayoutConfig.builtIn(.agents).has("work", in: .paneHeader))
     }
 
     func testOtherLayoutsShowTheWayBack() {
