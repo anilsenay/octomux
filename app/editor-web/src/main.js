@@ -1,6 +1,6 @@
 // ADE code viewer: file editor + multi-file diff, hosted in a WKWebView.
 // Swift drives it through `window.octomux.*`; it reports back via webkit.messageHandlers.octomux.
-import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection, highlightSpecialChars, gutter, GutterMarker } from "@codemirror/view";
+import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection, highlightSpecialChars, gutter, GutterMarker, Decoration, WidgetType } from "@codemirror/view";
 import { EditorState, Compartment, StateField, StateEffect, RangeSet } from "@codemirror/state";
 import { syntaxHighlighting, foldGutter, codeFolding, foldKeymap, bracketMatching, indentOnInput } from "@codemirror/language";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
@@ -98,6 +98,29 @@ function marksSet(doc, m) {
   return RangeSet.of(ranges, true);
 }
 
+// Notes sent to the agent stay above their lines until the file is opened again (empty: nothing drawn).
+const addNoteEffect = StateEffect.define();
+class NoteWidget extends WidgetType {
+  constructor(text, lines) { super(); this.text = text; this.lines = lines; }
+  eq(o) { return o.text === this.text && o.lines === this.lines; }
+  toDOM() {
+    const d = $("div", "cm-note");
+    d.append($("span", "cm-note-icon", "↳"), $("span", "cm-note-text", this.text), $("span", "cm-note-meta", this.lines + " · sent to the agent"));
+    return d;
+  }
+}
+const notesField = StateField.define({
+  create: () => Decoration.none,
+  update(v, tr) {
+    v = v.map(tr.changes);
+    for (const e of tr.effects) if (e.is(addNoteEffect)) {
+      v = v.update({ add: [Decoration.widget({ widget: new NoteWidget(e.value.text, e.value.lines), block: true, side: -1 }).range(e.value.pos)] });
+    }
+    return v;
+  },
+  provide: (f) => EditorView.decorations.from(f),
+});
+
 // ---------- file view ----------
 let current = null;     // { kind, destroy() }
 const root = () => document.getElementById("root");
@@ -152,6 +175,7 @@ function showFile(f) {
         common({ path: f.path, editable: f.editable, wrap: isMd }),
         lang.of([]),
         marksComp.of(features.marks ? marksExtension : []),
+        notesField,
         EditorView.updateListener.of((u) => {
           if (u.docChanged) {
             const dirty = u.state.doc.toString() !== saved;
@@ -196,7 +220,12 @@ function showFile(f) {
     const label = $("div", "notelabel", (from === to ? "Line " + from : "Lines " + from + "–" + to) + " → agent");
     const ta = $("textarea");
     ta.placeholder = "What should the agent do here? (↩ puts it in the agent's message, ⇧↩ new line, esc cancels)";
-    const send = () => { const t = ta.value.trim(); if (!t) return; post({ type: "note", text: t, path: f.path, from, to, excerpt }); closeNote(); };
+    const send = () => {
+      const t = ta.value.trim(); if (!t) return;
+      post({ type: "note", text: t, path: f.path, from, to, excerpt });
+      view.dispatch({ effects: addNoteEffect.of({ pos: view.state.doc.line(from).from, text: t, lines: from === to ? "line " + from : "lines " + from + "–" + to }) });
+      closeNote();
+    };
     ta.addEventListener("keydown", (e) => {
       if (e.key === "Escape") { e.preventDefault(); closeNote(); }
       else if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
