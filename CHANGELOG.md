@@ -27,6 +27,9 @@
   closed: a one-time administrator prompt installs a rule that lets Octomux run only `pmset -a disablesleep`, set
   only while it keeps the Mac awake, on the power adapter unless you allow battery, and put back after (also after
   a crash).
+  "For a while" keeps it awake 1–8 hours, then goes back to the mode before; the cup can be hidden (Settings brings
+  it back).
+- **Changes panel** has "Compare with" at the top: the same branch choice as the status bar's "→ branch".
 
 ## 0.3.0
 

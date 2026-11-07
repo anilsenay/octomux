@@ -16,7 +16,12 @@ final class KeepAwake: ObservableObject {
         var lidActive = false
         var onAC = true
         var lidOnBattery = false
+        /// Always, until then (a timed keep-awake), then back to the previous mode.
+        var until: Date?
     }
+
+    /// The cup is hidden from the status bar (Settings → Sessions brings it back).
+    static let hiddenKey = "octomux.keepAwakeHidden"
 
     @Published private(set) var status = Status()
     @Published var installing = false
@@ -39,14 +44,19 @@ final class KeepAwake: ObservableObject {
                            working: (d["working"] as? NSNumber)?.intValue ?? 0, grace: d["grace"] as? Bool ?? false,
                            lidEnabled: lid["enabled"] as? Bool ?? false, lidSetup: lid["setup"] as? Bool ?? false,
                            lidActive: lid["active"] as? Bool ?? false, onAC: lid["on_ac"] as? Bool ?? true,
-                           lidOnBattery: lid["on_battery_allowed"] as? Bool ?? false)
+                           lidOnBattery: lid["on_battery_allowed"] as? Bool ?? false,
+                           until: (d["until"] as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue) })
             DispatchQueue.main.async { if self?.status != s { self?.status = s } }
         }
     }
 
     func setMode(_ m: String) {
-        AppModel.shared.setSetting("power.keep_awake", m == "off" ? nil : m)
+        let model = AppModel.shared
+        model.setSetting("power.until", nil)
+        model.setSetting("power.after", nil)
+        model.setSetting("power.keep_awake", m == "off" ? nil : m)
         status.mode = m
+        status.until = nil
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { self.refresh() }
     }
 
@@ -62,11 +72,37 @@ final class KeepAwake: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { self.refresh() }
     }
 
+    /// Always for a while, then back to the mode before (a timed one keeps the mode it came from).
+    func keepAwake(for seconds: TimeInterval) {
+        let model = AppModel.shared
+        let previous = status.until != nil ? (model.setting("power.after")?.string ?? "off") : status.mode
+        let until = Date().addingTimeInterval(seconds)
+        model.setSetting("power.after", previous == "always" ? nil : previous)
+        model.setSetting("power.until", Int(until.timeIntervalSince1970))
+        model.setSetting("power.keep_awake", "always")
+        status.mode = "always"
+        status.until = until
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { self.refresh() }
+    }
+
+    /// Ends a timed keep-awake now: back to the mode before it.
+    func stopTimer() { setMode(AppModel.shared.setting("power.after")?.string ?? "off") }
+
+    static let durations: [(title: String, seconds: TimeInterval)] = [("1 hour", 3600), ("2 hours", 7200), ("4 hours", 14400), ("8 hours", 28800)]
+
+    static func clock(_ d: Date) -> String {
+        let f = DateFormatter()
+        f.timeStyle = .short
+        f.dateStyle = Calendar.current.isDateInToday(d) ? .none : .short
+        return f.string(from: d)
+    }
+
     static let modes: [(id: String, title: String)] = [("off", "Off"), ("agents", "While agents work"), ("always", "Always")]
 
     var tooltip: String {
         let s = status
         guard s.mode != "off" else { return "Keep Mac awake: off" }
+        if let u = s.until { return "Keeping this Mac awake until \(Self.clock(u))" + (s.lidActive ? " · also with the lid closed" : "") }
         var t: String
         if s.active {
             t = s.mode == "always" ? "Keeping this Mac awake"
@@ -125,14 +161,22 @@ final class KeepAwake: ObservableObject {
 /// The status bar's cup: mode menu, lit while the Mac is kept awake.
 struct KeepAwakeControl: View {
     @ObservedObject var awake = KeepAwake.shared
+    private var cupColor: Color { awake.status.active ? T.amber : awake.status.mode == "off" ? T.text3 : T.text2 }
     var body: some View {
         let s = awake.status
         Menu {
             Section("Keep Mac awake") {
                 ForEach(KeepAwake.modes, id: \.id) { m in
                     Button { awake.setMode(m.id) } label: {
-                        if s.mode == m.id { Label(m.title, systemImage: "checkmark") } else { Text(m.title) }
+                        if s.mode == m.id && (m.id != "always" || s.until == nil) { Label(m.title, systemImage: "checkmark") } else { Text(m.title) }
                     }
+                }
+                Menu {
+                    ForEach(KeepAwake.durations, id: \.seconds) { d in
+                        Button(d.title) { awake.keepAwake(for: d.seconds) }
+                    }
+                } label: {
+                    if let u = s.until { Label("For a While (until \(KeepAwake.clock(u)))", systemImage: "checkmark") } else { Text("For a While") }
                 }
             }
             Divider()
@@ -146,12 +190,15 @@ struct KeepAwakeControl: View {
             }
             Divider()
             Button("Settings…") { SettingsWindow.show(section: .sessions) }
+            Button("Hide from Status Bar") { UserDefaults.standard.set(true, forKey: KeepAwake.hiddenKey) }
         } label: {
             Image(systemName: s.active ? "cup.and.saucer.fill" : "cup.and.saucer")
                 .font(.system(size: T.k * 11))
-                .foregroundStyle(s.active ? T.amber : s.mode == "off" ? T.text3.opacity(0.7) : T.text2)
+                .foregroundStyle(cupColor)
         }
         .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+        .tint(cupColor)   // a borderless menu draws its label in the tint, not the label's own color
+        .pointerCursor()
         .help(awake.tooltip)
         .onAppear { awake.start() }
     }
@@ -160,6 +207,7 @@ struct KeepAwakeControl: View {
 /// Settings → Sessions → Keep Mac awake.
 struct KeepAwakeSettings: View {
     @ObservedObject var awake = KeepAwake.shared
+    @AppStorage(KeepAwake.hiddenKey) private var hidden = false
     var body: some View {
         let s = awake.status
         SettingsGroup("Keep Mac awake", desc: "Stops the Mac from sleeping on its own while agents run, so long jobs finish. The display can still turn off. Also in the status bar (the cup).") {
@@ -169,6 +217,13 @@ struct KeepAwakeSettings: View {
                 }
                 .labelsHidden().pickerStyle(.segmented).fixedSize()
             }
+            SettingRow("For a while", desc: s.until.map { "Always until \(KeepAwake.clock($0)), then back to what it was." } ?? "Always for a set time, then back to the mode above.") {
+                Menu {
+                    ForEach(KeepAwake.durations, id: \.seconds) { d in Button(d.title) { awake.keepAwake(for: d.seconds) } }
+                    if s.until != nil { Divider(); Button("Stop Now") { awake.stopTimer() } }
+                } label: { Text(s.until.map { "Until \(KeepAwake.clock($0))" } ?? "Choose…").font(.system(size: T.k * 12.5)) }
+                .menuStyle(.button).fixedSize()
+            }
             if s.mode != "off" {
                 SettingRow("Now", desc: nil) {
                     HStack(spacing: 6) {
@@ -177,6 +232,9 @@ struct KeepAwakeSettings: View {
                     }
                     .font(.system(size: T.k * 12))
                 }
+            }
+            SettingRow("Show in the status bar", desc: "The cup next to the usage meters: the mode at a click, lit while the Mac is kept awake.") {
+                Toggle("", isOn: Binding(get: { !hidden }, set: { hidden = !$0 })).labelsHidden().toggleStyle(.switch)
             }
             SettingRow("Also with the lid closed", desc: "macOS sleeps when the lid closes whatever apps ask. This turns that off (pmset disablesleep) only while Octomux keeps the Mac awake, and turns it back on after. Needs your administrator password once. A closed Mac in a bag gets hot: leave it on a desk.") {
                 if s.lidSetup {

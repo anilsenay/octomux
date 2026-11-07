@@ -399,8 +399,35 @@ impl Daemon {
         Some(r)
     }
 
+    /// Stores (or with null removes) a setting and tells the clients.
+    pub fn put_setting(&self, scope: String, key: String, value: Value) -> Result<()> {
+        let mut st = self.state.lock().unwrap();
+        st.settings.retain(|x| !(x.scope == scope && x.key == key));
+        let skey = format!("{scope}|{key}");
+        if value.is_null() {
+            self.store.lock().unwrap().delete("setting", &skey)?;
+        } else {
+            let setting = Setting { scope, key, value };
+            self.store.lock().unwrap().put("setting", &skey, &setting)?;
+            st.settings.push(setting);
+        }
+        drop(st);
+        self.changed();
+        Ok(())
+    }
+
     /// Keep-awake from the `power.*` settings and how many agents are working now.
     pub fn apply_power(&self) -> Value {
+        // A timed keep-awake (`power.until`, unix seconds) ends by going back to `power.after`.
+        if let Some(until) = self.setting("power.until", None).and_then(|v| v.as_i64()) {
+            let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
+            if now >= until {
+                let after = self.setting("power.after", None).filter(|v| v.as_str().is_some_and(|m| m != "off"));
+                let _ = self.put_setting("global".into(), "power.keep_awake".into(), after.unwrap_or(Value::Null));
+                let _ = self.put_setting("global".into(), "power.until".into(), Value::Null);
+                let _ = self.put_setting("global".into(), "power.after".into(), Value::Null);
+            }
+        }
         let working = {
             let st = self.state.lock().unwrap();
             st.sessions.iter().filter(|s| s.activity == Activity::Working).count()
@@ -412,7 +439,11 @@ impl Daemon {
             lid: b("power.lid"),
             lid_on_battery: b("power.lid_on_battery"),
         };
-        self.power.apply(inputs, &self.paths.run_dir().join("lid-awake"))
+        let mut st = self.power.apply(inputs, &self.paths.run_dir().join("lid-awake"));
+        if let Some(until) = self.setting("power.until", None) {
+            st["until"] = until;
+        }
+        st
     }
 
     pub fn setting(&self, key: &str, project_id: Option<&str>) -> Option<Value> {
@@ -1857,22 +1888,12 @@ impl Daemon {
                 let scope = s("scope").unwrap_or("global".into());
                 let key = req("key")?;
                 let value = p.get("value").cloned().unwrap_or(Value::Null);
-                let mut st = self.state.lock().unwrap();
-                st.settings.retain(|x| !(x.scope == scope && x.key == key));
-                let skey = format!("{scope}|{key}");
-                if value.is_null() {
-                    self.store.lock().unwrap().delete("setting", &skey)?;
-                } else {
-                    let setting = Setting { scope, key, value };
-                    self.store.lock().unwrap().put("setting", &skey, &setting)?;
-                    st.settings.push(setting);
-                }
-                drop(st);
-                self.changed();
+                self.put_setting(scope, key, value)?;
                 Ok(json!({ "ok": true }))
             }
 
             "session.create" => self.create_session(p),
+
             "session.ensure" => {
                 let id = req("id")?;
                 let state = self.state.lock().unwrap().sessions.iter().find(|s| s.id == id).map(|s| s.state);

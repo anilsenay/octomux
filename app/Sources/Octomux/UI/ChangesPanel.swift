@@ -270,6 +270,7 @@ final class ChangesModel: ObservableObject {
 struct ChangesPanel: View {
     @EnvironmentObject var model: AppModel
     @StateObject private var changes = ChangesModel()
+    @State private var pickingBase = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -330,6 +331,7 @@ struct ChangesPanel: View {
                 }
                 .padding(12)
                 Hairline()
+                compareRow
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
                         let staged = changes.changes.filter(\.isStaged)
@@ -358,6 +360,34 @@ struct ChangesPanel: View {
 
     @State private var collapsed: Set<String> = []
 
+    /// The branch these changes are compared against (the same choice as the status bar's "→ branch").
+    @ViewBuilder private var compareRow: some View {
+        if let path = model.currentWorkPath {
+            let base = GitInfo.compareBase(for: path)
+            HStack(spacing: 6) {
+                Text("Compare with").font(T.caption).foregroundStyle(T.text3)
+                Button { pickingBase = true } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.triangle.branch").font(.system(size: T.k * 9.5))
+                        Text(base ?? "Uncommitted only").font(base == nil ? T.caption : T.mono(11)).lineLimit(1)
+                        Image(systemName: "chevron.up.chevron.down").font(.system(size: T.k * 7.5, weight: .bold)).foregroundStyle(T.text3)
+                    }
+                    .foregroundStyle(base == nil ? T.text2 : T.text)
+                    .padding(.horizontal, 6).frame(height: 20).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain).hoverHighlight(radius: 6, padding: 0).pointerCursor()
+                .help(base.map { "Also listing everything since this branch left \($0). Click to pick another branch or go back to uncommitted changes only." }
+                      ?? "Only uncommitted changes. Click to also see everything since this branch left another one (like main).")
+                .background(PopoverAnchor(isPresented: $pickingBase) {
+                    BranchPicker(path: path, mode: .base, current: base) { pickingBase = false }
+                })
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12).frame(height: 30)
+            Hairline()
+        }
+    }
+
     /// Everything since the compare branch (what the status bar counts): a list only; a click opens its diff.
     @ViewBuilder private func baseGroup(_ name: String) -> some View {
         let list = changes.baseFiles
@@ -365,7 +395,7 @@ struct ChangesPanel: View {
         let open = !collapsed.contains(title)
         if !changes.changes.isEmpty { Hairline().padding(.vertical, 4) }
         GroupHeader(title: "\(title) (\(list.count))", open: open, added: list.reduce(0) { $0 + $1.added }, removed: list.reduce(0) { $0 + $1.removed },
-                    action: nil, help: "Committed on this branch and not yet, since it left \(name); change it from the branch in the status bar") {
+                    action: nil, help: "Committed on this branch and not yet, since it left \(name); change it with Compare with above") {
             if open { collapsed.insert(title) } else { collapsed.remove(title) }
         }
         if open {

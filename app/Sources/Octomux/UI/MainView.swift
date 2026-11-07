@@ -936,6 +936,7 @@ struct EmptyStateView: View {
 struct StatusBar: View {
     @EnvironmentObject var model: AppModel
     @ObservedObject var git = GitInfo.shared
+    @AppStorage(KeepAwake.hiddenKey) private var keepAwakeHidden = false
 
     var body: some View {
         let m = T.m
@@ -974,7 +975,7 @@ struct StatusBar: View {
                 GitStatusControls(path: wp, branch: branch, full: full)
             }
             Spacer(minLength: 8)
-            if !model.host.isRemote { KeepAwakeControl() }
+            if !model.host.isRemote && !keepAwakeHidden { KeepAwakeControl() }
             UsageStatus(compact: !full)
             ActionsControl().fixedSize()
             Button { model.toggleDock() } label: {
