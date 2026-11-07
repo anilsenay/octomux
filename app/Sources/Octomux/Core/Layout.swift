@@ -469,7 +469,11 @@ extension AppModel {
             shellTaskId = nil
             // After the window's first frame: making the assistant's terminal doesn't hold up the switch.
             if let a = assistantSession(workspace: selectedWorkspaceId) {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in self?.selectSession(a.id) }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+                    // Unless you moved on meanwhile (another layout, a task picked).
+                    guard let self, self.shellNav == .tasks, self.shellTaskId == nil else { return }
+                    self.selectSession(a.id)
+                }
             }
         }
     }

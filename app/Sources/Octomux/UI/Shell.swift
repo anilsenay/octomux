@@ -20,7 +20,7 @@ extension AppModel {
     }
     /// Home (⌘0): the Agents window's Home; in the Tasks window, the assistant.
     func shellGoHome() {
-        if shellNav == .tasks { shellTaskId = nil; if assistantSession(workspace: selectedWorkspaceId) != nil { openAssistant() }; return }
+        if shellNav == .tasks { shellTaskId = nil; openAssistant(); return }   // started when there is none yet
         shellHome = true
     }
 

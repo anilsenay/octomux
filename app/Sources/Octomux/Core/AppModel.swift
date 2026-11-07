@@ -529,6 +529,7 @@ final class AppModel: ObservableObject {
     func selectWorkspace(_ id: String) {
         guard id != selectedWorkspaceId, state.workspaces.contains(where: { $0.id == id }) else { return }
         activeDocId = nil
+        shellTaskId = nil                      // the Tasks window's task was the other workspace's
         selectedWorkspaceId = id
         if let t = lastTabPerWorkspace[id], let tab = state.tabs.first(where: { $0.id == t }), project(tab.projectId)?.workspaceId == id {
             activeTabId = tab.id
@@ -583,6 +584,9 @@ final class AppModel: ObservableObject {
         guard let s = session(id) else { return }
         shellHome = false
         activeDocId = nil
+        // The Tasks window's detail follows: the session's task; none for any other session but the assistant
+        // (which shows for a task without sessions of its own).
+        if shellNav == .tasks, !isAssistant(id) { shellTaskId = task(forSession: id)?.id }
         if let p = project(s.projectId), p.workspaceId != selectedWorkspaceId { selectedWorkspaceId = p.workspaceId }
         selectedProjectId = s.projectId
         if let t = tab(containing: id) {
