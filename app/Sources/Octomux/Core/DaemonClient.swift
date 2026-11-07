@@ -111,6 +111,8 @@ final class DaemonClient {
     }
 
     var onState: ((DaemonState) -> Void)?
+    /// An agent asked (over MCP) to start a planned task.
+    var onTaskStart: (([String: Any]) -> Void)?
     var onNotify: ((AppNotification) -> Void)?
     var onNotificationsChanged: (() -> Void)?
     var onDisconnect: (() -> Void)?
@@ -208,6 +210,8 @@ final class DaemonClient {
                 }
             case "notifications_changed":
                 DispatchQueue.main.async { self.onNotificationsChanged?() }
+            case "task.start_requested":
+                if let d = data as? [String: Any] { DispatchQueue.main.async { self.onTaskStart?(d) } }
             default: break
             }
         } else if obj["id"] != nil, let result = obj["result"] {

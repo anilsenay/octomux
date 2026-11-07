@@ -365,6 +365,14 @@ enum DebugActions {
                 if let v = p["value"] as? String { UserDefaults.standard.set(v, forKey: "octomux.agentsHomeStyle") }
                 m.openAgentsHome()
             case "workday": m.openWorkday()
+            case "tasks": m.showTasks()
+            case "assistant": m.openAssistant()
+            case "autopilot":         // value: off | start | pr (the current workspace)
+                m.setAutopilot(Autopilot(rawValue: p["value"] as? String ?? "off") ?? .off, workspace: m.selectedWorkspaceId)
+            case "task_start":        // value: task id; "profile_id": one-off agent
+                if let v = p["value"] as? String, let t = m.task(v) { m.startTask(t, profileId: p["profile_id"] as? String) }
+            case "task_start_requested":   // as the daemon's event: value: task id, "caller": session id
+                TaskAutopilot.shared.startRequested(["task_id": p["value"] as? String ?? "", "caller_session": p["caller"] as? String ?? ""], model: m)
             case "editor_note":       // a note on lines, as the editor's note box sends it: value, path, from, to, excerpt
                 MainActor.assumeIsolated { m.sendNote(p["value"] as? String ?? "note", path: p["path"] as? String ?? "f", from: p["from"] as? Int ?? 1, to: p["to"] as? Int ?? 1, excerpt: p["excerpt"] as? String ?? "") }
             case "activity_fake":     // a few "while you were away" events (fixture screenshots)

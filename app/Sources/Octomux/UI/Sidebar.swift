@@ -39,6 +39,7 @@ struct SidebarView: View {
         case "agents":
             AgentsPanel(maxHeight: max(AgentsPanel.minHeight, height - 260), onTop: agentsOnTop)
                 .padding(.top, agentsOnTop ? 8 : 0)
+        case "tasks": TasksSidebarSection()
         default: EmptyView()
         }
     }

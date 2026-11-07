@@ -102,6 +102,7 @@ final class AppModel: ObservableObject {
 
     func start() {
         client.onState = { [weak self] s in self?.apply(s) }
+        client.onTaskStart = { TaskAutopilot.shared.startRequested($0) }
         client.onNotify = { [client] n in NotificationCenterModel.shared.received(n, from: client); Notifier.shared.deliver(n) }
         client.onNotificationsChanged = { [client] in NotificationCenterModel.shared.refresh(client) }
         client.onDisconnect = { [weak self] in
@@ -269,8 +270,10 @@ final class AppModel: ObservableObject {
         ActivityLog.shared.observe(old: state.sessions, new: s.sessions) { [weak self] x in
             "\(x.displayTitle)" + (self?.project(x.projectId).map { " · \($0.name)" } ?? "")
         }
+        TaskAutopilot.shared.observe(old: state.sessions, new: s.sessions, model: self)
         state = s
         migrateLayoutIfNeeded()
+        if !s.tasks.isEmpty { syncTasks(); claimAssistantTasks() }
         // Keep selection valid.
         if selectedWorkspaceId == nil || !s.workspaces.contains(where: { $0.id == selectedWorkspaceId }) {
             selectedWorkspaceId = s.workspaces.first?.id

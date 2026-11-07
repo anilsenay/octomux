@@ -258,6 +258,7 @@ struct DaemonState: Codable, Equatable {
     var tabs: [Tab] = []
     var settings: [Setting] = []
     var usage: [UsageReading] = []
+    var tasks: [WorkTask] = []
 
     init() {}
     init(from d: Decoder) throws {
@@ -269,6 +270,7 @@ struct DaemonState: Codable, Equatable {
         tabs = try c.decode([Tab].self, forKey: .tabs)
         settings = try c.decode([Setting].self, forKey: .settings)
         usage = try c.decodeIfPresent([UsageReading].self, forKey: .usage) ?? []
+        tasks = (try? c.decodeIfPresent([WorkTask].self, forKey: .tasks)) ?? []
     }
 }
 

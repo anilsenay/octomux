@@ -2113,8 +2113,7 @@ enum InboxStart {
         if worktree {
             let profileId = profile.flatMap { model.profile($0)?.id }
                 ?? UserDefaults.standard.string(forKey: InboxPrefs.profile).flatMap { model.profile($0)?.id }
-                ?? UserDefaults.standard.string(forKey: "octomux.chatProfile").flatMap { model.profile($0)?.id }
-                ?? model.enabledProfiles.first(where: { $0.kind == .claude || $0.kind == .codex })?.id
+                ?? model.defaultAgentProfileId(projectId: project.id)
             // A PR's own branch only in a checkout of its repo; elsewhere a new branch named after it.
             let ownRepo = InboxStore.repoKey(item).map { InboxStore.shared.repoProjects[$0] == project.id } ?? false
             let pr = item.kind == .pr && ownRepo ? item.branch : nil

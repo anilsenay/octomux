@@ -11,8 +11,10 @@ struct WorkChips: View {
     var body: some View {
         let branch = GitInfo.shared.branch(for: model.workPath(of: session))
         let list = WorkLinks.items(session: session.id, branch: branch, items: store.items, links: store.links)
-        if !list.isEmpty {
+        let task = model.task(forSession: session.id)
+        if !list.isEmpty || task != nil {
             HStack(spacing: 4) {
+                if let t = task { TaskChip(task: t) }
                 ForEach(list.prefix(limit), id: \.id) { WorkChip(item: $0) }
             }
         }
@@ -62,6 +64,27 @@ struct WorkChip: View {
         var parts = ["\(item.key) \(item.title)", item.status]
         if item.kind == .pr, let c = item.checks { parts.append("checks \(c.rawValue)") }
         return parts.joined(separator: " · ") + " — open in the Inbox"
+    }
+}
+
+/// The task a session works on: a click opens the Tasks tab.
+struct TaskChip: View {
+    @EnvironmentObject var model: AppModel
+    let task: WorkTask
+    var body: some View {
+        Button { model.showTasks() } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "checklist").font(.system(size: T.k * 9, weight: .semibold))
+                Text(task.sourceKey ?? task.title).font(.system(size: T.k * 10)).lineLimit(1).frame(maxWidth: 120)
+                Circle().fill(TaskRow.color(task.state)).frame(width: 5, height: 5)
+            }
+            .foregroundStyle(T.text2)
+            .padding(.horizontal, 5).frame(height: 17)
+            .background(Capsule().fill(T.hover))
+            .overlay(Capsule().stroke(T.border))
+        }
+        .buttonStyle(.plain).pointerCursor()
+        .help("Task: \(task.title) · \(task.state.title)")
     }
 }
 

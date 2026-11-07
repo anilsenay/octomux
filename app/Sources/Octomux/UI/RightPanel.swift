@@ -2,7 +2,11 @@ import AppKit
 import SwiftUI
 
 /// History lives in the Changes tab now (a collapsible section at its bottom); a saved "History" opens Changes.
-enum RightTab: String, CaseIterable { case files = "Files", changes = "Changes", sessions = "Sessions" }
+enum RightTab: String, CaseIterable {
+    case files = "Files", changes = "Changes", sessions = "Sessions", tasks = "Tasks"
+    /// The tabs the layout shows (Tasks only where the layout has it: the default panel stays as it is).
+    static func shown(_ l: LayoutConfig) -> [RightTab] { allCases.filter { $0 != .tasks || l.has("tasks", in: .views) } }
+}
 
 extension Notification.Name {
     /// A commit or push from the Changes panel: History reloads.
@@ -17,13 +21,14 @@ struct RightPanel: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            SegmentedTabs(items: RightTab.allCases.map { (id: $0.rawValue, title: $0.rawValue) }, selection: $tab, fill: true)
+            SegmentedTabs(items: RightTab.shown(model.layout).map { (id: $0.rawValue, title: $0.rawValue) }, selection: $tab, fill: true)
                 .padding(.horizontal, 8).frame(height: 38)
             Hairline()
-            switch RightTab(rawValue: tab) ?? .changes {
+            switch RightTab(rawValue: tab).flatMap({ RightTab.shown(model.layout).contains($0) ? $0 : nil }) ?? .changes {
             case .changes: SourceControlPanel()
             case .files: FilesPanel()
             case .sessions: SessionsPanel()
+            case .tasks: TasksPanel()
             }
         }
         .onAppear {

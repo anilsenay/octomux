@@ -75,21 +75,22 @@ enum LayoutRegion: String, CaseIterable, Identifiable, Codable {
     /// layout turns on what it wants.
     var optIn: Set<String> {
         switch self {
+        case .sidebar: return ["tasks"]
         case .paneHeader: return ["work"]
-        case .views: return ["touched", "marks", "notes"]
+        case .views: return ["touched", "marks", "notes", "tasks"]
         default: return []
         }
     }
     /// Every item this region knows, in Terminal's order.
     var items: [String] {
         switch self {
-        case .sidebar: return ["search", "inbox", "projects", "agents"]
+        case .sidebar: return ["search", "inbox", "projects", "agents", "tasks"]
         case .sidebarFooter: return ["add", "workspaces", "settings"]
         case .statusLeft: return ["agents", "git"]
         case .statusRight: return ["layout", "keepAwake", "usage", "actions", "dock"]
         case .topBar: return ["diff", "openIn", "git", "rightPanel"]
         case .paneHeader: return ["work"]
-        case .views: return ["touched", "marks", "notes"]
+        case .views: return ["touched", "marks", "notes", "tasks"]
         }
     }
     static func itemTitle(_ id: String, in region: LayoutRegion) -> String {
@@ -116,6 +117,8 @@ enum LayoutRegion: String, CaseIterable, Identifiable, Codable {
         case (.views, "touched"): return "Files: what the agent touched this turn"
         case (.views, "marks"): return "Editor: changed lines in the gutter"
         case (.views, "notes"): return "Editor: note on a line → agent"
+        case (.views, "tasks"): return "Right panel: Tasks tab"
+        case (.sidebar, "tasks"): return "Tasks"
         default: return id
         }
     }
@@ -173,7 +176,7 @@ struct LayoutConfig: Equatable {
         case .editor:
             regions[.statusRight] = all(.statusRight)
             regions[.paneHeader] = all(.paneHeader)
-            regions[.views] = all(.views)
+            regions[.views] = all(.views, off: ["tasks"])
             return LayoutConfig(preset: p, regions: regions, statusBar: true, chat: true, sideChat: true)
         }
     }

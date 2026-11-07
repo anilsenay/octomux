@@ -826,6 +826,21 @@ struct AgentsSettings: View {
     @State private var confirming: (profile: Profile, install: Bool)?
 
     var body: some View {
+        SettingsGroup("Default agent", desc: "What a task, the assistant and \"Work on it\" start with when you don't pick one (a workspace's own chat default comes first). Each of them can still be started once with another agent.") {
+            SettingRow("Default agent", desc: "Claude and Codex agents you have turned on.") {
+                Picker("", selection: Binding(get: { () -> String in
+                    if case .string(let id)? = model.settingValue("agents.default_profile", scope: "global") { return id }
+                    return ""
+                }, set: { v in
+                    model.setSettingLocally("agents.default_profile", v.isEmpty ? .null : .string(v), scope: "global")
+                    model.setSetting("agents.default_profile", v.isEmpty ? nil : v, scope: "global")
+                })) {
+                    Text("Automatic").tag("")
+                    ForEach(model.enabledProfiles.filter { $0.kind == .claude || $0.kind == .codex }) { p in Text(p.name).tag(p.id) }
+                }
+                .labelsHidden().fixedSize()
+            }
+        }
         SettingsGroup("Your agents", desc: "They appear in the + menu; pinned ones also get a button in the tab bar. Claude and Codex sessions pick up their conversation after a crash or reboot.", trailing: {
             Button { editing = Profile(id: "", name: "", icon: "terminal", kind: .generic, command: "", args: [], env: [:], viaLoginShell: true, resumeTemplate: "", enabled: true, pinned: false, sort: 99) } label: {
                 Label("Add Agent", systemImage: "plus")
