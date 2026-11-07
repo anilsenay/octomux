@@ -433,7 +433,9 @@ extension AppModel {
 
 /// The resolved layout for the stored setting, kept until the setting changes.
 enum LayoutCache {
-    /// Layouts drawn by the layout engine (the others keep the classic window in this version).
+    /// Layouts drawn by the layout engine. Terminal keeps the classic window: drawn by the engine it was not the same
+    /// to the pixel (the sidebar's list sat a point lower with a file open), and the default look never moves. Its
+    /// tree (terminal.json) is the starting point of a layout saved from Terminal.
     static let engine: Set<LayoutPreset> = [.agents, .workday, .minimal, .editor, .tasks, .aquarium]
     nonisolated(unsafe) private static var last: (stored: JSONValue?, config: LayoutConfig, tree: ShellTree?)?
     nonisolated(unsafe) static var misses = 0

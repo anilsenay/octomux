@@ -9,7 +9,7 @@ final class LayoutTreeTests: XCTestCase {
         let t = try XCTUnwrap(ShellTree.builtIn("agents"))
         XCTAssertNil(t.problem())
         XCTAssertEqual(Set(t.root.blocks), [.agentRail, .breadcrumb, .home, .workArea, .sidePanel, .statusBar])
-        XCTAssertNil(ShellTree.builtIn("terminal"))        // no file: the classic window
+        XCTAssertFalse(LayoutCache.engine.contains(.terminal))   // the classic window (its tree only seeds saved layouts)
     }
 
     func testEveryBuiltInFileReads() throws {
@@ -108,7 +108,7 @@ final class LayoutTreeTests: XCTestCase {
         let t = try XCTUnwrap(ShellTree.builtIn("tasks"))
         XCTAssertEqual(t.nav, .tasks)
         XCTAssertTrue(t.has(.taskDetail) && t.has(.breadcrumb) && !t.has(.tabStrip) && !t.has(.home))
-        XCTAssertNil(ShellTree.builtIn("terminal"))                          // Terminal: the classic window
+        XCTAssertNil(LayoutCache.get(nil).tree)                              // Terminal: the classic window
     }
 
     func testVariantsReadUnknownOnesAsTheFirst() throws {
