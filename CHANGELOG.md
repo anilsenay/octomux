@@ -20,7 +20,7 @@
   to see it in Changes. Commands show the agent's own description ("Run tests") next to the command line.
 - **Permissions for programs in sessions**: the daemon now runs from a small background app, “Octomux Sessions”,
   so when an agent takes a screenshot (or drives other apps) macOS asks in that name and remembers it, instead of
-  blocking a nameless command line tool. Settings → Terminal → Permissions shows screen recording and
+  blocking a nameless command line tool. Settings → Permissions shows screen recording and
   accessibility, asks for the first and opens System Settings for both.
 
 ## 0.3.0

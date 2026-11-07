@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 enum SettingsSection: String, CaseIterable, Identifiable {
-    case general = "General", appearance = "Appearance", terminal = "Terminal", notifications = "Notifications", keyboard = "Keyboard"
+    case general = "General", appearance = "Appearance", terminal = "Terminal", notifications = "Notifications", permissions = "Permissions", keyboard = "Keyboard"
     case agents = "Agents", mcp = "MCP", prompts = "Prompts", inbox = "Inbox", workspaces = "Workspaces", projects = "Projects", sessions = "Sessions", hosts = "Hosts"
     case features = "Features", advanced = "Advanced"
     var id: String { rawValue }
@@ -22,6 +22,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .appearance: return "paintbrush"
         case .terminal: return "terminal"
         case .notifications: return "bell"
+        case .permissions: return "lock.shield"
         case .hosts: return "network"
         case .features: return "flask"
         case .keyboard: return "keyboard"
@@ -35,6 +36,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .appearance: return "Theme, scene, and the icons in the Dock and the menu bar."
         case .terminal: return "Font, cursor and scrollback of every terminal, and what happens when you close one."
         case .notifications: return "When Octomux tells you an agent finished or needs you."
+        case .permissions: return "What macOS lets the programs in your sessions do, such as an agent taking a screenshot."
         case .keyboard: return "Every shortcut Octomux handles. Keys not bound here go straight to the terminal program."
         case .agents: return "The agents in the + menu, how they start, and how Octomux follows their state."
         case .workspaces: return "Workspaces group projects. Switch with the dots under the sidebar, a two-finger swipe on it, or ⌃1…⌃9."
@@ -173,6 +175,7 @@ struct SettingsView: View {
         case .appearance: AppearanceSettings()
         case .terminal: TerminalSettings()
         case .notifications: NotificationSettings()
+        case .permissions: SessionPermissionsGroup()
         case .mcp: MCPSettings()
         case .prompts: PromptsSettings()
         case .inbox: InboxSettings()
@@ -536,7 +539,8 @@ enum SettingsIndex {
             e(.appearance, "React to agents", "scene glow working"),
             e(.appearance, "Your scenes", "custom import template"),
             e(.terminal, "Font", "family typeface mono jetbrains"),
-            e(.terminal, "Permissions", "screen recording screenshot accessibility privacy macos allow sessions"),
+            e(.permissions, "Screen recording", "screenshot screencapture capture privacy macos allow sessions agent"),
+            e(.permissions, "Accessibility", "click type automation privacy macos allow sessions agent"),
             e(.terminal, "Size", "font size points bigger smaller zoom"),
             e(.terminal, "Line height", "spacing cell height leading"),
             e(.terminal, "Cursor style", "block bar underline caret"),
