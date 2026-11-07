@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "name": "Agents",
+  "about": "Agents first: a rail of agents by state on the left, a breadcrumb instead of tabs, Home or the selected agent in the middle.",
+  "root": {
+    "row": [
+      { "block": "agentRail", "size": { "fixed": 268 } },
+      {
+        "column": [
+          { "block": "breadcrumb" },
+          {
+            "row": [
+              { "stack": [ { "block": "home" }, { "block": "workArea" } ], "size": { "flex": 1 } },
+              { "block": "sidePanel" }
+            ],
+            "size": { "flex": 1 }
+          },
+          { "block": "statusBar" }
+        ],
+        "size": { "flex": 1 }
+      }
+    ]
+  }
+}

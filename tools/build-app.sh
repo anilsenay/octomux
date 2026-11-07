@@ -50,6 +50,7 @@ if [ "$VARIANT" = dev ]; then swift "$ROOT/tools/dev-icon.swift" "$ROOT/app/Reso
 else cp "$ROOT/app/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
      cp "$ROOT/app/Resources/AppIcon-mono.png" "$APP/Contents/Resources/AppIcon-mono.png"; fi   # Appearance → App icon
 cp -R "$ROOT/app/Resources/editor" "$APP/Contents/Resources/editor"   # code viewer (CodeMirror bundle; rebuild: cd app/editor-web && bun run build)
+cp -R "$ROOT/app/Resources/layouts" "$APP/Contents/Resources/layouts"   # built-in layout trees (the layout engine)
 # Ghostty terminal color schemes, for scenes' "terminal" field (from the vendored Ghostty build).
 THEMES="$ROOT/vendor/ghostty/zig-out/share/ghostty/themes"
 [ -d "$THEMES" ] && rm -rf "$APP/Contents/Resources/terminal-themes" && cp -R "$THEMES" "$APP/Contents/Resources/terminal-themes"

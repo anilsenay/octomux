@@ -72,6 +72,8 @@ final class AppModel: ObservableObject {
         didSet { UserDefaults.standard.set(Double(sidebarWidth), forKey: "octomux.sidebarWidth") }
     }
     /// The right panel's width (drag its left edge); 320 until changed.
+    /// The layout engine's window is on its Home (the Agents layout), not on a session.
+    @Published var shellHome = true
     @Published var rightPanelWidth: CGFloat = CGFloat(UserDefaults.standard.object(forKey: "octomux.rightPanelWidth") as? Double ?? 320) {
         didSet { UserDefaults.standard.set(Double(rightPanelWidth), forKey: "octomux.rightPanelWidth") }
     }
@@ -567,6 +569,7 @@ final class AppModel: ObservableObject {
 
     func selectSession(_ id: String) {
         guard let s = session(id) else { return }
+        shellHome = false
         activeDocId = nil
         if let p = project(s.projectId), p.workspaceId != selectedWorkspaceId { selectedWorkspaceId = p.workspaceId }
         selectedProjectId = s.projectId

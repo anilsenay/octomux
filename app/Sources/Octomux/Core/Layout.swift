@@ -340,7 +340,10 @@ extension AppModel {
     static let rightPanelWidths: ClosedRange<CGFloat> = 260...900
 
     var layoutStored: JSONValue? { settingValue(Self.layoutKey, scope: "global") }
-    var layout: LayoutConfig { LayoutConfig.resolve(layoutStored) }
+    /// The layout in use, read from the setting once per change (views ask for it on every draw).
+    var layout: LayoutConfig { LayoutCache.get(layoutStored).config }
+    /// The window the layout engine draws for the layout in use; nil = the classic window.
+    var shellTree: ShellTree? { LayoutCache.get(layoutStored).tree }
 
     /// Stores the layout (global only) and shows it right away.
     func storeLayout(_ v: JSONValue) {
@@ -417,4 +420,27 @@ extension AppModel {
         guard layout.chat, (setting("features.chat")?.bool ?? true), let p = profile(profileId) else { return false }
         return p.kind == .claude || p.kind == .codex || p.icon == "claude" || p.icon == "codex"
     }
+}
+
+/// The resolved layout for the stored setting, kept until the setting changes.
+enum LayoutCache {
+    /// Layouts drawn by the layout engine (the others keep the classic window in this version).
+    static let engine: Set<LayoutPreset> = [.agents]
+    nonisolated(unsafe) private static var last: (stored: JSONValue?, config: LayoutConfig, tree: ShellTree?)?
+    nonisolated(unsafe) static var misses = 0
+
+    static func get(_ stored: JSONValue?) -> (config: LayoutConfig, tree: ShellTree?) {
+        if let l = last, l.stored == stored { return (l.config, l.tree) }
+        misses += 1
+        let c = LayoutConfig.resolve(stored)
+        var tree: ShellTree?
+        if engine.contains(c.preset) {
+            let custom = LayoutEdit.object(LayoutEdit.object(LayoutEdit.object(stored)["custom"])[c.preset.rawValue])
+            tree = ShellTree.resolve(preset: c.preset, custom: custom)
+        }
+        last = (stored, c, tree)
+        return (c, tree)
+    }
+
+    static func reset() { last = nil }
 }
