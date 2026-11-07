@@ -193,11 +193,7 @@ struct AgentsHomeView: View {
     }
 
     private func sectionTitle(_ t: String, _ n: Int, _ c: Color) -> some View {
-        HStack(spacing: 6) {
-            Text(t.uppercased()).font(.system(size: T.k * 10, weight: .semibold)).tracking(0.6).foregroundStyle(c)
-            Text("\(n)").font(.system(size: T.k * 10, weight: .semibold)).foregroundStyle(T.text3)
-        }
-        .padding(.top, 10)
+        HomeSection(title: t, count: n, dot: c).padding(.top, 10)
     }
 
     private var emptyState: some View {
@@ -226,7 +222,7 @@ struct AgentsHomeView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack(spacing: 6) {
                             Circle().fill(color).frame(width: 6, height: 6)
-                            Text(title).font(.system(size: T.k * 12, weight: .semibold)).foregroundStyle(color)
+                            Text(title).font(.system(size: T.k * 12, weight: .semibold)).foregroundStyle(T.text2)
                             Text("\(list.count)").font(T.meta).foregroundStyle(T.text3)
                         }
                         .padding(.horizontal, 4).padding(.top, 2)
@@ -359,66 +355,41 @@ struct AgentsHomeView: View {
                 Spacer(minLength: 4)
                 WorkChips(session: s, limit: compact ? 1 : 2)
             }
-            if !d.summary.isEmpty {
-                Text(d.summary).font(.system(size: T.k * 12)).foregroundStyle(T.text2).lineLimit(compact ? 3 : 2)
-            } else if let fp = s.firstPrompt, !fp.isEmpty {
-                Text(fp).font(.system(size: T.k * 12)).foregroundStyle(T.text3).lineLimit(2)
-            }
-            if let pending = d.pending { pendingBox(s, pending, compact: compact) }
-            else if g == .needsInput {
-                // Its question isn't in a transcript we read (a terminal-only agent): it is on its screen.
-                HStack(spacing: 6) {
-                    Image(systemName: "hand.raised.fill").font(T.icon(10)).foregroundStyle(T.amber)
-                    Text("Waiting for your answer in its terminal").font(.system(size: T.k * 12)).foregroundStyle(T.text2)
+            if let pending = d.pending {
+                pendingBox(s, pending, compact: compact)
+            } else {
+                let line = d.summary.isEmpty ? (s.firstPrompt ?? "") : d.summary
+                if !line.isEmpty {
+                    Text(line).font(.system(size: T.k * 12)).foregroundStyle(d.summary.isEmpty ? T.text3 : T.text2)
+                        .lineLimit(compact ? 3 : 2).fixedSize(horizontal: false, vertical: true)
                 }
-                .padding(8).frame(maxWidth: .infinity, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: R.md, style: .continuous).fill(T.amber.opacity(0.08)))
             }
             if g == .working, !d.steps.isEmpty { Text(d.steps).font(T.meta).foregroundStyle(T.text3) }
-            SinceLookedBadge(session: s)
-            if g == .finished || (!compact && g != .working && !d.files.isEmpty) {
-                if !d.files.isEmpty && !compact {
-                    Text(d.files.prefix(4).joined(separator: ", ") + (d.files.count > 4 ? " +\(d.files.count - 4)" : ""))
-                        .font(T.mono(11)).foregroundStyle(T.text3).lineLimit(1)
+            if !compact, g != .working, !d.files.isEmpty {
+                Text(d.files.prefix(4).joined(separator: ", ") + (d.files.count > 4 ? " +\(d.files.count - 4)" : ""))
+                    .font(T.mono(11)).foregroundStyle(T.text3).lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            HStack(spacing: 8) {
+                if g == .needsInput && d.pending == nil {
+                    // Its question isn't in a transcript we read (a terminal-only agent): it is on its screen.
+                    Image(systemName: "hand.raised.fill").font(T.icon(10)).foregroundStyle(T.amber)
+                    Text("Answer in its terminal").font(T.meta).foregroundStyle(T.text2)
                 }
-                if g == .finished {
-                    HStack(spacing: 6) {
-                        Button("Review Changes") { reviewChanges(s) }.buttonStyle(PrimaryButtonStyle())
-                        Spacer()
-                        openLink(s)
-                    }
-                }
-            } else if d.pending == nil {
-                HStack { Spacer(); openLink(s) }
+                SinceLookedBadge(session: s)
+                Spacer(minLength: 4)
+                if g == .finished { Button("Review Changes") { reviewChanges(s) }.buttonStyle(SmallButtonStyle()) }
+                if d.pending == nil { openLink(s) }
             }
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(RoundedRectangle(cornerRadius: R.xl, style: .continuous).fill(T.raised))
-        .overlay(RoundedRectangle(cornerRadius: R.xl, style: .continuous).stroke(g == .needsInput ? T.amber.opacity(0.45) : T.border))
+        .frame(minHeight: compact ? 0 : 96, alignment: .topLeading)
+        .homeCard(attention: g == .needsInput)
         .contentShape(Rectangle())
         .onTapGesture(count: 2) { open(s) }
     }
 
     @ViewBuilder private func pendingBox(_ s: Session, _ p: AgentDigest.Pending, compact: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
-            switch p {
-            case .permission(let what):
-                Text("Allow \(what)?").font(.system(size: T.k * 12, weight: .semibold)).lineLimit(compact ? 3 : 2)
-                HStack(spacing: 6) {
-                    Button("Allow") { AgentDigests.answer(s.id, option: 0) }.buttonStyle(PrimaryButtonStyle())
-                    Button("Deny") { AgentDigests.deny(s.id) }.buttonStyle(SecondaryButtonStyle())
-                    Spacer()
-                    openLink(s)
-                }
-            case .question(let q, let opts):
-                Text(q).font(.system(size: T.k * 12, weight: .semibold)).lineLimit(compact ? 4 : 3)
-                FlowButtons(options: Array(opts.prefix(compact ? 2 : 4))) { i in AgentDigests.answer(s.id, option: i) }
-                HStack { Spacer(); openLink(s) }
-            }
-        }
-        .padding(8)
-        .background(RoundedRectangle(cornerRadius: R.md, style: .continuous).fill(T.amber.opacity(0.08)))
+        PendingAnswer(session: s, pending: p, compact: compact) { open(s) }
     }
 
     private func recentRow(_ s: Session) -> some View {
