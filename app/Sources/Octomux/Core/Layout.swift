@@ -38,8 +38,8 @@ enum LayoutPreset: String, CaseIterable, Identifiable, Codable {
     var summary: String {
         switch self {
         case .terminal: return "Octomux as it comes: projects and their sessions, terminals first."
-        case .agents: return "Agents up front: a home with every agent (board, columns or inbox), answers from the cards, new agents open as chats."
-        case .workday: return "Your day on one page: who needs you, what happened while you were away, your pull requests and issues with their next step."
+        case .agents: return "Agents up front: a rail of every agent by what it needs from you, a Home to start one and answer the ones waiting; new agents open as chats."
+        case .workday: return "The agents' window with your day as its Home: who needs you, what happened while you were away, your pull requests and issues with their next step."
         case .minimal: return "Only the panes: no sidebar, no status bar, a quiet top bar."
         case .editor: return "Code next to its agent: the agent's chat on the left, the file in the middle with its changed lines marked, the files it touched on the right. Notes on lines go to the agent."
         case .tasks: return "Work in tasks: your tasks on the left by what they need, the assistant (or the picked task's agent) in the middle, the picked task in detail on the right."

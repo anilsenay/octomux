@@ -105,7 +105,7 @@ struct LayoutSettings: View {
         let saved = SavedLayouts.sorted(model.savedLayouts)
         VStack(alignment: .leading, spacing: 22) {
             SettingsGroup("Layout", desc: "One layout for the whole app. Each keeps its own changes below; switch with ⌃⌘1…7, the command palette, or the Layout button in the status bar.") {
-                HStack(spacing: 10) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10, alignment: .top)], spacing: 10) {
                     ForEach(LayoutPreset.allCases) { p in card(p, on: p == c.preset && c.userId == nil) }
                 }
                 .padding(12)
