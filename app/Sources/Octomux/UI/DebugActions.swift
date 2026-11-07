@@ -103,6 +103,7 @@ enum DebugActions {
                 "focused_session": m.focusedSessionId ?? NSNull(),
                 "shell": m.shellTree != nil,
                 "shell_home": m.shellHome,
+                "app_active": NSApp.isActive,
                 "first_responder": ((NSApp.delegate as? AppDelegate)?.mainWindow?.firstResponder).map { String(describing: type(of: $0)) } ?? "none",
                 "shell_drawn": m.shellTree == nil ? [] : ShellView.drawn,
                 "layout_user": m.layout.userId as Any,

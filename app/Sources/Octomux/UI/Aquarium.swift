@@ -82,13 +82,13 @@ struct AquariumView: View {
     var style: Style = .full
     var still = false
     @State private var hovered: String?
-    /// Octomux in front: 12 frames a second (pixel art moves in steps anyway); behind other apps, 6. The CPU cost
-    /// goes with the frames (24 a second cost ~11% while idle, 12 about half).
+    /// Octomux in front: 12 frames a second (pixel art moves in steps anyway). Behind other apps: one a second —
+    /// still alive, for about the CPU of a still window (the cost goes with the frames: 12 a second ~7%, 1 ~0.4%).
     @State private var active = NSApp.isActive
 
     /// Seconds between frames.
     static func frameInterval(style: Style, active: Bool) -> Double {
-        if !active { return 1.0 / 6 }
+        if !active { return 1.0 }
         return style == .backdrop ? 1.0 / 8 : 1.0 / 12
     }
 

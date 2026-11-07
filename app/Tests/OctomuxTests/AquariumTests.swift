@@ -53,3 +53,12 @@ final class AquariumRowsTests: XCTestCase {
         XCTAssertEqual(AquariumHeader.counts([.waiting, .error]), "2 need you")
     }
 }
+
+final class AquariumFramesTests: XCTestCase {
+    func testSwimsInFrontOneFrameASecondBehind() {
+        XCTAssertEqual(AquariumView.frameInterval(style: .strip, active: true), 1.0 / 12)
+        XCTAssertEqual(AquariumView.frameInterval(style: .full, active: true), 1.0 / 12)
+        XCTAssertEqual(AquariumView.frameInterval(style: .backdrop, active: true), 1.0 / 8)
+        for st in [AquariumView.Style.strip, .full, .backdrop] { XCTAssertEqual(AquariumView.frameInterval(style: st, active: false), 1.0) }
+    }
+}
