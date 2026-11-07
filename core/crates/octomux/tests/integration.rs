@@ -24,8 +24,12 @@ impl Env {
         let n = N.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let tag = format!("{:x}{n}{:x}", std::process::id(), rand_u16());
         let home = PathBuf::from(format!("/tmp/octomuxt-{tag}"));
+        static SWEEP: std::sync::Once = std::sync::Once::new();
+        SWEEP.call_once(sweep_abandoned_homes);
         let _ = std::fs::remove_dir_all(&home);
         std::fs::create_dir_all(&home).unwrap();
+        // Who owns this home: a later run sweeps it if this test process died without its Drop (killed run).
+        std::fs::write(home.join("owner.pid"), std::process::id().to_string()).unwrap();
         let project_dir = home.join("proj");
         std::fs::create_dir_all(&project_dir).unwrap();
         let mut e = Env { home, daemon: None, project_dir };
@@ -46,6 +50,7 @@ impl Env {
             .stderr(Stdio::null())
             .spawn()
             .unwrap();
+        let _ = std::fs::write(self.home.join("daemon.pid"), child.id().to_string());
         self.daemon = Some(child);
         wait_until(Duration::from_secs(5), || UnixStream::connect(self.home.join("run/daemon.sock")).is_ok());
     }
@@ -165,6 +170,52 @@ impl Drop for Env {
             }
         }
         let _ = std::fs::remove_dir_all(&self.home);
+    }
+}
+
+/// Homes of earlier runs whose test process is gone (killed before Drop ran): their daemon and holders keep
+/// running otherwise. Kills them and removes the home; homes of live runs (their owner is alive) stay.
+fn sweep_abandoned_homes() {
+    let alive = |pid: i32| pid > 0 && unsafe { libc::kill(pid, 0) } == 0;
+    // A pid from an old file may belong to something else by now: only ours (this test's binary) gets killed.
+    let ours = |pid: i32| {
+        pid > 0
+            && Command::new("ps").args(["-o", "command=", "-p", &pid.to_string()]).output()
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim_start().starts_with(BIN))
+                .unwrap_or(false)
+    };
+    let read_pid = |p: &Path| std::fs::read_to_string(p).ok().and_then(|s| s.trim().parse::<i32>().ok());
+    let Ok(rd) = std::fs::read_dir("/tmp") else { return };
+    for e in rd.flatten() {
+        let home = e.path();
+        if !e.file_name().to_string_lossy().starts_with("octomuxt-") {
+            continue;
+        }
+        match read_pid(&home.join("owner.pid")) {
+            Some(owner) if !alive(owner) => {}
+            _ => continue, // a live run, or a home from before owner.pid existed
+        }
+        unsafe {
+            if let Some(d) = read_pid(&home.join("daemon.pid")).filter(|&d| ours(d)) {
+                libc::kill(d, libc::SIGKILL);
+            }
+            if let Ok(run) = std::fs::read_dir(home.join("run")) {
+                for f in run.flatten() {
+                    if f.path().extension().and_then(|x| x.to_str()) != Some("json") {
+                        continue;
+                    }
+                    if let Ok(v) = serde_json::from_slice::<Value>(&std::fs::read(f.path()).unwrap_or_default()) {
+                        // The holder's shell (its own group) only while the holder is still ours and alive.
+                        let Some(h) = v["pid"].as_i64().map(|h| h as i32).filter(|&h| ours(h)) else { continue };
+                        if let Some(c) = v["child_pid"].as_i64() {
+                            libc::kill(-(c as i32), libc::SIGKILL);
+                        }
+                        libc::kill(h, libc::SIGKILL);
+                    }
+                }
+            }
+        }
+        let _ = std::fs::remove_dir_all(&home);
     }
 }
 
