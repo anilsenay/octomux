@@ -56,8 +56,12 @@ struct ShellView: View {
         Self.wantsDigests(tree, railShown: model.sidebarVisible, homeShown: homeShown, detailShown: model.rightPanelVisible)
     }
 
+    /// The blocks the last draw put on screen, in order (debug state; E2E checks).
+    nonisolated(unsafe) static var drawn: [String] = []
+
     var body: some View {
-        node(ShellChild(node: tree.root), edges: Edges())
+        Self.drawn = []
+        return node(ShellChild(node: tree.root), edges: Edges())
             .environmentObject(digests)
             // Readers only while a block that shows them is on screen, and after the first frame (the window shows the
             // layout first, then reads the agents' transcripts).
@@ -70,26 +74,37 @@ struct ShellView: View {
         let flat = T.m.inset == 0
         switch k.node {
         case .block(let b):
-            return AnyView(block(b, variant: k.variant, edges: edges))
+            Self.drawn.append(b.rawValue)
+            return AnyView(block(b, variant: k.variant, edges: edges, width: cardWidth(k)))
         case .row(let kids):
+            // Every child stays in the list (identity by block); one that is off (the side panel, a hidden rail) is
+            // left out by its own `if`, as in the classic window. A list that changed with each toggle left the
+            // shared terminal view a step behind after the window was rebuilt (a theme change).
             let shown = kids.filter(visible)
             return AnyView(HStack(spacing: 0) {
-                ForEach(Array(shown.enumerated()), id: \.offset) { i, k in
-                    let left = i == 0 ? edges.railLeft : Self.flushRight(shown[i - 1].node)
-                    let right = i == shown.count - 1 ? edges.panelRight : Self.isPanel(shown[i + 1].node)
-                    if flat, Self.isPanel(k.node), i > 0 { Hairline(vertical: true) }
-                    sized(node(k, edges: Edges(railLeft: left, panelRight: right)), k, horizontal: true)
-                        .overlay(alignment: .trailing) { if k.node == .block(.projectTree), k.size == nil { SidebarResizeHandle() } }
-                    if flat, Self.isSideRail(k.node), i < shown.count - 1 { Hairline(vertical: true) }
+                ForEach(kids, id: \.key) { k in
+                    if let i = shown.firstIndex(of: k) {
+                        let left = i == 0 ? edges.railLeft : Self.flushRight(shown[i - 1].node)
+                        let right = i == shown.count - 1 ? edges.panelRight : Self.isPanel(shown[i + 1].node)
+                        Group {
+                            if flat, Self.isPanel(k.node), i > 0 { Hairline(vertical: true) }
+                            sized(node(k, edges: Edges(railLeft: left, panelRight: right)), k, horizontal: true)
+                                .overlay(alignment: .trailing) { if k.node == .block(.projectTree), k.size == nil { SidebarResizeHandle() } }
+                            if flat, Self.isSideRail(k.node), i < shown.count - 1 { Hairline(vertical: true) }
+                        }
+                        .transition(Self.isPanel(k.node) ? .move(edge: .trailing).combined(with: .opacity) : .identity)
+                    }
                 }
             })
         case .column(let kids):
             let shown = kids.filter(visible)
             return AnyView(VStack(spacing: 0) {
-                ForEach(Array(shown.enumerated()), id: \.offset) { i, k in
-                    if flat, k.node == .block(.statusBar), i > 0, model.layout.statusBar { Hairline() }
-                    sized(node(k, edges: edges), k, horizontal: false)
-                    if flat, Self.isTopBar(k.node), i < shown.count - 1 { Hairline() }
+                ForEach(kids, id: \.key) { k in
+                    if let i = shown.firstIndex(of: k) {
+                        if flat, k.node == .block(.statusBar), i > 0, model.layout.statusBar { Hairline() }
+                        sized(node(k, edges: edges), k, horizontal: false)
+                        if flat, Self.isTopBar(k.node), i < shown.count - 1 { Hairline() }
+                    }
                 }
             })
         case .stack(let kids):
@@ -120,8 +135,21 @@ struct ShellView: View {
         }
     }
 
+    /// Cards beside the work area (side panel, task detail, agent column) take their width inside their margins, as
+    /// in the classic window: a fixed width is the card's, the margins come on top.
+    private static func isCard(_ b: ShellBlock) -> Bool { b == .sidePanel || b == .taskDetail || b == .sideAgent }
+    private func cardWidth(_ k: ShellChild) -> CGFloat? {
+        guard case .block(let b) = k.node, Self.isCard(b) else { return nil }
+        switch k.size {
+        case .fixed(let w)?: return w
+        case nil: return b == .sidePanel ? model.rightPanelWidth : b.defaultWidth
+        default: return nil
+        }
+    }
+
     @ViewBuilder private func sized(_ v: AnyView, _ k: ShellChild, horizontal: Bool) -> some View {
         let natural: ShellSize? = {
+            if cardWidth(k) != nil, horizontal { return nil }   // the card sizes itself
             if let s = k.size { return s }
             if case .block(let b) = k.node {
                 if b == .sidePanel { return .fixed(model.rightPanelWidth) }
@@ -145,7 +173,7 @@ struct ShellView: View {
 
     // MARK: Blocks
 
-    @ViewBuilder private func block(_ b: ShellBlock, variant: String?, edges: Edges) -> some View {
+    @ViewBuilder private func block(_ b: ShellBlock, variant: String?, edges: Edges, width: CGFloat?) -> some View {
         let m = T.m
         switch b {
         case .agentRail:
@@ -174,15 +202,16 @@ struct ShellView: View {
                 .padding(.trailing, edges.panelRight ? 0 : m.inset)
         case .sidePanel, .taskDetail:
             Group { if b == .sidePanel { RightPanel() } else { TaskDetailPanel() } }
+                .frame(width: width)
                 .background(CanvasBackground(minOpacity: 0.9))
                 .clipShape(RoundedRectangle(cornerRadius: m.cardR, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: m.cardR, style: .continuous).stroke(T.border))
                 .overlay(alignment: .leading) { if b == .sidePanel { RightPanelResizeHandle() } }
                 .padding(.leading, m.inset)
                 .padding(.trailing, m.inset)
-                .transition(.move(edge: .trailing).combined(with: .opacity))
         case .sideAgent:
             SideAgentColumn()
+                .frame(width: width)
                 .background(CanvasBackground(minOpacity: 0.9))
                 .clipShape(RoundedRectangle(cornerRadius: m.cardR, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: m.cardR, style: .continuous).stroke(T.border))

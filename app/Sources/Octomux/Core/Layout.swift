@@ -432,7 +432,7 @@ extension AppModel {
 /// The resolved layout for the stored setting, kept until the setting changes.
 enum LayoutCache {
     /// Layouts drawn by the layout engine (the others keep the classic window in this version).
-    static let engine: Set<LayoutPreset> = [.agents, .workday]
+    static let engine: Set<LayoutPreset> = [.agents, .workday, .minimal, .editor, .aquarium]
     nonisolated(unsafe) private static var last: (stored: JSONValue?, config: LayoutConfig, tree: ShellTree?)?
     nonisolated(unsafe) static var misses = 0
 

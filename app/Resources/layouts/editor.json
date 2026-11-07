@@ -1,0 +1,1 @@
+{"schema":1,"root":{"row":[{"block":"projectTree"},{"column":[{"block":"tabStrip"},{"row":[{"block":"sideAgent"},{"block":"workArea","size":{"flex":1}},{"block":"sidePanel"}],"size":{"flex":1}},{"block":"statusBar"}],"size":{"flex":1}}]}}

@@ -103,6 +103,8 @@ enum DebugActions {
                 "focused_session": m.focusedSessionId ?? NSNull(),
                 "shell": m.shellTree != nil,
                 "shell_home": m.shellHome,
+                "shell_drawn": ShellView.drawn,
+                "terminal_area_in_window": TerminalHost.shared.container.window != nil,
                 "surfaces_made": TerminalHost.shared.surfacesMade,
                 "rail": m.railSessions.map(\.id),
                 "rail_keys": RailKeys.shared.active,

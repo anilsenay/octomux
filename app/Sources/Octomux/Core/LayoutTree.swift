@@ -87,6 +87,17 @@ struct ShellChild: Equatable {
     var size: ShellSize? = nil
     /// A block's variant (nil: its first).
     var variant: String? = nil
+
+    /// A name that stays the same while the window shows it: the block's, or a container's first block (each block
+    /// is placed once, so no two children share one).
+    var key: String {
+        switch node {
+        case .block(let b): return b.rawValue
+        case .row: return "row:" + (node.blocks.first?.rawValue ?? "")
+        case .column: return "column:" + (node.blocks.first?.rawValue ?? "")
+        case .stack: return "stack:" + (node.blocks.first?.rawValue ?? "")
+        }
+    }
 }
 
 struct ShellTree: Equatable {
