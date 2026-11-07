@@ -93,6 +93,21 @@ final class ShellTests: XCTestCase {
         XCTAssertEqual(ShellHome.status(waiting: 0, working: 0, done: 0), "No agent is running. Start one below.")
     }
 
+    // MARK: Home and docs
+
+    func testOpeningADocLeavesHome() {
+        let m = AppModel.shared
+        let (home, doc) = (m.shellHome, m.activeDocId)
+        defer { m.activeDocId = doc; m.shellHome = home }
+        m.shellHome = true
+        m.activeDocId = "doc-x"                                        // a file, Inbox, Changes, new chat, PR…
+        XCTAssertFalse(m.shellHome)
+        m.shellHome = true                                             // ⌘0 back to Home keeps the doc for later
+        XCTAssertEqual(m.activeDocId, "doc-x")
+        m.activeDocId = nil
+        XCTAssertTrue(m.shellHome)
+    }
+
     // MARK: Switching layouts
 
     func testSwitchingLayoutsKeepsTheSelection() {

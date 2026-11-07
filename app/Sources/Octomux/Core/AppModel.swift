@@ -51,7 +51,13 @@ final class AppModel: ObservableObject {
     /// The doc tab shown instead of the active session tab (nil: the session tab shows).
     /// The workspace (without projects) whose main area shows the Inbox (see openInbox).
     @Published var inboxWithoutProject: String?
-    @Published var activeDocId: String? { didSet { if oldValue != activeDocId { TerminalHost.shared.render(force: true) } } }
+    @Published var activeDocId: String? {
+        didSet {
+            // A doc opened while the engine window is on its Home shows (Home is above the work area).
+            if activeDocId != nil, shellHome { shellHome = false }
+            if oldValue != activeDocId { TerminalHost.shared.render(force: true) }
+        }
+    }
     @Published var focusedSessionId: String?
     /// Split tab temporarily showing one pane full size (tab id → session id). App-side only.
     @Published var zoomedPanes: [String: String] = [:] { didSet { if oldValue != zoomedPanes { TerminalHost.shared.render(force: true) } } }
