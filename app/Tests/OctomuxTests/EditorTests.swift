@@ -61,7 +61,10 @@ final class EditorTests: XCTestCase {
         XCTAssertTrue(AppModel.noteText("n", path: "r.md", from: 1, to: 1, excerpt: "```x```").contains("r.md:1\n~~~"))
     }
 
-    func testTerminalKeepsTheEditorPartsOff() {
+    func testEditorLayoutTurnsItsPartsOnAndTerminalKeepsThemOff() {
+        let e = LayoutConfig.builtIn(.editor)
+        XCTAssertTrue(e.sideChat)
+        XCTAssertEqual(e.shown(.views), ["touched", "marks", "notes"])
         let t = LayoutConfig.builtIn(.terminal)
         XCTAssertFalse(t.sideChat)
         XCTAssertEqual(t.shown(.views), [])

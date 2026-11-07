@@ -10,7 +10,7 @@ import SwiftUI
 /// change to a built-in layout still reaches everyone who didn't touch that part. Anything unreadable falls back
 /// to the built-in values (a wrong type, an unknown layout or item), never to a broken window.
 enum LayoutPreset: String, CaseIterable, Identifiable, Codable {
-    case terminal, agents, workday, minimal
+    case terminal, agents, workday, minimal, editor
     var id: String { rawValue }
 
     var title: String {
@@ -19,6 +19,7 @@ enum LayoutPreset: String, CaseIterable, Identifiable, Codable {
         case .agents: return "Agents"
         case .workday: return "Workday"
         case .minimal: return "Minimal"
+        case .editor: return "Editor"
         }
     }
     var icon: String {
@@ -27,6 +28,7 @@ enum LayoutPreset: String, CaseIterable, Identifiable, Codable {
         case .agents: return "sparkles"
         case .workday: return "sun.max"
         case .minimal: return "rectangle"
+        case .editor: return "chevron.left.forwardslash.chevron.right"
         }
     }
     var summary: String {
@@ -35,6 +37,7 @@ enum LayoutPreset: String, CaseIterable, Identifiable, Codable {
         case .agents: return "Agents up front: a home with every agent (board, columns or inbox), answers from the cards, new agents open as chats."
         case .workday: return "Your day on one page: who needs you, what happened while you were away, your pull requests and issues with their next step."
         case .minimal: return "Only the panes: no sidebar, no status bar, a quiet top bar."
+        case .editor: return "Code next to its agent: the agent's chat on the left, the file in the middle with its changed lines marked, the files it touched on the right. Notes on lines go to the agent."
         }
     }
     /// ⌃⌘1…
@@ -167,6 +170,11 @@ struct LayoutConfig: Equatable {
             regions[.topBar] = all(.topBar, off: ["diff", "openIn"])
             regions[.statusRight] = all(.statusRight)
             return LayoutConfig(preset: p, regions: regions, statusBar: false, chat: false)
+        case .editor:
+            regions[.statusRight] = all(.statusRight)
+            regions[.paneHeader] = all(.paneHeader)
+            regions[.views] = all(.views)
+            return LayoutConfig(preset: p, regions: regions, statusBar: true, chat: true, sideChat: true)
         }
     }
 
@@ -338,6 +346,12 @@ extension AppModel {
             case .minimal:
                 sidebarVisible = false
                 rightPanelVisible = false
+            case .editor:
+                sidebarVisible = false
+                sidebarAgents = false
+                UserDefaults.standard.set(RightTab.files.rawValue, forKey: "octomux.rightTab")
+                rightPanelWidth = 300
+                rightPanelVisible = true
             }
         }
         sidebarPeek = false
