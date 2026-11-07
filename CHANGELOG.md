@@ -12,8 +12,8 @@
 - **Workspace switcher and Keep Mac awake** open Octomux's own panels instead of system menus: each workspace with
   its color, what waits there and its shortcut; the cup shows what it does now, the modes, "for a while" and the
   closed-lid limits as chips. Arrow keys, ↩ and esc work as in a menu.
-- **Readability**: with a scene, the sidebar sits on a veil of the scene's color (art passing behind the rows stays
-  behind them); the Changes list keeps room for about five files when History is open; disabled Commit buttons
+- **Readability**: with a scene, art passing behind the sidebar is drawn faint there (it no longer sits as
+  bright as the rows' text); the Changes list keeps room for about five files when History is open; disabled Commit buttons
   are neutral (they couldn't be read in light themes).
 - **Sidebar**: Search (⌘K) is the first row under the workspace, then Inbox and Projects.
 

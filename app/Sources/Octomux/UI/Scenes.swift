@@ -320,6 +320,25 @@ final class SceneLayerView: NSView {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: w)
     }
 
+    /// Art passing behind the sidebar (sprites, particles) is drawn faint there, so it never sits as bright as the
+    /// rows' text; the gradient behind stays whole (a veil on the sidebar alone left a hard edge in the top bar).
+    private func dimTextColumn(width W: CGFloat) {
+        let col = min(textColumn, W * 0.5)
+        guard !still, !frozen, col > 0, let subs = root.sublayers, subs.count > 1 else { return }
+        let art = CALayer()
+        art.frame = root.bounds
+        for l in subs.dropFirst() { l.removeFromSuperlayer(); art.addSublayer(l) }
+        let m = CAGradientLayer()
+        m.frame = art.bounds
+        m.startPoint = CGPoint(x: 0, y: 0.5)
+        m.endPoint = CGPoint(x: 1, y: 0.5)
+        let faint = NSColor.white.withAlphaComponent(0.3).cgColor, full = NSColor.white.cgColor
+        m.colors = [faint, faint, full, full]
+        m.locations = [0, NSNumber(value: Double(col / W)), NSNumber(value: Double(min(1, (col + 30) / W))), 1]
+        art.mask = m
+        root.addSublayer(art)
+    }
+
     func rebuild() {
         guard bounds.width > 4, bounds.height > 4 else { return }
         builtSize = bounds.size
@@ -334,6 +353,7 @@ final class SceneLayerView: NSView {
         root.timeOffset = still ? 37 : AmbientClock.shared.time
         SceneBuilder(root: root, W: v.width, H: v.height, now: root.timeOffset, mood: still ? .calm : AmbientClock.shared.mood, art: scene.art, dark: scene.dark,
                      textColumn: still ? 0 : min(textColumn, v.width * 0.5)).build(scene)
+        dimTextColumn(width: v.width)
         CATransaction.commit()
         // A new scene eases in over the window's frame color (the view's own layer runs on real time).
         if !still && !frozen && !faded {

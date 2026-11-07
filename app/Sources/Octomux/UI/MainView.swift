@@ -82,9 +82,7 @@ struct MainView: View {
     private func sidebar(floating: Bool = false) -> some View {
         SidebarView(floating: floating)
             // With a scene the root background already carries the chrome veil (one layer for sidebar and bars).
-            // A scene: a veil of the scene's frame color behind the sidebar, so art passing behind the rows stays
-            // behind them (the root background's veil alone left sprites as bright as the text).
-            .background(theme.activeScene.map { s in AnyView(Color(nsColor: s.colors.frame).opacity(s.dark ? 0.55 : 0.6)) }
+            .background(theme.activeScene.map { _ in AnyView(Color.clear) }
                         ?? (T.m.glass ? AnyView(Color.clear) : T.m.sidebarMaterial ? AnyView(VisualEffect(material: .sidebar)) : AnyView(WorkspaceTintedFrame())))
     }
 
