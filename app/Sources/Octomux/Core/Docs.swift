@@ -122,9 +122,16 @@ extension AppModel {
     /// The Inbox is on screen in a workspace without projects.
     var showsInboxWithoutProject: Bool { currentProject == nil && inboxWithoutProject != nil && inboxWithoutProject == selectedWorkspaceId }
     /// The Agents home (one per project's tab row, showing every agent).
-    func openAgentsHome() { openDoc(.agents, workPath: currentProject?.path) }
+    /// In a window whose Home is this page, its Home; elsewhere the page as a tab.
+    func openAgentsHome() {
+        if shellNav == .agents, shellTree?.variant(of: .home) == nil { shellGoHome(); return }
+        openDoc(.agents, workPath: currentProject?.path)
+    }
     /// Workday's home: your day on one page (any layout can open it).
-    func openWorkday() { openDoc(.workday, workPath: currentProject?.path) }
+    func openWorkday() {
+        if shellTree?.variant(of: .home) == "workday" { shellGoHome(); return }
+        openDoc(.workday, workPath: currentProject?.path)
+    }
     /// The aquarium: every agent as an octopus (any layout can open it).
     func openAquarium() { openDoc(.aquarium, workPath: currentProject?.path) }
     func openChanges(scrollTo: String? = nil) { openDoc(.changes, scrollTo: scrollTo) }

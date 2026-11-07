@@ -85,6 +85,14 @@ final class LayoutTreeTests: XCTestCase {
         XCTAssertEqual(tree(#"{"schema":1,"root":{"row":[{"block":"agentRail"},{"block":"tasksRail"},{"block":"workArea"}]}}"#).failure, .twoLists)
     }
 
+    func testWorkdayIsTheAgentsWindowWithItsOwnHome() throws {
+        let w = try XCTUnwrap(ShellTree.builtIn("workday"))
+        XCTAssertEqual(w.nav, .agents)
+        XCTAssertEqual(w.variant(of: .home), "workday")
+        XCTAssertNil(try XCTUnwrap(ShellTree.builtIn("agents")).variant(of: .home))
+        XCTAssertNotNil(LayoutCache.get(LayoutEdit.choose(.workday, in: nil)).tree)
+    }
+
     func testVariantsReadUnknownOnesAsTheFirst() throws {
         let w = try tree(#"{"schema":1,"root":{"row":[{"block":"agentRail"},{"stack":[{"block":"home","variant":"workday"},{"block":"workArea"}]}]}}"#).get()
         XCTAssertEqual(w.variant(of: .home), "workday")

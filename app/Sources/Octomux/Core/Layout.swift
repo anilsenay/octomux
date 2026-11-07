@@ -395,12 +395,15 @@ extension AppModel {
         }
         sidebarPeek = false
         saveSelection()
-        // The Agents layout is the engine's window: its Home is a mode, not a tab.
-        if p == .agents {
-            if case .agents? = activeDoc?.kind { activeDocId = nil }
+        // The Agents and Workday layouts are the engine's window: their Home is a mode, not a tab (the tab of the
+        // same page is closed if it was in front).
+        if p == .agents || p == .workday {
+            switch activeDoc?.kind {
+            case .agents?, .workday?: activeDocId = nil
+            default: break
+            }
             shellHome = true
         }
-        if p == .workday { openWorkday() }
         if p == .tasks, let a = assistantSession(workspace: selectedWorkspaceId) { selectSession(a.id) }
     }
 
@@ -429,7 +432,7 @@ extension AppModel {
 /// The resolved layout for the stored setting, kept until the setting changes.
 enum LayoutCache {
     /// Layouts drawn by the layout engine (the others keep the classic window in this version).
-    static let engine: Set<LayoutPreset> = [.agents]
+    static let engine: Set<LayoutPreset> = [.agents, .workday]
     nonisolated(unsafe) private static var last: (stored: JSONValue?, config: LayoutConfig, tree: ShellTree?)?
     nonisolated(unsafe) static var misses = 0
 
