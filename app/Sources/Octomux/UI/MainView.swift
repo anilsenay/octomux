@@ -974,6 +974,7 @@ struct StatusBar: View {
                 GitStatusControls(path: wp, branch: branch, full: full)
             }
             Spacer(minLength: 8)
+            if !model.host.isRemote { KeepAwakeControl() }
             UsageStatus(compact: !full)
             ActionsControl().fixedSize()
             Button { model.toggleDock() } label: {

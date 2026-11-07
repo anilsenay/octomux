@@ -6,6 +6,7 @@
 pub mod agents;
 pub mod integration;
 pub mod perms;
+pub mod power;
 pub mod resources;
 pub mod events;
 pub mod store;
@@ -42,6 +43,8 @@ pub struct Daemon {
     resource_prev: Mutex<HashMap<i32, (f64, Instant)>>,
     /// Recent hooks, status reports and activity changes (Settings → Advanced → Agent events).
     pub events: events::EventLog,
+    /// Keep the Mac awake (settings `power.*`).
+    pub power: power::Keeper,
     cmd_started: Mutex<HashMap<String, Instant>>,
     dirty: Sender<()>,
     login_path: Mutex<Option<String>>,
@@ -222,6 +225,7 @@ pub fn run(paths: Paths) -> Result<()> {
         usage_poke: Mutex::new(None),
         resource_prev: Mutex::new(HashMap::new()),
         events: events::EventLog::default(),
+        power: power::Keeper::default(),
         cmd_started: Mutex::new(HashMap::new()),
         dirty: dirty_tx,
         login_path: Mutex::new(None),
@@ -296,6 +300,15 @@ pub fn run(paths: Paths) -> Result<()> {
             d.check_reporting_programs();
             d.track_codex();
             d.track_background_shells();
+        });
+    }
+    {
+        // Keep awake: a crash may have left the lid setting on; then follow the settings and the agents.
+        power::recover(&d.paths.run_dir().join("lid-awake"));
+        let d = d.clone();
+        std::thread::spawn(move || loop {
+            d.apply_power();
+            std::thread::sleep(Duration::from_secs(5));
         });
     }
     {
@@ -384,6 +397,22 @@ impl Daemon {
         drop(st);
         self.persist_session(&copy);
         Some(r)
+    }
+
+    /// Keep-awake from the `power.*` settings and how many agents are working now.
+    pub fn apply_power(&self) -> Value {
+        let working = {
+            let st = self.state.lock().unwrap();
+            st.sessions.iter().filter(|s| s.activity == Activity::Working).count()
+        };
+        let b = |k: &str| self.setting(k, None).and_then(|v| v.as_bool()).unwrap_or(false);
+        let inputs = power::Inputs {
+            mode: power::Mode::parse(self.setting("power.keep_awake", None).as_ref()),
+            working,
+            lid: b("power.lid"),
+            lid_on_battery: b("power.lid_on_battery"),
+        };
+        self.power.apply(inputs, &self.paths.run_dir().join("lid-awake"))
     }
 
     pub fn setting(&self, key: &str, project_id: Option<&str>) -> Option<Value> {
@@ -1544,6 +1573,7 @@ impl Daemon {
             };
             let _ = tx.send(serde_json::to_string(&resp)?);
             if req.method == "daemon.shutdown" || req.method == "daemon.stop_all" {
+                self.power.release(&self.paths.run_dir().join("lid-awake"));
                 std::thread::sleep(Duration::from_millis(100));
                 let _ = std::fs::remove_file(self.paths.daemon_socket());
                 std::process::exit(0);
@@ -2136,6 +2166,13 @@ impl Daemon {
                 let cwd = p.get("cwd").and_then(|v| v.as_str()).unwrap_or("");
                 let since = p.get("since").and_then(|v| v.as_u64()).unwrap_or(0);
                 Ok(json!({ "path": agents::find_rollout(&codex_home, id, cwd, since) }))
+            }
+            "power.status" => Ok(self.apply_power()),
+            // After installing or removing the sudoers rule for the closed-lid option.
+            "power.rule_changed" => {
+                power::forget_rule_cache();
+                power::lid_rule_installed();
+                Ok(self.apply_power())
             }
             // macOS permissions of programs run in sessions (checked against the daemon's app).
             "permissions.status" => Ok(perms::status()),

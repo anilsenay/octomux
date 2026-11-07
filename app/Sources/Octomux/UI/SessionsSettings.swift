@@ -47,6 +47,7 @@ struct SessionsSettings: View {
             }
         }
         let mins = Int(model.settingValue("sessions.auto_stop_idle_mins", scope: "global")?.number ?? 0)
+        KeepAwakeSettings()
         SettingsGroup("Idle agents") {
             SettingRow("Stop idle agents", desc: mins == 0
                        ? "Agents keep running until you stop them."

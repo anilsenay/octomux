@@ -55,7 +55,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
 
     /// Sidebar groups, in order.
     static let groups: [(title: String, items: [SettingsSection])] = [
-        ("App", [.general, .appearance, .terminal, .notifications, .keyboard]),
+        ("App", [.general, .appearance, .terminal, .notifications, .permissions, .keyboard]),
         ("Work", [.agents, .mcp, .prompts, .inbox, .workspaces, .projects, .sessions, .hosts]),
         ("Advanced", [.features, .advanced]),
     ]
@@ -539,6 +539,7 @@ enum SettingsIndex {
             e(.appearance, "React to agents", "scene glow working"),
             e(.appearance, "Your scenes", "custom import template"),
             e(.terminal, "Font", "family typeface mono jetbrains"),
+            e(.sessions, "Keep Mac awake", "caffeinate sleep awake lid closed clamshell battery power"),
             e(.permissions, "Screen recording", "screenshot screencapture capture privacy macos allow sessions agent"),
             e(.permissions, "Accessibility", "click type automation privacy macos allow sessions agent"),
             e(.terminal, "Size", "font size points bigger smaller zoom"),

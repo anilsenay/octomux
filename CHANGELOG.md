@@ -22,6 +22,11 @@
   so when an agent takes a screenshot (or drives other apps) macOS asks in that name and remembers it, instead of
   blocking a nameless command line tool. Settings → Permissions shows screen recording and
   accessibility, asks for the first and opens System Settings for both.
+- **Keep Mac awake** (Settings → Sessions, and the cup in the status bar): Off, While agents work (and two minutes
+  after, so pauses between steps don't count) or Always. The display can still sleep. Optionally also with the lid
+  closed: a one-time administrator prompt installs a rule that lets Octomux run only `pmset -a disablesleep`, set
+  only while it keeps the Mac awake, on the power adapter unless you allow battery, and put back after (also after
+  a crash).
 
 ## 0.3.0
 
