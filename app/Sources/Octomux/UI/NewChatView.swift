@@ -102,9 +102,10 @@ struct NewChatView: View {
     /// Width of the start screen's column and of the chat's (the same, so nothing moves when the chat starts).
     static let column: CGFloat = 720
 
-    /// "octomux · main" and pills for what is waiting and working.
+    /// "octomux · main" and pills for what is waiting and working in this project (the Waiting card below lists
+    /// every project's).
     private func statusLine(path: String) -> some View {
-        let live = model.agentSessions(onlyCurrentWorkspace: false).filter { !$0.isDormant }
+        let live = model.agentSessions(onlyCurrentWorkspace: false).filter { !$0.isDormant && $0.projectId == project?.id }
         let waiting = live.filter { $0.activity == .needsInput }.count
         let working = live.filter { $0.activity == .working }.count
         return HStack(spacing: 8) {
