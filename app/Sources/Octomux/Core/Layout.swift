@@ -37,13 +37,13 @@ enum LayoutPreset: String, CaseIterable, Identifiable, Codable {
         case .minimal: return "Only the panes: no sidebar, no status bar, a quiet top bar."
         }
     }
-    /// ⌃⌘1…4.
+    /// ⌃⌘1…
     var number: Int { (Self.allCases.firstIndex(of: self) ?? 0) + 1 }
 }
 
 /// The parts of the window whose items can be turned off and put in another order.
 enum LayoutRegion: String, CaseIterable, Identifiable, Codable {
-    case sidebar, sidebarFooter, statusLeft, statusRight, topBar, paneHeader
+    case sidebar, sidebarFooter, statusLeft, statusRight, topBar, paneHeader, views
     var id: String { rawValue }
 
     var title: String {
@@ -54,6 +54,7 @@ enum LayoutRegion: String, CaseIterable, Identifiable, Codable {
         case .statusRight: return "Status bar, right"
         case .topBar: return "Top bar, right"
         case .paneHeader: return "Pane header"
+        case .views: return "Panels and editor"
         }
     }
     var desc: String {
@@ -64,6 +65,7 @@ enum LayoutRegion: String, CaseIterable, Identifiable, Codable {
         case .statusRight: return "What the status bar ends with, left to right."
         case .topBar: return "Project-wide buttons after the tabs, left to right."
         case .paneHeader: return "What a pane's title row shows besides its name."
+        case .views: return "Extra parts of the Files panel and the code editor."
         }
     }
     /// Items added after the default look was set: off in Terminal (the default look never changes), each other
@@ -71,6 +73,7 @@ enum LayoutRegion: String, CaseIterable, Identifiable, Codable {
     var optIn: Set<String> {
         switch self {
         case .paneHeader: return ["work"]
+        case .views: return ["touched", "marks", "notes"]
         default: return []
         }
     }
@@ -83,6 +86,7 @@ enum LayoutRegion: String, CaseIterable, Identifiable, Codable {
         case .statusRight: return ["layout", "keepAwake", "usage", "actions", "dock"]
         case .topBar: return ["diff", "openIn", "git", "rightPanel"]
         case .paneHeader: return ["work"]
+        case .views: return ["touched", "marks", "notes"]
         }
     }
     static func itemTitle(_ id: String, in region: LayoutRegion) -> String {
@@ -106,6 +110,9 @@ enum LayoutRegion: String, CaseIterable, Identifiable, Codable {
         case (.topBar, "git"): return "Commit / Push / PR"
         case (_, "rightPanel"): return "Right panel button"
         case (.paneHeader, "work"): return "Pull request and issue chips"
+        case (.views, "touched"): return "Files: what the agent touched this turn"
+        case (.views, "marks"): return "Editor: changed lines in the gutter"
+        case (.views, "notes"): return "Editor: note on a line → agent"
         default: return id
         }
     }
@@ -124,6 +131,8 @@ struct LayoutConfig: Equatable {
     var statusBar: Bool
     /// New agent sessions open in the chat view (when the agent has one).
     var chat: Bool
+    /// The project's agent in a column beside the work area (its chat, or its terminal's summary).
+    var sideChat = false
 
     func items(_ r: LayoutRegion) -> [LayoutItem] { regions[r] ?? LayoutConfig.builtIn(preset).regions[r] ?? [] }
     /// The ids shown in a region, in order.
@@ -174,6 +183,7 @@ struct LayoutConfig: Equatable {
         }
         if let b = mine["statusBar"]?.bool { c.statusBar = b }
         if let b = mine["chat"]?.bool { c.chat = b }
+        if let b = mine["sideChat"]?.bool { c.sideChat = b }
         return c
     }
 
@@ -302,6 +312,7 @@ extension AppModel {
     func storeLayout(_ v: JSONValue) {
         setSettingLocally(Self.layoutKey, v, scope: "global")
         setSetting(Self.layoutKey, v.any, scope: "global")
+        DocHost.shared.refreshFeatures()
     }
 
     func editLayout(_ f: (JSONValue?) -> JSONValue) { storeLayout(f(layoutStored)) }

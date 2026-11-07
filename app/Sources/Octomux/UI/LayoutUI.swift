@@ -108,6 +108,9 @@ struct LayoutSettings: View {
                 SettingRow("Open new agents as chats", desc: "New Claude and Codex sessions start in the chat view (⌘⇧C switches any session).") {
                     SettingSwitch(isOn: Binding(get: { c.chat }, set: { v in model.editLayout { LayoutEdit.flag("chat", v, stored: $0) } }))
                 }
+                SettingRow("Agent beside the work area", desc: "The project's agent in a column on the left: its chat next to the files you open.") {
+                    SettingSwitch(isOn: Binding(get: { c.sideChat }, set: { v in model.editLayout { LayoutEdit.flag("sideChat", v, stored: $0) } }))
+                }
             }
             ForEach(LayoutRegion.allCases) { r in region(r, c) }
         }

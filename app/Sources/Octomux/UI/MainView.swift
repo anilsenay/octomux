@@ -22,9 +22,18 @@ struct MainView: View {
                 TopBar()
                 if flat { Hairline() }
                 HStack(spacing: 0) {
+                    if model.layout.sideChat {
+                        SideAgentColumn()
+                            .frame(width: 380)
+                            .background(CanvasBackground(minOpacity: 0.9))
+                            .clipShape(RoundedRectangle(cornerRadius: m.cardR, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: m.cardR, style: .continuous).stroke(T.border))
+                            .padding(.leading, model.sidebarVisible ? 0 : m.inset)
+                            .padding(.trailing, m.inset)
+                    }
                     workArea
                         .padding(.trailing, model.rightPanelVisible ? 0 : m.inset)
-                        .padding(.leading, model.sidebarVisible ? 0 : m.inset)
+                        .padding(.leading, model.sidebarVisible || model.layout.sideChat ? 0 : m.inset)
                         .frame(minWidth: 0, maxWidth: .infinity)
                     if model.rightPanelVisible {
                         if flat { Hairline(vertical: true) }

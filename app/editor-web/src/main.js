@@ -1,7 +1,7 @@
 // ADE code viewer: file editor + multi-file diff, hosted in a WKWebView.
 // Swift drives it through `window.octomux.*`; it reports back via webkit.messageHandlers.octomux.
-import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection, highlightSpecialChars } from "@codemirror/view";
-import { EditorState, Compartment } from "@codemirror/state";
+import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection, highlightSpecialChars, gutter, GutterMarker } from "@codemirror/view";
+import { EditorState, Compartment, StateField, StateEffect, RangeSet } from "@codemirror/state";
 import { syntaxHighlighting, foldGutter, codeFolding, foldKeymap, bracketMatching, indentOnInput } from "@codemirror/language";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { searchKeymap, highlightSelectionMatches, search } from "@codemirror/search";
@@ -71,6 +71,33 @@ function common({ path, editable, wrap }) {
   ];
 }
 
+// ---------- change marks and notes (only when Swift turns them on: the default editor stays as it is) ----------
+let features = { marks: false, notes: false };
+let lastMarks = null;
+const setMarksEffect = StateEffect.define();
+class ChangeMark extends GutterMarker {
+  constructor(k) { super(); this.k = k; }
+  eq(o) { return o.k === this.k; }
+  toDOM() { return $("div", "cm-mark cm-mark-" + this.k); }
+}
+const marksField = StateField.define({
+  create: () => RangeSet.empty,
+  update(v, tr) {
+    v = v.map(tr.changes);
+    for (const e of tr.effects) if (e.is(setMarksEffect)) v = e.value;
+    return v;
+  },
+});
+const marksExtension = [marksField, gutter({ class: "cm-changeGutter", markers: (v) => v.state.field(marksField) })];
+function marksSet(doc, m) {
+  const ranges = [];
+  const at = (l, k) => { if (l >= 1 && l <= doc.lines) ranges.push(new ChangeMark(k).range(doc.line(l).from)); };
+  for (const l of m.added || []) at(l, "added");
+  for (const l of m.modified || []) at(l, "modified");
+  for (const l of m.deleted || []) at(Math.max(1, l), "deleted");
+  return RangeSet.of(ranges, true);
+}
+
 // ---------- file view ----------
 let current = null;     // { kind, destroy() }
 const root = () => document.getElementById("root");
@@ -113,6 +140,7 @@ function showFile(f) {
   body.append(editorHost, preview);
 
   const lang = new Compartment();
+  const marksComp = new Compartment();
   const view = new EditorView({
     parent: editorHost,
     state: EditorState.create({
@@ -123,6 +151,7 @@ function showFile(f) {
         keymap.of([indentWithTab, ...historyKeymap, { key: "Mod-s", preventDefault: true, run: (v) => { post({ type: "save", text: v.state.doc.toString() }); return true; } }]),
         common({ path: f.path, editable: f.editable, wrap: isMd }),
         lang.of([]),
+        marksComp.of(features.marks ? marksExtension : []),
         EditorView.updateListener.of((u) => {
           if (u.docChanged) {
             const dirty = u.state.doc.toString() !== saved;
@@ -155,6 +184,45 @@ function showFile(f) {
     right.prepend(seg);
   }
   apply();
+  // A note on the selected lines, for the agent (Swift puts it in the agent's composer, unsent).
+  let noteBtn = null, noteBox = null;
+  const closeNote = () => { if (noteBox) { noteBox.remove(); noteBox = null; view.focus(); } };
+  const openNote = () => {
+    if (noteBox) { noteBox.querySelector("textarea").focus(); return; }
+    const sel = view.state.selection.main, doc = view.state.doc;
+    const from = doc.lineAt(sel.from).number, to = doc.lineAt(Math.max(sel.from, sel.to - (sel.to > sel.from && doc.lineAt(sel.to).from === sel.to ? 1 : 0))).number;
+    const excerpt = doc.sliceString(doc.line(from).from, doc.line(to).to);
+    noteBox = $("div", "notebox");
+    const label = $("div", "notelabel", (from === to ? "Line " + from : "Lines " + from + "–" + to) + " → agent");
+    const ta = $("textarea");
+    ta.placeholder = "What should the agent do here? (↩ puts it in the agent's message, ⇧↩ new line, esc cancels)";
+    const send = () => { const t = ta.value.trim(); if (!t) return; post({ type: "note", text: t, path: f.path, from, to, excerpt }); closeNote(); };
+    ta.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") { e.preventDefault(); closeNote(); }
+      else if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+    });
+    const row = $("div", "noterow");
+    const cancel = $("button", "notebtn", "Cancel"); cancel.onclick = closeNote;
+    const ok = $("button", "notebtn primary", "Add to agent's message"); ok.onclick = send;
+    row.append(cancel, ok);
+    noteBox.append(label, ta, row);
+    wrap.insertBefore(noteBox, body);
+    ta.focus();
+  };
+  const applyFeatures = () => {
+    view.dispatch({ effects: marksComp.reconfigure(features.marks ? marksExtension : []) });
+    if (features.marks && lastMarks) view.dispatch({ effects: setMarksEffect.of(marksSet(view.state.doc, lastMarks)) });
+    if (features.notes && !noteBtn) {
+      noteBtn = $("button", "notebtn", "✎ Note to agent");
+      noteBtn.title = "A note on the selected lines for the project's agent (⌘⇧M)";
+      noteBtn.onclick = openNote;
+      right.prepend(noteBtn);
+    } else if (!features.notes && noteBtn) { noteBtn.remove(); noteBtn = null; closeNote(); }
+  };
+  applyFeatures();
+  view.dom.addEventListener("keydown", (e) => {
+    if (features.notes && e.metaKey && e.shiftKey && (e.key === "m" || e.key === "M")) { e.preventDefault(); openNote(); }
+  });
   preview.addEventListener("click", (e) => {
     const a = e.target.closest("a");
     if (a && a.getAttribute("href")) { e.preventDefault(); post({ type: "link", href: a.getAttribute("href") }); }
@@ -166,6 +234,8 @@ function showFile(f) {
   if (!isMd || mode === "source") view.focus();
   current = {
     kind: "file", view,
+    applyFeatures,
+    setMarks: () => { if (features.marks && lastMarks) view.dispatch({ effects: setMarksEffect.of(marksSet(view.state.doc, lastMarks)) }); },
     saved: (text) => { saved = text; status.textContent = ""; },
     reload: (text) => { if (view.state.doc.toString() === saved) { view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } }); saved = text; if (isMd && mode === "preview") renderMd(); } },
     destroy: () => view.destroy(),
@@ -452,6 +522,8 @@ window.octomux = {
   showDiff,
   scrollToFile,
   saved: (text) => current && current.saved && current.saved(text),
+  setFeatures: (f) => { features = Object.assign({ marks: false, notes: false }, f); current && current.applyFeatures && current.applyFeatures(); },
+  setMarks: (m) => { lastMarks = m; current && current.setMarks && current.setMarks(); },
   reload: (text) => current && current.reload && current.reload(text),
 };
 post({ type: "ready" });

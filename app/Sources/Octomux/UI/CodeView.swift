@@ -22,6 +22,8 @@ final class DocHost {
 
     /// Theme or workspace tint changed.
     func refreshTheme() { controllers.values.forEach { $0.applyTheme() } }
+    /// The layout changed: editor extras on or off.
+    func refreshFeatures() { controllers.values.forEach { $0.applyFeatures() } }
 
     /// Only the visible doc polls git / the file system.
     func activeChanged(_ id: String?) { controllers.values.forEach { $0.setActive($0.doc.id == id) } }
@@ -107,6 +109,10 @@ final class DocController: NSObject, WKScriptMessageHandler, WKNavigationDelegat
             mdMode = m["mode"] as? String
         case "link":
             if let href = m["href"] as? String { openLink(href) }
+        case "note":
+            if let text = m["text"] as? String, let path = m["path"] as? String, let from = m["from"] as? Int, let to = m["to"] as? Int {
+                AppModel.shared.sendNote(text, path: path, from: from, to: to, excerpt: m["excerpt"] as? String ?? "")
+            }
         default: break
         }
     }
@@ -210,6 +216,7 @@ final class DocController: NSObject, WKScriptMessageHandler, WKNavigationDelegat
                     let exists = remote || FileManager.default.fileExists(atPath: full)
                     DispatchQueue.main.async {
                         if first || force {
+                            self.applyFeatures()
                             var payload: [String: Any] = ["path": rel, "text": text, "binary": binary, "editable": !remote && !binary && !big]
                             if !exists { payload["error"] = "File not found" } else if big { payload["error"] = "File too large to open here" }
                             if let line { payload["line"] = line }
@@ -219,9 +226,30 @@ final class DocController: NSObject, WKScriptMessageHandler, WKNavigationDelegat
                             self.call("reload", text)
                         }
                         self.lastSig = "file"
+                        self.refreshMarks(rel)
                     }
                 }
             }
+        }
+    }
+
+    /// The layout's editor extras (Settings → Layout → Panels and editor): changed-line marks, notes to the agent.
+    private var features: [String: Bool] = [:]
+    func applyFeatures() {
+        let l = AppModel.shared.layout
+        let f = ["marks": l.has("marks", in: .views), "notes": l.has("notes", in: .views) && !isRemote]
+        guard f != features else { return }
+        features = f
+        call("setFeatures", f)
+        if f["marks"] == true, case .file(let rel) = doc.kind { refreshMarks(rel) }
+    }
+
+    private func refreshMarks(_ rel: String) {
+        guard features["marks"] == true, !isRemote else { return }
+        let wp = doc.workPath
+        DispatchQueue.global(qos: .utility).async {
+            let m = ChangeMarks.read(wp, rel)
+            DispatchQueue.main.async { self.call("setMarks", m.json) }
         }
     }
 

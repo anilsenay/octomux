@@ -365,6 +365,8 @@ enum DebugActions {
                 if let v = p["value"] as? String { UserDefaults.standard.set(v, forKey: "octomux.agentsHomeStyle") }
                 m.openAgentsHome()
             case "workday": m.openWorkday()
+            case "editor_note":       // a note on lines, as the editor's note box sends it: value, path, from, to, excerpt
+                MainActor.assumeIsolated { m.sendNote(p["value"] as? String ?? "note", path: p["path"] as? String ?? "f", from: p["from"] as? Int ?? 1, to: p["to"] as? Int ?? 1, excerpt: p["excerpt"] as? String ?? "") }
             case "activity_fake":     // a few "while you were away" events (fixture screenshots)
                 let ids = m.agentSessions(onlyCurrentWorkspace: false).map(\.id)
                 let log = ActivityLog.shared

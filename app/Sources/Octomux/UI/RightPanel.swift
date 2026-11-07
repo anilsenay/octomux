@@ -497,6 +497,7 @@ struct FilesPanel: View {
             }
             .padding(.horizontal, 10).frame(height: 34)
             Hairline()
+            if query.isEmpty && model.layout.has("touched", in: .views) { TouchedSection() }
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     if query.isEmpty {
@@ -579,6 +580,43 @@ struct FilesPanel: View {
                 Button("Copy Relative Path") { copy(rel) }
             }
         }
+    }
+}
+
+/// "Touched by <agent> · this turn": the files the project's agent changed (M) or read (R) in its current turn.
+struct TouchedSection: View {
+    @EnvironmentObject var model: AppModel
+    @StateObject private var t = TouchedFiles()
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 6) {
+                if let a = t.agent { AgentIcon(icon: iconName(for: a, model: model), size: 11) }
+                Text(t.agent.map { "Touched by \($0.displayTitle)" } ?? "No agent in this project").font(T.caption).foregroundStyle(T.text2).lineLimit(1)
+                Text("· this turn").font(T.caption).foregroundStyle(T.text3)
+                Spacer()
+            }
+            .padding(.horizontal, 12).padding(.top, 8).padding(.bottom, 4)
+            if t.agent != nil && t.files.isEmpty {
+                Text("Nothing yet.").font(T.meta).foregroundStyle(T.text3).padding(.horizontal, 12).padding(.bottom, 8)
+            }
+            ForEach(t.files.prefix(12)) { f in
+                HStack(spacing: 6) {
+                    Text(f.how.rawValue).font(T.mono(11, .bold)).foregroundStyle(f.how == .modified ? T.amber : T.text3).frame(width: 12)
+                    FileIcon(name: (f.path as NSString).lastPathComponent)
+                    Text(f.path).font(.system(size: T.k * 12)).lineLimit(1).truncationMode(.head)
+                    Spacer()
+                }
+                .padding(.horizontal, 12).frame(height: 22)
+                .background(HoverFill())
+                .contentShape(Rectangle())
+                .pointerCursor()
+                .onTapGesture { if !f.path.hasPrefix("/") { model.openFile(f.path) } }
+            }
+            Hairline().padding(.top, 4)
+        }
+        .onAppear { t.start() }
+        .onDisappear { t.stop() }
     }
 }
 
