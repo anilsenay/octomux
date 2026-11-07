@@ -66,6 +66,7 @@ struct MainView: View {
         .overlay {
             if model.paletteVisible { CommandPalette() }
         }
+        .overlay { TabSwitcherOverlay() }
         .sheet(item: $model.newWorktreeFor) { p in
             NewWorktreeSheet(project: p) { model.newWorktreeFor = nil }.environmentObject(model)
         }
@@ -189,7 +190,7 @@ struct TopLeftControls: View {
             }
             .buttonStyle(IconButtonStyle(size: 26)).help("Toggle Sidebar (⌘B)")
             Button { model.paletteVisible = true } label: {
-                Image(systemName: "magnifyingglass").font(.system(size: T.k * 12.5))
+                Image(systemName: "magnifyingglass").font(.system(size: T.k * 13))
             }
             .buttonStyle(IconButtonStyle(size: 26)).help("Search (\(KeyBindings.shared.current("cmd.command-palette")?.display ?? "⌘K"))")
             NotificationBell()
@@ -389,10 +390,10 @@ struct TopBar: View {
     private func layout(width: CGFloat) -> (chars: Int, compact: Bool, visible: Int, tabW: CGFloat) {
         let leading: CGFloat = model.sidebarVisible ? 8 : TopLeftControls.width + 8
         let compact = width < 820
-        let tools: CGFloat = compact ? 150 : 300          // diff, open in, splits, chat, panel, menu
+        let tools: CGFloat = compact ? 150 : 270          // diff, open in, split, chat, browser, panel
         let newBtn: CGFloat = 52
         let avail = max(120, width - leading - tools - newBtn - 30)
-        let tabMin: CGFloat = 120, tabMax: CGFloat = 220
+        let tabMin: CGFloat = 140, tabMax: CGFloat = 220
         let pinned = model.currentTabs.filter(model.isPinned).count
         let avail2 = pinned > 0 ? avail - CGFloat(pinned) * (PinnedTabChip.width + 2) - 20 : avail
         let count = model.currentTabs.count - pinned + model.currentDocs.count
@@ -419,7 +420,7 @@ struct TopBar: View {
                     }
                 }
                 .padding(2)
-                .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(T.hover.opacity(0.7)))
+                .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(T.hover.opacity(0.7)))
                 .fixedSize()
                 .transition(.scale(scale: 0.8).combined(with: .opacity))
                 Rectangle().fill(T.border).frame(width: 1, height: 16).padding(.horizontal, 2)
@@ -448,18 +449,18 @@ struct TopBar: View {
                         if !hidden.isEmpty && !hiddenDocs.isEmpty { Divider() }
                         ForEach(hiddenDocs) { d in Button(d.title) { model.selectDoc(d.id) } }
                     } label: {
-                        Text("+\(hidden.count + hiddenDocs.count)").font(.system(size: T.k * 11.5, weight: .semibold)).foregroundStyle(T.text2)
+                        Text("+\(hidden.count + hiddenDocs.count)").font(.system(size: T.k * 12, weight: .semibold)).foregroundStyle(T.text2)
                             .padding(.horizontal, 6).frame(height: m.tabH).contentShape(Rectangle())
                     }
                     .plainMenu().fixedSize()
-                    .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(T.hover))
+                    .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(T.hover))
                     .pointerCursor()
                     .help("\(hidden.count + hiddenDocs.count) more tabs")
                 }
             }
             .onDrop(of: [.text], delegate: PaneToTabDrop(model: model))
             .padding(m.tabStyle == .segment ? 3 : 0)
-            .background(m.tabStyle == .segment && !(model.currentTabs.isEmpty && docs.isEmpty) ? RoundedRectangle(cornerRadius: 9, style: .continuous).fill(T.hover) : nil)
+            .background(m.tabStyle == .segment && !(model.currentTabs.isEmpty && docs.isEmpty) ? RoundedRectangle(cornerRadius: 10, style: .continuous).fill(T.hover) : nil)
             .fixedSize()
             if model.currentProject != nil { NewSessionButton() }
             // Only empty top-bar space moves the window; a window-wide drag view under the tabs would
@@ -473,17 +474,14 @@ struct TopBar: View {
                                 Text("+\(stat.added)").foregroundStyle(T.diffAdd)
                                 Text("−\(stat.removed)").foregroundStyle(T.diffDel)
                             }
-                            .font(T.mono(11.5, .medium))
+                            .font(T.mono(12, .medium))
                         }
                         .buttonStyle(ChromeButtonStyle()).help("\(stat.files) changed files")
                     }
                     if let p = model.currentProject, !model.host(for: p.id).isRemote {
                         OpenInButton(path: p.path)
                     }
-                    Button { model.newSession(profileId: nil, split: .right) } label: { Image(systemName: "rectangle.split.2x1") }
-                        .buttonStyle(ChromeButtonStyle()).help("Split Right (⌘D)").disabled(!model.canManage)
-                    Button { model.newSession(profileId: nil, split: .down) } label: { Image(systemName: "rectangle.split.1x2") }
-                        .buttonStyle(ChromeButtonStyle()).help("Split Down (⌘⇧D)").disabled(!model.canManage)
+                    SplitMenuButton()
                 }
                 if let fs = model.session(model.focusedSessionId), model.canChat(fs) {
                     Button { model.toggleChat(fs.id) } label: { Image(systemName: model.isChat(fs.id) ? "terminal" : "text.bubble") }
@@ -495,7 +493,7 @@ struct TopBar: View {
             }
             .fixedSize()
         }
-        .font(.system(size: T.k * 12.5))
+        .font(.system(size: T.k * 13))
         .foregroundStyle(T.text2)
         .padding(.leading, model.sidebarVisible ? 8 : 0)
         .padding(.trailing, 10)
@@ -543,7 +541,7 @@ struct DocChip: View {
                 if case .file(let rel) = doc.kind {
                     FileIcon(name: (rel as NSString).lastPathComponent, size: 10.5)
                 } else {
-                    Image(systemName: doc.icon).font(.system(size: T.k * 10.5, weight: .medium)).foregroundStyle(selected ? T.text2 : T.text3)
+                    Image(systemName: doc.icon).font(.system(size: T.k * 11, weight: .medium)).foregroundStyle(selected ? T.text2 : T.text3)
                 }
             }
             .opacity(selected ? 1 : 0.6)
@@ -558,7 +556,7 @@ struct DocChip: View {
             }
             .buttonStyle(IconButtonStyle(size: 16)).opacity(hover ? 1 : 0)
         }
-        .font(.system(size: T.k * 12.5, weight: selected ? .semibold : .medium))
+        .font(.system(size: T.k * 13, weight: selected ? .semibold : .medium))
         .foregroundStyle(selected ? T.text : hover ? T.text2 : T.text3.opacity(0.85))
         .padding(.leading, 11).padding(.trailing, 6)
         .frame(width: width, height: m.tabStyle == .underline ? m.topH : m.tabH)
@@ -654,7 +652,7 @@ struct TabChip: View {
             }
             .buttonStyle(IconButtonStyle(size: 16)).opacity(hover ? 1 : 0)
         }
-        .font(.system(size: T.k * 12.5, weight: selected ? .semibold : .medium))
+        .font(.system(size: T.k * 13, weight: selected ? .semibold : .medium))
         .foregroundStyle(selected ? T.text : hover ? T.text2 : T.text3.opacity(0.85))
         .padding(.leading, 11).padding(.trailing, 6)
         .frame(width: width, height: m.tabStyle == .underline ? m.topH : m.tabH)
@@ -686,11 +684,14 @@ struct TabChip: View {
             Rectangle().fill(hover && !selected ? T.hover : .clear)
         case .pill, .segment:
             let dark = ThemeStore.shared.isDark
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(selected ? (dark ? Color.white.opacity(0.13) : T.raised)
-                      : hover ? (dark ? Color.white.opacity(0.07) : Color.black.opacity(0.06))
-                      : (dark ? Color.white.opacity(0.03) : Color.black.opacity(0.03)))
-                .shadow(color: .black.opacity(selected && !dark ? 0.14 : 0), radius: 1.5, y: 1)
+            // Active tab: a raised card with a hairline; others have no fill until hovered.
+            RoundedRectangle(cornerRadius: R.md, style: .continuous)
+                .fill(selected ? (dark ? Color.white.opacity(0.11) : T.raised)
+                      : hover ? (dark ? Color.white.opacity(0.06) : Color.black.opacity(0.05))
+                      : .clear)
+                .overlay(RoundedRectangle(cornerRadius: R.md, style: .continuous)
+                    .strokeBorder(selected ? (dark ? Color.white.opacity(0.08) : Color.black.opacity(0.07)) : .clear, lineWidth: 1))
+                .shadow(color: .black.opacity(selected && !dark ? 0.10 : 0), radius: 1.5, y: 1)
         }
     }
 }
@@ -955,7 +956,7 @@ struct StatusBar: View {
     }
 
     private func bar(full: Bool) -> some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 12) {
             let working = model.state.sessions.filter { $0.activity == .working && $0.state == .running }.count
             let waiting = model.state.sessions.filter { $0.activity == .needsInput }.count
             if working > 0 {
@@ -980,7 +981,7 @@ struct StatusBar: View {
             UsageStatus(compact: !full)
             ActionsControl().fixedSize()
             Button { model.toggleDock() } label: {
-                HStack(spacing: 5) { Image(systemName: "terminal").font(.system(size: T.k * 10.5)); if full { Text("Terminal") } }
+                HStack(spacing: 5) { Image(systemName: "terminal").font(.system(size: T.k * 11)); if full { Text("Terminal") } }
             }
             .buttonStyle(ChromeButtonStyle(active: model.isDockOpen(model.currentProject?.id)))
             .fixedSize()
@@ -1004,11 +1005,11 @@ struct UsageStatus: View {
             Button { model.usagePopoverOpen.toggle() } label: {
                 HStack(spacing: 12) {
                     ForEach(shown, id: \.0.id) { prof, readings in
-                        HStack(spacing: 6) {
+                        HStack(spacing: 5) {
                             AgentIcon(icon: prof.icon, size: 10)
                             ForEach(compact ? Array(UsageReading.shown(readings, windows).prefix(1)) : UsageReading.shown(readings, windows)) { r in
                                 if !compact { Text(r.shortName).foregroundStyle(T.text3) }
-                                UsageMeter(used: r.effectivePercent, left: showsLeft, primary: r.window == "five_hour").frame(width: compact ? 30 : 44)
+                                UsageRing(used: r.effectivePercent, left: showsLeft, primary: r.window == "five_hour").frame(width: 12, height: 12)
                                 // After the window resets the old reading says nothing: "—" until a new one arrives.
                                 Text(r.isReset ? "—" : r.label(left: showsLeft)).font(T.mono(11))
                                     .foregroundStyle(r.isReset ? T.text3 : T.text)
@@ -1025,6 +1026,22 @@ struct UsageStatus: View {
                   ? "Usage limits — “—” means the window reset and no newer reading came in yet. Click for details"
                   : "Usage limits — click for details")
             .popover(isPresented: open, arrowEdge: .top) { UsagePopover().environmentObject(model) }
+        }
+    }
+}
+
+/// A limit as a small ring (status bar): filled with what is used, or with what is left.
+struct UsageRing: View {
+    let used: Double
+    var left = false
+    var primary = true
+    var body: some View {
+        let fill = left ? max(0, 100 - used) : used
+        ZStack {
+            Circle().stroke(T.border, lineWidth: 2)
+            Circle().trim(from: 0, to: min(1, max(0.02, fill / 100)))
+                .stroke(UsageMeter(used: used, primary: primary).color, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                .rotationEffect(.degrees(-90))
         }
     }
 }
@@ -1112,8 +1129,8 @@ struct UsagePopover: View {
                     }
                 }
                 .padding(12)
-                .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(T.surface))
-                .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(T.border))
+                .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(T.surface))
+                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(T.border))
             }
         }
         .padding(16)
@@ -1156,7 +1173,7 @@ struct PinnedTabChip: View {
                     .help("\(busy.displayTitle): \(activityHelp(busy))")
             }
         }
-        .background(RoundedRectangle(cornerRadius: 7, style: .continuous)
+        .background(RoundedRectangle(cornerRadius: 8, style: .continuous)
             .fill(selected ? (ThemeStore.shared.isDark ? Color.white.opacity(0.1) : T.raised) : hover ? T.hover : .clear)
             .shadow(color: .black.opacity(selected && !ThemeStore.shared.isDark ? 0.1 : 0), radius: 1, y: 0.5))
         .contentShape(Rectangle())
@@ -1230,7 +1247,7 @@ struct GitStatusControls: View {
                 HStack(spacing: 5) {
                     Image(systemName: "arrow.triangle.branch").font(.system(size: T.k * 10, weight: .semibold))
                     Text(branch).font(T.mono(11, .medium)).lineLimit(1)
-                    Image(systemName: "chevron.up.chevron.down").font(.system(size: T.k * 7.5, weight: .bold)).foregroundStyle(T.text3)
+                    Image(systemName: "chevron.up.chevron.down").font(.system(size: T.k * 8, weight: .bold)).foregroundStyle(T.text3)
                 }
                 .padding(.horizontal, 7).frame(height: 20)
                 .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(T.hover))
@@ -1259,9 +1276,9 @@ struct GitStatusControls: View {
             if full {
                 Button { pickingBase = true } label: {
                     HStack(spacing: 4) {
-                        Image(systemName: "arrow.right").font(.system(size: T.k * 8.5, weight: .bold)).foregroundStyle(T.text3)
+                        Image(systemName: "arrow.right").font(.system(size: T.k * 9, weight: .bold)).foregroundStyle(T.text3)
                         Text(base ?? branch).font(T.mono(11)).foregroundStyle(base == nil ? T.text3 : T.text2).lineLimit(1)
-                        Image(systemName: "chevron.up.chevron.down").font(.system(size: T.k * 7.5, weight: .bold)).foregroundStyle(T.text3)
+                        Image(systemName: "chevron.up.chevron.down").font(.system(size: T.k * 8, weight: .bold)).foregroundStyle(T.text3)
                     }
                     .padding(.horizontal, 6).frame(height: 20).contentShape(Rectangle())
                 }
@@ -1350,7 +1367,7 @@ struct BranchPicker: View {
             HStack(spacing: 8) {
                 Image(systemName: icon ?? "checkmark").font(.system(size: T.k * 10, weight: .bold)).foregroundStyle(icon != nil ? T.text2 : T.accent)
                     .opacity(icon != nil || selected ? 1 : 0).frame(width: 12)
-                Text(text).font(mono ? T.mono(12) : .system(size: T.k * 12.5)).foregroundStyle(T.text).lineLimit(1).truncationMode(.middle)
+                Text(text).font(mono ? T.mono(12) : .system(size: T.k * 13)).foregroundStyle(T.text).lineLimit(1).truncationMode(.middle)
                 Spacer()
             }
             .padding(.horizontal, 8).frame(height: 28)
@@ -1387,5 +1404,25 @@ struct BranchPicker: View {
                 }
             }
         }
+    }
+}
+
+
+/// One button for both splits (right / down) in the top bar.
+struct SplitMenuButton: View {
+    @EnvironmentObject var model: AppModel
+    var body: some View {
+        Menu {
+            Button { model.newSession(profileId: nil, split: .right) } label: { Label("Split Right  ⌘D", systemImage: "rectangle.split.2x1") }
+            Button { model.newSession(profileId: nil, split: .down) } label: { Label("Split Down  ⌘⇧D", systemImage: "rectangle.split.1x2") }
+        } label: {
+            Image(systemName: "rectangle.split.2x1").foregroundStyle(T.text2)
+                .frame(width: 26, height: 26).contentShape(Rectangle())
+                .hoverHighlight(radius: R.sm)
+        }
+        .plainMenu().fixedSize()
+        .help("Split (⌘D right, ⌘⇧D down)")
+        .disabled(!model.canManage)
+        .pointerCursor()
     }
 }

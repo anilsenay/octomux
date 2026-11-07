@@ -216,7 +216,8 @@ final class ChatWebController: NSObject, WKScriptMessageHandler, WKNavigationDel
                 "text": css(T.ns(\.text)), "text2": css(T.ns(\.text2)), "text3": css(T.ns(\.text3)),
                 "border": css(T.ns(\.border)), "hover": css(T.ns(\.hover)),
                 "hover2": dark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.07)",
-                "bubble": css(T.ns(\.selection)),
+                // The user's messages: a neutral raised bubble (the accent stays for state, not decoration).
+                "bubble": dark ? "rgba(255,255,255,0.075)" : "rgba(0,0,0,0.05)",
                 "selection": css(T.ns(\.accent), 0.28),
                 "accent": css(T.ns(\.accent)), "green": css(green), "red": css(red), "blue": css(T.ns(\.blue)), "amber": css(T.ns(\.amber)),
                 "add-bg": css(green, dark ? 0.12 : 0.13), "del-bg": css(red, dark ? 0.12 : 0.11),

@@ -1395,12 +1395,12 @@ struct SceneTile: View {
                 }
             }
             .frame(width: width, height: width * 0.56)
-            .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(highlighted || selected ? T.accent : T.border, lineWidth: highlighted || selected ? 2 : 1))
             HStack(spacing: 3) {
                 Text(title).font(.system(size: T.k * 11, weight: selected ? .semibold : .medium)).lineLimit(1)
-                if selected { Image(systemName: "checkmark").font(.system(size: T.k * 8.5, weight: .bold)).foregroundStyle(T.accent) }
+                if selected { Image(systemName: "checkmark").font(.system(size: T.k * 9, weight: .bold)).foregroundStyle(T.accent) }
             }
             .foregroundStyle(selected ? T.text : T.text2)
             .frame(width: width, alignment: .leading)

@@ -27,7 +27,7 @@ struct InboxSidebarRow: View {
                 Text("Inbox").font(.system(size: T.k * 13, weight: .medium)).foregroundStyle(T.text)
                 Spacer()
                 if unread > 0 {
-                    Text("\(unread)").font(.system(size: T.k * 10.5, weight: .semibold)).monospacedDigit()
+                    Text("\(unread)").font(.system(size: T.k * 11, weight: .semibold)).monospacedDigit()
                         .foregroundStyle(.white).padding(.horizontal, 6).frame(height: 16)
                         .background(Capsule().fill(T.accent))
                 }
@@ -231,7 +231,7 @@ struct InboxView: View {
                     Button("Linear and GitLab come later") {}.disabled(true)
                 }
             } label: {
-                Label("Add connection", systemImage: "plus").font(.system(size: T.k * 11.5, weight: .medium)).foregroundStyle(T.text2)
+                Label("Add connection", systemImage: "plus").font(.system(size: T.k * 12, weight: .medium)).foregroundStyle(T.text2)
             }
             .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().pointerCursor()
             .padding(.leading, 4)
@@ -313,7 +313,7 @@ struct InboxView: View {
         let initials = name.split(whereSeparator: { !$0.isLetter }).prefix(2).compactMap(\.first).map(String.init).joined().uppercased()
         return ZStack(alignment: .bottomTrailing) {
             if collapsed {
-                Text(initials.isEmpty ? "?" : initials).font(.system(size: T.k * 8.5, weight: .bold)).foregroundStyle(T.text2)
+                Text(initials.isEmpty ? "?" : initials).font(.system(size: T.k * 9, weight: .bold)).foregroundStyle(T.text2)
                     .frame(width: 20, height: 16)
                     .background(RoundedRectangle(cornerRadius: 4, style: .continuous).fill(T.hover))
                 BrandMark(key: src.rawValue, color: src.color, size: 7).offset(x: 3, y: 3)
@@ -346,7 +346,7 @@ struct InboxView: View {
         VStack(spacing: 0) {
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass").font(.system(size: T.k * 11)).foregroundStyle(T.text3)
-                TextField("Filter inbox", text: $query).textFieldStyle(.plain).font(.system(size: T.k * 12.5))
+                TextField("Filter inbox", text: $query).textFieldStyle(.plain).font(.system(size: T.k * 13))
                     .focused($filterFocused)
                     // Esc clears the filter, a second one leaves the field (the list keys work again).
                     .onExitCommand {
@@ -359,7 +359,7 @@ struct InboxView: View {
                         Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 6) {
                             ForEach(InboxKeys.help, id: \.keys) { k in
                                 GridRow {
-                                    Text(k.keys).font(T.mono(11.5)).foregroundStyle(T.text)
+                                    Text(k.keys).font(T.mono(12)).foregroundStyle(T.text)
                                     Text(k.what).font(.system(size: T.k * 12)).foregroundStyle(T.text2)
                                 }
                             }
@@ -458,7 +458,7 @@ struct InboxFolderRow: View {
                     if collapsed && unread > 0 { Circle().fill(T.accent).frame(width: 6, height: 6).offset(x: 5, y: -3) }
                 }
                 if !collapsed {
-                    Text(title).font(.system(size: T.k * 12.5, weight: selected ? .semibold : .regular)).foregroundStyle(T.text).lineLimit(1)
+                    Text(title).font(.system(size: T.k * 13, weight: selected ? .semibold : .regular)).foregroundStyle(T.text).lineLimit(1)
                     Spacer(minLength: 2)
                     if let key = bell, watched || hover {
                         let muted = watched ? JiraClient.mutedUntil(key) : nil
@@ -590,31 +590,31 @@ struct InboxRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 5) {
                     BrandMark(key: item.source.rawValue, color: item.source.color, size: 10.5)
-                    if item.kind == .pr { Image(systemName: "arrow.triangle.pull").font(.system(size: T.k * 9.5)).foregroundStyle(T.text3) }
-                    Text(item.key).font(T.mono(10.5)).foregroundStyle(T.text3)
+                    if item.kind == .pr { Image(systemName: "arrow.triangle.pull").font(.system(size: T.k * 10)).foregroundStyle(T.text3) }
+                    Text(item.key).font(T.mono(11)).foregroundStyle(T.text3)
                     InboxStatusDot(item: item)
                     Spacer()
-                    Text(item.updated, format: .relative(presentation: .named)).font(.system(size: T.k * 10.5)).foregroundStyle(T.text3)
+                    Text(item.updated, format: .relative(presentation: .named)).font(.system(size: T.k * 11)).foregroundStyle(T.text3)
                     Circle().fill(T.accent).frame(width: 6, height: 6).opacity(unread ? 1 : 0)
                 }
-                Text(item.title).font(.system(size: T.k * 12.5, weight: unread ? .semibold : .regular)).foregroundStyle(item.ended == nil ? T.text : T.text2)
+                Text(item.title).font(.system(size: T.k * 13, weight: unread ? .semibold : .regular)).foregroundStyle(item.ended == nil ? T.text : T.text2)
                     .lineLimit(1).truncationMode(.tail)
                 HStack(spacing: 6) {
                     if let until = InboxStore.shared.snoozedUntil(item.id) {
                         (Text(Image(systemName: "moon.zzz")) + Text(" Until ") + Text(until, format: .dateTime.weekday(.abbreviated).hour().minute()))
-                            .font(.system(size: T.k * 10.5, weight: .medium)).foregroundStyle(InboxSnoozeMenu.tint).lineLimit(1).fixedSize()
+                            .font(.system(size: T.k * 11, weight: .medium)).foregroundStyle(InboxSnoozeMenu.tint).lineLimit(1).fixedSize()
                     } else if let e = item.ended {
                         Label(e.label, systemImage: e.merged ? "arrow.triangle.merge" : "checkmark.circle")
-                            .font(.system(size: T.k * 10.5, weight: .semibold)).foregroundStyle(InboxEndedColor.of(e))
+                            .font(.system(size: T.k * 11, weight: .semibold)).foregroundStyle(InboxEndedColor.of(e))
                     } else {
-                        Text(item.source == .jira ? item.status : item.reason.rawValue).font(.system(size: T.k * 10.5, weight: .medium)).foregroundStyle(reasonColor)
+                        Text(item.source == .jira ? item.status : item.reason.rawValue).font(.system(size: T.k * 11, weight: .medium)).foregroundStyle(reasonColor)
                             .lineLimit(1).fixedSize()
                     }
                     Text("·").foregroundStyle(T.text3)
-                    Text(item.place).font(.system(size: T.k * 10.5)).foregroundStyle(T.text3).lineLimit(1)
+                    Text(item.place).font(.system(size: T.k * 11)).foregroundStyle(T.text3).lineLimit(1)
                     Spacer()
                     if item.ended == nil { InboxReviewTally(item: item) }
-                    if linked { Image(systemName: "sparkles").font(.system(size: T.k * 9.5)).foregroundStyle(T.text3).help("Has a session") }
+                    if linked { Image(systemName: "sparkles").font(.system(size: T.k * 10)).foregroundStyle(T.text3).help("Has a session") }
                 }
             }
             .padding(.horizontal, 10).padding(.vertical, 8)
@@ -641,9 +641,9 @@ struct InboxStatusDot: View {
     let item: InboxItem
     var body: some View {
         switch item.checks {
-        case .passing: Image(systemName: "checkmark.circle.fill").font(.system(size: T.k * 9.5)).foregroundStyle(T.green).help("Checks pass")
-        case .failing: Image(systemName: "xmark.circle.fill").font(.system(size: T.k * 9.5)).foregroundStyle(T.red).help("Checks failed")
-        case .pending: Image(systemName: "clock.fill").font(.system(size: T.k * 9.5)).foregroundStyle(T.amber).help("Checks running")
+        case .passing: Image(systemName: "checkmark.circle.fill").font(.system(size: T.k * 10)).foregroundStyle(T.green).help("Checks pass")
+        case .failing: Image(systemName: "xmark.circle.fill").font(.system(size: T.k * 10)).foregroundStyle(T.red).help("Checks failed")
+        case .pending: Image(systemName: "clock.fill").font(.system(size: T.k * 10)).foregroundStyle(T.amber).help("Checks running")
         case nil: EmptyView()
         }
     }
@@ -675,7 +675,7 @@ struct InboxAssigneePicker: View {
                     ForEach(found) { u in
                         Button { close(); jira.assign(item, to: u) } label: {
                             HStack {
-                                Text(u.name).font(.system(size: T.k * 12.5))
+                                Text(u.name).font(.system(size: T.k * 13))
                                 Spacer()
                                 if u.name == item.assignee { Image(systemName: "checkmark").font(.system(size: T.k * 10)) }
                             }
@@ -757,7 +757,7 @@ struct InboxReviewTally: View {
             // Long: each label is its own piece of the caller's FlowLayout (a nested one gets no width to wrap in).
             if long { labels(comments) } else { HStack(spacing: 6) { labels(comments) } }
         }
-        .font(.system(size: T.k * 10.5, weight: .medium))
+        .font(.system(size: T.k * 11, weight: .medium))
         .labelStyle(InboxTightLabel())
         .help([item.approvals > 0 ? "\(item.approvals) approved\(item.youApproved ? " (you too)" : "")" : nil,
                item.changesRequested > 0 ? "\(item.changesRequested) asked for changes" : nil,
@@ -787,7 +787,7 @@ struct InboxReviewTally: View {
 
 struct InboxTightLabel: LabelStyle {
     func makeBody(configuration: Configuration) -> some View {
-        HStack(spacing: 2) { configuration.icon.font(.system(size: T.k * 8.5, weight: .bold)); configuration.title.lineLimit(1) }
+        HStack(spacing: 2) { configuration.icon.font(.system(size: T.k * 9, weight: .bold)); configuration.title.lineLimit(1) }
             .fixedSize()
     }
 }
@@ -842,7 +842,7 @@ struct InboxDetail: View {
                     HStack(spacing: 8) {
                         Image(systemName: "moon.zzz").foregroundStyle(InboxSnoozeMenu.tint)
                         (Text("Snoozed until ") + Text(until, format: .dateTime.weekday(.wide).day().month().hour().minute()))
-                            .font(.system(size: T.k * 12.5, weight: .medium))
+                            .font(.system(size: T.k * 13, weight: .medium))
                         Text("· back sooner if something happens to it").font(.system(size: T.k * 12)).foregroundStyle(T.text3)
                         Spacer(minLength: 0)
                         Button("Unsnooze") { store.unsnooze(item.id) }.buttonStyle(.link).font(.system(size: T.k * 12))
@@ -862,7 +862,7 @@ struct InboxDetail: View {
                 } else {
                     if editingDescription {
                         VStack(alignment: .trailing, spacing: 6) {
-                            TextEditor(text: $descriptionDraft).font(.system(size: T.k * 12.5)).frame(minHeight: 120)
+                            TextEditor(text: $descriptionDraft).font(.system(size: T.k * 13)).frame(minHeight: 120)
                                 .padding(6)
                                 .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(T.frame.opacity(0.4)))
                                 .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(T.border))
@@ -899,8 +899,8 @@ struct InboxDetail: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 BrandMark(key: item.source.rawValue, color: item.source.color, size: 12)
-                Text(item.kindName).font(.system(size: T.k * 11.5)).foregroundStyle(T.text2)
-                Text(item.key).font(T.mono(11.5)).foregroundStyle(T.text2)
+                Text(item.kindName).font(.system(size: T.k * 12)).foregroundStyle(T.text2)
+                Text(item.key).font(T.mono(12)).foregroundStyle(T.text2)
                 if item.source == .jira, item.ended == nil {
                     // The status moves through Jira's workflow (asks first).
                     Menu {
@@ -909,7 +909,7 @@ struct InboxDetail: View {
                         ForEach(ts) { t in Button(t.name == t.to ? t.to : "\(t.name) → \(t.to)") { jiraActions.move(item, t) } }
                     } label: {
                         HStack(spacing: 3) {
-                            Text(item.status).font(.system(size: T.k * 10.5, weight: .semibold))
+                            Text(item.status).font(.system(size: T.k * 11, weight: .semibold))
                             Image(systemName: "chevron.down").font(.system(size: T.k * 7, weight: .bold))
                         }
                         .foregroundStyle(statusColor).padding(.horizontal, 6).frame(height: 17)
@@ -920,11 +920,11 @@ struct InboxDetail: View {
                     .onAppear { jiraActions.loadTransitions(item); jiraActions.loadEditMeta(item) }
                     priorityMenu
                 } else {
-                    Text(item.ended?.label ?? item.status).font(.system(size: T.k * 10.5, weight: .semibold)).foregroundStyle(statusColor)
+                    Text(item.ended?.label ?? item.status).font(.system(size: T.k * 11, weight: .semibold)).foregroundStyle(statusColor)
                         .padding(.horizontal, 6).frame(height: 17)
                         .background(Capsule().fill(statusColor.opacity(0.14)))
                 }
-                Text(item.place).font(.system(size: T.k * 11.5)).foregroundStyle(T.text3)
+                Text(item.place).font(.system(size: T.k * 12)).foregroundStyle(T.text3)
             }
             if editingTitle {
                 HStack(spacing: 8) {
@@ -955,7 +955,7 @@ struct InboxDetail: View {
                 Text("Updated ") + Text(item.updated, format: .relative(presentation: .named))
                 if let b = item.branch { Text("·"); Text(b).font(T.mono(11)).lineLimit(1) }
             }
-            .font(.system(size: T.k * 11.5)).foregroundStyle(T.text3)
+            .font(.system(size: T.k * 12)).foregroundStyle(T.text3)
             FlowLayout(spacing: 10, lineSpacing: 4) {
                 if item.ended == nil, item.approvals + item.changesRequested + (item.commentCount ?? 0) + (item.openTasks ?? 0) > 0 {
                     InboxReviewTally(item: item, long: true)
@@ -963,7 +963,7 @@ struct InboxDetail: View {
                 // GitHub's answer comes from the history: shown once it is read.
                 if item.kind == .pr, item.reason == .review, item.ended == nil, item.source == .bitbucket || store.activity[item.id] != nil { yourReview }
             }
-            .font(.system(size: T.k * 11.5))
+            .font(.system(size: T.k * 12))
         }
     }
 
@@ -1004,18 +1004,18 @@ struct InboxDetail: View {
             VStack(alignment: .leading, spacing: 8) {
                 // What it found, then what you can do with it (a row of its own: a narrow detail fits both).
                 FlowLayout(spacing: 6, lineSpacing: 4) {
-                    Label("Agent review", systemImage: "eye.square").font(.system(size: T.k * 12.5, weight: .semibold))
+                    Label("Agent review", systemImage: "eye.square").font(.system(size: T.k * 13, weight: .semibold))
                         .labelStyle(.titleAndIcon).foregroundStyle(T.text).fixedSize()
                     if let res = r.result, r.state == .done {
                         Text("· \(res.tally)").font(.system(size: T.k * 12)).foregroundStyle(T.text2).fixedSize()
                         let risk = res.risk.lowercased()
-                        Text("risk \(risk)").font(.system(size: T.k * 10.5, weight: .semibold))
+                        Text("risk \(risk)").font(.system(size: T.k * 11, weight: .semibold))
                             .foregroundStyle(risk == "high" ? T.red : risk == "medium" ? T.amber : T.green)
                             .padding(.horizontal, 6).frame(height: 16)
                             .background(Capsule().fill((risk == "high" ? T.red : risk == "medium" ? T.amber : T.green).opacity(0.14)))
                             .fixedSize()
                         if hasNewCommits(r) {
-                            Text("· new commits since").font(.system(size: T.k * 11.5)).foregroundStyle(T.amber).fixedSize()
+                            Text("· new commits since").font(.system(size: T.k * 12)).foregroundStyle(T.amber).fixedSize()
                         }
                     }
                 }
@@ -1055,18 +1055,18 @@ struct InboxDetail: View {
                     Text(r.note ?? "It didn't run.").font(.system(size: T.k * 12)).foregroundStyle(T.amber).fixedSize(horizontal: false, vertical: true)
                 case .done:
                     if let res = r.result {
-                        if let note = r.note { Text(note).font(.system(size: T.k * 11.5)).foregroundStyle(T.text3) }
-                        if !res.summary.isEmpty { Text(res.summary).font(.system(size: T.k * 12.5)).foregroundStyle(T.text).fixedSize(horizontal: false, vertical: true).textSelection(.enabled) }
+                        if let note = r.note { Text(note).font(.system(size: T.k * 12)).foregroundStyle(T.text3) }
+                        if !res.summary.isEmpty { Text(res.summary).font(.system(size: T.k * 13)).foregroundStyle(T.text).fixedSize(horizontal: false, vertical: true).textSelection(.enabled) }
                         let new = res.findings.filter { $0.status == "new" }.count
                         if !res.fixed.isEmpty || new > 0 {
-                            Text("Since the last review: \(res.fixed.count) fixed · \(new) new").font(.system(size: T.k * 11.5, weight: .medium)).foregroundStyle(T.text2)
+                            Text("Since the last review: \(res.fixed.count) fixed · \(new) new").font(.system(size: T.k * 12, weight: .medium)).foregroundStyle(T.text2)
                         }
                         let canPost = item.kind == .pr && item.source.isCodeHost && item.ended == nil
                         ForEach(res.findings) { f in finding(f, run: canPost ? r : nil) }
                         if canPost, res.findings.contains(where: { r.posted?[$0.id] == nil }) { postBar(r, res) }
                         ForEach(res.fixed, id: \.self) { t in
                             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                                Image(systemName: "checkmark.circle.fill").font(.system(size: T.k * 10.5)).foregroundStyle(T.green).frame(width: 14)
+                                Image(systemName: "checkmark.circle.fill").font(.system(size: T.k * 11)).foregroundStyle(T.green).frame(width: 14)
                                 Text(t).font(.system(size: T.k * 12)).foregroundStyle(T.text3).strikethrough().fixedSize(horizontal: false, vertical: true)
                             }
                         }
@@ -1101,7 +1101,7 @@ struct InboxDetail: View {
         let n = pickedIds(r, res).count
         let blocked = postBlocked(r)
         return VStack(alignment: .leading, spacing: 6) {
-            if let blocked { Text(blocked).font(.system(size: T.k * 11.5)).foregroundStyle(T.amber).fixedSize(horizontal: false, vertical: true) }
+            if let blocked { Text(blocked).font(.system(size: T.k * 12)).foregroundStyle(T.amber).fixedSize(horizontal: false, vertical: true) }
             HStack(spacing: 8) {
                 Spacer()
                 if reviews.posting.contains(item.id) { ProgressView().controlSize(.small) }
@@ -1168,26 +1168,26 @@ struct InboxDetail: View {
                 .toggleStyle(.checkbox).labelsHidden().controlSize(.small)
                 .help(on ? "Posted when you post the comments" : "Not posted")
             }
-            Image(systemName: icon).font(.system(size: T.k * 10.5)).foregroundStyle(color).frame(width: 14)
+            Image(systemName: icon).font(.system(size: T.k * 11)).foregroundStyle(color).frame(width: 14)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     if let u = postedURL {
                         Button { if let url = URL(string: u) { NSWorkspace.shared.open(url) } } label: {
-                            Label("posted", systemImage: "checkmark").font(.system(size: T.k * 9.5, weight: .bold)).labelStyle(InboxTightLabel())
+                            Label("posted", systemImage: "checkmark").font(.system(size: T.k * 10, weight: .bold)).labelStyle(InboxTightLabel())
                         }
                         .buttonStyle(.plain).foregroundStyle(T.green).help("Posted to \(item.source.name); click to open it")
                     }
                     if f.status == "new" {
-                        Text("new").font(.system(size: T.k * 9.5, weight: .bold)).foregroundStyle(T.accent)
+                        Text("new").font(.system(size: T.k * 10, weight: .bold)).foregroundStyle(T.accent)
                             .padding(.horizontal, 5).frame(height: 15).background(Capsule().fill(T.accent.opacity(0.15)))
                     }
-                    Text(f.title).font(.system(size: T.k * 12.5, weight: .semibold)).fixedSize(horizontal: false, vertical: true)
+                    Text(f.title).font(.system(size: T.k * 13, weight: .semibold)).fixedSize(horizontal: false, vertical: true)
                     if !f.file.isEmpty {
                         Button {
                             store.focusFile = f.file
                             store.detailTab = "code"
                         } label: {
-                            Text((f.file.split(separator: "/").last.map(String.init) ?? f.file) + (f.line.map { ":\($0)" } ?? "")).font(T.mono(10.5))
+                            Text((f.file.split(separator: "/").last.map(String.init) ?? f.file) + (f.line.map { ":\($0)" } ?? "")).font(T.mono(11))
                         }
                         .buttonStyle(.link).help("Show \(f.file) in the Code tab")
                     }
@@ -1203,12 +1203,12 @@ struct InboxDetail: View {
     @ViewBuilder private var reviewersLine: some View {
         if item.source == .bitbucket, !item.reviewers.isEmpty {
             FlowLayout(spacing: 6, lineSpacing: 6) {
-                Text("Reviewers").font(.system(size: T.k * 11.5)).foregroundStyle(T.text3)
+                Text("Reviewers").font(.system(size: T.k * 12)).foregroundStyle(T.text3)
                 ForEach(item.reviewers) { r in
                     HStack(spacing: 4) {
                         Image(systemName: r.state == .approved ? "checkmark.circle.fill" : r.state == .changes ? "exclamationmark.circle.fill" : "circle.dashed")
                             .font(.system(size: T.k * 10)).foregroundStyle(r.state == .approved ? T.green : r.state == .changes ? T.amber : T.text3)
-                        Text(r.isMe ? "You" : r.name).font(.system(size: T.k * 11.5)).foregroundStyle(T.text)
+                        Text(r.isMe ? "You" : r.name).font(.system(size: T.k * 12)).foregroundStyle(T.text)
                     }
                     .padding(.horizontal, 8).frame(height: 22)
                     .background(Capsule().fill(T.frame.opacity(0.6)))
@@ -1228,7 +1228,7 @@ struct InboxDetail: View {
                 HStack(spacing: 6) {
                     Image(systemName: "checklist").foregroundStyle(T.blue)
                     let open = list.map { $0.filter { !$0.resolved }.count } ?? item.openTasks ?? 0
-                    Text("\(open) open task\(open == 1 ? "" : "s")").font(.system(size: T.k * 12.5, weight: .medium))
+                    Text("\(open) open task\(open == 1 ? "" : "s")").font(.system(size: T.k * 13, weight: .medium))
                     if let l = list, l.count > open { Text("· \(l.count - open) resolved").font(.system(size: T.k * 12)).foregroundStyle(T.text3) }
                     Spacer()
                 }
@@ -1242,7 +1242,7 @@ struct InboxDetail: View {
                             }
                             .buttonStyle(.plain).disabled(item.ended != nil || store.taskBusy.contains(t.id))
                             .help(t.resolved ? "Open it again (asks first)" : "Mark it resolved (asks first)")
-                            Text(t.text).font(.system(size: T.k * 12.5)).foregroundStyle(t.resolved ? T.text3 : T.text)
+                            Text(t.text).font(.system(size: T.k * 13)).foregroundStyle(t.resolved ? T.text3 : T.text)
                                 .strikethrough(t.resolved, color: T.text3).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
                             Spacer(minLength: 6)
                             Text(t.creator).font(.system(size: T.k * 11)).foregroundStyle(T.text3).lineLimit(1)
@@ -1272,7 +1272,7 @@ struct InboxDetail: View {
                     Image(systemName: "sparkles").foregroundStyle(T.accent)
                     Text("Summary").font(.system(size: T.k * 12, weight: .semibold))
                     if s.updated < item.updated {
-                        Text("· out of date: it changed since").font(.system(size: T.k * 11.5)).foregroundStyle(T.amber)
+                        Text("· out of date: it changed since").font(.system(size: T.k * 12)).foregroundStyle(T.amber)
                     }
                     Spacer()
                     if store.summarizing.contains(item.id) { ProgressView().controlSize(.small) }
@@ -1309,8 +1309,8 @@ struct InboxDetail: View {
                 }
             } label: {
                 HStack(spacing: 3) {
-                    Image(systemName: "flag").font(.system(size: T.k * 8.5, weight: .semibold))
-                    Text(item.priority ?? "Priority").font(.system(size: T.k * 10.5, weight: .medium))
+                    Image(systemName: "flag").font(.system(size: T.k * 9, weight: .semibold))
+                    Text(item.priority ?? "Priority").font(.system(size: T.k * 11, weight: .medium))
                     if !options.isEmpty { Image(systemName: "chevron.down").font(.system(size: T.k * 7, weight: .bold)) }
                 }
                 .foregroundStyle(T.text2).padding(.horizontal, 6).frame(height: 17)
@@ -1389,7 +1389,7 @@ struct InboxDetail: View {
         let prs = item.source == .jira ? store.pullRequests(naming: item.key) : []
         if !keys.isEmpty || !prs.isEmpty {
             FlowLayout(spacing: 6, lineSpacing: 6) {
-                Text(keys.isEmpty ? "Pull requests" : "Jira").font(.system(size: T.k * 11.5)).foregroundStyle(T.text3)
+                Text(keys.isEmpty ? "Pull requests" : "Jira").font(.system(size: T.k * 12)).foregroundStyle(T.text3)
                 ForEach(keys, id: \.self) { k in
                     let issue = store.jiraItem(k)
                     let looked = store.jiraLookups[k]
@@ -1414,9 +1414,9 @@ struct InboxDetail: View {
             HStack(spacing: 5) {
                 BrandMark(key: mark, color: color, size: 10)
                 Text(key).font(T.mono(11)).foregroundStyle(T.text)
-                if let title { Text(title).font(.system(size: T.k * 11.5)).foregroundStyle(T.text2).lineLimit(1).frame(maxWidth: 260, alignment: .leading) }
-                if let status { Text(status).font(.system(size: T.k * 10.5, weight: .medium)).foregroundStyle(T.text3) }
-                if mark == "jira", store.jiraItem(key) == nil { Image(systemName: "arrow.up.forward").font(.system(size: T.k * 8.5, weight: .semibold)).foregroundStyle(T.text3) }
+                if let title { Text(title).font(.system(size: T.k * 12)).foregroundStyle(T.text2).lineLimit(1).frame(maxWidth: 260, alignment: .leading) }
+                if let status { Text(status).font(.system(size: T.k * 11, weight: .medium)).foregroundStyle(T.text3) }
+                if mark == "jira", store.jiraItem(key) == nil { Image(systemName: "arrow.up.forward").font(.system(size: T.k * 9, weight: .semibold)).foregroundStyle(T.text3) }
             }
             .padding(.horizontal, 8).frame(height: 22)
             .background(Capsule().fill(T.frame.opacity(0.6)))
@@ -1581,19 +1581,19 @@ struct InboxDetail: View {
                 HStack(spacing: 6) {
                     if store.cloning[item.place] != nil {
                         ProgressView().controlSize(.small)
-                        Text("Cloning…").font(.system(size: T.k * 12.5, weight: .medium))
+                        Text("Cloning…").font(.system(size: T.k * 13, weight: .medium))
                     } else if let p = project {
                         ProjectIconView(project: p, size: 13)
-                        Text(p.name).font(.system(size: T.k * 12.5, weight: .medium))
+                        Text(p.name).font(.system(size: T.k * 13, weight: .medium))
                         if other { Image(systemName: "exclamationmark.triangle.fill").font(.system(size: T.k * 10)).foregroundStyle(T.amber) }
                     } else {
                         Image(systemName: "exclamationmark.triangle.fill").font(.system(size: T.k * 10)).foregroundStyle(T.amber)
-                        Text(repo ? "No local clone" : "Pick a project").font(.system(size: T.k * 12.5, weight: .medium))
+                        Text(repo ? "No local clone" : "Pick a project").font(.system(size: T.k * 13, weight: .medium))
                     }
                     Image(systemName: "chevron.down").font(.system(size: T.k * 9, weight: .semibold)).foregroundStyle(T.text3)
                 }
                 .padding(.horizontal, 10).frame(height: 28)
-                .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(T.border))
+                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(T.border))
                 .contentShape(Rectangle())
             }
             .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().pointerCursor()
@@ -1631,11 +1631,11 @@ struct InboxDetail: View {
             } label: {
                 HStack(spacing: 5) {
                     if prActions.busy.contains(item.id) { ProgressView().controlSize(.small) }
-                    Text("Pull Request").font(.system(size: T.k * 12.5, weight: .medium))
+                    Text("Pull Request").font(.system(size: T.k * 13, weight: .medium))
                     Image(systemName: "chevron.down").font(.system(size: T.k * 9, weight: .semibold)).foregroundStyle(T.text3)
                 }
                 .padding(.horizontal, 10).frame(height: 28)
-                .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(T.border))
+                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(T.border))
                 .contentShape(Rectangle())
             }
             .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().pointerCursor()
@@ -1653,7 +1653,7 @@ struct InboxDetail: View {
             Text(item.checks == .failing ? "\(c.failed) of \(c.passed + c.failed + c.pending) checks failed"
                  : item.checks == .pending ? "\(c.pending) checks running, \(c.passed) passed"
                  : c.passed == 1 ? "1 check passed" : "All \(c.passed) checks passed")
-                .font(.system(size: T.k * 12.5, weight: .medium))
+                .font(.system(size: T.k * 13, weight: .medium))
             if !item.failedChecks.isEmpty {
                 Text(item.failedChecks.prefix(4).joined(separator: " · ")).font(T.mono(11)).foregroundStyle(T.text3).lineLimit(1)
             }
@@ -1676,7 +1676,7 @@ struct InboxDetail: View {
         return HStack(spacing: 8) {
             Image(systemName: e.merged ? "arrow.triangle.merge" : "checkmark.circle").foregroundStyle(InboxEndedColor.of(e))
             (Text(e.merged ? "Merged " : e.label == "Closed" ? "Closed " : "Moved to \(e.label) ") + Text(e.at, format: .relative(presentation: .named)))
-                .font(.system(size: T.k * 12.5, weight: .medium))
+                .font(.system(size: T.k * 13, weight: .medium))
             Text("· leaves the Inbox ") .font(.system(size: T.k * 12)).foregroundStyle(T.text3)
                 + Text(e.at.addingTimeInterval(keep), format: .relative(presentation: .named)).font(.system(size: T.k * 12)).foregroundStyle(T.text3)
             Spacer(minLength: 0)
@@ -1715,7 +1715,7 @@ struct InboxDetail: View {
         HStack(spacing: 8) {
             AgentIcon(icon: iconName(for: s, model: model), size: 12)
             Text("Session").font(.system(size: T.k * 12)).foregroundStyle(T.text3)
-            Text(s.displayTitle).font(.system(size: T.k * 12.5, weight: .medium)).lineLimit(1)
+            Text(s.displayTitle).font(.system(size: T.k * 13, weight: .medium)).lineLimit(1)
             Text("· " + s.state.rawValue).font(.system(size: T.k * 12)).foregroundStyle(T.text3)
             Spacer()
         }
@@ -1736,7 +1736,7 @@ struct InboxDetail: View {
             ForEach([("overview", "Overview"), ("code", "Code" + counts)], id: \.0) { id, title in
                 Button { store.detailTab = id } label: {
                     VStack(spacing: 6) {
-                        Text(title).font(.system(size: T.k * 12.5, weight: store.detailTab == id ? .semibold : .medium))
+                        Text(title).font(.system(size: T.k * 13, weight: store.detailTab == id ? .semibold : .medium))
                             .foregroundStyle(store.detailTab == id ? T.text : T.text3)
                         Rectangle().fill(store.detailTab == id ? T.accent : .clear).frame(height: 2)
                     }
@@ -1759,7 +1759,7 @@ struct InboxDetail: View {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Image(systemName: "sparkles").font(.system(size: T.k * 11)).foregroundStyle(T.accent)
                     (Text("Since you looked: ").foregroundStyle(T.text2) + Text(text).foregroundStyle(T.text))
-                        .font(.system(size: T.k * 12.5)).fixedSize(horizontal: false, vertical: true)
+                        .font(.system(size: T.k * 13)).fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 0)
                     Button("Jump to new") {
                         store.detailTab = "overview"
@@ -1777,7 +1777,7 @@ struct InboxDetail: View {
     private var commentBox: some View {
         VStack(alignment: .trailing, spacing: 6) {
             TextField("Leave a comment on \(item.source.name)", text: $comment, axis: .vertical).textFieldStyle(.plain)
-                .font(.system(size: T.k * 12.5)).lineLimit(3...8)
+                .font(.system(size: T.k * 13)).lineLimit(3...8)
                 .padding(10)
                 .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(T.frame.opacity(0.4)))
                 .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(T.border))
@@ -2132,7 +2132,7 @@ struct InboxMarkdown: View {
                     .fixedSize(horizontal: false, vertical: true)
                 } else if b.hasPrefix("```") {
                     Text(b.trimmingCharacters(in: CharacterSet(charactersIn: "`")).trimmingCharacters(in: .newlines))
-                        .font(T.mono(11.5)).foregroundStyle(T.text).textSelection(.enabled)
+                        .font(T.mono(12)).foregroundStyle(T.text).textSelection(.enabled)
                         .padding(10).frame(maxWidth: .infinity, alignment: .leading)
                         .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(T.frame.opacity(0.6)))
                 } else {
@@ -2286,7 +2286,7 @@ struct InboxSettings: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Jira").font(.system(size: T.k * 13, weight: .medium))
                     Text("Jira Cloud: your site, your Atlassian email and an API token from id.atlassian.com → Security → API tokens. A token with scopes needs read:jira-work, read:jira-user and, to comment, write:jira-work. The token goes to your Keychain.")
-                        .font(.system(size: T.k * 11.5)).foregroundStyle(T.text2).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                        .font(.system(size: T.k * 12)).foregroundStyle(T.text2).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
                     HStack(spacing: 8) {
                         TextField("Site", text: $site, prompt: Text("mycompany.atlassian.net")).textFieldStyle(.roundedBorder)
                         TextField("Email", text: $email, prompt: Text("you@company.com")).textFieldStyle(.roundedBorder)
@@ -2404,9 +2404,9 @@ struct InboxSettings: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("What the agent is asked for a Jira issue").font(.system(size: T.k * 13, weight: .medium))
                     Text("The issue itself always follows, as reference data. Fill in: " + InboxStart.templateFields.joined(separator: " "))
-                        .font(.system(size: T.k * 11.5)).foregroundStyle(T.text2)
+                        .font(.system(size: T.k * 12)).foregroundStyle(T.text2)
                     TextField(InboxStart.defaultJiraTemplate, text: $jiraTemplate, axis: .vertical).textFieldStyle(.plain)
-                        .font(.system(size: T.k * 12.5)).lineLimit(2...6).padding(8)
+                        .font(.system(size: T.k * 13)).lineLimit(2...6).padding(8)
                         .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(T.frame.opacity(0.5)))
                         .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(T.border))
                 }
@@ -2432,7 +2432,7 @@ struct InboxSettings: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Text("Workspaces").font(.system(size: T.k * 13, weight: .medium))
-                    Text("Unticked workspaces are not read at all.").font(.system(size: T.k * 11.5)).foregroundStyle(T.text2)
+                    Text("Unticked workspaces are not read at all.").font(.system(size: T.k * 12)).foregroundStyle(T.text2)
                     Spacer()
                     Button("Refresh Workspaces") { loadWorkspaces() }.buttonStyle(SecondaryButtonStyle())
                 }
@@ -2461,7 +2461,7 @@ struct InboxSettings: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Bitbucket").font(.system(size: T.k * 13, weight: .medium))
                 Text("Bitbucket Cloud: an Atlassian API token with scopes for Bitbucket, from id.atlassian.com → Security → API tokens → Create API token with scopes. It needs read:user, read:workspace, read:repository and read:pullrequest (all :bitbucket); add write:pullrequest to approve, comment, merge or decline from here, and read:pipeline so Fix with agent can read failed Pipelines logs. The token goes to your Keychain.")
-                    .font(.system(size: T.k * 11.5)).foregroundStyle(T.text2).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                    .font(.system(size: T.k * 12)).foregroundStyle(T.text2).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
                 HStack(spacing: 8) {
                     SecureField("API token", text: $bbToken, prompt: Text("API token")).textFieldStyle(.roundedBorder)
                     if bbAskEmail { TextField("Email", text: $bbEmail, prompt: Text("you@company.com")).textFieldStyle(.roundedBorder) }
@@ -2529,7 +2529,7 @@ struct InboxSettings: View {
         return VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
                 Text(source == .github ? "Repositories" : "\(source.name) repositories").font(.system(size: T.k * 13, weight: .medium)).fixedSize()
-                Text(note).font(.system(size: T.k * 11.5)).foregroundStyle(T.text2).fixedSize(horizontal: false, vertical: true)
+                Text(note).font(.system(size: T.k * 12)).foregroundStyle(T.text2).fixedSize(horizontal: false, vertical: true)
             }
             LazyVGrid(columns: [GridItem(.flexible(), alignment: .leading), GridItem(.flexible(), alignment: .leading)], alignment: .leading, spacing: 6) {
                 ForEach(repos, id: \.self) { r in
@@ -2550,7 +2550,7 @@ struct InboxSettings: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("Projects").font(.system(size: T.k * 13, weight: .medium))
-                Text("Only ticked projects come into the Inbox.").font(.system(size: T.k * 11.5)).foregroundStyle(T.text2)
+                Text("Only ticked projects come into the Inbox.").font(.system(size: T.k * 12)).foregroundStyle(T.text2)
                 Spacer()
                 Button("Refresh Projects") { loadProjects() }.buttonStyle(SecondaryButtonStyle())
             }
@@ -2688,9 +2688,9 @@ struct InboxActivityView: View {
                 let events = InboxHistory.grouped(a.events)
                 let cards = events.filter(hasCard)
                 HStack(spacing: 6) {
-                    Text("Activity").font(.system(size: T.k * 11.5, weight: .semibold)).foregroundStyle(T.text2)
+                    Text("Activity").font(.system(size: T.k * 12, weight: .semibold)).foregroundStyle(T.text2)
                     let c = a.events.filter { $0.kind == .comment }.count
-                    if c > 0 { Text("· \(c) comment\(c == 1 ? "" : "s")").font(.system(size: T.k * 11.5)).foregroundStyle(T.text3) }
+                    if c > 0 { Text("· \(c) comment\(c == 1 ? "" : "s")").font(.system(size: T.k * 12)).foregroundStyle(T.text3) }
                     Spacer()
                     if !cards.isEmpty {
                         let allFolded = cards.allSatisfy { chosen[$0.id] == .folded }
@@ -2746,7 +2746,7 @@ struct InboxActivityView: View {
     private func divider(_ title: String) -> some View {
         HStack(spacing: 8) {
             Rectangle().fill(T.accent).frame(height: 1)
-            Text(title).font(.system(size: T.k * 10.5, weight: .bold)).foregroundStyle(T.accent)
+            Text(title).font(.system(size: T.k * 11, weight: .bold)).foregroundStyle(T.accent)
             Rectangle().fill(T.accent).frame(height: 1)
         }
         .padding(.vertical, 2)
@@ -2759,7 +2759,7 @@ struct InboxActivityView: View {
         } else {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(alignment: .firstTextBaseline, spacing: 7) {
-                    Image(systemName: icon(e)).font(.system(size: T.k * 10.5)).foregroundStyle(tint(e)).frame(width: 16)
+                    Image(systemName: icon(e)).font(.system(size: T.k * 11)).foregroundStyle(tint(e)).frame(width: 16)
                     (Text(e.actor).fontWeight(.semibold) + Text(" " + e.summary))
                         .font(.system(size: T.k * 12)).foregroundStyle(T.text).lineLimit(2)
                     Text(e.date, format: .relative(presentation: .named)).font(.system(size: T.k * 11)).foregroundStyle(T.text3).lineLimit(1)
@@ -2789,11 +2789,11 @@ struct InboxActivityView: View {
                 Circle().fill(T.hover).frame(width: 16, height: 16)
                     .overlay(Text(String(e.actor.prefix(1)).uppercased()).font(.system(size: T.k * 9, weight: .bold)).foregroundStyle(T.text2))
                 Text(e.actor).font(.system(size: T.k * 12, weight: .semibold)).lineLimit(1)
-                if e.bot { Text("bot").font(.system(size: T.k * 9.5, weight: .semibold)).foregroundStyle(T.text3)
+                if e.bot { Text("bot").font(.system(size: T.k * 10, weight: .semibold)).foregroundStyle(T.text3)
                     .padding(.horizontal, 4).frame(height: 14).background(Capsule().fill(T.hover)) }
                 if e.kind == .review { Text(e.summary).font(.system(size: T.k * 12)).foregroundStyle(tint(e)) }
                 Text("·").foregroundStyle(T.text3)
-                Text(e.date, format: .relative(presentation: .named)).font(.system(size: T.k * 11.5)).foregroundStyle(T.text3).lineLimit(1)
+                Text(e.date, format: .relative(presentation: .named)).font(.system(size: T.k * 12)).foregroundStyle(T.text3).lineLimit(1)
                 if !e.path.isEmpty {
                     // An inline comment: its file opens in the Code tab.
                     Button {
@@ -2802,7 +2802,7 @@ struct InboxActivityView: View {
                     } label: {
                         Label(e.path.split(separator: "/").last.map(String.init).map { $0 + (e.line.map { ":\($0)" } ?? "") } ?? e.path,
                               systemImage: "doc.text")
-                            .font(T.mono(10.5)).lineLimit(1)
+                            .font(T.mono(11)).lineLimit(1)
                     }
                     .buttonStyle(.link).help("Show \(e.path) in the Code tab")
                 }
@@ -2898,13 +2898,13 @@ struct LinkedItemNotice: View {
                         Image(systemName: "xmark").font(.system(size: T.k * 9, weight: .bold))
                     }.buttonStyle(IconButtonStyle(size: 20)).help("Dismiss")
                 }
-                Text(InboxHistory.summary(n.events)).font(.system(size: T.k * 11.5)).foregroundStyle(T.text2)
+                Text(InboxHistory.summary(n.events)).font(.system(size: T.k * 12)).foregroundStyle(T.text2)
                     .lineLimit(open ? nil : 2).fixedSize(horizontal: false, vertical: true)
                 if open {
                     VStack(alignment: .leading, spacing: 5) {
                         ForEach(InboxHistory.grouped(n.events).suffix(6)) { e in
                             VStack(alignment: .leading, spacing: 1) {
-                                (Text(e.actor).fontWeight(.semibold) + Text(" " + e.summary)).font(.system(size: T.k * 11.5))
+                                (Text(e.actor).fontWeight(.semibold) + Text(" " + e.summary)).font(.system(size: T.k * 12))
                                 let d = e.detail.trimmingCharacters(in: .whitespacesAndNewlines)
                                 if !d.isEmpty { Text(d).font(.system(size: T.k * 11)).foregroundStyle(T.text3).lineLimit(3) }
                             }
@@ -2999,8 +2999,8 @@ struct InboxPRCode: View {
                 let added = files.reduce(0) { $0 + $1.added }, removed = files.reduce(0) { $0 + $1.removed }
                 HStack(spacing: 8) {
                     Text("\(files.count) file\(files.count == 1 ? "" : "s") changed").font(.system(size: T.k * 12, weight: .semibold))
-                    Text("+\(added)").font(T.mono(11.5)).foregroundStyle(T.green)
-                    Text("−\(removed)").font(T.mono(11.5)).foregroundStyle(T.red)
+                    Text("+\(added)").font(T.mono(12)).foregroundStyle(T.green)
+                    Text("−\(removed)").font(T.mono(12)).foregroundStyle(T.red)
                     Spacer()
                     Button(allOpen(files) ? "Collapse all" : "Expand all") {
                         if allOpen(files) { closed = Set(files.map(\.id)); open = [] } else { open = Set(files.map(\.id)); closed = [] }
@@ -3044,8 +3044,8 @@ struct InboxPRCode: View {
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: expanded ? "chevron.down" : "chevron.right").font(.system(size: T.k * 9, weight: .semibold)).foregroundStyle(T.text3).frame(width: 10)
-                    Text(f.status).font(T.mono(10.5)).foregroundStyle(statusColor(f.status)).frame(width: 12)
-                    Text(f.oldPath.map { "\($0) → \(f.path)" } ?? f.path).font(T.mono(11.5)).foregroundStyle(T.text).lineLimit(1).truncationMode(.middle)
+                    Text(f.status).font(T.mono(11)).foregroundStyle(statusColor(f.status)).frame(width: 12)
+                    Text(f.oldPath.map { "\($0) → \(f.path)" } ?? f.path).font(T.mono(12)).foregroundStyle(T.text).lineLimit(1).truncationMode(.middle)
                     Spacer(minLength: 6)
                     if f.binary { Text("binary").font(T.caption).foregroundStyle(T.text3) }
                     else {
@@ -3195,7 +3195,7 @@ struct JiraFiltersSetting: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("Starred filters").font(.system(size: T.k * 13, weight: .medium))
-                Text("Ticked ones bring their open issues in, under From your filters.").font(.system(size: T.k * 11.5)).foregroundStyle(T.text2)
+                Text("Ticked ones bring their open issues in, under From your filters.").font(.system(size: T.k * 12)).foregroundStyle(T.text2)
                 Spacer()
                 Button(filters == nil ? "Load Filters" : "Refresh") { load() }.buttonStyle(SecondaryButtonStyle())
             }
@@ -3208,8 +3208,8 @@ struct JiraFiltersSetting: View {
                     JiraClient.setSaved(f, on); tick += 1; store.refresh(widened: true)
                 })) {
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(f.name).font(.system(size: T.k * 12.5))
-                        Text(f.jql).font(T.mono(10.5)).foregroundStyle(T.text3).lineLimit(1).truncationMode(.tail)
+                        Text(f.name).font(.system(size: T.k * 13))
+                        Text(f.jql).font(T.mono(11)).foregroundStyle(T.text3).lineLimit(1).truncationMode(.tail)
                     }
                 }
                 .toggleStyle(.checkbox)
@@ -3307,7 +3307,7 @@ struct InboxRulesSetting: View {
                 HStack(spacing: 10) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(r.name).font(.system(size: T.k * 13, weight: .medium))
-                        Text(r.summary).font(.system(size: T.k * 11.5)).foregroundStyle(T.text2).fixedSize(horizontal: false, vertical: true)
+                        Text(r.summary).font(.system(size: T.k * 12)).foregroundStyle(T.text2).fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer(minLength: 8)
                     Button("Edit") { editing = r }.buttonStyle(.link).font(T.caption)
@@ -3377,7 +3377,7 @@ struct InboxRuleEditor: View {
                     }.labelsHidden()
                 }
             }
-            .font(.system(size: T.k * 12.5))
+            .font(.system(size: T.k * 13))
             Text(rule.action == .review
                  ? "Reviews run read-only (Claude's plan mode, Codex's read-only sandbox) in the item's project, and only for pull requests."
                  : rule.action == .reviewWorktree
@@ -3492,7 +3492,7 @@ struct InboxPostSheet: View {
             Text("Post to \(item.place) \(item.key)").font(.system(size: T.k * 15, weight: .semibold))
             if moved {
                 Text("New commits came since this review: the comments go on the commit it read (\(String((run.head ?? "").prefix(8)))).")
-                    .font(.system(size: T.k * 11.5)).foregroundStyle(T.amber).fixedSize(horizontal: false, vertical: true)
+                    .font(.system(size: T.k * 12)).foregroundStyle(T.amber).fixedSize(horizontal: false, vertical: true)
             }
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
@@ -3502,10 +3502,10 @@ struct InboxPostSheet: View {
                                 Text(comments[k].path.isEmpty ? "General" : comments[k].path + (comments[k].line.map { ":\($0)" } ?? ""))
                                     .font(T.mono(11)).foregroundStyle(T.text2)
                                 Text(comments[k].inline ? "on its line" : "in the review's text (the line isn't in the change)")
-                                    .font(.system(size: T.k * 10.5)).foregroundStyle(comments[k].inline ? T.text3 : T.amber)
+                                    .font(.system(size: T.k * 11)).foregroundStyle(comments[k].inline ? T.text3 : T.amber)
                             }
                             TextEditor(text: $comments[k].body)
-                                .font(.system(size: T.k * 12.5)).frame(minHeight: 64, maxHeight: 140)
+                                .font(.system(size: T.k * 13)).frame(minHeight: 64, maxHeight: 140)
                                 .scrollContentBackground(.hidden).padding(6)
                                 .background(RoundedRectangle(cornerRadius: 6).fill(T.frame.opacity(0.6)))
                                 .overlay(RoundedRectangle(cornerRadius: 6).stroke(T.border))

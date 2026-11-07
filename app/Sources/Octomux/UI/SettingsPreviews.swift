@@ -384,7 +384,7 @@ struct DiffPreview: View {
             Text(text).foregroundStyle(T.text2)
             Spacer(minLength: 0)
         }
-        .font(T.mono(8.5))
+        .font(T.mono(9))
         .padding(.horizontal, 3).frame(height: 11)
         .background(c.opacity(0.14))
     }

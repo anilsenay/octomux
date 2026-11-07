@@ -60,7 +60,7 @@ struct SessionsPanel: View {
         VStack(spacing: 0) {
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass").font(.system(size: T.k * 11)).foregroundStyle(T.text3)
-                TextField("Search sessions", text: $query).textFieldStyle(.plain).font(.system(size: T.k * 12.5))
+                TextField("Search sessions", text: $query).textFieldStyle(.plain).font(.system(size: T.k * 13))
                 Picker("", selection: $allProjects) {
                     Text("This project").tag(false)
                     Text("All projects").tag(true)
@@ -136,21 +136,23 @@ struct SessionHistoryRow: View {
         HStack(spacing: 9) {
             AgentIcon(icon: profile?.icon ?? "claude", size: 13).frame(width: 16).opacity(live == nil ? 0.75 : 1)
             VStack(alignment: .leading, spacing: 1) {
-                Text((live ?? s).displayTitle).font(.system(size: T.k * 12.5, weight: .medium))
+                Text((live ?? s).displayTitle).font(.system(size: T.k * 13, weight: .medium))
                     .foregroundStyle(live == nil ? T.text2 : T.text).lineLimit(1)
                 Text([profile?.name ?? "Agent", showProject ? model.project(s.projectId)?.name : nil,
                       NotificationRow.when(Date(timeIntervalSince1970: TimeInterval(max(s.lastActivityAt, s.createdAt))))]
                     .compactMap { $0 }.joined(separator: " · "))
-                    .font(.system(size: T.k * 10.5)).foregroundStyle(T.text3).lineLimit(1)
+                    .font(.system(size: T.k * 11)).foregroundStyle(T.text3).lineLimit(1)
             }
             Spacer(minLength: 4)
             if let live {
-                ActivityIndicator(session: live)
-                Text("Open").font(.system(size: T.k * 10, weight: .semibold)).foregroundStyle(T.green)
-                    .padding(.horizontal, 5).frame(height: 16)
-                    .background(Capsule().fill(T.green.opacity(0.14)))
+                // Open in a tab: its live activity, or a quiet dot (no badge on every row).
+                if live.activity == .idle && !live.unread {
+                    Circle().fill(T.green.opacity(0.8)).frame(width: 6, height: 6).help("Open in a tab")
+                } else {
+                    ActivityIndicator(session: live)
+                }
             } else if hover && canResume {
-                Text("Resume").font(.system(size: T.k * 10.5, weight: .semibold)).foregroundStyle(T.accent)
+                Text("Resume").font(.system(size: T.k * 11, weight: .semibold)).foregroundStyle(T.accent)
             }
         }
         .padding(.horizontal, 8).padding(.vertical, 6)

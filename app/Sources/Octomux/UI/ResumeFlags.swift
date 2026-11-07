@@ -87,14 +87,14 @@ struct ResumeFlagsView: View {
                         Toggle(isOn: Binding(get: { args.contains(s.flag) }, set: { text = ResumeFlags.toggle(s.flag, in: text, on: $0) })) {
                             HStack(spacing: 6) {
                                 Text(s.title).font(T.body).foregroundStyle(T.text)
-                                Text(s.flag).font(T.mono(10.5)).foregroundStyle(T.text3)
+                                Text(s.flag).font(T.mono(11)).foregroundStyle(T.text3)
                             }
                         }
                         .toggleStyle(.checkbox)
                     }
                 }
             }
-            Text("Runs: " + command(args)).font(T.mono(10.5)).foregroundStyle(T.text3)
+            Text("Runs: " + command(args)).font(T.mono(11)).foregroundStyle(T.text3)
                 .lineLimit(3).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
             Text("The conversation goes on where it stopped. These flags stay for later resumes.")
                 .font(T.caption).foregroundStyle(T.text3).fixedSize(horizontal: false, vertical: true)

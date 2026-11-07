@@ -413,7 +413,7 @@ struct ChatView: View {
             Text("chat view").font(T.caption).foregroundStyle(T.text3)
             Spacer()
             Button { model.toggleChat(sessionId) } label: {
-                HStack(spacing: 5) { Image(systemName: "terminal").font(.system(size: T.k * 10.5)); Text("Terminal") }
+                HStack(spacing: 5) { Image(systemName: "terminal").font(.system(size: T.k * 11)); Text("Terminal") }
             }
             .buttonStyle(ChromeButtonStyle()).help("Back to the terminal (⌘⇧C)")
         }
@@ -437,14 +437,14 @@ struct ChatView: View {
                 modelChip(s, kind: p?.kind)
                 if let b = s.flatMap({ GitInfo.shared.branch(for: $0.worktree ?? model.project($0.projectId)?.path ?? $0.cwd) }) {
                     Image(systemName: "arrow.triangle.branch").font(.system(size: T.k * 10)).foregroundStyle(T.text3).padding(.leading, 6)
-                    Text(b).font(T.mono(11.5)).foregroundStyle(T.text3)
+                    Text(b).font(T.mono(12)).foregroundStyle(T.text3)
                 }
                 Spacer()
                 Button {
                     let kind = model.profile(s?.profileId)?.kind ?? .claude
                     let refs = AttachmentChips.pick().map { kind == .claude ? "@" + $0.path : $0.path }
                     if !refs.isEmpty { draft += (draft.isEmpty || draft.hasSuffix(" ") ? "" : " ") + refs.joined(separator: " ") + " " }
-                } label: { Image(systemName: "paperclip").font(.system(size: T.k * 12.5)).foregroundStyle(T.text2) }
+                } label: { Image(systemName: "paperclip").font(.system(size: T.k * 13)).foregroundStyle(T.text2) }
                 .buttonStyle(IconButtonStyle(size: 26)).help("Attach files (added to the message as paths)")
                 ContextRing(reading: contextReading)
                 if s?.activity == .working && draft.isEmpty {
@@ -530,7 +530,7 @@ struct ChatView: View {
                         Image(systemName: "clock").font(.system(size: T.k * 10)).foregroundStyle(T.text3)
                         Text(q).font(.system(size: T.k * 12)).foregroundStyle(T.text2).lineLimit(1).truncationMode(.tail)
                         Spacer(minLength: 0)
-                        Text("queued").font(.system(size: T.k * 10.5)).foregroundStyle(T.text3)
+                        Text("queued").font(.system(size: T.k * 11)).foregroundStyle(T.text3)
                     }
                     .help("Sent while the agent works; it reads it when this step ends")
                 }

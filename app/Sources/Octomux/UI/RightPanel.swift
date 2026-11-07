@@ -17,13 +17,8 @@ struct RightPanel: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 2) {
-                ForEach(RightTab.allCases, id: \.self) { t in
-                    Chip(selected: tab == t.rawValue, action: { tab = t.rawValue }) { Text(t.rawValue) }
-                }
-                Spacer()
-            }
-            .padding(.horizontal, 8).frame(height: 38)
+            SegmentedTabs(items: RightTab.allCases.map { (id: $0.rawValue, title: $0.rawValue) }, selection: $tab, fill: true)
+                .padding(.horizontal, 8).frame(height: 38)
             Hairline()
             switch RightTab(rawValue: tab) ?? .changes {
             case .changes: SourceControlPanel()
@@ -280,7 +275,7 @@ struct HistoryPanel: View {
     private var header: some View {
         HStack(spacing: 6) {
             HStack(spacing: 5) {
-                Image(systemName: "chevron.right").font(.system(size: T.k * 8.5, weight: .bold)).foregroundStyle(T.text3)
+                Image(systemName: "chevron.right").font(.system(size: T.k * 9, weight: .bold)).foregroundStyle(T.text3)
                     .rotationEffect(.degrees(open ? 90 : 0)).frame(width: 10)
                 Text("HISTORY").font(.system(size: T.k * 11, weight: .semibold)).foregroundStyle(T.text2)
                 if open && h.isRepo && !h.branch.isEmpty {
@@ -292,7 +287,7 @@ struct HistoryPanel: View {
             .onTapGesture { withAnimation(.easeOut(duration: 0.18)) { open.toggle() } }
             .pointerCursor()
             if open && h.isRepo {
-                Image(systemName: "magnifyingglass").font(.system(size: T.k * 10.5)).foregroundStyle(T.text3)
+                Image(systemName: "magnifyingglass").font(.system(size: T.k * 11)).foregroundStyle(T.text3)
                 TextField("Filter", text: $query).textFieldStyle(.plain).font(.system(size: T.k * 12)).frame(width: 70)
                 Button { h.all.toggle() } label: { Text(h.all ? "All" : "Current").font(.system(size: T.k * 11, weight: .medium)) }
                     .buttonStyle(ChromeButtonStyle(active: h.all)).help(h.all ? "Showing all branches" : "Showing the current branch")
@@ -316,7 +311,7 @@ private struct CommitRow: View {
             if graph { GraphCell(row: c.graph, head: head || c.refs.hasPrefix("HEAD")).frame(maxHeight: .infinity) }
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    Text(c.subject).font(.system(size: T.k * 12.5, weight: .medium)).foregroundStyle(T.text).lineLimit(1)
+                    Text(c.subject).font(.system(size: T.k * 13, weight: .medium)).foregroundStyle(T.text).lineLimit(1)
                     Spacer(minLength: 4)
                     ForEach(Array(c.labels.prefix(2).enumerated()), id: \.offset) { _, l in RefLabel(text: l.text, kind: l.kind) }
                     if c.labels.count > 2 { Text("+\(c.labels.count - 2)").font(.system(size: T.k * 10)).foregroundStyle(T.text3) }
@@ -325,7 +320,7 @@ private struct CommitRow: View {
                     Text(c.author).lineLimit(1)
                     Spacer(minLength: 4)
                     Text(c.when).help(c.relative)
-                    Text(c.short).font(T.mono(10.5))
+                    Text(c.short).font(T.mono(11))
                 }
                 .font(.system(size: T.k * 11)).foregroundStyle(T.text3)
             }
@@ -540,11 +535,11 @@ struct FilesPanel: View {
         if n.children != nil {
             let open = f.expanded.contains(n.id)
             HStack(spacing: 5) {
-                Image(systemName: "chevron.right").font(.system(size: T.k * 8.5, weight: .bold)).foregroundStyle(T.text3)
+                Image(systemName: "chevron.right").font(.system(size: T.k * 9, weight: .bold)).foregroundStyle(T.text3)
                     .rotationEffect(.degrees(open ? 90 : 0)).frame(width: 10)
                 let dirty = f.dirtyDirs.contains(n.id)
                 FolderIcon(open: open, tint: dirty ? T.amber.opacity(0.85) : nil)
-                Text(n.name).font(.system(size: T.k * 12.5)).foregroundStyle(dirty ? T.amber : T.text).lineLimit(1)
+                Text(n.name).font(.system(size: T.k * 13)).foregroundStyle(dirty ? T.amber : T.text).lineLimit(1)
                 Spacer()
                 if dirty { Circle().fill(T.amber.opacity(0.7)).frame(width: 5, height: 5).padding(.trailing, 6).help("Has changed files") }
             }
@@ -564,9 +559,9 @@ struct FilesPanel: View {
         return HStack(spacing: 5) {
             Spacer().frame(width: 10)
             FileIcon(name: (rel as NSString).lastPathComponent)
-            Text(label).font(.system(size: T.k * 12.5)).foregroundStyle(st.map { GitChange.color($0) } ?? T.text).lineLimit(1).truncationMode(.middle)
+            Text(label).font(.system(size: T.k * 13)).foregroundStyle(st.map { GitChange.color($0) } ?? T.text).lineLimit(1).truncationMode(.middle)
             Spacer()
-            if let st { Text(st).font(T.mono(10.5, .bold)).foregroundStyle(GitChange.color(st)).padding(.trailing, 6) }
+            if let st { Text(st).font(T.mono(11, .bold)).foregroundStyle(GitChange.color(st)).padding(.trailing, 6) }
         }
         .padding(.leading, CGFloat(depth) * 14 + 6).frame(height: 24)
         .background(open ? AnyView(RoundedRectangle(cornerRadius: T.m.rowR, style: .continuous).fill(T.selection)) : AnyView(HoverFill()))

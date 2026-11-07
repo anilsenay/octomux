@@ -138,7 +138,7 @@ struct PaneStackFan: View {
             .rotationEffect(.degrees(open ? 0 : 6 * d), anchor: .bottomLeading)
             .brightness(open ? 0 : -0.07 * d)
             .frame(width: chip, height: chip)
-        let back = RoundedRectangle(cornerRadius: 7, style: .continuous).fill(fill)
+        let back = RoundedRectangle(cornerRadius: 8, style: .continuous).fill(fill)
             .shadow(color: .black.opacity(isFront && !dark ? 0.14 : 0), radius: 1.5, y: 1)
             .opacity(open ? 1 : 0)
         return face
@@ -350,7 +350,7 @@ struct BackgroundShells: View {
         HStack(spacing: 3) {
             if unread { Circle().fill(T.green).frame(width: 7, height: 7) }
             Image(systemName: "apple.terminal").font(.system(size: T.k * 9, weight: .semibold))
-            Text("\(count)").font(.system(size: T.k * 9.5, weight: .semibold)).monospacedDigit()
+            Text("\(count)").font(.system(size: T.k * 10, weight: .semibold)).monospacedDigit()
         }
         .foregroundStyle(T.text2)
         .fixedSize()
@@ -485,10 +485,11 @@ struct ChromeButtonStyle: ButtonStyle {
     var size: CGFloat = 26
     @State private var hover = false
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
+        let size = IconButtonStyle.snap(size)
+        return configuration.label
             .foregroundStyle(active ? T.accent : hover ? T.text : T.text2)
             .padding(.horizontal, size > 22 ? 6 : 3).frame(minWidth: size, minHeight: size)
-            .background(RoundedRectangle(cornerRadius: 6, style: .continuous)
+            .background(RoundedRectangle(cornerRadius: R.sm, style: .continuous)
                 .fill(configuration.isPressed ? T.border : hover ? T.hover : .clear))
             .contentShape(Rectangle())
             .onHover { hover = $0 }
@@ -500,11 +501,14 @@ struct ChromeButtonStyle: ButtonStyle {
 struct IconButtonStyle: ButtonStyle {
     var size: CGFloat = 20
     @State private var hover = false
+    /// Three sizes only: 18 (inside rows and tabs), 22 (panel tools), 26 (window chrome).
+    static func snap(_ s: CGFloat) -> CGFloat { s <= 19 ? 18 : s <= 23 ? 22 : 26 }
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
+        let size = Self.snap(size)
+        return configuration.label
             .foregroundStyle(hover ? T.text : T.text2)
             .frame(width: size, height: size)
-            .background(RoundedRectangle(cornerRadius: 5, style: .continuous)
+            .background(RoundedRectangle(cornerRadius: R.sm, style: .continuous)
                 .fill(configuration.isPressed ? T.border : hover ? T.hover : .clear))
             .contentShape(Rectangle())
             .onHover { hover = $0 }
@@ -539,11 +543,11 @@ struct PrimaryButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var enabled
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: T.k * 12.5, weight: .semibold))
+            .font(.system(size: T.k * 12, weight: .semibold))
             .foregroundStyle(.white)
             .padding(.horizontal, 12).frame(height: 28)
-            .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(T.accent.opacity(configuration.isPressed ? 0.8 : 1)))
-            .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .background(RoundedRectangle(cornerRadius: R.md, style: .continuous).fill(T.accent.opacity(configuration.isPressed ? 0.8 : 1)))
+            .contentShape(RoundedRectangle(cornerRadius: R.md, style: .continuous))
             .opacity(enabled ? 1 : 0.45)
             .pointerCursor()
     }
@@ -554,13 +558,13 @@ struct SecondaryButtonStyle: ButtonStyle {
     @State private var hover = false
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: T.k * 12.5, weight: .medium))
+            .font(.system(size: T.k * 12, weight: .medium))
             .foregroundStyle(T.text)
             .padding(.horizontal, 12).frame(height: 28)
-            .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(configuration.isPressed ? T.border : hover ? T.hover : .clear))
-            .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(T.border))
+            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(configuration.isPressed ? T.border : hover ? T.hover : .clear))
+            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(T.border))
             // The whole button takes the click, not only its text (the fill is clear until hovered).
-            .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             .opacity(enabled ? 1 : 0.45)
             .onHover { hover = $0 }
             .pointerCursor()
@@ -575,7 +579,7 @@ struct Chip<Label: View>: View {
     @State private var hover = false
     var body: some View {
         HStack(spacing: 6) { label() }
-            .font(.system(size: T.k * 11.5, weight: selected ? .semibold : .medium))
+            .font(.system(size: T.k * 12, weight: selected ? .semibold : .medium))
             .foregroundStyle(selected ? T.text : T.text2)
             .padding(.horizontal, 9).frame(height: 22)
             .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(selected ? T.raised : hover ? T.hover : .clear))
@@ -713,9 +717,9 @@ struct DragSourceGap: ViewModifier {
             .opacity(gap ? 0 : 1)
             .overlay {
                 if gap {
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .fill(T.accent.opacity(0.08))
-                        .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
                             .strokeBorder(T.accent.opacity(0.55), style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
                 }
             }
@@ -829,8 +833,15 @@ enum WorkspaceTint {
 
     /// Selected-row fill: the workspace color when there is one, else the theme's selection.
     static func selection(_ model: AppModel) -> Color {
+        if DesignAlt.selection != "tint" { return neutralSelection }
         guard ThemeStore.shared.activeScene == nil, let hex = model.workspace?.color else { return T.selection }
         return Color(hex: hex).opacity(0.13)
+    }
+    /// Neutral ink selection (alternatives `ink` / `bar`).
+    static var neutralSelection: Color {
+        Color(nsColor: NSColor(name: nil) { a in
+            a.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(white: 1, alpha: 0.09) : NSColor(white: 0, alpha: 0.065)
+        })
     }
 }
 
@@ -1001,5 +1012,90 @@ struct FlowLayout: Layout {
             rows[rows.count - 1].append((i, size))
         }
         return rows
+    }
+}
+
+
+/// Section header for lists and panels: uppercase micro label, optional count, trailing tools.
+struct SectionHeader<Trailing: View>: View {
+    let title: String
+    var count: Int? = nil
+    @ViewBuilder var trailing: () -> Trailing
+    init(_ title: String, count: Int? = nil, @ViewBuilder trailing: @escaping () -> Trailing = { EmptyView() }) {
+        self.title = title; self.count = count; self.trailing = trailing
+    }
+    var body: some View {
+        HStack(spacing: S.sm) {
+            SectionLabel(title)
+            if let count, count > 0 {
+                Text("\(count)").font(T.micro).monospacedDigit().foregroundStyle(T.text3)
+            }
+            Spacer(minLength: S.xs)
+            trailing()
+        }
+        .frame(height: 24)
+    }
+}
+
+/// Segmented tabs (right panel, scope switches, filters): selected segment is a raised card on a hover track.
+struct SegmentedTabs<ID: Hashable>: View {
+    let items: [(id: ID, title: String)]
+    @Binding var selection: ID
+    var fill = false
+    @Namespace private var ns
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(items, id: \.id) { item in
+                let on = item.id == selection
+                Text(item.title)
+                    .font(.system(size: T.k * 12, weight: on ? .semibold : .medium))
+                    .foregroundStyle(on ? T.text : T.text2)
+                    .lineLimit(1)
+                    .padding(.horizontal, 10).frame(height: 22)
+                    .frame(maxWidth: fill ? .infinity : nil)
+                    .background {
+                        if on {
+                            RoundedRectangle(cornerRadius: R.sm, style: .continuous).fill(T.raised)
+                                .shadow(color: .black.opacity(0.14), radius: 1, y: 0.5)
+                                .matchedGeometryEffect(id: "seg", in: ns)
+                        }
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture { withAnimation(Motion.pop) { selection = item.id } }
+                    .pointerCursor()
+            }
+        }
+        .padding(2)
+        .background(RoundedRectangle(cornerRadius: R.md, style: .continuous).fill(T.hover))
+    }
+}
+
+/// Keyboard hint capsule ("⌘K").
+struct ShortcutHint: View {
+    let keys: String
+    init(_ keys: String) { self.keys = keys }
+    var body: some View {
+        Text(keys).font(.system(size: T.k * 11, weight: .medium)).foregroundStyle(T.text3)
+            .padding(.horizontal, 5).frame(height: 18)
+            .background(RoundedRectangle(cornerRadius: R.xs, style: .continuous).fill(T.hover))
+            .overlay(RoundedRectangle(cornerRadius: R.xs, style: .continuous).stroke(T.border))
+    }
+}
+
+
+/// List-row background: hover fill, selected fill, and in the `bar` alternative a 2 pt accent bar on the left.
+struct RowBackground: View {
+    var selected: Bool
+    var hover: Bool
+    var selection: Color
+    var radius: CGFloat = T.m.rowR
+    var body: some View {
+        RoundedRectangle(cornerRadius: radius, style: .continuous)
+            .fill(selected ? selection : hover ? T.hover : .clear)
+            .overlay(alignment: .leading) {
+                if selected && DesignAlt.selection == "bar" {
+                    Capsule().fill(T.accent).frame(width: 2.5).padding(.vertical, 6).offset(x: 1)
+                }
+            }
     }
 }

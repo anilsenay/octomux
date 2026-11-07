@@ -120,7 +120,7 @@ struct SidebarView: View {
                 HStack(spacing: 6) {
                     Image(systemName: "server.rack").font(.system(size: T.k * 10))
                     Text(model.host.name).font(T.caption)
-                    Text(model.host.subtitle).font(T.mono(10.5)).foregroundStyle(T.text3).lineLimit(1).truncationMode(.middle)
+                    Text(model.host.subtitle).font(T.mono(11)).foregroundStyle(T.text3).lineLimit(1).truncationMode(.middle)
                     Spacer()
                     Circle().fill(model.connected ? T.green : T.amber).frame(width: 6, height: 6)
                 }
@@ -346,7 +346,7 @@ struct ProjectRow: View {
                 if let b = git.branch(for: project.path) {
                     HStack(spacing: 3) {
                         Image(systemName: "arrow.triangle.branch").font(.system(size: T.k * 9, weight: .medium))
-                        Text(b).font(T.mono(10.5)).lineLimit(1).truncationMode(.tail)
+                        Text(b).font(T.mono(11)).lineLimit(1).truncationMode(.tail)
                     }
                     .foregroundStyle(T.text3)
                 }
@@ -354,7 +354,7 @@ struct ProjectRow: View {
             .layoutPriority(1)
             if model.owner[project.id] != nil {
                 HStack(spacing: 3) {
-                    Image(systemName: "server.rack").font(.system(size: T.k * 8.5))
+                    Image(systemName: "server.rack").font(.system(size: T.k * 9))
                     Text(model.host(for: project.id).name).font(.system(size: T.k * 10, weight: .medium)).lineLimit(1)
                 }
                 .foregroundStyle(T.text3)
@@ -411,13 +411,13 @@ struct WorktreeRow: View {
     var body: some View {
         let info = wt.info(path)
         HStack(spacing: 7) {
-            Image(systemName: "arrow.triangle.branch").font(.system(size: T.k * 10.5, weight: .medium)).foregroundStyle(T.text3).frame(width: 14)
-            Text(branch).font(T.mono(11.5)).foregroundStyle(T.text2).lineLimit(1).truncationMode(.middle)
+            Image(systemName: "arrow.triangle.branch").font(.system(size: T.k * 11, weight: .medium)).foregroundStyle(T.text3).frame(width: 14)
+            Text(branch).font(T.mono(12)).foregroundStyle(T.text2).lineLimit(1).truncationMode(.middle)
             if let info, info.detached {
                 Text(info.head.isEmpty ? "detached" : "@\(info.head)").font(T.mono(10)).foregroundStyle(T.text3).fixedSize()
             }
             if info?.locked != nil {
-                Image(systemName: "lock.fill").font(.system(size: T.k * 8.5)).foregroundStyle(T.text3)
+                Image(systemName: "lock.fill").font(.system(size: T.k * 9)).foregroundStyle(T.text3)
             }
             Spacer(minLength: 4)
             if hover {
@@ -635,7 +635,7 @@ struct SessionRow: View {
             }
             Spacer(minLength: 4)
             if !hover, model.isPinned(session: session.id) {
-                Image(systemName: "pin.fill").font(.system(size: T.k * 8.5, weight: .semibold)).foregroundStyle(T.text3)
+                Image(systemName: "pin.fill").font(.system(size: T.k * 9, weight: .semibold)).foregroundStyle(T.text3)
                     .rotationEffect(.degrees(40)).help("Pinned")
             }
             if hover {
@@ -661,7 +661,7 @@ struct SessionRow: View {
         .padding(.leading, indent)
         .padding(.trailing, 8)
         .frame(height: m.rowH)
-        .background(RoundedRectangle(cornerRadius: m.rowR, style: .continuous).fill(selected ? WorkspaceTint.selection(model) : hover ? T.hover : .clear))
+        .background(RowBackground(selected: selected, hover: hover, selection: WorkspaceTint.selection(model), radius: m.rowR))
         .contentShape(Rectangle())
         .onHover { hover = $0 }
         .pointerCursor()
@@ -805,7 +805,7 @@ struct DockCountRow: View {
         }
         .font(T.caption).foregroundStyle(hover ? T.text2 : T.text3)
         .padding(.horizontal, 6).frame(height: 20)
-        .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(hover ? T.hover : .clear))
+        .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(hover ? T.hover : .clear))
         .contentShape(Rectangle())
         .onHover { hover = $0 }
         .pointerCursor()
@@ -838,15 +838,15 @@ struct SidebarEmptyState: View {
             }
             .padding(.bottom, 16)
             Text("Projects you add will show up here. You can also drop a folder below.")
-                .font(.system(size: T.k * 12.5)).foregroundStyle(T.text3)
+                .font(.system(size: T.k * 13)).foregroundStyle(T.text3)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 8)
                 .padding(.bottom, 12)
             let active = hover || dropTarget
             HStack(spacing: 8) {
-                Image(systemName: "folder.badge.plus").font(.system(size: T.k * 12.5))
+                Image(systemName: "folder.badge.plus").font(.system(size: T.k * 13))
                 Text(dropTarget ? "Drop to add" : "Add a project")
-                    .font(.system(size: T.k * 12.5, weight: .medium))
+                    .font(.system(size: T.k * 13, weight: .medium))
                 Spacer()
             }
             .foregroundStyle(active ? T.text : T.text2)

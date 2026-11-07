@@ -18,7 +18,7 @@ struct AgentEventsView: View {
             .labelsHidden().frame(maxWidth: 220)
         }) {
             if events.isEmpty {
-                Text("Nothing yet.").font(.system(size: T.k * 12.5)).foregroundStyle(T.text2).padding(14)
+                Text("Nothing yet.").font(.system(size: T.k * 13)).foregroundStyle(T.text2).padding(14)
             }
             ForEach(Array(events.prefix(200).enumerated()), id: \.offset) { _, e in row(e) }
         }
@@ -33,13 +33,13 @@ struct AgentEventsView: View {
         let title = model.session(sid)?.displayTitle ?? sid
         return HStack(spacing: 8) {
             Text(Self.time(e["ts"] as? Double ?? 0)).font(T.mono(11)).foregroundStyle(T.text3).frame(width: 84, alignment: .leading)
-            Text(source).font(.system(size: T.k * 10.5, weight: .semibold))
+            Text(source).font(.system(size: T.k * 11, weight: .semibold))
                 .foregroundStyle(source == "state" ? T.accent : source == "program" ? T.blue : T.text2)
                 .frame(width: 56, alignment: .leading)
-            Text(e["name"] as? String ?? "").font(T.mono(11.5)).foregroundStyle(T.text)
+            Text(e["name"] as? String ?? "").font(T.mono(12)).foregroundStyle(T.text)
             if let d = e["detail"] as? String, !d.isEmpty { Text(d).font(T.mono(11)).foregroundStyle(T.text2).lineLimit(1) }
             Spacer(minLength: 8)
-            if sel.eventsSession == nil { Text(title).font(.system(size: T.k * 11.5)).foregroundStyle(T.text3).lineLimit(1) }
+            if sel.eventsSession == nil { Text(title).font(.system(size: T.k * 12)).foregroundStyle(T.text3).lineLimit(1) }
         }
         .padding(.horizontal, 14).frame(height: 26)
     }

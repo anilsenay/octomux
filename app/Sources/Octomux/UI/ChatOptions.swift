@@ -123,7 +123,7 @@ struct ModelEffortPicker: View {
                 Button(action: makeDefault) {
                     HStack(spacing: 6) {
                         Image(systemName: isDefault ? "star.fill" : "star").font(.system(size: T.k * 10))
-                        Text(isDefault ? "Default in \(workspace.name)" : "Make default in \(workspace.name)").font(.system(size: T.k * 11.5))
+                        Text(isDefault ? "Default in \(workspace.name)" : "Make default in \(workspace.name)").font(.system(size: T.k * 12))
                     }
                     .foregroundStyle(isDefault ? T.amber : T.text2)
                     .padding(.horizontal, 10).frame(height: 24).contentShape(Rectangle())
@@ -137,10 +137,10 @@ struct ModelEffortPicker: View {
                 OptionRow(title: c.title, detail: c.detail, checked: options.model == c.id, info: true) { options.model = c.id }
             }
             HStack(spacing: 6) {
-                TextField("Other model id…", text: $custom).textFieldStyle(.plain).font(T.mono(11.5))
+                TextField("Other model id…", text: $custom).textFieldStyle(.plain).font(T.mono(12))
                     .onSubmit { let v = custom.trimmingCharacters(in: .whitespaces); if !v.isEmpty { options.model = v } }
                 if let m = options.model, !ChatLaunchOptions.models(kind).contains(where: { $0.id == m }) {
-                    Text(m).font(T.mono(10.5)).foregroundStyle(T.text3).lineLimit(1)
+                    Text(m).font(T.mono(11)).foregroundStyle(T.text3).lineLimit(1)
                     Image(systemName: "checkmark").font(.system(size: T.k * 10, weight: .bold))
                 }
             }
@@ -158,14 +158,14 @@ struct ModelEffortPicker: View {
                                 Text(c.title).font(.system(size: T.k * 11, weight: on ? .semibold : .regular))
                                     .foregroundStyle(on ? T.text : T.text2)
                                     .padding(.horizontal, 7).frame(height: 22)
-                                    .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(on ? T.border : .clear))
+                                    .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(on ? T.border : .clear))
                                     .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain).pointerCursor()
                         }
                     }
                     .padding(2)
-                    .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(T.hover))
+                    .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(T.hover))
                 }
                 .padding(.horizontal, 10).padding(.vertical, 4)
             }
@@ -211,16 +211,16 @@ struct OptionRow: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 8) {
-                if let number { Text("\(number)").font(.system(size: T.k * 10.5).monospacedDigit()).foregroundStyle(T.text3).frame(width: 12) }
+                if let number { Text("\(number)").font(.system(size: T.k * 11).monospacedDigit()).foregroundStyle(T.text3).frame(width: 12) }
                 if let icon { AgentIcon(icon: icon, size: 12) }
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(title).font(.system(size: T.k * 12.5, weight: checked ? .semibold : .regular)).foregroundStyle(warn ? T.amber : T.text)
-                    if !detail.isEmpty && !info { Text(detail).font(.system(size: T.k * 10.5)).foregroundStyle(T.text3).lineLimit(1) }
+                    Text(title).font(.system(size: T.k * 13, weight: checked ? .semibold : .regular)).foregroundStyle(warn ? T.amber : T.text)
+                    if !detail.isEmpty && !info { Text(detail).font(.system(size: T.k * 11)).foregroundStyle(T.text3).lineLimit(1) }
                 }
                 Spacer(minLength: 6)
                 if checked { Image(systemName: "checkmark").font(.system(size: T.k * 10, weight: .bold)).foregroundStyle(T.text) }
                 if info, !detail.isEmpty {
-                    Image(systemName: "info.circle").font(.system(size: T.k * 10.5)).foregroundStyle(T.text3).help(detail)
+                    Image(systemName: "info.circle").font(.system(size: T.k * 11)).foregroundStyle(T.text3).help(detail)
                 }
             }
             .padding(.horizontal, 10).frame(minHeight: 30)
@@ -247,7 +247,7 @@ struct AttachmentChips: View {
                             } else {
                                 FileIcon(name: u.lastPathComponent)
                             }
-                            Text(u.lastPathComponent).font(.system(size: T.k * 11.5)).foregroundStyle(T.text).lineLimit(1)
+                            Text(u.lastPathComponent).font(.system(size: T.k * 12)).foregroundStyle(T.text).lineLimit(1)
                             Button { files.removeAll { $0 == u } } label: {
                                 Image(systemName: "xmark").font(.system(size: T.k * 8, weight: .bold)).foregroundStyle(T.text3).menuHitBox(16, 16)
                             }

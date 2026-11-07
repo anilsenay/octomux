@@ -121,7 +121,7 @@ struct SendElementPanel: View {
             }
             DisclosureGroup(isExpanded: $showDetails) {
                 ScrollView {
-                    Text(preview(kind: kind)).font(T.mono(10.5)).foregroundStyle(T.text2).textSelection(.enabled)
+                    Text(preview(kind: kind)).font(T.mono(11)).foregroundStyle(T.text2).textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .frame(maxHeight: 140)

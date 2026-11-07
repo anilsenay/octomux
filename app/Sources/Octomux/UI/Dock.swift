@@ -140,7 +140,7 @@ struct DockView: View {
                                     .help(s.isDormant ? "Exited" : s.kind == .action ? "Action running" : "Running")
                                 Text(s.displayTitle).lineLimit(1)
                                 if s.isDormant { Text("exited").font(.system(size: T.k * 10)).foregroundStyle(T.text3) }
-                                Button { model.remove(s.id, confirm: false) } label: { Image(systemName: "xmark").font(.system(size: T.k * 7.5, weight: .bold)) }
+                                Button { model.remove(s.id, confirm: false) } label: { Image(systemName: "xmark").font(.system(size: T.k * 8, weight: .bold)) }
                                     .buttonStyle(IconButtonStyle(size: 14))
                             }
                             .contextMenu {
@@ -161,7 +161,7 @@ struct DockView: View {
                         }
                     }
                 } label: {
-                    Image(systemName: Self.positionIcon(position)).font(.system(size: T.k * 11.5)).foregroundStyle(T.text2).menuHitBox(22, 22)
+                    Image(systemName: Self.positionIcon(position)).font(.system(size: T.k * 12)).foregroundStyle(T.text2).menuHitBox(22, 22)
                 }
                 .plainMenu()
                 .frame(width: 22, height: 22).hoverHighlight()
@@ -169,7 +169,7 @@ struct DockView: View {
                 Button { model.toggleDock() } label: { Image(systemName: Self.hideIcon(position)) }
                     .buttonStyle(ChromeButtonStyle(size: 22)).help("Hide dock (⌘J)")
             }
-            .font(.system(size: T.k * 11.5))
+            .font(.system(size: T.k * 12))
             .padding(.leading, T.m.inset == 0 ? 8 : 2)
             .frame(height: 26)
             DockArea()

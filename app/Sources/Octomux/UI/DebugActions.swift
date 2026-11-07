@@ -407,6 +407,7 @@ enum DebugActions {
                     var flags: NSEvent.ModifierFlags = []
                     if (p["cmd"] as? Bool) == true { flags.insert(.command) }
                     if (p["shift"] as? Bool) == true { flags.insert(.shift) }
+                    if (p["ctrl"] as? Bool) == true { flags.insert(.control) }
                     for type in [NSEvent.EventType.keyDown, .keyUp] {
                         if let e = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: flags, timestamp: ProcessInfo.processInfo.systemUptime,
                                                     windowNumber: win.windowNumber, context: nil, characters: chars,
@@ -631,6 +632,19 @@ enum DebugActions {
                         if let doc { m.closeDoc(doc) }
                     }
                 }
+            case "tab_switcher":     // value: "open" / "next" / "back" / "commit" / "cancel" / "capture"
+                let v = p["value"] as? String ?? "open"
+                MainActor.assumeIsolated {
+                switch v {
+                case "next": TabSwitcher.shared.move(1)
+                case "back": TabSwitcher.shared.move(-1)
+                case "commit": TabSwitcher.shared.commit()
+                case "cancel": TabSwitcher.shared.cancel()
+                case "capture": TabSwitcher.shared.captureCurrent()
+                default: TabSwitcher.shared.open()
+                }
+                }
+            case "design_alt": if let k = id { DesignAlt.set(k, p["value"] as? String) }
             case "sidebar_agents": m.sidebarAgents = (p["value"] as? Bool) ?? !m.sidebarAgents
             case "resume_flags": NotificationCenter.default.post(name: .adeDebugPanel, object: nil, userInfo: ["resumeFlags": (p["value"] as? Bool) ?? true])
             case "notifications": NotificationCenter.default.post(name: .adeDebugPanel, object: nil, userInfo: ["notifications": (p["value"] as? Bool) ?? true])

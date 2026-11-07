@@ -49,9 +49,20 @@ struct NewChatView: View {
                     Text(project?.name ?? "")
                     if let b = git.branch(for: path) { Text("·"); Text(b).font(T.mono(12)) }
                 }
-                .font(.system(size: T.k * 12.5)).foregroundStyle(T.text3)
+                .font(.system(size: T.k * 13)).foregroundStyle(T.text3)
             }
             Spacer(minLength: 24)
+            if draft.isEmpty && files.isEmpty {
+                // Starters: fill the composer (never send); the text can be edited first.
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(Self.starters, id: \.text) { st in
+                        StarterRow(icon: st.icon, text: st.text) { draft = st.text; focused = true }
+                    }
+                }
+                .frame(maxWidth: 780, alignment: .leading)
+                .padding(.horizontal, 28).padding(.bottom, 8)
+                .transition(.opacity)
+            }
             composer
                 .frame(maxWidth: 780)
                 .padding(.horizontal, 28).padding(.bottom, 18)
@@ -82,6 +93,12 @@ struct NewChatView: View {
             }
         }
     }
+
+    static let starters: [(icon: String, text: String)] = [
+        ("doc.text.magnifyingglass", "Explain how this repository is organized"),
+        ("checklist", "Review my uncommitted changes"),
+        ("ladybug", "Find and fix a small bug"),
+    ]
 
     /// "Anıl returns!" with the account's first name, else a plain question.
     static var greeting: String {
@@ -134,13 +151,13 @@ struct NewChatView: View {
                     if NewChatDraft.pending[docId] != nil { NewChatDraft.pending[docId] = draft }
                     focused = true
                 }) {
-                    Image(systemName: "text.bubble").font(.system(size: T.k * 12.5)).foregroundStyle(T.text2)
+                    Image(systemName: "text.bubble").font(.system(size: T.k * 13)).foregroundStyle(T.text2)
                 }
                 .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().frame(width: 26, height: 26)
                 .tint(T.text2)
                 .help("Saved prompts")
                 Button { files += AttachmentChips.pick() } label: {
-                    Image(systemName: "paperclip").font(.system(size: T.k * 12.5)).foregroundStyle(T.text2).frame(width: 26, height: 26)
+                    Image(systemName: "paperclip").font(.system(size: T.k * 13)).foregroundStyle(T.text2).frame(width: 26, height: 26)
                 }
                 .buttonStyle(IconButtonStyle(size: 26)).help("Attach files (or drop them here, or paste a screenshot)")
                 SendButton(enabled: canSend, help: "Start \(profile?.name ?? "the agent") with this message (↩)", action: send)
@@ -175,7 +192,7 @@ struct NewChatView: View {
                 Text(flags && options.model != nil ? options.modelTitle(kind) : (profile?.name ?? "No agent"))
                     .font(.system(size: T.k * 12, weight: .medium)).foregroundStyle(T.text)
                 if flags, let effort { Text(effort).font(.system(size: T.k * 12)).foregroundStyle(T.text3) }
-                Image(systemName: "chevron.down").font(.system(size: T.k * 7.5, weight: .bold)).foregroundStyle(T.text3)
+                Image(systemName: "chevron.down").font(.system(size: T.k * 8, weight: .bold)).foregroundStyle(T.text3)
             }
             .padding(.horizontal, 8).frame(height: 24)
             .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(pickingModel ? T.border : .clear))
@@ -238,8 +255,8 @@ struct ContextChip: View {
     var body: some View {
         Button { open.toggle() } label: {
             HStack(spacing: 5) {
-                Image(systemName: icon).font(.system(size: T.k * 10.5))
-                Text(text).font(mono ? T.mono(11.5) : .system(size: T.k * 11.5, weight: .medium)).lineLimit(1)
+                Image(systemName: icon).font(.system(size: T.k * 11))
+                Text(text).font(mono ? T.mono(12) : .system(size: T.k * 12, weight: .medium)).lineLimit(1)
             }
             .foregroundStyle(tint ?? (open || hover ? T.text : T.text2))
             .padding(.horizontal, 8).frame(height: 24)
@@ -273,7 +290,7 @@ struct WorkspaceChoice: View {
             if naming {
                 HStack(spacing: 8) {
                     Image(systemName: "arrow.triangle.branch").font(.system(size: T.k * 11)).foregroundStyle(T.text2).frame(width: 16)
-                    TextField("New branch name", text: $branch).textFieldStyle(.plain).font(.system(size: T.k * 12.5))
+                    TextField("New branch name", text: $branch).textFieldStyle(.plain).font(.system(size: T.k * 13))
                         .focused($nameFocused).onSubmit(create).disabled(busy)
                     if busy { WorkingRing() }
                 }
@@ -307,7 +324,7 @@ struct WorkspaceChoice: View {
         Button(action: action) {
             HStack(spacing: 8) {
                 Image(systemName: icon).font(.system(size: T.k * 11)).foregroundStyle(T.text2).frame(width: 16)
-                Text(title).font(.system(size: T.k * 12.5)).foregroundStyle(T.text).lineLimit(1).truncationMode(.middle)
+                Text(title).font(.system(size: T.k * 13)).foregroundStyle(T.text).lineLimit(1).truncationMode(.middle)
                 Spacer(minLength: 6)
                 if checked { Image(systemName: "checkmark").font(.system(size: T.k * 10, weight: .bold)).foregroundStyle(T.text) }
                 if let trailing { Image(systemName: trailing).font(.system(size: T.k * 9, weight: .semibold)).foregroundStyle(T.text3) }
@@ -356,7 +373,7 @@ struct SendButton: View {
     let action: () -> Void
     var body: some View {
         Button(action: action) {
-            Image(systemName: "arrow.up").font(.system(size: T.k * 11.5, weight: .bold)).frame(width: 26, height: 26).contentShape(Circle())
+            Image(systemName: "arrow.up").font(.system(size: T.k * 12, weight: .bold)).frame(width: 26, height: 26).contentShape(Circle())
         }
         .buttonStyle(.plain)
         .foregroundStyle(enabled ? Color.white : T.text3)
@@ -373,4 +390,25 @@ enum NewChatDraft {
     static var links: [String: String] = [:]
     /// Start screen opened by Ask on an Inbox item: doc id → item id. Such a session runs read-only.
     static var asks: [String: String] = [:]
+}
+
+
+/// A suggestion above the new-chat composer: icon + text, hover fill.
+struct StarterRow: View {
+    let icon: String
+    let text: String
+    let action: () -> Void
+    @State private var hover = false
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon).font(T.icon(12)).foregroundStyle(T.text3).frame(width: 16)
+            Text(text).font(T.body).foregroundStyle(hover ? T.text : T.text2)
+        }
+        .padding(.horizontal, 8).frame(height: 28)
+        .background(RoundedRectangle(cornerRadius: R.md, style: .continuous).fill(hover ? T.hover : .clear))
+        .contentShape(Rectangle())
+        .onHover { hover = $0 }
+        .pointerCursor()
+        .onTapGesture(perform: action)
+    }
 }

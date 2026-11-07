@@ -18,8 +18,8 @@ enum TabStyle: String { case pill, underline, segment }
 
 struct ThemeMetrics {
     var rowH: CGFloat = 30
-    var rowR: CGFloat = 7
-    var tileR: CGFloat = 5
+    var rowR: CGFloat = 8
+    var tileR: CGFloat = 6
     var tabStyle: TabStyle = .pill
     var tabH: CGFloat = 28
     var topH: CGFloat = 46
@@ -67,7 +67,7 @@ enum Themes {
                            text: c("#1D1D1F"), text2: c("#55555C"), text3: c("#6B6B73"),
                            accent: c("#C9592B"), claude: c("#C9592B"), amber: c("#9A6200"), green: c("#1E8A4C"), red: c("#C93838"), blue: c("#2A6BD1"),
                            termFg: c("#2B2B30"), termCursor: c("#C9592B"), termSelection: c("#E6E1DC"), ansi: ansiLight),
-        metrics: ThemeMetrics())
+        metrics: ThemeMetrics(statusH: 28))
 
     static let grid = ThemePreset(
         id: "grid", name: "Grid", summary: "Dense and technical: edge-to-edge panes, hairlines, mono labels",
@@ -91,10 +91,26 @@ enum Themes {
                            text: c("#15161A"), text2: c("#50525D"), text3: c("#666874"),
                            accent: c("#0A6CF0"), claude: c("#C9592B"), amber: c("#966100"), green: c("#178A47"), red: c("#CC3333"), blue: c("#0A6CF0"),
                            termFg: c("#1F2024"), termCursor: c("#0A6CF0"), termSelection: c("#D5E4FB"), ansi: ansiLight),
-        metrics: ThemeMetrics(rowH: 30, rowR: 8, tileR: 9, tabStyle: .segment, tabH: 26, topH: 48, statusH: 32, cardR: 12, inset: 8, sidebarMaterial: true, glass: true))
+        metrics: ThemeMetrics(rowH: 30, rowR: 8, tileR: 10, tabStyle: .segment, tabH: 26, topH: 48, statusH: 32, cardR: 12, inset: 8, sidebarMaterial: true, glass: true))
 
     static let all = [ink, grid, glass]
     static func preset(_ id: String?) -> ThemePreset { all.first { $0.id == id } ?? ink }
+}
+
+/// Design alternatives for review builds: only read when the debug server is enabled (OCTOMUX_DEBUG=1),
+/// never in a user's app. Set with `tools/dbg ui_action {"name":"design_alt","id":"selection","value":"bar"}`.
+enum DesignAlt {
+    /// Selected row: `tint` (workspace color fill), `ink` (neutral fill), `bar` (neutral fill + accent bar).
+    static var selection: String { value("selection") ?? "tint" }
+    /// `comfortable` (rows 30) or `compact` (rows 28, tabs 26, status bar 24).
+    static var density: String { value("density") ?? "comfortable" }
+    private static func value(_ k: String) -> String? {
+        DebugServer.enabled ? UserDefaults.standard.string(forKey: "octomux.debug.\(k)") : nil
+    }
+    static func set(_ k: String, _ v: String?) {
+        UserDefaults.standard.set(v, forKey: "octomux.debug.\(k)")
+        ThemeStore.shared.designAltChanged()
+    }
 }
 
 /// Current preset + appearance mode, synced from global settings
@@ -127,7 +143,9 @@ final class ThemeStore: ObservableObject {
 
     /// Bumped when user scene files are reloaded (same ids, new content).
     @Published private(set) var sceneGeneration = 0
-    var revision: String { "\(preset.id)-\(scale)-\(mode)-\(activeScene?.id ?? "")-\(sceneGeneration)-\(workspaceColor ?? "")" }
+    var revision: String { "\(preset.id)-\(scale)-\(mode)-\(activeScene?.id ?? "")-\(sceneGeneration)-\(workspaceColor ?? "")-\(altGeneration)" }
+    @Published private(set) var altGeneration = 0
+    func designAltChanged() { altGeneration += 1; restyleViews() }
 
     func scenesReloaded() {
         if let s = scene { scene = Scenes.scene(s.id) }
@@ -168,6 +186,9 @@ final class ThemeStore: ObservableObject {
     var metrics: ThemeMetrics {
         var m = preset.metrics
         if activeScene != nil { m.glass = false; m.sidebarMaterial = false }
+        if DesignAlt.density == "compact" {
+            m.rowH -= 2; m.tabH = max(22, m.tabH - 2); m.statusH = max(22, m.statusH - 4); m.topH = max(34, m.topH - 6)
+        }
         if scale != 1 {
             m.rowH = (m.rowH * scale).rounded(); m.tabH = (m.tabH * scale).rounded()
             m.topH = (m.topH * scale).rounded(); m.statusH = (m.statusH * scale).rounded()
@@ -360,12 +381,45 @@ enum T {
         if let n = monoName { return .custom(n, fixedSize: size * k).weight(weight) }
         return .system(size: size * k, weight: weight, design: .monospaced)
     }
+    // Type scale (docs/DESIGN.md): 22 display · 20 title · 15 heading · 13 body · 12 ui · 11 meta · 10 micro.
+    // No half points: every size in the UI is one of these (glyph-only sizes use `icon`).
+    static var display: Font { .system(size: 22 * k, weight: .bold) }
     static var title: Font { .system(size: 20 * k, weight: .bold) }
+    static var heading: Font { .system(size: 15 * k, weight: .semibold) }
     static var headline: Font { .system(size: 13 * k, weight: .semibold) }
     static var body: Font { .system(size: 13 * k) }
-    static var small: Font { .system(size: 12 * k, weight: .medium) }
-    static var caption: Font { .system(size: 11 * k, weight: .medium) }
-    static var label: Font { m.monoLabels ? mono(10.5, .semibold) : .system(size: 11 * k, weight: .semibold) }
+    static var ui: Font { .system(size: 12 * k, weight: .medium) }
+    static var small: Font { ui }
+    static var meta: Font { .system(size: 11 * k, weight: .medium) }
+    static var caption: Font { meta }
+    static var micro: Font { .system(size: 10 * k, weight: .semibold) }
+    /// Section labels ("Projects", "Agents"…): small caps-like uppercase, tracked; mono in Grid.
+    static var label: Font { m.monoLabels ? mono(10, .semibold) : micro }
+    static func icon(_ size: CGFloat, _ weight: Font.Weight = .medium) -> Font { .system(size: size * k, weight: weight) }
+}
+
+/// Corner radii: 4 · 6 · 8 · 10 · 12 · 14. Lines and indicators below 4 stay as they are.
+enum R {
+    static let xs: CGFloat = 4      // badges, tiny chips
+    static let sm: CGFloat = 6      // icon buttons, menu items
+    static let md: CGFloat = 8      // rows, buttons, inputs, tabs
+    static let lg: CGFloat = 10     // cards, popovers
+    static let xl: CGFloat = 12     // panels, sheets
+    static let float: CGFloat = 14  // palette, switcher, toasts
+}
+
+/// Spacing: 2 · 4 · 6 · 8 · 12 · 16 · 20 · 24 · 32.
+enum S {
+    static let xxs: CGFloat = 2, xs: CGFloat = 4, sm: CGFloat = 6, md: CGFloat = 8
+    static let lg: CGFloat = 12, xl: CGFloat = 16, xxl: CGFloat = 20, x3: CGFloat = 24, x4: CGFloat = 32
+}
+
+/// Motion: hover 0.12 s, pop (spring 0.25), panel (0.3 s ease-out-expo); none with Reduce Motion.
+enum Motion {
+    static var reduced: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
+    static var hover: Animation? { reduced ? nil : .easeOut(duration: 0.12) }
+    static var pop: Animation? { reduced ? nil : .spring(response: 0.25, dampingFraction: 0.85) }
+    static var panel: Animation? { reduced ? nil : .timingCurve(0.16, 1, 0.3, 1, duration: 0.3) }
 }
 
 /// Section label ("Projects", "Agents"…): uppercase mono in Grid.
@@ -373,9 +427,9 @@ struct SectionLabel: View {
     let text: String
     init(_ text: String) { self.text = text }
     var body: some View {
-        Text(T.m.monoLabels ? text.uppercased() : text)
+        Text(text.uppercased())
             .font(T.label)
-            .tracking(T.m.monoLabels ? 0.8 : 0)
+            .tracking(T.m.monoLabels ? 0.8 : 0.6)
             .foregroundStyle(T.text3)
     }
 }

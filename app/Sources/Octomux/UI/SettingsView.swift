@@ -222,7 +222,7 @@ struct SettingsSidebar: View {
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass").font(.system(size: T.k * 11)).foregroundStyle(T.text3)
                 TextField("Search settings", text: $sel.query)
-                    .textFieldStyle(.plain).font(.system(size: T.k * 12.5))
+                    .textFieldStyle(.plain).font(.system(size: T.k * 13))
                     .focused($searching)
                     .onExitCommand { sel.query = "" }
                 if !sel.query.isEmpty {
@@ -231,8 +231,8 @@ struct SettingsSidebar: View {
                 }
             }
             .padding(.horizontal, 9).frame(height: 28)
-            .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(T.surface.opacity(0.7)))
-            .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(searching ? T.accent.opacity(0.6) : T.border))
+            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(T.surface.opacity(0.7)))
+            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(searching ? T.accent.opacity(0.6) : T.border))
             .padding(.bottom, 14)
             ScrollView {
                 VStack(alignment: .leading, spacing: 1) {
@@ -340,7 +340,7 @@ struct ScopeBar: View {
                 } label: {
                     HStack(spacing: 6) {
                         Circle().fill(Color(hex: current.color)).frame(width: 8, height: 8)
-                        Text(current.name).font(.system(size: T.k * 12.5, weight: .medium))
+                        Text(current.name).font(.system(size: T.k * 13, weight: .medium))
                     }
                 }
                 .menuStyle(.borderlessButton).fixedSize()
@@ -373,7 +373,7 @@ struct SettingsGroup<Content: View, Trailing: View>: View {
             if title != nil || desc != nil {
                 HStack(alignment: .bottom, spacing: 12) {
                     VStack(alignment: .leading, spacing: 3) {
-                        if let title { Text(title).font(.system(size: T.k * 13.5, weight: .semibold)) }
+                        if let title { Text(title).font(.system(size: T.k * 13, weight: .semibold)) }
                         if let desc { Text(desc).font(.system(size: T.k * 12)).foregroundStyle(T.text2).fixedSize(horizontal: false, vertical: true) }
                     }
                     Spacer(minLength: 0)
@@ -434,7 +434,7 @@ struct SettingRow<Control: View>: View {
                     Text(title).font(.system(size: T.k * 13, weight: .medium))
                 }
                 if let desc {
-                    Text(desc).font(mono ? T.mono(11) : .system(size: T.k * 11.5)).foregroundStyle(T.text2)
+                    Text(desc).font(mono ? T.mono(11) : .system(size: T.k * 12)).foregroundStyle(T.text2)
                         .fixedSize(horizontal: false, vertical: true)
                         .textSelection(.enabled)
                 }
@@ -497,7 +497,7 @@ struct SettingsFootnote: View {
     let text: String
     init(_ text: String) { self.text = text }
     var body: some View {
-        Text(text).font(.system(size: T.k * 11.5)).foregroundStyle(T.text3).fixedSize(horizontal: false, vertical: true)
+        Text(text).font(.system(size: T.k * 12)).foregroundStyle(T.text3).fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, 2).padding(.top, -12)
     }
 }
@@ -728,7 +728,7 @@ struct WorkspacesSettings: View {
                         TextField("Name", text: Binding(get: { w.name }, set: { model.updateWorkspace(w.id, ["name": $0]) }))
                             .textFieldStyle(.plain).font(.system(size: T.k * 13, weight: .medium))
                         let n = model.state.projects.filter { $0.workspaceId == w.id }.count
-                        Text("\(n) \(n == 1 ? "project" : "projects")").font(.system(size: T.k * 11.5)).foregroundStyle(T.text2)
+                        Text("\(n) \(n == 1 ? "project" : "projects")").font(.system(size: T.k * 12)).foregroundStyle(T.text2)
                     }
                     Spacer()
                     let def = model.defaultChatProfile(workspace: w.id)
@@ -769,7 +769,7 @@ struct WorkspacesSettings: View {
         let archived = model.state.projects.filter { $0.archived }
         SettingsGroup("Archived projects", desc: "Archive a project from its right-click menu to hide it from the sidebar; its sessions are kept.") {
             if archived.isEmpty {
-                Text("No archived projects.").font(.system(size: T.k * 12.5)).foregroundStyle(T.text2).padding(14)
+                Text("No archived projects.").font(.system(size: T.k * 13)).foregroundStyle(T.text2).padding(14)
             }
             ForEach(archived) { p in
                 SettingRow(p.name, desc: (p.path as NSString).abbreviatingWithTildeInPath, mono: true) {
@@ -916,7 +916,7 @@ struct AgentsSettings: View {
                  : i.status == "outdated" ? "Terminal tabs: hooks in \(dir) are out of date"
                  : "Terminal tabs: hooks not installed (\(dir))")
         }
-        .font(.system(size: T.k * 11.5)).foregroundStyle(T.text2).lineLimit(1)
+        .font(.system(size: T.k * 12)).foregroundStyle(T.text2).lineLimit(1)
         .help("With hooks, a claude you type in a terminal tab shows in Agents with its state and notifications, and \"done\" shows the moment a turn ends.")
     }
 
@@ -928,7 +928,7 @@ struct AgentsSettings: View {
                  : c.status == "old" ? "Codex \(c.version ?? "") shows working and done only: update to 0.164 or later"
                  : "Codex version unknown")
         }
-        .font(.system(size: T.k * 11.5)).foregroundStyle(T.text2).lineLimit(1)
+        .font(.system(size: T.k * 12)).foregroundStyle(T.text2).lineLimit(1)
         .help("Codex 0.164 and later tell Octomux when they work, wait for your approval or finish, also when you type codex in a terminal tab. Older versions only show working and done.")
     }
 
@@ -1205,7 +1205,7 @@ struct ThemePicker: View {
                             VStack(alignment: .leading, spacing: 8) {
                                 ThemeSwatch(preset: p)
                                 HStack(spacing: 6) {
-                                    Text(p.name).font(.system(size: T.k * 12.5, weight: .semibold)).foregroundStyle(T.text)
+                                    Text(p.name).font(.system(size: T.k * 13, weight: .semibold)).foregroundStyle(T.text)
                                     if on { Image(systemName: "checkmark.circle.fill").font(.system(size: T.k * 11)).foregroundStyle(T.accent) }
                                 }
                                 Text(p.summary).font(.system(size: T.k * 11)).foregroundStyle(T.text2).lineLimit(2, reservesSpace: true)
@@ -1321,8 +1321,8 @@ struct ThemeSwatch: View {
         }
         .frame(width: 150, height: 74)
         .background(Color(nsColor: c.frame))
-        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(Color(nsColor: c.border)))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(Color(nsColor: c.border)))
     }
 }
 
@@ -1479,7 +1479,7 @@ struct FeatureSettings: View {
     func feature(_ title: String, key: String, desc: String, available: Bool, defaultOn: Bool = false) -> some View {
         SettingRow(title, desc: desc) {
             if !available {
-                Text("Later").font(.system(size: T.k * 10.5, weight: .semibold)).foregroundStyle(T.text3)
+                Text("Later").font(.system(size: T.k * 11, weight: .semibold)).foregroundStyle(T.text3)
                     .padding(.horizontal, 6).padding(.vertical, 2).background(Capsule().fill(T.hover))
             }
             SettingSwitch(isOn: Binding(get: { model.setting(key)?.bool ?? defaultOn }, set: { model.setSetting(key, $0) }))
@@ -1510,12 +1510,12 @@ struct KeyboardSettings: View {
         let groups = Dictionary(grouping: shown, by: \.group)
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 3) {
-                Text("Shortcuts").font(.system(size: T.k * 13.5, weight: .semibold))
+                Text("Shortcuts").font(.system(size: T.k * 13, weight: .semibold))
                 Text("Click a shortcut to record new keys. Esc cancels, Delete removes it.").font(.system(size: T.k * 12)).foregroundStyle(T.text2)
             }
             .settingAnchor("Shortcuts")
             Spacer()
-            Text("\(shown.count) of \(kb.commands.count)").font(.system(size: T.k * 11.5)).foregroundStyle(T.text3).monospacedDigit()
+            Text("\(shown.count) of \(kb.commands.count)").font(.system(size: T.k * 12)).foregroundStyle(T.text3).monospacedDigit()
             if let k = keyFilter {
                 Button { keyFilter = nil } label: {
                     HStack(spacing: 5) {
@@ -1557,7 +1557,7 @@ struct KeyboardSettings: View {
                             Label("also \(other.title)", systemImage: "exclamationmark.triangle.fill")
                                 .font(.system(size: T.k * 11)).foregroundStyle(T.amber).lineLimit(1)
                         }
-                        Text(KeyBindings.target(c.id)).font(.system(size: T.k * 11.5)).foregroundStyle(T.text3)
+                        Text(KeyBindings.target(c.id)).font(.system(size: T.k * 12)).foregroundStyle(T.text3)
                             .frame(width: 112, alignment: .leading).lineLimit(1)
                         Button { kb.reset(c.id) } label: { Image(systemName: "arrow.uturn.backward").font(.system(size: T.k * 10)) }
                             .buttonStyle(ChromeButtonStyle()).help("Reset to default")
@@ -1579,7 +1579,7 @@ struct KeyboardSettings: View {
         }
         if shown.isEmpty {
             Text(keyFilter.map { "Nothing uses \($0.display). It goes to the terminal program." } ?? "No shortcut matches “\(filter)”.")
-                .font(.system(size: T.k * 12.5)).foregroundStyle(T.text2)
+                .font(.system(size: T.k * 13)).foregroundStyle(T.text2)
         }
         HStack {
             SettingsFootnote("“Acts on” is what the command works on: the focused pane, the tabs of the current project, and so on.")
@@ -1692,13 +1692,13 @@ struct HostsSettings: View {
                         HStack(spacing: 6) {
                             Text(h.name).font(.system(size: T.k * 13, weight: .medium))
                             if model.hostId == h.id {
-                                Text("Connected").font(.system(size: T.k * 10.5, weight: .semibold)).foregroundStyle(T.green)
+                                Text("Connected").font(.system(size: T.k * 11, weight: .semibold)).foregroundStyle(T.green)
                                     .padding(.horizontal, 6).padding(.vertical, 1).background(Capsule().fill(T.green.opacity(0.14)))
                             }
                         }
                         Text(h.subtitle).font(T.mono(11)).foregroundStyle(T.text3).lineLimit(1)
                         if let st = status[h.id] {
-                            Text(st).font(.system(size: T.k * 11.5)).foregroundStyle(st.hasPrefix("OK") ? T.green : st.hasPrefix("Testing") ? T.text2 : T.red).lineLimit(1)
+                            Text(st).font(.system(size: T.k * 12)).foregroundStyle(st.hasPrefix("OK") ? T.green : st.hasPrefix("Testing") ? T.text2 : T.red).lineLimit(1)
                         }
                     }
                     Spacer()

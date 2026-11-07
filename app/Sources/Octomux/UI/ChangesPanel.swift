@@ -278,7 +278,7 @@ struct ChangesPanel: View {
                 Text(changes.changes.isEmpty ? (changes.baseName == nil ? "No changes" : "No uncommitted changes") : "\(changes.changes.count) changed").font(.system(size: T.k * 12, weight: .semibold)).foregroundStyle(T.text2)
                 if let wp = model.currentWorkPath, wp != model.currentProject?.path, let b = GitInfo.shared.branch(for: wp) {
                     HStack(spacing: 4) {
-                        Image(systemName: "arrow.triangle.branch").font(.system(size: T.k * 9.5))
+                        Image(systemName: "arrow.triangle.branch").font(.system(size: T.k * 10))
                         Text(b).font(T.mono(11)).lineLimit(1)
                     }
                     .foregroundStyle(T.text3).help("Worktree: \(wp)")
@@ -318,8 +318,8 @@ struct ChangesPanel: View {
                             .help(changes.generating != nil ? "Stop writing the message"
                                   : "Write a commit message with \(CommitMessageGen.profile(model: model, project: model.currentProject?.id)?.name ?? "an agent")")
                         }
-                        .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(T.frame.opacity(0.6)))
-                        .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(T.border))
+                        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(T.frame.opacity(0.6)))
+                        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(T.border))
                         .onKeyPress(.return, phases: .down) { press in
                             // ⌘↩ commits only while the message field has focus (never from a terminal).
                             guard press.modifiers.contains(.command) else { return .ignored }
@@ -368,9 +368,9 @@ struct ChangesPanel: View {
                 Text("Compare with").font(T.caption).foregroundStyle(T.text3)
                 Button { pickingBase = true } label: {
                     HStack(spacing: 4) {
-                        Image(systemName: "arrow.triangle.branch").font(.system(size: T.k * 9.5))
+                        Image(systemName: "arrow.triangle.branch").font(.system(size: T.k * 10))
                         Text(base ?? "Uncommitted only").font(base == nil ? T.caption : T.mono(11)).lineLimit(1)
-                        Image(systemName: "chevron.up.chevron.down").font(.system(size: T.k * 7.5, weight: .bold)).foregroundStyle(T.text3)
+                        Image(systemName: "chevron.up.chevron.down").font(.system(size: T.k * 8, weight: .bold)).foregroundStyle(T.text3)
                     }
                     .foregroundStyle(base == nil ? T.text2 : T.text)
                     .padding(.horizontal, 6).frame(height: 20).contentShape(Rectangle())
@@ -437,8 +437,8 @@ private struct GroupHeader: View {
 
     var body: some View {
         HStack(spacing: 5) {
-            Image(systemName: "chevron.right").font(.system(size: T.k * 8.5, weight: .bold)).rotationEffect(.degrees(open ? 90 : 0)).foregroundStyle(T.text3).frame(width: 10)
-            Text(title).font(.system(size: T.k * 11.5, weight: .semibold)).foregroundStyle(T.text2)
+            Image(systemName: "chevron.right").font(.system(size: T.k * 9, weight: .bold)).rotationEffect(.degrees(open ? 90 : 0)).foregroundStyle(T.text3).frame(width: 10)
+            Text(title).font(.system(size: T.k * 12, weight: .semibold)).foregroundStyle(T.text2)
             Spacer()
             if hover {
                 if let discard {
@@ -473,7 +473,7 @@ private struct BaseRow: View {
         let selected = model.activeDoc?.kind == .changes && changes.selected == key
         HStack(spacing: 6) {
             FileIcon(name: (f.path as NSString).lastPathComponent)
-            Text((f.path as NSString).lastPathComponent).font(.system(size: T.k * 12.5)).foregroundStyle(T.text).lineLimit(1)
+            Text((f.path as NSString).lastPathComponent).font(.system(size: T.k * 13)).foregroundStyle(T.text).lineLimit(1)
             Text((f.path as NSString).deletingLastPathComponent).font(.system(size: T.k * 11)).foregroundStyle(T.text3).lineLimit(1).truncationMode(.head)
             Spacer(minLength: 4)
             if hover, f.status != "D" {
@@ -481,7 +481,7 @@ private struct BaseRow: View {
                     .buttonStyle(IconButtonStyle(size: 18)).help("Open file")
             } else {
                 DiffCount(added: f.added, removed: f.removed)
-                Text(f.status).font(T.mono(10.5, .bold)).foregroundStyle(GitChange.color(f.status)).frame(width: 12)
+                Text(f.status).font(T.mono(11, .bold)).foregroundStyle(GitChange.color(f.status)).frame(width: 12)
             }
         }
         .padding(.leading, 10).padding(.trailing, 8).frame(height: 26)
@@ -512,7 +512,7 @@ struct DiffCount: View {
             if added > 0 { Text("+\(added)").foregroundStyle(T.diffAdd) }
             if removed > 0 { Text("−\(removed)").foregroundStyle(T.diffDel) }
         }
-        .font(T.mono(10.5, .medium))
+        .font(T.mono(11, .medium))
     }
 }
 
@@ -531,7 +531,7 @@ private struct ChangeRow: View {
         let selected = model.activeDoc?.kind == .changes && changes.selected == key
         HStack(spacing: 6) {
             FileIcon(name: (c.path as NSString).lastPathComponent)
-            Text((c.path as NSString).lastPathComponent).font(.system(size: T.k * 12.5)).foregroundStyle(T.text).lineLimit(1)
+            Text((c.path as NSString).lastPathComponent).font(.system(size: T.k * 13)).foregroundStyle(T.text).lineLimit(1)
             Text((c.path as NSString).deletingLastPathComponent).font(.system(size: T.k * 11)).foregroundStyle(T.text3).lineLimit(1).truncationMode(.head)
             Spacer(minLength: 4)
             if hover {
@@ -549,7 +549,7 @@ private struct ChangeRow: View {
                 .buttonStyle(IconButtonStyle(size: 18)).help(staged ? "Unstage" : "Stage")
             } else {
                 if let stat { DiffCount(added: stat.0, removed: stat.1) }
-                Text(badge).font(T.mono(10.5, .bold)).foregroundStyle(GitChange.color(badge)).frame(width: 12)
+                Text(badge).font(T.mono(11, .bold)).foregroundStyle(GitChange.color(badge)).frame(width: 12)
             }
         }
         .padding(.leading, 10).padding(.trailing, 8).frame(height: 26)
@@ -588,7 +588,7 @@ struct DiffView: View {
                     let s = String(line)
                     Text(s.isEmpty ? " " : s)
                         .fixedSize(horizontal: true, vertical: false)
-                        .font(T.mono(11.5))
+                        .font(T.mono(12))
                         .foregroundStyle(s.hasPrefix("@@") ? (T.colorblindDiff ? T.text3 : T.blue) : s.hasPrefix("+") && !s.hasPrefix("+++") ? T.diffAdd : s.hasPrefix("-") && !s.hasPrefix("---") ? T.diffDel : T.text2)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(s.hasPrefix("+") && !s.hasPrefix("+++") ? T.diffAdd.opacity(0.10) : s.hasPrefix("-") && !s.hasPrefix("---") ? T.diffDel.opacity(0.10) : .clear)
@@ -611,7 +611,7 @@ private struct CommitButton: View {
         HStack(spacing: 0) {
             Button { changes.commit(push: false) } label: {
                 HStack(spacing: 6) {
-                    Image(systemName: "checkmark").font(.system(size: T.k * 10.5, weight: .bold))
+                    Image(systemName: "checkmark").font(.system(size: T.k * 11, weight: .bold))
                     Text(staged > 0 ? "Commit \(staged) staged" : "Commit all")
                 }
                 .frame(maxWidth: .infinity, minHeight: 28).contentShape(Rectangle())
@@ -620,13 +620,13 @@ private struct CommitButton: View {
             .disabled(!canCommit)
             Rectangle().fill(Color.white.opacity(0.25)).frame(width: 1, height: 16)
             PopupMenuButton(menu: menu) {
-                Image(systemName: "chevron.down").font(.system(size: T.k * 9.5, weight: .bold)).frame(width: 28, height: 28)
+                Image(systemName: "chevron.down").font(.system(size: T.k * 10, weight: .bold)).frame(width: 28, height: 28)
             }
             .help("More commit actions")
         }
-        .font(.system(size: T.k * 12.5, weight: .semibold))
+        .font(.system(size: T.k * 13, weight: .semibold))
         .foregroundStyle(.white)
-        .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(T.accent.opacity(hover ? 0.9 : 1)))
+        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(T.accent.opacity(hover ? 0.9 : 1)))
         .opacity(canCommit || !changes.busy ? (canCommit ? 1 : 0.55) : 0.45)
         .onHover { hover = $0 }
         .pointerCursor()

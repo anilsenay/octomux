@@ -35,41 +35,58 @@ Project tile colors: the existing 9-color palette (`Palette.colors`).
 
 ## Typography
 System font (SF Pro) in the app; Inter only in mockups. Mono: JetBrains Mono if installed, else SF Mono.
+A closed scale with no half points (`DesignTokenTests` fails on `N.5` sizes in `UI/`):
 
 | style | size / weight | use |
 |---|---|---|
+| `display` | 22 / bold | empty-state titles |
 | `title` | 20 / bold | settings page title |
-| `headline` | 13 / semibold | section titles, project names |
-| `body` | 13 / regular | rows, menus |
-| `small` | 12 / medium | tabs, buttons |
-| `caption` | 11 / medium | status bar, badges |
-| `label` | 11 / semibold (Grid: 10.5 mono uppercase, +8% tracking) | section labels |
-| `mono` | 12 / regular | branch, diff stats, commands |
+| `heading` | 15 / semibold | panel and card titles |
+| `body` / `headline` | 13 / regular, semibold | rows, menus, sidebar; project names |
+| `ui` (`small`) | 12 / medium | tabs, buttons, segmented tabs, right-panel rows |
+| `meta` (`caption`) | 11 / medium | ages, second lines, status bar, badges |
+| `micro` / `label` | 10 / semibold, uppercase, +0.6 tracking (Grid: mono) | section labels, counts |
+| `mono` | 11–13 / regular | branch, diff stats, commands |
+| `icon(n)` | glyph-only sizes (7–9 for tiny marks) | SF Symbols inside buttons and badges |
 
-## Spacing, radius, elevation
-- Spacing scale: 2, 4, 6, 8, 10, 12, 16, 20, 24, 32.
-- Rows: 30 px (Grid 24), radius 7 (Grid 2, Glass 8). Tabs: 28 px pills (Grid: 36 px underline tabs;
-  Glass: segmented control). Top bar 46 px, status bar 30 px (Grid 36 / 24).
-- Cards: radius 10 (Glass 12, Grid 0), 1 px `border`, inset 8 px from the window edge, 8 px gap
-  between panes.
-- Shadows only on floating things: active pill tab (0 1 2 black 18%), popovers/menus (system),
-  Glass sidebar.
-- Vibrancy: Glass uses `.sidebar` material behind the sidebar; Ink and Grid are opaque (more cohesive with
-  the terminal, cheaper to render).
+## Spacing, radius, elevation, motion
+- Spacing (`S`): 2, 4, 6, 8, 12, 16, 20, 24, 32.
+- Radius (`R`): `xs` 4 (badges), `sm` 6 (icon buttons, menu items), `md` 8 (rows, buttons, inputs, tabs),
+  `lg` 10 (cards, popovers), `xl` 12 (panels), `float` 14 (palette, tab switcher, toasts). Lines and indicators
+  below 4 keep their own values; `DesignTokenTests` fails on other radii.
+- Rows: 30 px (Grid 24), radius 8 (Grid 2). Tabs: 28 px (Grid: 36 px underline; Glass: segmented).
+  Top bar 46 px, status bar 28 px (Grid 36 / 24, Glass 48 / 32).
+- Cards: radius 10 (Glass 12, Grid 0), 1 px `border`, inset 8 px from the window edge, 8 px gap between panes.
+- Shadows only on floating things: active pill tab (light), segmented-tab thumb, popovers/menus (system),
+  palette and tab switcher (0 16 36 black 35% + 1 px hairline).
+- Motion (`Motion`): hover 0.12 s ease-out, pop = spring(0.25, 0.85), panel = 0.3 s (.16, 1, .3, 1); none with
+  Reduce Motion.
+- Vibrancy: Glass uses `.sidebar` material behind the sidebar; Ink and Grid are opaque.
 
 ## Components
 - **Tab** — icon (agent mark / terminal glyph) + title + activity dot; close × on hover; active = `raised`
-  pill with shadow (Ink), accent underline (Grid), segment (Glass).
+  card with a hairline (Ink), accent underline (Grid), segment (Glass); inactive tabs have no fill until hovered.
 - **Sidebar row** — project: 18 px color tile with initial/icon, semibold name, branch in mono `text3`,
   amber count badge when sessions wait. Session: 14 px icon, title, trailing activity (working ring in
   accent, amber “input” pill, green done dot); dormant at 45% opacity; hover reveals stop / restart / remove.
+  Selected: the workspace color at 13% (`RowBackground`).
+- **SectionHeader** — uppercase `micro` label, optional count, trailing tools (sidebar, palette groups).
+- **SegmentedTabs** — hover-filled track, selected segment = `raised` thumb with a soft shadow (right panel).
+- **ShortcutHint** — key capsule ("esc", "↵", "⌘K") in palettes and footers.
+- **Buttons** — icon buttons in three sizes only (`IconButtonStyle.snap`: 18 rows/tabs, 22 panel tools,
+  26 window chrome), radius 6; `PrimaryButton` (accent fill, white 12 semibold), `SecondaryButton` (hairline).
 - **Chip** — 22 px, radius 6, `hover` fill; used for dock tabs, diff stat, filters.
-- **Button** — `ChromeButton` (icon, 26 px square, hover fill); `PrimaryButton` (accent fill, white text);
-  `SecondaryButton` (hairline border).
 - **Popover / menu** — native menus; custom popovers use `raised` + system shadow, radius 10.
-- **Empty state** — centered: 40 px glyph in `text3`, headline, one line `text2`, buttons row.
+- **Command palette** — 620 wide, radius 14; without a query, grouped (Waiting for you / Sessions / Commands)
+  with `SectionHeader`s; footer with key hints and the result count.
+- **Tab switcher** — ⌃Tab / ⌃⇧Tab while ⌃ is held: the project's tabs most recent first, each with a picture of
+  its work area (taken from Octomux's own window after the tab has been on screen), activity, title and agent;
+  release ⌃ or ↵ to open, Esc to cancel.
+- **Empty state** — centered: 40 px glyph in `text3`, headline, one line `text2`, buttons row. New chat: the
+  agent's mark, greeting, starters above the composer (they fill the composer, never send).
 - **Status indicators** — `ActivityIndicator`: working = rotating accent ring; needs input = amber pill;
-  done = green dot (unread); error = red dot; restoring = amber arrow.
+  done = green dot (unread); error = red dot; restoring = amber arrow. Usage limits in the status bar: 12 px rings.
+- **Chat** — the user's messages in a neutral bubble (white 7.5% / black 5%), never the accent.
 
 ## Terminal theme
 Each preset carries a terminal palette matched to its `surface` color (background = `surface`, so the card

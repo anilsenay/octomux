@@ -352,7 +352,7 @@ struct CompletionMenu: View {
                     .onChange(of: completion.selected) { _, i in proxy.scrollTo(i) }
                 }
                 Hairline()
-                Text("↑↓ navigate · ↩ or ⇥ select · esc dismiss").font(.system(size: T.k * 10.5)).foregroundStyle(T.text3)
+                Text("↑↓ navigate · ↩ or ⇥ select · esc dismiss").font(.system(size: T.k * 11)).foregroundStyle(T.text3)
                     .padding(.horizontal, 12).padding(.vertical, 6)
             }
             .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(T.raised))
@@ -366,7 +366,7 @@ struct CompletionMenu: View {
             Image(systemName: item.icon).font(.system(size: T.k * 11)).foregroundStyle(T.text2).frame(width: 18)
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 6) {
-                    Text(item.title).font(.system(size: T.k * 12.5, weight: .medium)).foregroundStyle(T.text).lineLimit(1)
+                    Text(item.title).font(.system(size: T.k * 13, weight: .medium)).foregroundStyle(T.text).lineLimit(1)
                     if !item.badge.isEmpty {
                         Text(item.badge).font(.system(size: T.k * 10)).foregroundStyle(T.text3)
                             .padding(.horizontal, 5).padding(.vertical, 1).background(Capsule().fill(T.hover))
@@ -379,7 +379,7 @@ struct CompletionMenu: View {
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 8).frame(height: 36 * T.k)
-        .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(selected ? T.hover : Color.clear))
+        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(selected ? T.hover : Color.clear))
     }
 }
 

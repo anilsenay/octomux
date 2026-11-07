@@ -137,17 +137,23 @@ struct CommandPalette: View {
                         .onKeyPress(.downArrow) { selected = min(selected + 1, max(0, results.count - 1)); return .handled }
                         .onKeyPress(.upArrow) { selected = max(selected - 1, 0); return .handled }
                         .onKeyPress(.escape) { close(); return .handled }
-                    Text("esc").font(T.caption).foregroundStyle(T.text3)
-                        .padding(.horizontal, 5).padding(.vertical, 1)
-                        .overlay(RoundedRectangle(cornerRadius: 4).stroke(T.border))
+                    ShortcutHint("esc")
                 }
                 .padding(.horizontal, 16).frame(height: 50)
                 Hairline()
                 ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(spacing: 1) {
+                            let grouped = model.paletteQuery.trimmingCharacters(in: .whitespaces).isEmpty
+                            let waiting = Set(model.state.sessions.filter { $0.activity == .needsInput }.map { "s:" + $0.id })
+                            let group = { (r: PaletteItem) in waiting.contains(r.id) ? "Waiting for you" : r.kind + "s" }
                             ForEach(Array(results.enumerated()), id: \.element.id) { i, r in
-                                row(r, selected: i == selected)
+                                // Without a query the list comes in groups (waiting, sessions, commands): a header per group.
+                                if grouped, i == 0 || group(results[i - 1]) != group(r) {
+                                    SectionHeader(group(r))
+                                        .padding(.horizontal, 10).padding(.top, i == 0 ? 2 : 8)
+                                }
+                                row(r, selected: i == selected, showKind: !grouped)
                                     .onTapGesture { selected = i; run(results) }
                                     .onHover { if $0 { selected = i } }
                             }
@@ -157,31 +163,41 @@ struct CommandPalette: View {
                         }
                         .padding(6)
                     }
-                    .frame(height: min(380, CGFloat(max(results.count, 1)) * 35 + 12))
+                    .frame(height: min(400, CGFloat(max(results.count, 1)) * 33 + 40))
                     .onChange(of: selected) { _, v in if v < results.count { proxy.scrollTo(results[v].id) } }
                 }
+                HStack(spacing: 14) {
+                    HStack(spacing: 4) { ShortcutHint("↑↓"); Text("Navigate") }
+                    HStack(spacing: 4) { ShortcutHint("↵"); Text("Open") }
+                    Spacer()
+                    Text("\(results.count) results").monospacedDigit()
+                }
+                .font(T.meta).foregroundStyle(T.text3)
+                .padding(.horizontal, 14).frame(height: 30)
+                .overlay(alignment: .top) { Hairline() }
             }
-            .frame(width: 600)
-            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(T.raised))
-            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(T.border))
-            .shadow(color: .black.opacity(0.3), radius: 24, y: 10)
+            .frame(width: 620)
+            .background(RoundedRectangle(cornerRadius: R.float, style: .continuous).fill(T.raised))
+            .clipShape(RoundedRectangle(cornerRadius: R.float, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: R.float, style: .continuous).stroke(T.border))
+            .shadow(color: .black.opacity(0.35), radius: 36, y: 16)
             .padding(.top, 70)
         }
         .onAppear { focused = true; selected = 0 }
         .onChange(of: model.paletteQuery) { _, _ in selected = 0 }
     }
 
-    private func row(_ r: PaletteItem, selected: Bool) -> some View {
+    private func row(_ r: PaletteItem, selected: Bool, showKind: Bool = true) -> some View {
         HStack(spacing: 10) {
             r.icon
             Text(r.title).font(.system(size: T.k * 13, weight: .medium)).foregroundStyle(T.text).lineLimit(1)
             if !r.subtitle.isEmpty { Text(r.subtitle).font(.system(size: T.k * 12)).foregroundStyle(T.text3).lineLimit(1).truncationMode(.middle) }
             Spacer(minLength: 8)
-            if !r.shortcut.isEmpty { Text(r.shortcut).font(T.mono(11)).foregroundStyle(T.text3) }
-            Text(r.kind).font(T.caption).foregroundStyle(T.text3).frame(width: 74, alignment: .trailing)
+            if !r.shortcut.isEmpty { ShortcutHint(r.shortcut) }
+            if showKind { Text(r.kind).font(T.meta).foregroundStyle(T.text3).frame(width: 74, alignment: .trailing) }
         }
-        .padding(.horizontal, 10).frame(height: 34)
-        .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(selected ? T.selection : .clear))
+        .padding(.horizontal, 10).frame(height: 32)
+        .background(RoundedRectangle(cornerRadius: R.md, style: .continuous).fill(selected ? T.selection : .clear))
         .contentShape(Rectangle())
     }
 

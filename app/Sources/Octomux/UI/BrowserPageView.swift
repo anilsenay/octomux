@@ -90,12 +90,12 @@ struct BrowserPageView: View {
             .buttonStyle(IconButtonStyle(size: 24)).help(page.isLoading ? "Stop" : "Reload (⌘R)")
             addressField
             if page.zoom != 1 {
-                Button { page.zoom = 1 } label: { Text("\(Int((page.zoom * 100).rounded()))%").font(T.mono(10.5, .semibold)) }
+                Button { page.zoom = 1 } label: { Text("\(Int((page.zoom * 100).rounded()))%").font(T.mono(11, .semibold)) }
                     .buttonStyle(ChromeButtonStyle(size: 22)).help("Actual Size (⌘0)")
             }
             if let v = page.viewport {
                 Button { page.viewport = nil; if v.userAgent != nil { page.web.reload() } } label: {
-                    Text(v.name).font(.system(size: T.k * 10.5, weight: .semibold))
+                    Text(v.name).font(.system(size: T.k * 11, weight: .semibold))
                 }
                 .buttonStyle(ChromeButtonStyle(active: true, size: 22)).help("\(v.label): click to fit the browser again")
             }
@@ -239,11 +239,11 @@ private struct AddressSuggestions: View {
                 Button { open(e) } label: {
                     VStack(alignment: .leading, spacing: 1) {
                         Text(e.title.isEmpty ? e.url : e.title).font(.system(size: T.k * 12, weight: .medium)).foregroundStyle(T.text).lineLimit(1)
-                        Text(e.url).font(.system(size: T.k * 10.5)).foregroundStyle(T.text3).lineLimit(1).truncationMode(.middle)
+                        Text(e.url).font(.system(size: T.k * 11)).foregroundStyle(T.text3).lineLimit(1).truncationMode(.middle)
                     }
                     .padding(.horizontal, 8).padding(.vertical, 4)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 5).fill(i == selected ? T.selection : .clear))
+                    .background(RoundedRectangle(cornerRadius: 6).fill(i == selected ? T.selection : .clear))
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)

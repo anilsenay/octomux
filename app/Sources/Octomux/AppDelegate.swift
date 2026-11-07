@@ -31,6 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         GlobalHotKey.shared.apply()
         AppModel.shared.start()
         BrowserUI.start()
+        TabSwitcher.shared.start()
         if InboxStore.shared.anyConnected { InboxStore.shared.start() }
         Updater.shared.start()
         openMainWindow()

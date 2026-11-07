@@ -40,7 +40,7 @@ struct ProjectSettings: View {
 
     private func picker(_ p: Project, _ projects: [Project]) -> some View {
         HStack(spacing: 10) {
-            Text("Project").font(.system(size: T.k * 12.5)).foregroundStyle(T.text2)
+            Text("Project").font(.system(size: T.k * 13)).foregroundStyle(T.text2)
             Menu {
                 ForEach(model.orderedWorkspaces) { w in
                     let ps = projects.filter { $0.workspaceId == w.id }.sorted { $0.sort < $1.sort }
@@ -245,11 +245,11 @@ struct ProjectSettings: View {
                     .buttonStyle(PrimaryButtonStyle())
                 }
             }
-            Text(desc).font(.system(size: T.k * 11.5)).foregroundStyle(T.text2).fixedSize(horizontal: false, vertical: true)
+            Text(desc).font(.system(size: T.k * 12)).foregroundStyle(T.text2).fixedSize(horizontal: false, vertical: true)
             TextEditor(text: text).font(T.mono(12)).frame(height: 64)
                 .scrollContentBackground(.hidden).padding(6)
-                .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(T.surface))
-                .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(T.border))
+                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(T.surface))
+                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(T.border))
         }
         .settingAnchor(title)
     }

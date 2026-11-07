@@ -729,7 +729,7 @@ struct PaneHeader: View {
             // Narrow panes keep their title: the split buttons stay in the … and right-click menus.
             let roomy = g.size.width >= 300
             HStack(spacing: 7) {
-                Image(systemName: "circle.grid.2x3.fill").font(.system(size: T.k * 7.5)).foregroundStyle(T.text3.opacity(hover ? 0.9 : 0.45))
+                Image(systemName: "circle.grid.2x3.fill").font(.system(size: T.k * 8)).foregroundStyle(T.text3.opacity(hover ? 0.9 : 0.45))
                     .frame(width: 8).help("Drag to move this pane")
                 AgentIcon(icon: iconName(for: s, model: model), size: 11).opacity(focused ? 1 : 0.6)
                 Text(s.displayTitle)
@@ -751,7 +751,7 @@ struct PaneHeader: View {
                             .foregroundStyle(zoomed ? T.accent : T.text3)
                     }
                     .help(zoomed ? "Restore split (⇧⌘↩)" : "Zoom pane (⇧⌘↩)")
-                    .background(zoomed ? RoundedRectangle(cornerRadius: 5, style: .continuous).fill(T.accent.opacity(0.15)) : nil)
+                    .background(zoomed ? RoundedRectangle(cornerRadius: 6, style: .continuous).fill(T.accent.opacity(0.15)) : nil)
                     if model.canChat(s) {
                         Button { model.toggleChat(s.id) } label: { Image(systemName: model.isChat(s.id) ? "terminal" : "text.bubble") }
                             .help(model.isChat(s.id) ? "Show terminal" : "Show as chat")
@@ -763,7 +763,7 @@ struct PaneHeader: View {
                         .help("Close pane (⌘W)").disabled(!model.canManage)
                 }
                 .buttonStyle(IconButtonStyle(size: 20))
-                .font(.system(size: T.k * 10.5, weight: .medium))
+                .font(.system(size: T.k * 11, weight: .medium))
                 .foregroundStyle(T.text3)
                 .opacity(hover || focused || zoomed ? 1 : 0)
             }
@@ -800,8 +800,8 @@ struct PaneDragPreview: View {
             Text(session.displayTitle).font(.system(size: T.k * 12, weight: .medium)).lineLimit(1)
         }
         .padding(.horizontal, 10).frame(height: 26)
-        .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(T.raised))
-        .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(T.accent.opacity(0.7)))
+        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(T.raised))
+        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(T.accent.opacity(0.7)))
         .foregroundStyle(T.text)
     }
 }

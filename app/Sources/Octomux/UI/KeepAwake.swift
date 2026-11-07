@@ -262,7 +262,7 @@ struct KeepAwakeSettings: View {
                 Menu {
                     ForEach(KeepAwake.durations, id: \.seconds) { d in Button(d.title) { awake.keepAwake(for: d.seconds) } }
                     if s.until != nil { Divider(); Button("Stop Now") { awake.stopTimer() } }
-                } label: { Text(s.until.map { "Until \(KeepAwake.clock($0))" } ?? "Choose…").font(.system(size: T.k * 12.5)) }
+                } label: { Text(s.until.map { "Until \(KeepAwake.clock($0))" } ?? "Choose…").font(.system(size: T.k * 13)) }
                 .menuStyle(.button).fixedSize()
             }
             if s.mode != "off" {

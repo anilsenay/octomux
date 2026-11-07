@@ -18,7 +18,7 @@ struct SessionsSettings: View {
             }
         }) {
             if running.isEmpty {
-                Text("Nothing is running.").font(.system(size: T.k * 12.5)).foregroundStyle(T.text2).padding(14)
+                Text("Nothing is running.").font(.system(size: T.k * 13)).foregroundStyle(T.text2).padding(14)
             }
             ForEach(running) { s in row(s) }
         }
@@ -82,7 +82,7 @@ struct SessionsSettings: View {
                 Text(s.displayTitle).font(.system(size: T.k * 13, weight: .medium)).lineLimit(1)
                 Text([model.project(s.projectId)?.name, Self.status(s), (u?.processes ?? 0) > 1 ? u.flatMap { u in u.top.map { "\(u.processes) processes, largest \($0)" } } : nil]
                     .compactMap { $0 }.joined(separator: " · "))
-                    .font(.system(size: T.k * 11.5)).foregroundStyle(T.text3).lineLimit(1)
+                    .font(.system(size: T.k * 12)).foregroundStyle(T.text3).lineLimit(1)
             }
             .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
             Text(u.map { Self.cpu($0.cpuPercent) } ?? "–").font(T.mono(12)).foregroundStyle((u?.cpuPercent ?? 0) >= 50 ? T.amber : T.text2)

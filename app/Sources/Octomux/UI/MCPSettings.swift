@@ -49,12 +49,12 @@ struct MCPSettings: View {
                 }
             }) {
                 if g.servers.isEmpty {
-                    Text("No MCP servers.").font(.system(size: T.k * 12.5)).foregroundStyle(T.text2).padding(14)
+                    Text("No MCP servers.").font(.system(size: T.k * 13)).foregroundStyle(T.text2).padding(14)
                 }
                 ForEach(g.servers) { s in row(s, g) }
                 if let extra = others[g.file], !extra.isEmpty {
                     Text("Also available to Claude Code (your claude.ai connectors and plugins; manage them there)")
-                        .font(.system(size: T.k * 11.5, weight: .medium)).foregroundStyle(T.text2)
+                        .font(.system(size: T.k * 12, weight: .medium)).foregroundStyle(T.text2)
                         .padding(.horizontal, 14).padding(.top, 10).padding(.bottom, 2)
                     ForEach(extra, id: \.name) { e in otherRow(e) }
                 }
@@ -134,7 +134,7 @@ struct MCPSettings: View {
     }
 
     private func pill(_ t: String, color: Color) -> some View {
-        Text(t).font(.system(size: T.k * 10.5, weight: .semibold)).foregroundStyle(color)
+        Text(t).font(.system(size: T.k * 11, weight: .semibold)).foregroundStyle(color)
             .padding(.horizontal, 6).padding(.vertical, 1).background(Capsule().fill(T.hover))
     }
 
@@ -343,7 +343,7 @@ struct BrowserToolsSettings: View {
             SettingRow("Allowed sites", desc: "Agents can open only these (one per line or comma separated): example.com, *.example.com (and its subdomains), localhost:3000, file:// for local files. Empty: any site. Links they follow elsewhere are blocked too.") {
                 VStack(alignment: .trailing, spacing: 4) {
                     TextField("Any site", text: $sites, axis: .vertical)
-                        .textFieldStyle(.roundedBorder).font(T.mono(11.5)).lineLimit(1...5).frame(width: 260)
+                        .textFieldStyle(.roundedBorder).font(T.mono(12)).lineLimit(1...5).frame(width: 260)
                         .onSubmit(saveSites)
                     if sites != BrowserAccess.allowedSites.joined(separator: ", ") {
                         Button("Save", action: saveSites).buttonStyle(SecondaryButtonStyle()).controlSize(.small)

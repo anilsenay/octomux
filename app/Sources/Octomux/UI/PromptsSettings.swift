@@ -64,7 +64,7 @@ struct PromptsSettings: View {
             SettingsGroup(TemplateMenu<EmptyView>.scopeTitle(scope, model: model),
                           desc: scope == "global" ? "Every project." : scope.hasPrefix("workspace:") ? "The projects of this workspace." : "Only this project.") {
                 if list.isEmpty {
-                    Text("None yet.").font(.system(size: T.k * 12.5)).foregroundStyle(T.text2).padding(14)
+                    Text("None yet.").font(.system(size: T.k * 13)).foregroundStyle(T.text2).padding(14)
                 }
                 ForEach(list) { t in
                     HStack(alignment: .top, spacing: 10) {
@@ -73,11 +73,11 @@ struct PromptsSettings: View {
                             HStack(spacing: 6) {
                                 Text(t.name).font(.system(size: T.k * 13, weight: .medium))
                                 if t.changes {
-                                    Text("Changes").font(.system(size: T.k * 10.5, weight: .semibold)).foregroundStyle(T.text2)
+                                    Text("Changes").font(.system(size: T.k * 11, weight: .semibold)).foregroundStyle(T.text2)
                                         .padding(.horizontal, 6).padding(.vertical, 1).background(Capsule().fill(T.hover))
                                 }
                             }
-                            Text(t.text).font(.system(size: T.k * 11.5)).foregroundStyle(T.text2).lineLimit(2)
+                            Text(t.text).font(.system(size: T.k * 12)).foregroundStyle(T.text2).lineLimit(2)
                         }
                         .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
                         Button("Edit") { editing = t }.buttonStyle(SecondaryButtonStyle())
@@ -118,10 +118,10 @@ struct PromptEditor: View {
             }
             Toggle("Also in the Changes panel's Ask Agent menu (sends it to the focused agent, or a new one)", isOn: $template.changes)
                 .font(.system(size: T.k * 12))
-            TextEditor(text: $template.text).font(T.mono(12.5)).frame(height: 160)
+            TextEditor(text: $template.text).font(T.mono(13)).frame(height: 160)
                 .scrollContentBackground(.hidden).padding(6)
-                .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(T.surface))
-                .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(T.border))
+                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(T.surface))
+                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(T.border))
             Text("Filled in when picked: " + PromptTemplate.placeholders.map { "\($0.0) \($0.1)" }.joined(separator: ", ") + ".")
                 .font(.caption).foregroundStyle(T.text3).fixedSize(horizontal: false, vertical: true)
             HStack {

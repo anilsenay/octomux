@@ -23,7 +23,7 @@ struct TerminalSettings: View {
                         }
                     }
                 } label: {
-                    Text(disk.fontFamily ?? "Default (\(TerminalConfig.builtInFont))").font(.system(size: T.k * 12.5))
+                    Text(disk.fontFamily ?? "Default (\(TerminalConfig.builtInFont))").font(.system(size: T.k * 13))
                 }
                 .menuStyle(.button).fixedSize()
             }
@@ -84,8 +84,8 @@ struct TerminalSettings: View {
             SettingBlock {
                 TextEditor(text: $editor).font(T.mono(12)).frame(height: 200)
                     .scrollContentBackground(.hidden).padding(6)
-                    .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(T.surface))
-                    .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(T.border))
+                    .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(T.surface))
+                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(T.border))
                 HStack(spacing: 8) {
                     Button("Import from Ghostty") { importGhostty() }.buttonStyle(SecondaryButtonStyle())
                     Spacer()
@@ -116,7 +116,7 @@ struct TerminalSettings: View {
     private func stepper(value: String, minus: Bool, plus: Bool, step: @escaping (Int) -> Void) -> some View {
         HStack(spacing: 0) {
             Button { step(-1) } label: { Image(systemName: "minus").frame(width: 26, height: 24).contentShape(Rectangle()) }.disabled(!minus)
-            Text(value).font(.system(size: T.k * 12.5).monospacedDigit()).frame(minWidth: 64)
+            Text(value).font(.system(size: T.k * 13).monospacedDigit()).frame(minWidth: 64)
             Button { step(1) } label: { Image(systemName: "plus").frame(width: 26, height: 24).contentShape(Rectangle()) }.disabled(!plus)
         }
         .buttonStyle(.plain).font(.system(size: T.k * 11, weight: .semibold))
@@ -189,7 +189,7 @@ struct TerminalTextPreview: View {
         .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(T.border))
         .overlay(alignment: .topTrailing) {
             Text("\(config.fontFamily ?? TerminalConfig.builtInFont) · \(TerminalSettings.trim(config.fontSize)) pt")
-                .font(.system(size: T.k * 10.5)).foregroundStyle(T.text3).padding(8)
+                .font(.system(size: T.k * 11)).foregroundStyle(T.text3).padding(8)
         }
     }
 

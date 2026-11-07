@@ -34,7 +34,7 @@ struct OpenInSettings: View {
                     }
                     Text(a.name).font(.system(size: T.k * 13)).foregroundStyle(hidden.contains(a.id) ? T.text3 : T.text)
                     if a.id == OpenIn.defaultAppId {
-                        Text("Default").font(.system(size: T.k * 10.5, weight: .semibold)).foregroundStyle(T.accent)
+                        Text("Default").font(.system(size: T.k * 11, weight: .semibold)).foregroundStyle(T.accent)
                             .padding(.horizontal, 6).padding(.vertical, 1).background(Capsule().fill(T.accent.opacity(0.14)))
                     }
                     Spacer()
