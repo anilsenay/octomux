@@ -259,9 +259,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     /// Saved layouts in the View menu, under the built-in ones (⌃⌘8 and ⌃⌘9 for the first two), the one in use ticked.
     func refreshLayoutMenu() {
         guard let view = NSApp.mainMenu?.items.first(where: { $0.submenu?.title == "View" })?.submenu else { return }
+        // The View menu asks before every key equivalent: rebuild only when the saved layouts or the one in use changed.
+        let sorted = SavedLayouts.sorted(model.savedLayouts)
+        let signature = sorted.map { $0.id + "\u{1}" + $0.file.name }.joined(separator: "\u{2}") + "\u{3}" + (model.layout.userId ?? "")
+        if signature == layoutMenuSignature, view.items.contains(where: { $0.tag >= Self.savedLayoutTag }) == !sorted.isEmpty { return }
+        layoutMenuSignature = signature
         for it in view.items where it.tag >= Self.savedLayoutTag { view.removeItem(it) }
         guard let at = view.items.firstIndex(where: { $0.action == #selector(customizeLayout(_:)) }) else { return }
-        for (i, e) in SavedLayouts.sorted(model.savedLayouts).enumerated() {
+        for (i, e) in sorted.enumerated() {
             let it = NSMenuItem(title: e.file.name, action: #selector(chooseSavedLayout(_:)), keyEquivalent: i < 2 ? "\(8 + i)" : "")
             if i < 2 { it.keyEquivalentModifierMask = [.control, .command] }
             it.target = self
@@ -272,6 +277,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }
     static let savedLayoutTag = 9000
+    nonisolated(unsafe) private static var lastLayoutMenu = ""
+    private var layoutMenuSignature: String { get { Self.lastLayoutMenu } set { Self.lastLayoutMenu = newValue } }
     @objc func openAgentsHome(_ s: Any?) { openMainWindow(); model.openAgentsHome() }
     @objc func openWorkday(_ s: Any?) { openMainWindow(); model.openWorkday() }
     @objc func showTasks(_ s: Any?) { openMainWindow(); model.showTasks() }
