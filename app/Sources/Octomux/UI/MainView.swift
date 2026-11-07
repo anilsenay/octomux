@@ -189,10 +189,13 @@ struct TopLeftControls: View {
                 Image(systemName: "sidebar.left").font(.system(size: T.k * 13))
             }
             .buttonStyle(IconButtonStyle(size: 26)).help("Toggle Sidebar (⌘B)")
-            Button { model.paletteVisible = true } label: {
-                Image(systemName: "magnifyingglass").font(.system(size: T.k * 13))
+            // With the sidebar shown, Search is its first row.
+            if !model.sidebarVisible {
+                Button { model.paletteVisible = true } label: {
+                    Image(systemName: "magnifyingglass").font(.system(size: T.k * 13))
+                }
+                .buttonStyle(IconButtonStyle(size: 26)).help("Search (\(KeyBindings.shared.current("cmd.command-palette")?.display ?? "⌘K"))")
             }
-            .buttonStyle(IconButtonStyle(size: 26)).help("Search (\(KeyBindings.shared.current("cmd.command-palette")?.display ?? "⌘K"))")
             NotificationBell()
         }
         .padding(.leading, 78)
@@ -390,7 +393,7 @@ struct TopBar: View {
     private func layout(width: CGFloat) -> (chars: Int, compact: Bool, visible: Int, tabW: CGFloat) {
         let leading: CGFloat = model.sidebarVisible ? 8 : TopLeftControls.width + 8
         let compact = width < 820
-        let tools: CGFloat = compact ? 150 : 270          // diff, open in, split, chat, browser, panel
+        let tools: CGFloat = compact ? 130 : 250          // diff, open in, commit, panel
         let newBtn: CGFloat = 52
         let avail = max(120, width - leading - tools - newBtn - 30)
         let tabMin: CGFloat = 140, tabMax: CGFloat = 220
@@ -481,13 +484,9 @@ struct TopBar: View {
                     if let p = model.currentProject, !model.host(for: p.id).isRemote {
                         OpenInButton(path: p.path)
                     }
-                    SplitMenuButton()
                 }
-                if let fs = model.session(model.focusedSessionId), model.canChat(fs) {
-                    Button { model.toggleChat(fs.id) } label: { Image(systemName: model.isChat(fs.id) ? "terminal" : "text.bubble") }
-                        .buttonStyle(ChromeButtonStyle(active: model.isChat(fs.id))).help(model.isChat(fs.id) ? "Show terminal (⌘⇧C)" : "Show as chat (⌘⇧C)")
-                }
-                BrowserToggleButton()
+                // Split, chat and browser live in each pane's header now; the bar keeps project-wide actions.
+                if model.currentWorkPath != nil { TopBarCommitButton() }
                 Button { model.toggleRightPanel() } label: { Image(systemName: "sidebar.right") }
                     .buttonStyle(ChromeButtonStyle(active: model.rightPanelVisible)).help("Files / Changes / Sessions (⌘⌥B)")
             }
@@ -1405,21 +1404,38 @@ struct BranchPicker: View {
 }
 
 
-/// One button for both splits (right / down) in the top bar.
-struct SplitMenuButton: View {
+/// Commit ▾ in the top bar: the Changes panel with its commit box; the menu adds pull requests.
+struct TopBarCommitButton: View {
     @EnvironmentObject var model: AppModel
+    @State private var hover = false
     var body: some View {
-        Menu {
-            Button { model.newSession(profileId: nil, split: .right) } label: { Label("Split Right  ⌘D", systemImage: "rectangle.split.2x1") }
-            Button { model.newSession(profileId: nil, split: .down) } label: { Label("Split Down  ⌘⇧D", systemImage: "rectangle.split.1x2") }
-        } label: {
-            Image(systemName: "rectangle.split.2x1").foregroundStyle(T.text2)
-                .frame(width: 26, height: 26).contentShape(Rectangle())
-                .hoverHighlight(radius: R.sm)
+        HStack(spacing: 0) {
+            Button {
+                UserDefaults.standard.set("Changes", forKey: "octomux.rightTab")
+                model.setRightPanel(true)
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "point.topleft.down.to.point.bottomright.curvepath").font(T.icon(11))
+                    Text("Commit").font(.system(size: T.k * 12, weight: .medium))
+                }
+                .foregroundStyle(hover ? T.text : T.text2)
+                .padding(.leading, 9).padding(.trailing, 6).frame(height: 24).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Commit: the Changes panel with the message box")
+            Rectangle().fill(T.border).frame(width: 1, height: 14)
+            Menu {
+                Button("Commit…") { UserDefaults.standard.set("Changes", forKey: "octomux.rightTab"); model.setRightPanel(true) }
+                Button("Create Pull Request…") { DispatchQueue.main.async { PullRequestWindow.show(model: model) } }
+            } label: {
+                Image(systemName: "chevron.down").font(.system(size: T.k * 8, weight: .bold)).foregroundStyle(T.text3).menuHitBox(18, 24)
+            }
+            .plainMenu().fixedSize()
         }
-        .plainMenu().fixedSize()
-        .help("Split (⌘D right, ⌘⇧D down)")
-        .disabled(!model.canManage)
+        .background(RoundedRectangle(cornerRadius: R.md, style: .continuous).fill(hover ? T.hover : .clear))
+        .overlay(RoundedRectangle(cornerRadius: R.md, style: .continuous).stroke(T.border))
+        .onHover { hover = $0 }
         .pointerCursor()
+        .fixedSize()
     }
 }

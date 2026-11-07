@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **Start screen**: a new tab (New Chat) shows what waits for you and what ran last in the project, with starter
+  chips; the composer stays at the bottom, in the same column as the chat, so nothing moves when it starts.
+- **Every pane has a header** (also when a tab has one pane): which session and folder, with split, chat ↔
+  terminal, browser and dock buttons. The top bar keeps the tabs and project-wide actions: diff, Open in and a new
+  **Commit ▾** (the Changes panel with its message box, or Create Pull Request).
+- **Sidebar**: Search (⌘K) is the first row under the workspace, then Inbox and Projects.
+
 - **⌃Tab tab switcher**: hold ⌃ and press Tab to see the project's tabs, most recent first, each with a picture of
   what it last showed, its activity and agent; ⌃⇧Tab goes back, letting go of ⌃ (or ↩) opens it, esc cancels.
 - **Command palette**: without a query it is grouped (Waiting for you, Sessions, Commands); key hints and the

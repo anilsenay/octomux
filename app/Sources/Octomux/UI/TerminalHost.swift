@@ -254,9 +254,8 @@ final class TerminalHost {
         case .leaf(let id):
             guard let s = model.session(id) else { return PlaceholderPane(text: "Session missing") }
             let pane = PaneView(sessionId: id)
-            // Split tabs get a title bar per pane (which session, close, chat toggle).
-            let header: NSView? = (model.state.tabs.first { $0.id == tabId }?.layout.sessions.count ?? 1) > 1
-                ? PaneHeaderHost(rootView: AnyView(PaneHeader(sessionId: id).environmentObject(model))) : nil
+            // Every pane has a title bar (which session, where; split, chat, browser, dock, close).
+            let header: NSView? = PaneHeaderHost(rootView: AnyView(PaneHeader(sessionId: id).environmentObject(model)))
             if (s.state == .running || s.state == .interrupted) && model.isChat(id) && model.canChat(s) {
                 _ = surface(for: s)   // keep the terminal attached while the chat shows
                 pane.setContent(NSHostingView(rootView: ChatView(sessionId: id).environmentObject(model)), header: header)
@@ -716,7 +715,12 @@ final class PaneHeaderHost: NSHostingView<AnyView> {
 
 /// Title bar of one pane in a split tab: icon, title, activity; chat toggle and close on the right.
 struct PaneHeader: View {
+    @ObservedObject private var browser = BrowserStore.shared
     static let height: CGFloat = 30
+    static func shortPath(_ p: String) -> String {
+        let home = NSHomeDirectory()
+        return p.hasPrefix(home) ? "~" + p.dropFirst(home.count) : p
+    }
     @EnvironmentObject var model: AppModel
     let sessionId: String
     @State private var hover = false
@@ -724,6 +728,7 @@ struct PaneHeader: View {
     var body: some View {
         let focused = model.focusedSessionId == sessionId
         let zoomed = model.isZoomed(sessionId)
+        let single = (model.tab(containing: sessionId)?.layout.sessions.count ?? 1) <= 1
         if let s = model.session(sessionId) {
             GeometryReader { g in
             // Narrow panes keep their title: the split buttons stay in the … and right-click menus.
@@ -737,6 +742,10 @@ struct PaneHeader: View {
                     .font(.system(size: T.k * 12, weight: focused ? .semibold : .medium))
                     .foregroundStyle(focused ? T.text : T.text3)
                     .lineLimit(1).truncationMode(.tail)
+                if roomy, !s.cwd.isEmpty {
+                    Text(Self.shortPath(s.cwd)).font(.system(size: T.k * 11)).foregroundStyle(T.text3)
+                        .lineLimit(1).truncationMode(.head)
+                }
                 ActivityIndicator(session: s)
                 Spacer(minLength: 6)
                 Group {
@@ -746,15 +755,25 @@ struct PaneHeader: View {
                         Button { model.selectSession(s.id); model.newSession(profileId: nil, split: .down) } label: { Image(systemName: "rectangle.split.1x2") }
                             .help("Split Down (⇧⌘D)").disabled(!model.canManage)
                     }
+                    if !single {
                     Button { model.toggleZoom(s.id) } label: {
                         Image(systemName: zoomed ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
                             .foregroundStyle(zoomed ? T.accent : T.text3)
                     }
                     .help(zoomed ? "Restore split (⇧⌘↩)" : "Zoom pane (⇧⌘↩)")
                     .background(zoomed ? RoundedRectangle(cornerRadius: 6, style: .continuous).fill(T.accent.opacity(0.15)) : nil)
+                    }
                     if model.canChat(s) {
                         Button { model.toggleChat(s.id) } label: { Image(systemName: model.isChat(s.id) ? "terminal" : "text.bubble") }
                             .help(model.isChat(s.id) ? "Show terminal" : "Show as chat")
+                    }
+                    if (single || focused) && s.placement == .tab {
+                        let browserOpen = BrowserStore.shared.splitOpen(tab: model.activeTabId)
+                        Button { model.selectSession(s.id); BrowserUI.toggle() } label: { Image(systemName: "globe").foregroundStyle(browserOpen ? T.accent : T.text3) }
+                            .help(browserOpen ? "Close Browser" : "Browser beside this tab")
+                        let dockOpen = model.isDockOpen(model.currentProject?.id)
+                        Button { model.toggleDock() } label: { Image(systemName: "rectangle.bottomhalf.inset.filled").foregroundStyle(dockOpen ? T.accent : T.text3) }
+                            .help("Terminal dock (⌘J)").disabled(model.currentProject == nil)
                     }
                     Menu { SessionMenu(session: s) } label: { Image(systemName: "ellipsis").menuHitBox(20, 20) }
                         .plainMenu().frame(width: 20, height: 20)
@@ -765,7 +784,7 @@ struct PaneHeader: View {
                 .buttonStyle(IconButtonStyle(size: 20))
                 .font(.system(size: T.k * 11, weight: .medium))
                 .foregroundStyle(T.text3)
-                .opacity(hover || focused || zoomed ? 1 : 0)
+                .opacity(hover || focused || zoomed || single ? 1 : 0)
             }
             .padding(.leading, 12).padding(.trailing, 6)
             .frame(width: g.size.width, height: g.size.height)

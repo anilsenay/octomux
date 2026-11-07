@@ -56,7 +56,7 @@ A closed scale with no half points (`DesignTokenTests` fails on `N.5` sizes in `
   below 4 keep their own values; `DesignTokenTests` fails on other radii.
 - Rows: 30 px (Grid 24), radius 8 (Grid 2). Tabs: 28 px (Grid: 36 px underline; Glass: segmented).
   Top bar 46 px, status bar 28 px (Grid 36 / 24, Glass 48 / 32).
-- Cards: radius 10 (Glass 12, Grid 0), 1 px `border`, inset 8 px from the window edge, 8 px gap between panes.
+- Cards: radius 12 (Glass 12, Grid 0), 1 px `border`, inset 8 px from the window edge, 8 px gap between panes.
 - Shadows only on floating things: active pill tab (light), segmented-tab thumb, popovers/menus (system),
   palette and tab switcher (0 16 36 black 35% + 1 px hairline).
 - Motion (`Motion`): hover 0.12 s ease-out, pop = spring(0.25, 0.85), panel = 0.3 s (.16, 1, .3, 1); none with
@@ -66,6 +66,12 @@ A closed scale with no half points (`DesignTokenTests` fails on `N.5` sizes in `
 ## Components
 - **Tab** — icon (agent mark / terminal glyph) + title + activity dot; close × on hover; active = `raised`
   card with a hairline (Ink), accent underline (Grid), segment (Glass); inactive tabs have no fill until hovered.
+- **Sidebar top** — workspace menu (no fill until hovered), then Search (⌘K hint, opens the palette), Inbox and a
+  PROJECTS label; Search moves next to the traffic lights only while the sidebar is hidden.
+- **Top bar** — tabs from the left over the full width; on the right only project-wide actions: diff count,
+  Open in, Commit ▾ (Changes panel with the message box; Create Pull Request), right panel.
+- **Pane header** — on every pane (not only in splits): agent mark, title, working folder, activity; split,
+  zoom (splits only), chat ↔ terminal, browser and dock (the only or focused pane), session menu, close.
 - **Sidebar row** — project: 18 px color tile with initial/icon, semibold name, branch in mono `text3`,
   amber count badge when sessions wait. Session: 14 px icon, title, trailing activity (working ring in
   accent, amber “input” pill, green done dot); dormant at 45% opacity; hover reveals stop / restart / remove.
@@ -82,8 +88,11 @@ A closed scale with no half points (`DesignTokenTests` fails on `N.5` sizes in `
 - **Tab switcher** — ⌃Tab / ⌃⇧Tab while ⌃ is held: the project's tabs most recent first, each with a picture of
   its work area (taken from Octomux's own window after the tab has been on screen), activity, title and agent;
   release ⌃ or ↵ to open, Esc to cancel.
-- **Empty state** — centered: 40 px glyph in `text3`, headline, one line `text2`, buttons row. New chat: the
-  agent's mark, greeting, starters above the composer (they fill the composer, never send).
+- **Empty state** — centered: 40 px glyph in `text3`, headline, one line `text2`, buttons row.
+- **Start screen** (new chat / empty tab) — one block above the composer: the octopus (`OctoMark`, drawn from the
+  app icon), "What should we build in <project>?", a summary line, Waiting for you / Recent cards (rows open the
+  session), starter chips (fill the composer, never send). The composer sits at the bottom in a 720 pt column —
+  the same column as the chat view's messages and composer, so nothing moves or resizes when the chat starts.
 - **Status indicators** — `ActivityIndicator`: working = rotating accent ring; needs input = amber pill;
   done = green dot (unread); error = red dot; restoring = amber arrow. Usage limits in the status bar: 12 px rings.
 - **Chat** — the user's messages in a neutral bubble (white 7.5% / black 5%), never the accent.

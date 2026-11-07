@@ -314,9 +314,8 @@ struct ChatView: View {
 
     var body: some View {
         let s = model.session(sessionId)
+        // The pane's header names the session and switches back to the terminal.
         VStack(spacing: 0) {
-            header(s)
-            Hairline()
             if chat.path == nil || chat.items.isEmpty {
                 starting(s)
             } else {
@@ -388,7 +387,7 @@ struct ChatView: View {
             Spacer()
         }
         .padding(.horizontal, 22).padding(.vertical, 16)
-        .frame(maxWidth: 820, alignment: .leading)
+        .frame(maxWidth: NewChatView.column + 44, alignment: .leading)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
@@ -404,20 +403,6 @@ struct ChatView: View {
             return (try? model.client(for: s.id).callSync("fs.find_rollout", params) as? [String: Any])?["path"] as? String
         }
         return remote ? nil : TranscriptLocator.path(for: s, model: model)
-    }
-
-    private func header(_ s: Session?) -> some View {
-        HStack(spacing: 8) {
-            AgentIcon(icon: model.profile(s?.profileId)?.icon ?? "claude", size: 12)
-            Text(s?.displayTitle ?? "Chat").font(T.headline).foregroundStyle(T.text).lineLimit(1)
-            Text("chat view").font(T.caption).foregroundStyle(T.text3)
-            Spacer()
-            Button { model.toggleChat(sessionId) } label: {
-                HStack(spacing: 5) { Image(systemName: "terminal").font(.system(size: T.k * 11)); Text("Terminal") }
-            }
-            .buttonStyle(ChromeButtonStyle()).help("Back to the terminal (⌘⇧C)")
-        }
-        .padding(.horizontal, 14).frame(height: 38)
     }
 
     private func composer(_ s: Session?) -> some View {
@@ -462,7 +447,9 @@ struct ChatView: View {
                                  configDir: { [model, sessionId] in ChatAgentDirs.config(model.profile(model.session(sessionId)?.profileId)) },
                                  folder: { [model, sessionId] in model.session(sessionId).map { $0.worktree ?? model.project($0.projectId)?.path ?? $0.cwd } })
         }
-        .frame(maxWidth: 780)
+        // The same column as the start screen and the messages (the composer doesn't move or resize when a
+        // new chat starts).
+        .frame(maxWidth: NewChatView.column)
         .padding(.horizontal, 28).padding(.bottom, 18).padding(.top, 6)
         .frame(maxWidth: .infinity)
     }
@@ -535,7 +522,7 @@ struct ChatView: View {
                     .help("Sent while the agent works; it reads it when this step ends")
                 }
             }
-            .frame(maxWidth: 760)
+            .frame(maxWidth: NewChatView.column - 20)
             .padding(.horizontal, 38).padding(.top, 4)
             .frame(maxWidth: .infinity)
         }

@@ -39,32 +39,36 @@ struct NewChatView: View {
     var body: some View {
         let path = worktree ?? project?.path ?? ""
         VStack(spacing: 0) {
-            Spacer(minLength: 24)
-            // Hero: the agent's mark and a greeting, the composer at the bottom
-            // where the chat's composer will be once it starts (no jump when the first message is sent).
-            VStack(spacing: 14) {
-                AgentIcon(icon: profile?.icon ?? "claude", size: 46)
-                Text(Self.greeting).font(.system(size: T.k * 28, weight: .regular, design: .serif)).foregroundStyle(T.text)
-                HStack(spacing: 6) {
-                    Text(project?.name ?? "")
-                    if let b = git.branch(for: path) { Text("·"); Text(b).font(T.mono(12)) }
-                }
-                .font(.system(size: T.k * 13)).foregroundStyle(T.text3)
+            // One block above the composer, which stays where the chat's composer will be (no jump when the
+            // first message goes out): the mark and the question, what waits and what ran here, starters.
+            Spacer(minLength: 16)
+            VStack(spacing: 0) {
+                OctoMark(size: 64)
+                Text("What should we build in \(project?.name ?? "this project")?")
+                    .font(.system(size: T.k * 26, weight: .regular, design: .serif)).foregroundStyle(T.text)
+                    .multilineTextAlignment(.center)
+                    .padding(.top, 14)
+                Text(summary(path: path)).font(.system(size: T.k * 12)).foregroundStyle(T.text3).padding(.top, 6)
+                lists.padding(.top, 22)
             }
-            Spacer(minLength: 24)
+            .frame(maxWidth: Self.column)
+            .padding(.horizontal, 28)
             if draft.isEmpty && files.isEmpty {
                 // Starters: fill the composer (never send); the text can be edited first.
-                VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
                     ForEach(Self.starters, id: \.text) { st in
-                        StarterRow(icon: st.icon, text: st.text) { draft = st.text; focused = true }
+                        StarterChip(icon: st.icon, text: st.label) { draft = st.text; focused = true }.help(st.text)
                     }
+                    Spacer(minLength: 0)
                 }
-                .frame(maxWidth: 780, alignment: .leading)
-                .padding(.horizontal, 28).padding(.bottom, 8)
+                .frame(maxWidth: Self.column, alignment: .leading)
+                .padding(.horizontal, 28).padding(.top, 18).padding(.bottom, 10)
                 .transition(.opacity)
+            } else {
+                Color.clear.frame(height: 18)
             }
             composer
-                .frame(maxWidth: 780)
+                .frame(maxWidth: Self.column)
                 .padding(.horizontal, 28).padding(.bottom, 18)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -94,10 +98,43 @@ struct NewChatView: View {
         }
     }
 
-    static let starters: [(icon: String, text: String)] = [
-        ("doc.text.magnifyingglass", "Explain how this repository is organized"),
-        ("checklist", "Review my uncommitted changes"),
-        ("ladybug", "Find and fix a small bug"),
+    /// Width of the start screen's column and of the chat's (the same, so nothing moves when the chat starts).
+    static let column: CGFloat = 720
+
+    /// "octomux · main · 3 agents waiting · 1 working"
+    private func summary(path: String) -> String {
+        let live = model.agentSessions(onlyCurrentWorkspace: false).filter { !$0.isDormant }
+        let waiting = live.filter { $0.activity == .needsInput }.count
+        let working = live.filter { $0.activity == .working }.count
+        var parts = [project?.name, git.branch(for: path)].compactMap { $0 }
+        if waiting > 0 { parts.append("\(waiting) waiting for you") }
+        if working > 0 { parts.append("\(working) working") }
+        return parts.joined(separator: " · ")
+    }
+
+    /// What waits for you (any project) and what ran last in this project; each row opens its session.
+    @ViewBuilder private var lists: some View {
+        let waiting = Array(model.agentSessions(onlyCurrentWorkspace: false).filter { $0.activity == .needsInput && !$0.isDormant }
+            .sorted { $0.lastActivityAt > $1.lastActivityAt }.prefix(3))
+        let recent = Array((project.map { model.sessions(ofProject: $0.id) } ?? [])
+            .filter { s in !waiting.contains { $0.id == s.id } }
+            .sorted { $0.lastActivityAt > $1.lastActivityAt }.prefix(3))
+        if !waiting.isEmpty || !recent.isEmpty {
+            HStack(alignment: .top, spacing: 12) {
+                if !waiting.isEmpty {
+                    StartList(title: "Waiting for you", tint: T.amber, sessions: waiting, showProject: true)
+                }
+                if !recent.isEmpty {
+                    StartList(title: "Recent in \(project?.name ?? "this project")", tint: nil, sessions: recent, showProject: false)
+                }
+            }
+        }
+    }
+
+    static let starters: [(icon: String, label: String, text: String)] = [
+        ("doc.text.magnifyingglass", "Explain this repository", "Explain how this repository is organized"),
+        ("checklist", "Review my changes", "Review my uncommitted changes"),
+        ("ladybug", "Find and fix a bug", "Find and fix a small bug"),
     ]
 
     /// "Anıl returns!" with the account's first name, else a plain question.
@@ -359,7 +396,7 @@ extension View {
     func composerCard(focused: Bool) -> some View {
         self
             .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 10)
-            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(T.raised.opacity(ThemeStore.shared.isDark ? 0.5 : 1)))
+            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(T.raised.opacity(ThemeStore.shared.isDark ? 0.8 : 1)))
             .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .stroke(focused ? WorkspaceTintColor.ring(AppModel.shared).opacity(0.6) : T.border, lineWidth: 1))
             .shadow(color: .black.opacity(ThemeStore.shared.isDark ? 0.25 : 0.07), radius: 10, y: 3)
@@ -393,22 +430,67 @@ enum NewChatDraft {
 }
 
 
-/// A suggestion above the new-chat composer: icon + text, hover fill.
-struct StarterRow: View {
+/// A small list card on the start screen (waiting sessions, recent sessions).
+struct StartList: View {
+    @EnvironmentObject var model: AppModel
+    let title: String
+    let tint: Color?
+    let sessions: [Session]
+    let showProject: Bool
+    var body: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(title.uppercased()).font(T.micro).tracking(0.6).foregroundStyle(tint ?? T.text3)
+                .lineLimit(1).padding(.horizontal, 8).padding(.bottom, 4)
+            ForEach(sessions) { s in StartListRow(session: s, showProject: showProject) }
+        }
+        .padding(.vertical, 8).padding(.horizontal, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(RoundedRectangle(cornerRadius: R.lg, style: .continuous).stroke(T.border))
+    }
+}
+
+struct StartListRow: View {
+    @EnvironmentObject var model: AppModel
+    let session: Session
+    let showProject: Bool
+    @State private var hover = false
+    var body: some View {
+        HStack(spacing: 8) {
+            AgentIcon(icon: iconName(for: session, model: model), size: 12).frame(width: 16)
+            Text(session.displayTitle).font(T.body).foregroundStyle(T.text).lineLimit(1)
+            Spacer(minLength: 6)
+            Text([showProject ? model.project(session.projectId)?.name : nil, AgentRow.elapsed(since: session.lastActivityAt)]
+                .compactMap { $0 }.joined(separator: " · "))
+                .font(T.meta).foregroundStyle(T.text3).lineLimit(1)
+        }
+        .padding(.horizontal, 8).frame(height: 27)
+        .background(RoundedRectangle(cornerRadius: R.sm, style: .continuous).fill(hover ? T.hover : .clear))
+        .contentShape(Rectangle())
+        .onHover { hover = $0 }
+        .pointerCursor()
+        .onTapGesture { model.selectSession(session.id) }
+        .help("Open \(session.displayTitle)")
+    }
+}
+
+/// A suggestion chip above the start screen's composer: fills it, never sends.
+struct StarterChip: View {
     let icon: String
     let text: String
     let action: () -> Void
     @State private var hover = false
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: icon).font(T.icon(12)).foregroundStyle(T.text3).frame(width: 16)
-            Text(text).font(T.body).foregroundStyle(hover ? T.text : T.text2)
+        HStack(spacing: 6) {
+            Image(systemName: icon).font(T.icon(11)).foregroundStyle(T.text3)
+            Text(text).font(.system(size: T.k * 12)).foregroundStyle(hover ? T.text : T.text2).lineLimit(1)
         }
-        .padding(.horizontal, 8).frame(height: 28)
-        .background(RoundedRectangle(cornerRadius: R.md, style: .continuous).fill(hover ? T.hover : .clear))
-        .contentShape(Rectangle())
+        .padding(.horizontal, 10).frame(height: 26)
+        .background(Capsule().fill(hover ? T.hover : .clear))
+        .overlay(Capsule().stroke(T.border))
+        .contentShape(Capsule())
         .onHover { hover = $0 }
         .pointerCursor()
         .onTapGesture(perform: action)
     }
 }
+

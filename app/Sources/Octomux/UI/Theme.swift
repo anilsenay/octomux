@@ -67,7 +67,7 @@ enum Themes {
                            text: c("#1D1D1F"), text2: c("#55555C"), text3: c("#6B6B73"),
                            accent: c("#C9592B"), claude: c("#C9592B"), amber: c("#9A6200"), green: c("#1E8A4C"), red: c("#C93838"), blue: c("#2A6BD1"),
                            termFg: c("#2B2B30"), termCursor: c("#C9592B"), termSelection: c("#E6E1DC"), ansi: ansiLight),
-        metrics: ThemeMetrics(statusH: 28))
+        metrics: ThemeMetrics(statusH: 28, cardR: 12))
 
     static let grid = ThemePreset(
         id: "grid", name: "Grid", summary: "Dense and technical: edge-to-edge panes, hairlines, mono labels",

@@ -40,7 +40,29 @@ struct InboxSidebarRow: View {
         .onHover { hover = $0 }
         .help("Pull requests, reviews and issues")
         .padding(.horizontal, 10)
-        .padding(.top, 8)
+    }
+}
+
+/// "Search  ⌘K" at the top of the sidebar: opens the command palette.
+struct SearchSidebarRow: View {
+    @EnvironmentObject var model: AppModel
+    @State private var hover = false
+    var body: some View {
+        Button { model.paletteVisible = true } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass").font(.system(size: T.k * 12, weight: .medium)).foregroundStyle(T.text2).frame(width: 16)
+                Text("Search").font(.system(size: T.k * 13, weight: .medium)).foregroundStyle(T.text)
+                Spacer()
+                ShortcutHint(KeyBindings.shared.current("cmd.command-palette")?.display ?? "⌘K")
+            }
+            .padding(.horizontal, 10).frame(height: 28)
+            .background(RoundedRectangle(cornerRadius: T.m.rowR, style: .continuous).fill(hover ? T.hover : .clear))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hover = $0 }
+        .help("Sessions, projects and commands")
+        .padding(.horizontal, 10)
     }
 }
 

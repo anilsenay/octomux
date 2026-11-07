@@ -7,12 +7,15 @@ struct SidebarView: View {
     var floating = false
     @ObservedObject var wt = Worktrees.shared
     @State private var collapsed: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "octomux.collapsed") ?? [])
+    @State private var workspaceHover = false
 
     var body: some View {
         GeometryReader { geo in
         VStack(spacing: 0) {
             header
-            InboxSidebarRow()
+            SearchSidebarRow().padding(.top, 6)
+            InboxSidebarRow().padding(.top, 1)
+            HStack { SectionLabel("Projects"); Spacer() }.padding(.horizontal, 20).padding(.top, 14)
             WorkspacePages(current: model.selectedWorkspaceId) { ws in projectList(ws) }
             .frame(maxHeight: .infinity)
             AgentsPanel(maxHeight: max(AgentsPanel.minHeight, geo.size.height - 260))
@@ -55,7 +58,7 @@ struct SidebarView: View {
                     }
                 }
                 .padding(.horizontal, 10)
-                .padding(.top, 10)
+                .padding(.top, 4)
                 .padding(.bottom, 8)
             }
     }
@@ -109,9 +112,10 @@ struct SidebarView: View {
                     }
                     Image(systemName: "chevron.up.chevron.down").font(.system(size: T.k * 9, weight: .semibold)).foregroundStyle(T.text3)
                 }
-                .padding(.horizontal, 10).frame(height: 32)
-                .background(RoundedRectangle(cornerRadius: T.m.rowR, style: .continuous).fill(T.hover))
+                .padding(.horizontal, 10).frame(height: 30)
+                .background(RoundedRectangle(cornerRadius: T.m.rowR, style: .continuous).fill(workspaceHover ? T.hover : .clear))
                 .contentShape(Rectangle())
+                .onHover { workspaceHover = $0 }
             }
             .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden)
             .pointerCursor()
