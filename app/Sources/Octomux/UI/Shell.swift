@@ -142,3 +142,32 @@ struct ShellView: View {
             ?? (T.m.glass ? AnyView(Color.clear) : T.m.sidebarMaterial ? AnyView(VisualEffect(material: .sidebar)) : AnyView(WorkspaceTintedFrame()))
     }
 }
+
+/// The engine window's keys: the rail's agents take the tab keys' place.
+enum ShellKeys {
+    /// ⌘1…8: the rail's nth; ⌘9: its last (as for tabs).
+    static func goTo(_ n: Int, rail: [Session]) -> String? {
+        guard !rail.isEmpty, n >= 1 else { return nil }
+        if n == 9 { return rail.last?.id }
+        return n <= rail.count ? rail[n - 1].id : nil
+    }
+
+    /// Previous / next on the rail, wrapping; from Home the first (next) or the last (previous).
+    static func step(_ d: Int, current: String?, rail: [Session]) -> String? {
+        guard !rail.isEmpty else { return nil }
+        guard let c = current, let i = rail.firstIndex(where: { $0.id == c }) else { return d > 0 ? rail.first?.id : rail.last?.id }
+        return rail[(i + d + rail.count) % rail.count].id
+    }
+
+    /// Menu titles that change with the window (nil: the item keeps its title).
+    static func menuNames(_ action: Selector?, tag: Int) -> (classic: String, shell: String)? {
+        switch action {
+        case #selector(AppDelegate.newTerminal(_:)): return ("New Terminal Tab", "New Session")
+        case #selector(AppDelegate.prevTab(_:)): return ("Previous Tab", "Previous Agent")
+        case #selector(AppDelegate.nextTab(_:)): return ("Next Tab", "Next Agent")
+        case #selector(AppDelegate.goToTab(_:)): return ("Tab \(tag)", "Agent \(tag)")
+        case #selector(AppDelegate.showMain(_:)): return ("Main Window", "Home")
+        default: return nil
+        }
+    }
+}

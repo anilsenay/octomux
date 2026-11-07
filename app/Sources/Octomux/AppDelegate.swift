@@ -236,7 +236,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         openMainWindow()
         model.paletteVisible.toggle()
     }
-    @objc func showMain(_ s: Any?) { openMainWindow() }
+    @objc func showMain(_ s: Any?) {
+        openMainWindow()
+        if model.shellTree != nil { model.shellGoHome() }   // ⌘0 in the engine window: Home
+    }
     @objc func chooseLayout(_ s: Any?) {
         guard let n = (s as? NSMenuItem)?.tag, LayoutPreset.allCases.indices.contains(n - 1) else { return }
         model.chooseLayout(LayoutPreset.allCases[n - 1])
@@ -247,7 +250,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc func showTasks(_ s: Any?) { openMainWindow(); model.showTasks() }
     @objc func openAquarium(_ s: Any?) { openMainWindow(); model.openAquarium() }
     @objc func openAssistant(_ s: Any?) { openMainWindow(); model.openAssistant() }
-    @objc func newTerminal(_ s: Any?) { model.newSession(profileId: nil) }
+    @objc func newTerminal(_ s: Any?) {
+        if model.shellTree != nil { openMainWindow(); model.shellNew(); return }   // the engine window: Home's composer
+        model.newSession(profileId: nil)
+    }
     @objc func newAgent(_ s: Any?) { model.newSession(profileId: (model.profile(model.lastNewSessionProfile) ?? model.pinnedProfiles.first ?? model.enabledProfiles.first)?.id) }
     @objc func splitRight(_ s: Any?) { model.newSession(profileId: nil, split: .right) }
     @objc func splitDown(_ s: Any?) { model.newSession(profileId: nil, split: .down) }
@@ -263,7 +269,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc func addProject(_ s: Any?) { model.addProject() }
     @objc func openInDefault(_ s: Any?) { if let p = model.currentProject { OpenIn.open(p.path, appId: OpenIn.defaultAppId) } }
     @objc func closePane(_ s: Any?) {
-        if NSApp.keyWindow === mainWindow { model.closeFocusedPane() } else { NSApp.keyWindow?.performClose(nil) }
+        if NSApp.keyWindow === mainWindow {
+            // On the engine window's Home no pane shows: nothing to close.
+            if model.shellTree != nil && model.shellHome { return }
+            model.closeFocusedPane()
+        } else { NSApp.keyWindow?.performClose(nil) }
     }
     @objc func nextWaiting(_ s: Any?) { model.nextNeedingInput() }
     @objc func stopSession(_ s: Any?) { if let id = model.focusedSessionId { model.stop(id) } }
@@ -272,9 +282,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc func toggleSidebar(_ s: Any?) { model.toggleSidebar() }
     @objc func toggleDock(_ s: Any?) { model.toggleDock() }
     @objc func toggleRightPanel(_ s: Any?) { model.toggleRightPanel() }
-    @objc func prevTab(_ s: Any?) { model.cycleTab(-1) }
-    @objc func nextTab(_ s: Any?) { model.cycleTab(1) }
-    @objc func goToTab(_ s: NSMenuItem) { model.selectTab(index: s.tag == 9 ? -1 : s.tag - 1) }
+    @objc func prevTab(_ s: Any?) { if !shellStep(-1) { model.cycleTab(-1) } }
+    @objc func nextTab(_ s: Any?) { if !shellStep(1) { model.cycleTab(1) } }
+    @objc func goToTab(_ s: NSMenuItem) {
+        if model.shellTree != nil {   // the engine window: the rail's agents instead of tabs
+            if let id = ShellKeys.goTo(s.tag, rail: model.railSessions) { model.selectSession(id) }
+            return
+        }
+        model.selectTab(index: s.tag == 9 ? -1 : s.tag - 1)
+    }
+    /// The engine window: previous / next on the rail. False when the classic window should cycle tabs.
+    private func shellStep(_ d: Int) -> Bool {
+        guard model.shellTree != nil else { return false }
+        if let id = ShellKeys.step(d, current: model.shellHome ? nil : model.focusedSessionId, rail: model.railSessions) { model.selectSession(id) }
+        return true
+    }
     @objc func prevWorkspace(_ s: Any?) { stepWorkspace(-1) }
     @objc func nextWorkspace(_ s: Any?) { stepWorkspace(1) }
     private func stepWorkspace(_ d: Int) {
@@ -316,4 +338,13 @@ enum ProtoWindow {
 /// through `WindowDragArea`), so tabs and rows can be dragged and title-bar buttons get every click.
 final class ContentHostingView<Content: View>: NSHostingView<Content> {
     override var mouseDownCanMoveWindow: Bool { false }
+}
+
+/// The menu speaks the engine window's language: agents and Home instead of tabs (the classic window keeps its names).
+extension AppDelegate: NSMenuItemValidation {
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        let shell = model.shellTree != nil
+        if let names = ShellKeys.menuNames(item.action, tag: item.tag) { item.title = shell ? names.shell : names.classic }
+        return true
+    }
 }
