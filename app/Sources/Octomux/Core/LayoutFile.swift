@@ -91,17 +91,37 @@ struct LayoutFile: Equatable {
             if themes?.contains(id) ?? true { f.theme = Theme(id: id, mode: mode) } else { notes.append("Its theme “\(id)” isn't on this Mac; left out.") }
         }
         if case .object(let k)? = o["keys"] {
-            var dropped = 0
+            var dropped = 0, kept = 0
             for (id, v) in k {
                 guard let s = v.string, commands?.contains(id) ?? true, s.isEmpty || Self.isShortcut(s) else { dropped += 1; continue }
+                // A file may give a command a key, never take one away or take a key the Mac and every app keep.
+                guard !s.isEmpty, !Self.isReserved(s) else { kept += 1; continue }
                 f.keys[id] = s
             }
             if dropped > 0 { notes.append(dropped == 1 ? "1 shortcut is for a command this version doesn't have; left out." : "\(dropped) shortcuts are for commands this version doesn't have; left out.") }
+            if kept > 0 { notes.append(kept == 1 ? "1 shortcut would turn a command off or take ⌘Q, ⌘W, ⌘H, ⌘M or ⌘,; left out." : "\(kept) shortcuts would turn commands off or take ⌘Q, ⌘W, ⌘H, ⌘M or ⌘,; left out.") }
         }
         if let p = o["preview"]?.string {
             if let d = Self.image(fromDataURL: p) { f.preview = d } else { notes.append("Its preview picture couldn't be read; left out.") }
         }
         return .success((f, notes))
+    }
+
+    /// Keys a layout file can't take: quit, close, hide, hide others, minimize, settings, next window.
+    static let reserved: [Shortcut] = ["cmd+q", "cmd+w", "cmd+h", "opt+cmd+h", "cmd+m", "cmd+,", "cmd+`"].compactMap(Shortcut.init(string:))
+    static func isReserved(_ s: String) -> Bool { Shortcut(string: s).map { reserved.contains($0) } ?? false }
+
+    /// The file's shortcuts this Mac can take as they are: none on a key another command has (built in or yours, and
+    /// not moved by the file) or that two of its commands share. `current`: every command's shortcut now.
+    static func usableKeys(_ keys: [String: String], current: [String: Shortcut]) -> (use: [String: String], clash: [String: String]) {
+        var after = current
+        for (id, s) in keys { after[id] = Shortcut(string: s) }
+        var use: [String: String] = [:], clash: [String: String] = [:]
+        for (id, s) in keys {
+            guard let sc = Shortcut(string: s) else { continue }
+            if let other = after.filter({ $0.key != id && $0.value == sc }).keys.sorted().first { clash[id] = other } else { use[id] = s }
+        }
+        return (use, clash)
     }
 
     /// "cmd+shift+t", "ctrl+cmd+left": modifiers then one key ("" turns a shortcut off).
@@ -248,6 +268,12 @@ extension AppModel {
     /// Themes and menu commands this Mac has (a layout file's theme and shortcuts must be among them).
     var knownThemes: Set<String> { Set(Themes.all.map(\.id)) }
     var knownCommands: Set<String> { Set(KeyBindings.shared.commands.map(\.id)) }
+    /// Every command's shortcut now (built in, or yours).
+    var currentShortcuts: [String: Shortcut] {
+        var d: [String: Shortcut] = [:]
+        for c in KeyBindings.shared.commands { if let s = KeyBindings.shared.current(c.id) { d[c.id] = s } }
+        return d
+    }
 
     /// The layout in use as a file: its base, its window (none when it is the classic one), its parts.
     func currentLayoutFile(name: String, author: String = "") -> LayoutFile {
@@ -298,10 +324,11 @@ extension AppModel {
             setSetting("appearance.theme", t.id, scope: "global")
             if let m = t.mode { setSetting("appearance.mode", m, scope: "global") }
         }
-        if applyKeys, !f.keys.isEmpty {
+        let keys = LayoutFile.usableKeys(f.keys, current: currentShortcuts).use
+        if applyKeys, !keys.isEmpty {
             var o: [String: Any] = [:]
             if case .object(let d)? = settingValue("keybindings", scope: "global") { for (k, v) in d { if let s = v.string { o[k] = s } } }
-            for (k, v) in f.keys { o[k] = v }
+            for (k, v) in keys { o[k] = v }
             setSetting("keybindings", o, scope: "global")
         }
         if use { chooseSavedLayout(id) }

@@ -347,7 +347,21 @@ struct LayoutImportSheet: View {
                 Toggle("Also use its theme (\(Themes.all.first { $0.id == t.id }?.name ?? t.id)\(t.mode.map { ", " + $0 } ?? ""))", isOn: $theme)
             }
             if !f.keys.isEmpty {
-                Toggle("Also use its \(f.keys.count == 1 ? "shortcut" : "\(f.keys.count) shortcuts") (yours for the same commands are replaced)", isOn: $keys)
+                let k = LayoutFile.usableKeys(f.keys, current: model.currentShortcuts)
+                VStack(alignment: .leading, spacing: 6) {
+                    Toggle("Also use its \(k.use.count == 1 ? "shortcut" : "\(k.use.count) shortcuts") (yours for the same commands are replaced)", isOn: $keys)
+                        .disabled(k.use.isEmpty)
+                    ForEach(f.keys.keys.sorted(), id: \.self) { id in
+                        HStack(spacing: 8) {
+                            Text(Self.command(id)).foregroundStyle(T.text2)
+                            Spacer()
+                            if let other = k.clash[id] { Text("taken by \(Self.command(other)); left out").foregroundStyle(T.text3) }
+                            Text(Shortcut(string: f.keys[id] ?? "")?.display ?? "").monospaced()
+                                .foregroundStyle(k.clash[id] == nil ? T.text : T.text3).strikethrough(k.clash[id] != nil)
+                        }
+                        .font(.system(size: T.k * 11)).padding(.leading, 20)
+                    }
+                }
             }
             HStack {
                 Spacer()
@@ -360,6 +374,9 @@ struct LayoutImportSheet: View {
         .padding(20)
         .frame(width: 560)
     }
+
+    /// A menu command's name ("New Terminal Tab"), else its id.
+    static func command(_ id: String) -> String { KeyBindings.shared.commands.first { $0.id == id }?.title ?? id }
 
     /// "Agent rail, Breadcrumb, Home (workday), Work area, Status bar" — the window's blocks in words.
     static func blocks(_ f: LayoutFile) -> String {

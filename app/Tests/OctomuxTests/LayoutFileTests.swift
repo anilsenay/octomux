@@ -48,6 +48,32 @@ final class LayoutFileTests: XCTestCase {
         XCTAssertEqual(other.notes.count, 1)
     }
 
+    func testAFileCantTakeAwayKeysOrTakeTheMacsOwn() throws {
+        let cmds: Set<String> = ["cmd.new-terminal-tab", "cmd.next-tab", "cmd.quit", "cmd.close-tab", "cmd.settings"]
+        let r = try LayoutFile.read(Data(#"{"schema":1,"name":"x","base":"agents","keys":{"cmd.next-tab":"","cmd.quit":"cmd+q","cmd.close-tab":"CMD+W","cmd.settings":"cmd+,","cmd.new-terminal-tab":"cmd+shift+n"}}"#.utf8), themes: nil, commands: cmds).get()
+        XCTAssertEqual(r.file.keys, ["cmd.new-terminal-tab": "cmd+shift+n"])
+        XCTAssertEqual(r.notes.count, 1)
+        XCTAssertTrue(r.notes[0].hasPrefix("4 shortcuts"))
+        for k in ["cmd+q", "cmd+w", "cmd+h", "opt+cmd+h", "cmd+m", "cmd+,", "cmd+`"] { XCTAssertTrue(LayoutFile.isReserved(k), k) }
+        XCTAssertFalse(LayoutFile.isReserved("cmd+shift+w"))
+    }
+
+    func testAFilesShortcutOnAKeyInUseIsLeftOut() {
+        let current: [String: Shortcut] = ["cmd.new-terminal-tab": Shortcut(string: "cmd+t")!, "cmd.next-tab": Shortcut(string: "cmd+shift+]")!,
+                                           "cmd.split-right": Shortcut(string: "cmd+d")!]
+        // ⌘T is New Terminal Tab's: refused. ⌘D moves to next-tab while split-right keeps it: refused. ⌘⇧] is freed by
+        // next-tab moving, so another command may have it.
+        let k = LayoutFile.usableKeys(["cmd.next-tab": "cmd+d", "cmd.zoom": "cmd+t", "cmd.focus": "cmd+shift+]", "cmd.free": "cmd+shift+y"], current: current)
+        XCTAssertEqual(k.use, ["cmd.focus": "cmd+shift+]", "cmd.free": "cmd+shift+y"])
+        XCTAssertEqual(k.clash, ["cmd.next-tab": "cmd.split-right", "cmd.zoom": "cmd.new-terminal-tab"])
+        // Two of the file's commands on one key: neither.
+        let both = LayoutFile.usableKeys(["cmd.a": "cmd+shift+k", "cmd.b": "cmd+shift+k"], current: [:])
+        XCTAssertTrue(both.use.isEmpty)
+        XCTAssertEqual(both.clash, ["cmd.a": "cmd.b", "cmd.b": "cmd.a"])
+        // Moving a command to its own key again is no clash.
+        XCTAssertEqual(LayoutFile.usableKeys(["cmd.new-terminal-tab": "cmd+t"], current: current).use, ["cmd.new-terminal-tab": "cmd+t"])
+    }
+
     func testShortcutsInAFileAreModifiersAndOneKey() {
         for ok in ["cmd+t", "cmd+shift+]", "ctrl+cmd+left", "opt+cmd+plus"] { XCTAssertTrue(LayoutFile.isShortcut(ok), ok) }
         for bad in ["t", "cmd+", "not a key ++", "cmd+tt", "hyper+t", "cmd+ "] { XCTAssertFalse(LayoutFile.isShortcut(bad), bad) }
