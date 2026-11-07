@@ -74,6 +74,8 @@ final class AppModel: ObservableObject {
     /// The right panel's width (drag its left edge); 320 until changed.
     /// The layout engine's window is on its Home (the Agents layout), not on a session.
     @Published var shellHome = true
+    /// The task picked in the Tasks window (its detail on the right).
+    @Published var shellTaskId: String?
     @Published var rightPanelWidth: CGFloat = CGFloat(UserDefaults.standard.object(forKey: "octomux.rightPanelWidth") as? Double ?? 320) {
         didSet { UserDefaults.standard.set(Double(rightPanelWidth), forKey: "octomux.rightPanelWidth") }
     }

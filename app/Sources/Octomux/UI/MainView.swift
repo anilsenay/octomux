@@ -1470,6 +1470,8 @@ struct BranchPicker: View {
 struct WorkAreaBlock: View {
     @EnvironmentObject var model: AppModel
     @AppStorage("octomux.dockPosition") private var dockPosition = "bottom"
+    /// The aquarium strip above the panes when the layout turns it on (off where a layout places it as a block).
+    var strip = true
 
     /// Terminal area plus the dock on the chosen side.
     @ViewBuilder private var workArea: some View {
@@ -1490,7 +1492,7 @@ struct WorkAreaBlock: View {
     /// The work area, with the aquarium above it when the layout has it.
     var body: some View {
         // Not while the Aquarium tab itself is open (one aquarium on screen).
-        if model.layout.has("aquarium", in: .views), !{ if case .aquarium? = model.activeDoc?.kind { return true }; return false }() {
+        if strip, model.layout.has("aquarium", in: .views), !{ if case .aquarium? = model.activeDoc?.kind { return true }; return false }() {
             VStack(spacing: T.m.inset) {
                 AquariumView(style: .strip)
                     .overlay(alignment: .top) { AquariumHeader().padding(.horizontal, 14).padding(.top, 10) }

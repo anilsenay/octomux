@@ -69,6 +69,50 @@ final class LayoutTreeTests: XCTestCase {
         _ = LayoutCache.get(LayoutEdit.flag("chat", false, stored: v))
         XCTAssertEqual(LayoutCache.misses, before + 2)
     }
+
+    // MARK: Phase 2 blocks
+
+    func testNewBlocksKnowWhereTheyGo() {
+        XCTAssertEqual(ShellBlock.tasksRail.kind, .rail)
+        XCTAssertEqual(ShellBlock.taskDetail.kind, .rail)
+        XCTAssertEqual(ShellBlock.sideAgent.kind, .rail)
+        XCTAssertEqual(ShellBlock.aquariumStrip.kind, .bar)
+        for b in ShellBlock.allCases where b.kind == .rail { XCTAssertGreaterThanOrEqual(b.defaultWidth, b.minSize, "\(b)") }
+        XCTAssertEqual(tree(#"{"schema":1,"root":{"row":[{"block":"workArea"},{"block":"aquariumStrip"}]}}"#).failure, .placement(.aquariumStrip, "a bar goes in a column"))
+        XCTAssertEqual(tree(#"{"schema":1,"root":{"column":[{"block":"workArea"},{"block":"taskDetail"}]}}"#).failure, .placement(.taskDetail, "a rail goes in a row"))
+        XCTAssertEqual(tree(#"{"schema":1,"root":{"row":[{"block":"sideAgent","size":{"fixed":200}},{"block":"workArea"}]}}"#).failure, .tooSmall(.sideAgent))
+        // One list per window: ⌘1…9 steps through one.
+        XCTAssertEqual(tree(#"{"schema":1,"root":{"row":[{"block":"agentRail"},{"block":"tasksRail"},{"block":"workArea"}]}}"#).failure, .twoLists)
+    }
+
+    func testVariantsReadUnknownOnesAsTheFirst() throws {
+        let w = try tree(#"{"schema":1,"root":{"row":[{"block":"agentRail"},{"stack":[{"block":"home","variant":"workday"},{"block":"workArea"}]}]}}"#).get()
+        XCTAssertEqual(w.variant(of: .home), "workday")
+        let u = try tree(#"{"schema":1,"root":{"row":[{"block":"agentRail"},{"stack":[{"block":"home","variant":"garden"},{"block":"workArea"}]}]}}"#).get()
+        XCTAssertNil(u.variant(of: .home))                                   // a later version's variant: today's Home
+        let x = try tree(#"{"schema":1,"root":{"column":[{"block":"workArea","variant":"x"}]}}"#).get()
+        XCTAssertNil(x.variant(of: .workArea))                               // a block without variants
+    }
+
+    func testWindowNavFollowsItsList() throws {
+        XCTAssertEqual(try XCTUnwrap(ShellTree.builtIn("agents")).nav, .agents)
+        XCTAssertEqual(try tree(#"{"schema":1,"root":{"row":[{"block":"tasksRail"},{"block":"workArea"}]}}"#).get().nav, .tasks)
+        XCTAssertEqual(try tree(#"{"schema":1,"root":{"column":[{"block":"tabStrip"},{"block":"workArea"}]}}"#).get().nav, .tabs)
+    }
+
+    func testTreeWritesBackToTheSameTree() throws {
+        let src = #"{"schema":1,"root":{"row":[{"block":"agentRail","size":{"fixed":300}},{"column":[{"block":"breadcrumb"},{"stack":[{"block":"home","variant":"workday"},{"block":"workArea"}],"size":{"flex":2}},{"block":"aquariumStrip","size":{"min":150}}]}]}}"#
+        let t = try tree(src).get()
+        XCTAssertEqual(try ShellTree.parse(t.json).get(), t)
+        XCTAssertEqual(try ShellTree.parse(t.json).get().variant(of: .home), "workday")
+    }
+
+    func testProblemsHaveAMessage() {
+        let all: [ShellTree.Problem] = [.unreadable, .schema(0), .schema(2), .unknownBlock("x"), .shape("y"), .twice(.home),
+                                        .placement(.home, "z"), .tooSmall(.agentRail), .noWorkArea, .twoLists]
+        for p in all { XCTAssertFalse(p.message.isEmpty) }
+        XCTAssertTrue(ShellTree.Problem.unknownBlock("clippy").message.contains("clippy"))
+    }
 }
 
 extension Result {

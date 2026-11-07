@@ -5,11 +5,26 @@ import SwiftUI
 // and issues, each with its next step. Every part is a building block that lives elsewhere too (agent digests, work
 // chips, "since you looked", the activity log, the next-step rule); this page only puts them together.
 
+/// The Workday tab: the page with its own agent digests.
 struct WorkdayHomeView: View {
+    @StateObject private var digests = AgentDigests()
+    var body: some View {
+        WorkdayHomeContent()
+            .environmentObject(digests)
+            .onAppear { digests.start() }
+            .onDisappear { digests.stop() }
+    }
+}
+
+/// The page itself: in the Workday tab, and as Home's "workday" variant in the layout engine's window (whose
+/// digests it reads, one reader for the rail and the page).
+struct WorkdayHomeContent: View {
     @EnvironmentObject var model: AppModel
+    @EnvironmentObject var digests: AgentDigests
     @ObservedObject private var store = InboxStore.shared
     @ObservedObject private var log = ActivityLog.shared
-    @StateObject private var digests = AgentDigests()
+    /// Its own surface (the tab); off on Home, which has the window's canvas.
+    var surface = true
     @AppStorage(InboxPrefs.startMode) private var startMode = "tab"
     @State private var moreAway = false
     @State private var moreItems: Set<String> = []
@@ -51,9 +66,7 @@ struct WorkdayHomeView: View {
             .frame(maxWidth: 1200, alignment: .topLeading)
             .frame(maxWidth: .infinity)
         }
-        .background(T.surface)
-        .onAppear { digests.start() }
-        .onDisappear { digests.stop() }
+        .background(surface ? T.surface : .clear)
     }
 
     // MARK: Header

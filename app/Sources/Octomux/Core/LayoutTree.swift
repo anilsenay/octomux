@@ -14,14 +14,15 @@ import Foundation
 
 /// The blocks a layout can place. Each knows where it may go and how small it may get.
 enum ShellBlock: String, CaseIterable, Codable {
-    case agentRail, projectTree, tabStrip, breadcrumb, workArea, home, sidePanel, statusBar
+    case agentRail, projectTree, tasksRail, tabStrip, breadcrumb, workArea, home, sidePanel, taskDetail, sideAgent,
+         aquariumStrip, statusBar
 
     enum Kind { case bar, rail, main }
     /// Bars go in a column (full width, their own height), rails in a row (their own width), main blocks anywhere.
     var kind: Kind {
         switch self {
-        case .tabStrip, .breadcrumb, .statusBar: return .bar
-        case .agentRail, .projectTree, .sidePanel: return .rail
+        case .tabStrip, .breadcrumb, .statusBar, .aquariumStrip: return .bar
+        case .agentRail, .projectTree, .tasksRail, .sidePanel, .taskDetail, .sideAgent: return .rail
         case .workArea, .home: return .main
         }
     }
@@ -30,21 +31,41 @@ enum ShellBlock: String, CaseIterable, Codable {
         switch self {
         case .agentRail: return 220
         case .projectTree: return 200
+        case .tasksRail: return 240
         case .sidePanel: return 260
+        case .taskDetail, .sideAgent: return 280
         case .workArea, .home: return 320
+        case .aquariumStrip: return 120
         case .tabStrip, .breadcrumb, .statusBar: return 0
         }
     }
-    /// A rail's width when the layout gives none.
+    /// A rail's width (a bar's height) when the layout gives none; 0 = its own.
     var defaultWidth: CGFloat {
         switch self {
         case .agentRail: return 268
         case .projectTree: return 268
+        case .tasksRail: return 300
         case .sidePanel: return 320
+        case .taskDetail: return 340
+        case .sideAgent: return 380
+        case .aquariumStrip: return 210
         default: return 0
         }
     }
+    /// The block's variants (`"variant": "workday"`); the first is the one without a variant. An unknown variant
+    /// is read as the first (a later version's variant shows as today's block).
+    var variants: [String] {
+        switch self {
+        case .home: return ["agents", "workday"]
+        default: return []
+        }
+    }
+    /// Lists the window steps through with ⌘1…9 and ⌘[ ⌘] (instead of tabs).
+    var isList: Bool { self == .agentRail || self == .tasksRail }
 }
+
+/// How the window moves between things: tabs (the tab strip), the agents on the rail, or the tasks on the rail.
+enum ShellNav: Equatable { case tabs, agents, tasks }
 
 enum ShellSize: Equatable {
     case fixed(CGFloat), min(CGFloat), flex(Double)
@@ -64,6 +85,8 @@ indirect enum ShellNode: Equatable {
 struct ShellChild: Equatable {
     var node: ShellNode
     var size: ShellSize? = nil
+    /// A block's variant (nil: its first).
+    var variant: String? = nil
 }
 
 struct ShellTree: Equatable {
@@ -72,8 +95,34 @@ struct ShellTree: Equatable {
 
     enum Problem: Error, Equatable {
         case unreadable, schema(Int), unknownBlock(String), shape(String), twice(ShellBlock), placement(ShellBlock, String),
-             tooSmall(ShellBlock), noWorkArea
+             tooSmall(ShellBlock), noWorkArea, twoLists
+
+        /// For people: what is wrong with the file.
+        var message: String {
+            switch self {
+            case .unreadable: return "It isn't JSON the layout engine can read."
+            case .schema(let n): return n == 0 ? "It has no schema number." : "It is for layout schema \(n); this version reads schema \(ShellTree.schema)."
+            case .unknownBlock(let b): return "It uses a block this version doesn't have: \(b)."
+            case .shape(let s): return "Its tree is malformed: \(s)."
+            case .twice(let b): return "It places \(b.rawValue) twice."
+            case .placement(let b, let why): return "\(b.rawValue) is in the wrong place: \(why)."
+            case .tooSmall(let b): return "\(b.rawValue) is smaller than \(Int(b.minSize)) points."
+            case .noWorkArea: return "It has no workArea."
+            case .twoLists: return "It has both agentRail and tasksRail (⌘1…9 can step through one list)."
+            }
+        }
     }
+
+    /// The window's way of moving: the list it has, else tabs.
+    var nav: ShellNav {
+        let b = root.blocks
+        if b.contains(.agentRail) { return .agents }
+        if b.contains(.tasksRail) { return .tasks }
+        return .tabs
+    }
+    func has(_ b: ShellBlock) -> Bool { root.blocks.contains(b) }
+    /// The variant a block is placed with (nil: its first, or not placed).
+    func variant(of b: ShellBlock) -> String? { root.variant(of: b) }
 
     // MARK: Reading
 
@@ -109,7 +158,8 @@ struct ShellTree: Equatable {
         case "block":
             guard let name = o["block"]?.string else { throw Problem.shape("block needs a name") }
             guard let b = ShellBlock(rawValue: name) else { throw Problem.unknownBlock(name) }
-            return ShellChild(node: .block(b), size: size)
+            let v = o["variant"]?.string.flatMap { b.variants.dropFirst().contains($0) ? $0 : nil }
+            return ShellChild(node: .block(b), size: size, variant: v)
         default:
             guard case .array(let list)? = o[keys[0]], !list.isEmpty else { throw Problem.shape("\(keys[0]) needs children") }
             let kids = try list.map(child)
@@ -129,6 +179,7 @@ struct ShellTree: Equatable {
         let all = root.blocks
         for b in ShellBlock.allCases where all.filter({ $0 == b }).count > 1 { return .twice(b) }
         guard all.contains(.workArea) else { return .noWorkArea }
+        if all.contains(.agentRail) && all.contains(.tasksRail) { return .twoLists }
         return check(root, parent: nil)
     }
 
@@ -191,8 +242,8 @@ extension ShellNode {
     func sized(_ b: ShellBlock, _ s: ShellSize) -> ShellNode {
         func walk(_ c: [ShellChild]) -> [ShellChild] {
             c.map { k in
-                if case .block(let x) = k.node, x == b { return ShellChild(node: k.node, size: s) }
-                return ShellChild(node: k.node.sized(b, s), size: k.size)
+                if case .block(let x) = k.node, x == b { return ShellChild(node: k.node, size: s, variant: k.variant) }
+                return ShellChild(node: k.node.sized(b, s), size: k.size, variant: k.variant)
             }
         }
         switch self {
@@ -219,9 +270,50 @@ extension ShellNode {
     }
     fileprivate func sizeLookup(_ b: ShellBlock) -> ShellSize? { size(of: b) }
 
+    /// The variant `b` is placed with.
+    func variant(of b: ShellBlock) -> String? {
+        switch self {
+        case .block: return nil
+        case .row(let c), .column(let c), .stack(let c):
+            for k in c {
+                if case .block(let x) = k.node, x == b { return k.variant }
+                if let v = k.node.variant(of: b) { return v }
+            }
+            return nil
+        }
+    }
+
     /// The child a stack shows: Home while the window is on its home, else the first child that isn't Home.
     static func shown(_ kids: [ShellChild], home: Bool) -> ShellChild? {
         if home, let h = kids.first(where: { $0.node == .block(.home) }) { return h }
         return kids.first { $0.node != .block(.home) } ?? kids.first
     }
+}
+
+// MARK: Writing (Save as new layout, Export)
+
+extension ShellChild {
+    var json: JSONValue {
+        var o: [String: JSONValue] = [:]
+        switch node {
+        case .block(let b):
+            o["block"] = .string(b.rawValue)
+            if let v = variant { o["variant"] = .string(v) }
+        case .row(let c): o["row"] = .array(c.map(\.json))
+        case .column(let c): o["column"] = .array(c.map(\.json))
+        case .stack(let c): o["stack"] = .array(c.map(\.json))
+        }
+        switch size {
+        case .fixed(let n)?: o["size"] = .object(["fixed": .number(Double(n))])
+        case .min(let n)?: o["size"] = .object(["min": .number(Double(n))])
+        case .flex(let n)?: o["size"] = .object(["flex": .number(n)])
+        case nil: break
+        }
+        return .object(o)
+    }
+}
+
+extension ShellTree {
+    /// The tree as a layout file stores it (`{"schema": 1, "root": …}`); reads back to the same tree.
+    var json: JSONValue { .object(["schema": .number(Double(Self.schema)), "root": ShellChild(node: root).json]) }
 }

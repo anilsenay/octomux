@@ -8,12 +8,26 @@ extension Notification.Name {
 }
 
 extension AppModel {
-    /// The engine window's "new": its Home, with the composer ready (⌘T).
+    /// How the window moves: nil = the classic window (tabs), else the engine window's tabs or its list.
+    var shellNav: ShellNav? { shellTree?.nav }
+    /// The window steps through a list (agents or tasks) instead of tabs.
+    var shellListNav: Bool { shellNav == .agents || shellNav == .tasks }
+
+    /// The engine window's "new" (⌘T): Home's composer, or the tasks rail's new task.
     func shellNew() {
-        shellHome = true
+        if shellNav == .agents { shellHome = true }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { NotificationCenter.default.post(name: .octomuxShellComposer, object: nil) }
     }
-    func shellGoHome() { shellHome = true }
+    /// Home (⌘0): the Agents window's Home; in the Tasks window, the assistant.
+    func shellGoHome() {
+        if shellNav == .tasks { shellTaskId = nil; if assistantSession(workspace: selectedWorkspaceId) != nil { openAssistant() }; return }
+        shellHome = true
+    }
+
+    /// The list ⌘1…9 and ⌘[ ⌘] go through, and where the window is on it.
+    var shellList: [String] { shellNav == .tasks ? tasksRail.map(\.id) : railSessions.map(\.id) }
+    var shellListCurrent: String? { shellNav == .tasks ? shellTaskId : (shellHome ? nil : focusedSessionId) }
+    func shellOpen(_ id: String) { if shellNav == .tasks { shellSelectTask(id) } else { selectSession(id) } }
 }
 
 /// Draws a layout engine tree: rows, columns and stacks of blocks. The blocks are the window's own parts (the work
@@ -31,16 +45,19 @@ struct ShellView: View {
     struct Edges { var railLeft = false; var panelRight = false }
 
     /// Whether a block that shows the agents' digests is on screen: the rail (unless hidden with ⌘B) or Home.
-    static func wantsDigests(_ tree: ShellTree, railShown: Bool, homeShown: Bool) -> Bool {
+    static func wantsDigests(_ tree: ShellTree, railShown: Bool, homeShown: Bool, detailShown: Bool = false) -> Bool {
         let b = tree.root.blocks
         return (b.contains(.agentRail) && railShown) || (b.contains(.home) && homeShown)
+            || (b.contains(.taskDetail) && detailShown)
     }
 
     private var homeShown: Bool { model.shellHome || (model.activeTab == nil && model.activeDoc == nil) }
-    private var wants: Bool { Self.wantsDigests(tree, railShown: model.sidebarVisible, homeShown: homeShown) }
+    private var wants: Bool {
+        Self.wantsDigests(tree, railShown: model.sidebarVisible, homeShown: homeShown, detailShown: model.rightPanelVisible)
+    }
 
     var body: some View {
-        node(tree.root, edges: Edges())
+        node(ShellChild(node: tree.root), edges: Edges())
             .environmentObject(digests)
             // Readers only while a block that shows them is on screen, and after the first frame (the window shows the
             // layout first, then reads the agents' transcripts).
@@ -49,18 +66,20 @@ struct ShellView: View {
             .onDisappear { digests.stop() }
     }
 
-    private func node(_ n: ShellNode, edges: Edges) -> AnyView {
+    private func node(_ k: ShellChild, edges: Edges) -> AnyView {
         let flat = T.m.inset == 0
-        switch n {
+        switch k.node {
         case .block(let b):
-            return AnyView(block(b, edges: edges))
+            return AnyView(block(b, variant: k.variant, edges: edges))
         case .row(let kids):
             let shown = kids.filter(visible)
             return AnyView(HStack(spacing: 0) {
                 ForEach(Array(shown.enumerated()), id: \.offset) { i, k in
-                    let left = i == 0 ? edges.railLeft : Self.isSideRail(shown[i - 1].node)
-                    let right = i == shown.count - 1 ? edges.panelRight : shown[i + 1].node == .block(.sidePanel)
-                    sized(node(k.node, edges: Edges(railLeft: left, panelRight: right)), k, horizontal: true)
+                    let left = i == 0 ? edges.railLeft : Self.flushRight(shown[i - 1].node)
+                    let right = i == shown.count - 1 ? edges.panelRight : Self.isPanel(shown[i + 1].node)
+                    if flat, Self.isPanel(k.node), i > 0 { Hairline(vertical: true) }
+                    sized(node(k, edges: Edges(railLeft: left, panelRight: right)), k, horizontal: true)
+                        .overlay(alignment: .trailing) { if k.node == .block(.projectTree), k.size == nil { SidebarResizeHandle() } }
                     if flat, Self.isSideRail(k.node), i < shown.count - 1 { Hairline(vertical: true) }
                 }
             })
@@ -68,26 +87,35 @@ struct ShellView: View {
             let shown = kids.filter(visible)
             return AnyView(VStack(spacing: 0) {
                 ForEach(Array(shown.enumerated()), id: \.offset) { i, k in
-                    if flat, k.node == .block(.statusBar), i > 0 { Hairline() }
-                    sized(node(k.node, edges: edges), k, horizontal: false)
+                    if flat, k.node == .block(.statusBar), i > 0, model.layout.statusBar { Hairline() }
+                    sized(node(k, edges: edges), k, horizontal: false)
                     if flat, Self.isTopBar(k.node), i < shown.count - 1 { Hairline() }
                 }
             })
         case .stack(let kids):
-            let home = model.shellHome || (model.activeTab == nil && model.activeDoc == nil)
-            guard let k = ShellNode.shown(kids, home: home) else { return AnyView(EmptyView()) }
-            return node(k.node, edges: edges)
+            guard let k = ShellNode.shown(kids, home: homeShown) else { return AnyView(EmptyView()) }
+            return node(k, edges: edges)
         }
     }
 
-    private static func isSideRail(_ n: ShellNode) -> Bool { n == .block(.agentRail) || n == .block(.projectTree) }
+    /// Rails drawn edge to edge (a hairline after them in the flat style), and what the block after them sits on
+    /// without a gap.
+    private static func isSideRail(_ n: ShellNode) -> Bool { n == .block(.agentRail) || n == .block(.projectTree) || n == .block(.tasksRail) }
+    private static func flushRight(_ n: ShellNode) -> Bool { isSideRail(n) || n == .block(.sideAgent) }
+    /// Cards on the right with their own inset (the block before them has none on that side).
+    private static func isPanel(_ n: ShellNode) -> Bool { n == .block(.sidePanel) || n == .block(.taskDetail) }
     private static func isTopBar(_ n: ShellNode) -> Bool { n == .block(.breadcrumb) || n == .block(.tabStrip) }
 
-    /// Blocks with their own on/off: the side panel (⌘⌥B) and the status bar (the layout's switch).
+    /// Blocks with their own on/off: the side panels (⌘⌥B), the rails (⌘B), the agent column and the aquarium
+    /// (the layout's switches; the aquarium also not while its tab is open).
     private func visible(_ k: ShellChild) -> Bool {
         switch k.node {
-        case .block(.sidePanel): return model.rightPanelVisible
-        case .block(.agentRail), .block(.projectTree): return model.sidebarVisible   // ⌘B hides the rail too
+        case .block(.sidePanel), .block(.taskDetail): return model.rightPanelVisible
+        case .block(.agentRail), .block(.projectTree), .block(.tasksRail): return model.sidebarVisible   // ⌘B hides the rail too
+        case .block(.sideAgent): return model.layout.sideChat
+        case .block(.aquariumStrip):
+            if case .aquarium? = model.activeDoc?.kind { return false }
+            return model.layout.has("aquarium", in: .views)
         default: return true
         }
     }
@@ -97,6 +125,8 @@ struct ShellView: View {
             if let s = k.size { return s }
             if case .block(let b) = k.node {
                 if b == .sidePanel { return .fixed(model.rightPanelWidth) }
+                if b == .projectTree { return .fixed(model.sidebarWidth) }
+                if b == .aquariumStrip { return .fixed(b.defaultWidth + T.m.inset) }   // its card and the gap below
                 if b.kind == .rail { return .fixed(b.defaultWidth) }
                 if b.kind == .bar { return nil }
             }
@@ -115,37 +145,57 @@ struct ShellView: View {
 
     // MARK: Blocks
 
-    @ViewBuilder private func block(_ b: ShellBlock, edges: Edges) -> some View {
+    @ViewBuilder private func block(_ b: ShellBlock, variant: String?, edges: Edges) -> some View {
         let m = T.m
         switch b {
         case .agentRail:
             AgentRail().background(sidebarBackground)
         case .projectTree:
             SidebarView(floating: false).background(sidebarBackground)
+        case .tasksRail:
+            TasksRail().background(sidebarBackground)
         case .tabStrip:
             TopBar()
         case .breadcrumb:
             ShellBreadcrumb()
         case .workArea:
-            WorkAreaBlock()
+            // The aquarium goes above the panes here only when the layout doesn't place it as a block.
+            WorkAreaBlock(strip: !tree.has(.aquariumStrip))
                 .padding(.leading, edges.railLeft ? 0 : m.inset)
                 .padding(.trailing, edges.panelRight ? 0 : m.inset)
         case .home:
-            ShellHome()
+            Group {
+                if variant == "workday" { WorkdayHomeContent(surface: false) } else { ShellHome() }
+            }
                 .background(CanvasBackground(scene: true))
                 .clipShape(RoundedRectangle(cornerRadius: m.cardR, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: m.cardR, style: .continuous).stroke(m.inset == 0 ? .clear : T.border))
                 .padding(.leading, edges.railLeft ? 0 : m.inset)
                 .padding(.trailing, edges.panelRight ? 0 : m.inset)
-        case .sidePanel:
-            RightPanel()
+        case .sidePanel, .taskDetail:
+            Group { if b == .sidePanel { RightPanel() } else { TaskDetailPanel() } }
                 .background(CanvasBackground(minOpacity: 0.9))
                 .clipShape(RoundedRectangle(cornerRadius: m.cardR, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: m.cardR, style: .continuous).stroke(T.border))
-                .overlay(alignment: .leading) { RightPanelResizeHandle() }
+                .overlay(alignment: .leading) { if b == .sidePanel { RightPanelResizeHandle() } }
                 .padding(.leading, m.inset)
                 .padding(.trailing, m.inset)
                 .transition(.move(edge: .trailing).combined(with: .opacity))
+        case .sideAgent:
+            SideAgentColumn()
+                .background(CanvasBackground(minOpacity: 0.9))
+                .clipShape(RoundedRectangle(cornerRadius: m.cardR, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: m.cardR, style: .continuous).stroke(T.border))
+                .padding(.leading, edges.railLeft ? 0 : m.inset)
+                .padding(.trailing, m.inset)
+        case .aquariumStrip:
+            AquariumView(style: .strip)
+                .overlay(alignment: .top) { AquariumHeader().padding(.horizontal, 14).padding(.top, 10) }
+                .clipShape(RoundedRectangle(cornerRadius: m.cardR, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: m.cardR, style: .continuous).stroke(T.border))
+                .padding(.leading, edges.railLeft ? 0 : m.inset)
+                .padding(.trailing, edges.panelRight ? 0 : m.inset)
+                .padding(.bottom, m.inset)
         case .statusBar:
             if model.layout.statusBar { StatusBar() } else { Color.clear.frame(height: m.inset) }
         }
@@ -158,20 +208,20 @@ struct ShellView: View {
     }
 }
 
-/// The engine window's keys: the rail's agents take the tab keys' place.
+/// The engine window's keys: the rail's agents (or tasks) take the tab keys' place.
 enum ShellKeys {
     /// ⌘1…8: the rail's nth; ⌘9: its last (as for tabs).
-    static func goTo(_ n: Int, rail: [Session]) -> String? {
+    static func goTo(_ n: Int, rail: [String]) -> String? {
         guard !rail.isEmpty, n >= 1 else { return nil }
-        if n == 9 { return rail.last?.id }
-        return n <= rail.count ? rail[n - 1].id : nil
+        if n == 9 { return rail.last }
+        return n <= rail.count ? rail[n - 1] : nil
     }
 
     /// Previous / next on the rail, wrapping; from Home the first (next) or the last (previous).
-    static func step(_ d: Int, current: String?, rail: [Session]) -> String? {
+    static func step(_ d: Int, current: String?, rail: [String]) -> String? {
         guard !rail.isEmpty else { return nil }
-        guard let c = current, let i = rail.firstIndex(where: { $0.id == c }) else { return d > 0 ? rail.first?.id : rail.last?.id }
-        return rail[(i + d + rail.count) % rail.count].id
+        guard let c = current, let i = rail.firstIndex(of: c) else { return d > 0 ? rail.first : rail.last }
+        return rail[(i + d + rail.count) % rail.count]
     }
 
     /// Commands of the engine window only (hidden and off in the classic window).
@@ -179,14 +229,22 @@ enum ShellKeys {
         action == #selector(AppDelegate.prevAgent(_:)) || action == #selector(AppDelegate.nextAgent(_:))
     }
 
-    /// Menu titles that change with the window (nil: the item keeps its title).
-    static func menuNames(_ action: Selector?, tag: Int) -> (classic: String, shell: String)? {
-        switch action {
-        case #selector(AppDelegate.newTerminal(_:)): return ("New Terminal Tab", "New Session")
-        case #selector(AppDelegate.prevTab(_:)): return ("Previous Tab", "Previous Agent")
-        case #selector(AppDelegate.nextTab(_:)): return ("Next Tab", "Next Agent")
-        case #selector(AppDelegate.goToTab(_:)): return ("Tab \(tag)", "Agent \(tag)")
-        case #selector(AppDelegate.showMain(_:)): return ("Main Window", "Home")
+    /// A menu item's title in a window that moves by `nav` (nil: the item keeps its title).
+    static func menuName(_ action: Selector?, tag: Int, nav: ShellNav) -> String? {
+        let tasks = nav == .tasks
+        switch (action, nav) {
+        case (#selector(AppDelegate.newTerminal(_:)), .tabs): return "New Terminal Tab"
+        case (#selector(AppDelegate.newTerminal(_:)), _): return tasks ? "New Task" : "New Session"
+        case (#selector(AppDelegate.prevTab(_:)), .tabs): return "Previous Tab"
+        case (#selector(AppDelegate.prevTab(_:)), _): return tasks ? "Previous Task" : "Previous Agent"
+        case (#selector(AppDelegate.nextTab(_:)), .tabs): return "Next Tab"
+        case (#selector(AppDelegate.nextTab(_:)), _): return tasks ? "Next Task" : "Next Agent"
+        case (#selector(AppDelegate.prevAgent(_:)), _): return tasks ? "Previous Task" : "Previous Agent"
+        case (#selector(AppDelegate.nextAgent(_:)), _): return tasks ? "Next Task" : "Next Agent"
+        case (#selector(AppDelegate.goToTab(_:)), .tabs): return "Tab \(tag)"
+        case (#selector(AppDelegate.goToTab(_:)), _): return tasks ? "Task \(tag)" : "Agent \(tag)"
+        case (#selector(AppDelegate.showMain(_:)), .tabs): return "Main Window"
+        case (#selector(AppDelegate.showMain(_:)), _): return tasks ? "Assistant" : "Home"
         default: return nil
         }
     }

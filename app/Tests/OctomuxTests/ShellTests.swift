@@ -32,7 +32,7 @@ final class ShellTests: XCTestCase {
     // MARK: Keys
 
     func testTabKeysMoveOverTheRail() {
-        let rail = [s("a", .working), s("b", .idle), s("c", .idle)]
+        let rail = ["a", "b", "c"]
         XCTAssertEqual(ShellKeys.goTo(1, rail: rail), "a")
         XCTAssertEqual(ShellKeys.goTo(3, rail: rail), "c")
         XCTAssertNil(ShellKeys.goTo(4, rail: rail))
@@ -46,12 +46,15 @@ final class ShellTests: XCTestCase {
     }
 
     func testMenuSpeaksAgentsOnlyInTheEngineWindow() {
-        XCTAssertEqual(ShellKeys.menuNames(#selector(AppDelegate.goToTab(_:)), tag: 3)?.shell, "Agent 3")
-        XCTAssertEqual(ShellKeys.menuNames(#selector(AppDelegate.goToTab(_:)), tag: 3)?.classic, "Tab 3")
-        XCTAssertEqual(ShellKeys.menuNames(#selector(AppDelegate.newTerminal(_:)), tag: 0)?.classic, "New Terminal Tab")
-        XCTAssertEqual(ShellKeys.menuNames(#selector(AppDelegate.showMain(_:)), tag: 0)?.shell, "Home")
-        XCTAssertNil(ShellKeys.menuNames(#selector(AppDelegate.toggleSidebar(_:)), tag: 0))
-        XCTAssertTrue(ShellKeys.shellOnly(#selector(AppDelegate.prevAgent(_:))))   // ⌘[ / ⌘]: engine window only
+        let go = #selector(AppDelegate.goToTab(_:))
+        XCTAssertEqual(ShellKeys.menuName(go, tag: 3, nav: .agents), "Agent 3")
+        XCTAssertEqual(ShellKeys.menuName(go, tag: 3, nav: .tasks), "Task 3")
+        XCTAssertEqual(ShellKeys.menuName(go, tag: 3, nav: .tabs), "Tab 3")
+        XCTAssertEqual(ShellKeys.menuName(#selector(AppDelegate.newTerminal(_:)), tag: 0, nav: .tabs), "New Terminal Tab")
+        XCTAssertEqual(ShellKeys.menuName(#selector(AppDelegate.newTerminal(_:)), tag: 0, nav: .tasks), "New Task")
+        XCTAssertEqual(ShellKeys.menuName(#selector(AppDelegate.showMain(_:)), tag: 0, nav: .agents), "Home")
+        XCTAssertNil(ShellKeys.menuName(#selector(AppDelegate.toggleSidebar(_:)), tag: 0, nav: .agents))
+        XCTAssertTrue(ShellKeys.shellOnly(#selector(AppDelegate.prevAgent(_:))))   // ⌘[ / ⌘]: list windows only
         XCTAssertTrue(ShellKeys.shellOnly(#selector(AppDelegate.nextAgent(_:))))
         XCTAssertFalse(ShellKeys.shellOnly(#selector(AppDelegate.prevTab(_:))))
     }

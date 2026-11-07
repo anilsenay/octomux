@@ -88,9 +88,9 @@ final class WorkdayTests: XCTestCase {
     }
 
     func testStatusLine() {
-        XCTAssertEqual(WorkdayHomeView.statusLine(needs: 0, reviews: 0, steps: 0), "Nothing needs you right now.")
-        XCTAssertEqual(WorkdayHomeView.statusLine(needs: 2, reviews: 1, steps: 0), "2 agents need you · 1 review for you")
-        XCTAssertEqual(WorkdayHomeView.statusLine(needs: 1, reviews: 0, steps: 3), "1 agent needs you · 3 pull requests need a step")
+        XCTAssertEqual(WorkdayHomeContent.statusLine(needs: 0, reviews: 0, steps: 0), "Nothing needs you right now.")
+        XCTAssertEqual(WorkdayHomeContent.statusLine(needs: 2, reviews: 1, steps: 0), "2 agents need you · 1 review for you")
+        XCTAssertEqual(WorkdayHomeContent.statusLine(needs: 1, reviews: 0, steps: 3), "1 agent needs you · 3 pull requests need a step")
     }
 
     // MARK: Since you looked
