@@ -42,8 +42,8 @@ struct SourceControlPanel: View {
     @AppStorage("octomux.historyHeight") private var height = 300.0
     @State private var dragStart: Double?
     static let minHeight: CGFloat = 120
-    /// Changes keeps at least this much (message, commit button, a few rows).
-    static let changesMin: CGFloat = 200
+    /// Changes keeps at least this much: message, commit button, compare row and about five files.
+    static let changesMin: CGFloat = 330
 
     var body: some View {
         GeometryReader { geo in
