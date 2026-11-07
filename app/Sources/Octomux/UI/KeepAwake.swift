@@ -257,7 +257,7 @@ struct KeepAwakePanel: View {
                     Text("For a while").font(.system(size: T.k * 13)).foregroundStyle(T.text)
                     Spacer(minLength: 4)
                     if s.until != nil {
-                        Button("Stop") { awake.stopTimer() }.buttonStyle(.plain).font(.system(size: T.k * 11, weight: .medium)).foregroundStyle(T.accent).pointerCursor()
+                        Button("Stop") { awake.stopTimer() }.buttonStyle(.plain).font(.system(size: T.k * 11, weight: .medium)).foregroundStyle(T.accent).panelPointer()
                     }
                 }
                 HStack(spacing: 5) {
@@ -317,7 +317,7 @@ struct KeepAwakePanel: View {
     private func row<V: View>(_ i: Int, _ v: V) -> some View {
         v.onHover { h in if h { nav.index = i } else if nav.index == i { nav.index = nil } }
             .onTapGesture { nav.run(i) }
-            .pointerCursor()
+            .panelPointer()
     }
 }
 

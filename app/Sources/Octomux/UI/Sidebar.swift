@@ -1001,6 +1001,6 @@ struct WorkspacePanel: View {
     private func row<V: View>(_ i: Int, _ v: V) -> some View {
         v.onHover { h in if h { nav.index = i } else if nav.index == i { nav.index = nil } }
             .onTapGesture { nav.run(i) }
-            .pointerCursor()
+            .panelPointer()
     }
 }

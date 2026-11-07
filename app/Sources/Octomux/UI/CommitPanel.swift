@@ -194,7 +194,7 @@ struct CommitPanel: View {
                             .background(RoundedRectangle(cornerRadius: R.md, style: .continuous).fill(T.text.opacity(0.07)))
                             .overlay(RoundedRectangle(cornerRadius: R.md, style: .continuous).stroke(T.border))
                     }
-                    .buttonStyle(.plain).disabled(!canCommit).pointerCursor()
+                    .buttonStyle(.plain).disabled(!canCommit).panelPointer()
                     Button { commit(push: false) } label: {
                         HStack(spacing: 6) {
                             Text(amend ? "Amend" : staged > 0 ? "Commit \(staged) staged" : "Commit")
@@ -205,7 +205,7 @@ struct CommitPanel: View {
                         .padding(.horizontal, 12).frame(height: 26)
                         .background(RoundedRectangle(cornerRadius: R.md, style: .continuous).fill(canCommit ? T.accent : T.text.opacity(0.07)))
                     }
-                    .buttonStyle(.plain).disabled(!canCommit).pointerCursor()
+                    .buttonStyle(.plain).disabled(!canCommit).panelPointer()
                 }
                 if !changes.status.isEmpty, changes.generating == nil {
                     Text(changes.status).font(T.meta).foregroundStyle(changes.status.contains("failed") ? T.red : T.text2)
@@ -256,7 +256,7 @@ struct CommitPanel: View {
                     HStack(spacing: 2) { Text("Review in Changes"); Image(systemName: "chevron.right").font(T.icon(8, .bold)) }
                         .font(.system(size: T.k * 11, weight: .medium)).foregroundStyle(T.text2)
                 }
-                .buttonStyle(.plain).pointerCursor()
+                .buttonStyle(.plain).panelPointer()
             }
             .frame(height: 20)
         }

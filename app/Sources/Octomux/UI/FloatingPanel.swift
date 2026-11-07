@@ -163,6 +163,19 @@ extension View {
 
 // MARK: - Look
 
+extension View {
+    /// The pointing hand inside a floating panel. Set on every move: in the panel the window puts the arrow back
+    /// after `pointerCursor()`'s one push on entering (rows showed the arrow).
+    func panelPointer() -> some View {
+        onContinuousHover { phase in
+            switch phase {
+            case .active: NSCursor.pointingHand.set()
+            case .ended: NSCursor.arrow.set()
+            }
+        }
+    }
+}
+
 /// The panel's card: raised fill, hairline edge, the app's radius (the window draws the shadow).
 struct PanelCard<Content: View>: View {
     var width: CGFloat
@@ -265,6 +278,6 @@ struct PanelChip: View {
                 .overlay(Capsule().stroke(on ? T.accent.opacity(0.5) : .clear))
                 .contentShape(Capsule())
         }
-        .buttonStyle(.plain).onHover { hover = $0 }.pointerCursor()
+        .buttonStyle(.plain).onHover { hover = $0 }.panelPointer()
     }
 }
