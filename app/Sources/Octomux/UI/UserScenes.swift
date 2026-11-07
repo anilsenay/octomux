@@ -385,7 +385,7 @@ enum TerminalSceneMode: String, CaseIterable {
     /// Translucent terminals over the live backdrop.
     case live
 
-    static let defaultOpacity = 0.82
+    static let defaultOpacity = 0.85
     static let opacityRange = 0.5...0.95
 
     var title: String {

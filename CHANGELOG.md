@@ -14,7 +14,8 @@
   closed-lid limits as chips. Arrow keys, ↩ and esc work as in a menu.
 - **Readability**: with a scene, art passing behind the sidebar is drawn faint there (it no longer sits as
   bright as the rows' text); the Changes list keeps room for about five files when History is open; disabled Commit buttons
-  are neutral (they couldn't be read in light themes).
+  are neutral (they couldn't be read in light themes). Translucent terminals over a scene default to 85% opacity (was 82%):
+  the text reads better over the live scene.
 - **Sidebar**: Search (⌘K) is the first row under the workspace, then Inbox and Projects.
 
 - **⌃Tab tab switcher**: hold ⌃ and press Tab to see the project's tabs, most recent first, each with a picture of
