@@ -545,7 +545,8 @@ impl Daemon {
         }
         let aliases = self.aliases.lock().unwrap().clone();
         let prompt = self.prompts.lock().unwrap().remove(id);
-        let mut spec = agents::build_launch_with_prompt(&self.paths, &session, profile.as_ref(), restoring, &aliases, prompt.as_deref());
+        let browser = self.setting("browser.agent_tools", None).and_then(|v| v.as_bool()).unwrap_or(true);
+        let mut spec = agents::build_launch_with_prompt(&self.paths, &session, profile.as_ref(), restoring, &aliases, prompt.as_deref(), browser);
         if let Some(p) = self.login_path.lock().unwrap().clone() {
             spec.env.push(("PATH".into(), p));
         }

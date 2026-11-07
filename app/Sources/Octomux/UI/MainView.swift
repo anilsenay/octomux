@@ -5,6 +5,9 @@ struct MainView: View {
     @EnvironmentObject var model: AppModel
     @ObservedObject var theme = ThemeStore.shared
     @AppStorage("octomux.dockPosition") private var dockPosition = "bottom"
+    @AppStorage("octomux.rightTab") private var rightTab = RightTab.changes.rawValue
+    /// The right panel is wider on the Browser tab (pages need room); dragged from its left edge.
+    @AppStorage("octomux.browserWidth") private var browserWidth = 560.0
 
     var body: some View {
         let m = T.m
@@ -29,7 +32,8 @@ struct MainView: View {
                     if model.rightPanelVisible {
                         if flat { Hairline(vertical: true) }
                         RightPanel()
-                            .frame(width: 320)
+                            .frame(width: rightTab == RightTab.browser.rawValue ? browserWidth : 320)
+                            .overlay(alignment: .leading) { if rightTab == RightTab.browser.rawValue { BrowserResizeHandle(width: $browserWidth) } }
                             .background(CanvasBackground(minOpacity: 0.9))
                             .clipShape(RoundedRectangle(cornerRadius: m.cardR, style: .continuous))
                             .overlay(RoundedRectangle(cornerRadius: m.cardR, style: .continuous).stroke(T.border))
@@ -201,6 +205,25 @@ struct TopLeftControls: View {
 }
 
 /// Drag the sidebar's right edge to resize it.
+/// The Browser panel's left edge: drag to resize.
+struct BrowserResizeHandle: View {
+    @Binding var width: Double
+    @State private var start: Double?
+
+    var body: some View {
+        Rectangle().fill(Color.clear).frame(width: 6)
+            .contentShape(Rectangle())
+            .onHover { h in if h { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() } }
+            .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                .onChanged { v in
+                    if start == nil { start = width }
+                    width = min(1400, max(360, (start ?? 560) - v.translation.width))
+                }
+                .onEnded { _ in start = nil })
+            .offset(x: -3)
+    }
+}
+
 struct SidebarResizeHandle: View {
     @EnvironmentObject var model: AppModel
     @State private var start: CGFloat?

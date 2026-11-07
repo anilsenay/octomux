@@ -33,6 +33,13 @@
   default; no limit possible on the adapter), never
   below 20% battery or under heavy thermal pressure; a notification says when a limit let the Mac sleep.
 - **Changes panel** has "Compare with" at the top: the same branch choice as the status bar's "→ branch".
+- **Browser for agents** (right panel → Browser): Claude and Codex sessions get browser tools (open a page, read
+  it as an accessibility snapshot, click, type, press keys, choose options, wait, run a script, read the console,
+  take screenshots, switch pages) from Octomux's own MCP server, added to each session as it starts; your MCP
+  settings stay as they are (Settings → MCP turns it off). You watch the agent work: its cursor glides to the
+  element, a band says who acts and what ("Claude · Fix login — Clicking “Sign in”"), and the element is framed.
+  Each session works in its own page; you can open your own, browse with back, forward and the address bar, and
+  hand a page to an agent. Pages keep cookies apart from your other browsers and come back after a relaunch.
 
 ## 0.3.0
 

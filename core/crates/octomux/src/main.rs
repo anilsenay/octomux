@@ -3,6 +3,7 @@ mod client;
 mod daemon;
 mod holder;
 mod hook_spool;
+mod mcp;
 mod procs;
 mod statusline;
 mod util;
@@ -53,6 +54,13 @@ enum Cmd {
         method: String,
         #[arg(default_value = "{}")]
         params: String,
+    },
+    /// Internal: stdio MCP server with the Octomux browser tools (started by agents for their session).
+    #[command(hide = true)]
+    Mcp {
+        /// The Octomux session the agent runs in (its pages and live view belong to it).
+        #[arg(long)]
+        session: Option<String>,
     },
     /// Print daemon status.
     Status,
@@ -113,6 +121,10 @@ fn run(cli: Cli, paths: Paths) -> anyhow::Result<i32> {
             Ok(0)
         }
         Cmd::Statusline => Ok(statusline::run(&paths)),
+        Cmd::Mcp { session } => {
+            let session = session.or_else(|| octomux_proto::env_var_os("SESSION_ID").and_then(|v| v.into_string().ok()));
+            mcp::run(&paths, session)
+        }
         Cmd::Stdio => client::stdio_bridge(&paths),
         Cmd::Ctl { method, params } => {
             let params: serde_json::Value = serde_json::from_str(&params)?;

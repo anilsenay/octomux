@@ -128,6 +128,7 @@ function toolInfo(it) {
   const n = it.tool || "", inp = it.input || {};
   const path = inp.file_path || inp.path || inp.notebook_path || "";
   let m;
+  if ((m = /^mcp__octomux__(browser_.+)$/.exec(n))) return browserInfo(m[1], inp, it);
   if ((m = /^mcp__(.+?)__(.+)$/.exec(n))) return { cat: "other", verb: m[1].replace(/[_-]+/g, " "), target: m[2].replace(/_/g, " ") + (it.detail ? " · " + it.detail : "") };
   switch (n) {
     case "Read": case "read_file": case "view_image": return { cat: "read", verb: "Read", target: rel(path || it.detail), path };
@@ -150,8 +151,30 @@ function toolInfo(it) {
     default: return { cat: "other", verb: n || "Tool", target: rel(it.detail) };
   }
 }
+// The Octomux browser's tools (core/crates/octomux/src/mcp.rs).
+function browserInfo(tool, inp, it) {
+  const el = inp.element || inp.ref || "";
+  const q = (s) => "“" + String(s).slice(0, 80) + "”";
+  const b = (verb, target = "") => ({ cat: "browser", verb, target });
+  switch (tool) {
+    case "browser_navigate": return b("Opened", inp.url || it.detail);
+    case "browser_navigate_back": return b("Went back");
+    case "browser_snapshot": return b("Read the page");
+    case "browser_click": return b(inp.doubleClick ? "Double-clicked" : "Clicked", el);
+    case "browser_hover": return b("Pointed at", el);
+    case "browser_type": return b("Typed", q(inp.text || "") + (el ? " into " + el : ""));
+    case "browser_press_key": return b("Pressed", inp.key || "");
+    case "browser_select_option": return b("Chose", (inp.values || []).join(", ") + (el ? " in " + el : ""));
+    case "browser_take_screenshot": return b("Took a screenshot", inp.element || (inp.fullPage ? "whole page" : ""));
+    case "browser_wait_for": return b("Waited", inp.text ? "for " + q(inp.text) : inp.textGone ? "for " + q(inp.textGone) + " to go" : inp.time ? inp.time + " s" : "");
+    case "browser_evaluate": return b("Ran a script in the page", inp.element || "");
+    case "browser_console_messages": return b("Read the console");
+    case "browser_tabs": return b(inp.action === "new" ? "Opened a page" : inp.action === "close" ? "Closed a page" : inp.action === "select" ? "Switched page" : "Listed pages", inp.url || inp.page || "");
+    default: return b(tool.replace(/^browser_/, "").replace(/_/g, " "));
+  }
+}
 function groupSummary(items) {
-  const c = { read: 0, edit: 0, run: 0, search: 0, web: 0, agent: 0, other: 0 };
+  const c = { read: 0, edit: 0, run: 0, search: 0, web: 0, browser: 0, agent: 0, other: 0 };
   const edited = new Set();
   let thoughts = 0;
   for (const it of items) {
@@ -167,6 +190,7 @@ function groupSummary(items) {
   if (c.edit) parts.push("Edited " + plural(c.edit, "file", "files"));
   if (c.run) parts.push("Ran " + plural(c.run, "command", "commands"));
   if (c.web) parts.push(plural(c.web, "web lookup", "web lookups"));
+  if (c.browser) parts.push("Used the browser" + (c.browser > 1 ? ` (${c.browser} steps)` : ""));
   if (c.agent) parts.push(plural(c.agent, "subagent", "subagents"));
   if (c.other) parts.push(plural(c.other, "tool call", "tool calls"));
   if (!parts.length && thoughts) parts.push("Thought");

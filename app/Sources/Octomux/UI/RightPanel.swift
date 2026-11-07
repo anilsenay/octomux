@@ -2,14 +2,15 @@ import AppKit
 import SwiftUI
 
 /// History lives in the Changes tab now (a collapsible section at its bottom); a saved "History" opens Changes.
-enum RightTab: String, CaseIterable { case files = "Files", changes = "Changes", sessions = "Sessions" }
+enum RightTab: String, CaseIterable { case files = "Files", changes = "Changes", sessions = "Sessions", browser = "Browser" }
 
 extension Notification.Name {
     /// A commit or push from the Changes panel: History reloads.
     static let octomuxGitCommitted = Notification.Name("octomux.gitCommitted")
 }
 
-/// Right-hand panel: Files / Changes (with History) / Sessions of the current work path (project or worktree).
+/// Right-hand panel: Files / Changes (with History) / Sessions of the current work path (project or worktree), and the
+/// Octomux browser.
 struct RightPanel: View {
     @EnvironmentObject var model: AppModel
     @AppStorage("octomux.rightTab") private var tab = RightTab.changes.rawValue
@@ -29,6 +30,7 @@ struct RightPanel: View {
             case .changes: SourceControlPanel()
             case .files: FilesPanel()
             case .sessions: SessionsPanel()
+            case .browser: BrowserPanel()
             }
         }
         .onAppear {

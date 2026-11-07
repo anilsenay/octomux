@@ -540,6 +540,7 @@ enum SettingsIndex {
             e(.appearance, "Your scenes", "custom import template"),
             e(.terminal, "Font", "family typeface mono jetbrains"),
             e(.sessions, "Keep Mac awake", "caffeinate sleep awake lid closed clamshell battery power"),
+            e(.mcp, "Octomux browser", "browser web page agent tools playwright click screenshot cookies browsing data"),
             e(.permissions, "Screen recording", "screenshot screencapture capture privacy macos allow sessions agent"),
             e(.permissions, "Accessibility", "click type automation privacy macos allow sessions agent"),
             e(.terminal, "Size", "font size points bigger smaller zoom"),

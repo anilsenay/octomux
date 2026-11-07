@@ -29,6 +29,7 @@ struct MCPSettings: View {
             Text("This window shows \(model.host.name). The MCP servers listed are this Mac's agents'.")
                 .font(.system(size: T.k * 12)).foregroundStyle(T.text2)
         }
+        BrowserToolsSettings()
         ForEach(groups) { g in
             SettingsGroup("\(g.kind == .codex ? "Codex" : "Claude Code") · \(g.agents.joined(separator: ", "))",
                           desc: (g.file as NSString).abbreviatingWithTildeInPath + (g.exists ? "" : " (not there yet)"),
@@ -316,6 +317,33 @@ struct MCPAddSheet: View {
                     let text = (err.isEmpty ? out : err).trimmingCharacters(in: .whitespacesAndNewlines)
                     error = "\(kind == .codex ? "codex" : "claude") mcp add failed: " + (text.isEmpty ? "exit \(code)" : String(text.suffix(400)))
                 }
+            }
+        }
+    }
+}
+
+/// The browser tools Octomux gives Claude and Codex sessions (its own MCP server, added per launch).
+struct BrowserToolsSettings: View {
+    @EnvironmentObject var model: AppModel
+    @State private var cleared = false
+
+    var body: some View {
+        SettingsGroup("Octomux browser", desc: "Claude and Codex sessions started in Octomux get browser tools (open a page, read it, click, type, take screenshots) that drive the Browser panel, where you watch them work. Added to each session as it starts; your own MCP settings stay as they are.") {
+            SettingRow("Give agents the browser", desc: "Takes effect for sessions started (or resumed) from now on.") {
+                SettingSwitch(isOn: Binding(get: { model.setting("browser.agent_tools")?.bool ?? true },
+                                            set: { v in model.setSettingLocally("browser.agent_tools", .bool(v), scope: "global"); model.setSetting("browser.agent_tools", v) }))
+            }
+            SettingRow("Browsing data", desc: "Pages keep cookies and logins between launches, apart from your other browsers.") {
+                Button(cleared ? "Cleared" : "Clear Browsing Data…") {
+                    let a = NSAlert()
+                    a.messageText = "Clear the Octomux browser's cookies, logins and cache?"
+                    a.informativeText = "Sites you signed in to in the Browser panel will ask you to sign in again."
+                    a.addButton(withTitle: "Clear")
+                    a.addButton(withTitle: "Cancel")
+                    guard a.runModal() == .alertFirstButtonReturn else { return }
+                    Task { await BrowserStore.shared.clearData(); cleared = true }
+                }
+                .buttonStyle(SecondaryButtonStyle()).disabled(cleared)
             }
         }
     }

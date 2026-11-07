@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "bun build src/main.js --outfile ../Resources/editor/editor.js --minify --target browser && bun build src/chat.js --outfile ../Resources/editor/chat.js --minify --target browser"
+    "build": "bun build src/main.js --outfile ../Resources/editor/editor.js --minify --target browser && bun build src/chat.js --outfile ../Resources/editor/chat.js --minify --target browser && bun build src/browser.js --outfile ../Resources/editor/browser.js --minify --target browser --format iife --banner '/* Octomux browser agent. Includes code from Playwright (c) Microsoft Corporation, Apache-2.0: see app/editor-web/vendor/playwright. */'"
   },
   "dependencies": {
     "@codemirror/commands": "^6.11.1",

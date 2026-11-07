@@ -1,0 +1,17 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Octomux browser test</title>
+<style>body{font:15px -apple-system,system-ui;margin:32px;max-width:640px;color:#222} input,select,button{font:inherit;padding:6px 10px;margin:4px 0}
+button{background:#5b5bd6;color:#fff;border:0;border-radius:6px} #out{padding:10px;background:#f2f2f7;border-radius:6px}</style></head>
+<body>
+<h1>Sign up</h1>
+<p>A local page for testing the Octomux browser tools (tools/fake-browser-agent.py).</p>
+<form id="f" onsubmit="event.preventDefault(); document.getElementById('out').textContent = 'Submitted: ' + this.email.value + ' / ' + this.plan.value + ' / ' + this.agree.checked; console.warn('form submitted')">
+  <label>Email <input name="email" placeholder="you@example.com"></label><br>
+  <label><input type="checkbox" name="agree"> I agree to the terms</label><br>
+  <label>Plan <select name="plan"><option value="free">Free</option><option value="pro">Pro</option></select></label><br>
+  <button>Create account</button>
+</form>
+<p id="out">Not submitted</p>
+<p><a href="#details" onclick="document.getElementById('details').hidden=false">Show details</a></p>
+<div id="details" hidden><h2>Details</h2><p>Hidden until the link is clicked.</p></div>
+</body></html>

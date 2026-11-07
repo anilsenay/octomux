@@ -491,12 +491,40 @@ fn expand_alias<'a>(command: &str, aliases: &'a [(String, String)]) -> Option<&'
 }
 
 pub fn build_launch(paths: &Paths, session: &Session, profile: Option<&Profile>, restoring: bool, aliases: &[(String, String)]) -> LaunchSpec {
-    build_launch_with_prompt(paths, session, profile, restoring, aliases, None)
+    build_launch_with_prompt(paths, session, profile, restoring, aliases, None, false)
+}
+
+/// Flags that give a Claude or Codex agent the Octomux browser: our stdio MCP server (`octomux mcp`), added for
+/// this launch only. The user's own MCP settings are never touched. The session id goes in the arguments since
+/// Codex starts MCP servers with a trimmed environment.
+pub fn browser_mcp_args(kind: AgentKind, paths: &Paths, session_id: &str) -> Vec<String> {
+    let exe = std::env::current_exe().map(|e| e.to_string_lossy().into_owned()).unwrap_or_else(|_| "octomux".into());
+    let home = paths.home.to_string_lossy().into_owned();
+    let args = ["mcp", "--session", session_id];
+    match kind {
+        AgentKind::Claude => {
+            let cfg = serde_json::json!({ "mcpServers": { "octomux": {
+                "type": "stdio", "command": exe, "args": args, "env": { octomux_proto::HOME_VAR: home },
+            } } });
+            vec!["--mcp-config".into(), cfg.to_string()]
+        }
+        AgentKind::Codex => {
+            // `-c key=value` takes TOML; JSON strings and arrays are valid TOML values.
+            let q = |v: &str| serde_json::Value::from(v).to_string();
+            vec![
+                "-c".into(), format!("mcp_servers.octomux.command={}", q(&exe)),
+                "-c".into(), format!("mcp_servers.octomux.args={}", serde_json::json!(args)),
+                "-c".into(), format!("mcp_servers.octomux.env={{{}={}}}", octomux_proto::HOME_VAR, q(&home)),
+            ]
+        }
+        AgentKind::Generic => vec![],
+    }
 }
 
 /// Like `build_launch`; `prompt` (a new session's first message, from the chat start screen) is passed
 /// as the CLI's positional prompt, so it is never typed before the agent is ready.
-pub fn build_launch_with_prompt(paths: &Paths, session: &Session, profile: Option<&Profile>, restoring: bool, aliases: &[(String, String)], prompt: Option<&str>) -> LaunchSpec {
+/// `browser`: give the agent the Octomux browser tools (Settings → Browser).
+pub fn build_launch_with_prompt(paths: &Paths, session: &Session, profile: Option<&Profile>, restoring: bool, aliases: &[(String, String)], prompt: Option<&str>, browser: bool) -> LaunchSpec {
     let cwd = session.cwd.clone();
     let mut env = vec![(octomux_proto::HOME_VAR.to_string(), paths.home.to_string_lossy().into_owned())];
     match session.kind {
@@ -525,6 +553,10 @@ pub fn build_launch_with_prompt(paths: &Paths, session: &Session, profile: Optio
             // conversation you can continue: print mode without a prompt would only exit with an error.
             if restoring {
                 args = drop_unattended_flags(&args, profile.kind);
+            }
+            // Before our session flags (and Codex's `resume`): Claude's --mcp-config takes several values.
+            if browser {
+                args.extend(browser_mcp_args(profile.kind, paths, &session.id));
             }
             let mut agent_id = session.agent_session_id.clone();
             let mut generic_resume: Option<String> = None;
@@ -811,6 +843,38 @@ mod tests {
         let l = line(&p);
         assert!(!l.contains("--settings"), "{l}");
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn browser_tools_are_added_per_launch() {
+        let paths = Paths { home: PathBuf::from("/tmp/oct home") };
+        let session: Session = serde_json::from_value(serde_json::json!({
+            "id": "s9", "project_id": "p1", "kind": "agent", "profile_id": "x", "title": "", "custom_title": "",
+            "cwd": "/tmp", "state": "running", "activity": "idle", "unread": false, "agent_session_id": "c0dex",
+            "created_at": 0, "last_activity_at": 0, "exit_code": null, "placement": "tab"
+        }))
+        .unwrap();
+        let mut claude = default_profiles().into_iter().find(|p| p.kind == AgentKind::Claude).unwrap();
+        claude.via_login_shell = false;
+        let argv = build_launch_with_prompt(&paths, &session, Some(&claude), false, &[], Some("hi"), true).argv;
+        let i = argv.iter().position(|a| a == "--mcp-config").expect("mcp config");
+        let cfg: serde_json::Value = serde_json::from_str(&argv[i + 1]).unwrap();
+        let server = &cfg["mcpServers"]["octomux"];
+        assert_eq!(server["args"], serde_json::json!(["mcp", "--session", "s9"]));
+        assert_eq!(server["env"]["OCTOMUX_HOME"], "/tmp/oct home");
+        // Followed by another flag, so the variadic --mcp-config never swallows the prompt.
+        assert!(argv[i + 2].starts_with("--"), "{argv:?}");
+        assert_eq!(argv.last().unwrap(), "hi");
+        assert!(!build_launch_with_prompt(&paths, &session, Some(&claude), false, &[], None, false).argv.iter().any(|a| a == "--mcp-config"));
+
+        let mut codex = default_profiles().into_iter().find(|p| p.kind == AgentKind::Codex).unwrap();
+        codex.via_login_shell = false;
+        let argv = build_launch_with_prompt(&paths, &session, Some(&codex), true, &[], None, true).argv;
+        let resume = argv.iter().position(|a| a == "resume").expect("resume");
+        let cmd = argv.iter().position(|a| a.starts_with("mcp_servers.octomux.command=")).expect("codex mcp");
+        assert!(cmd < resume && argv[cmd - 1] == "-c", "{argv:?}");
+        assert!(argv.contains(&r#"mcp_servers.octomux.args=["mcp","--session","s9"]"#.to_string()), "{argv:?}");
+        assert!(argv.contains(&r#"mcp_servers.octomux.env={OCTOMUX_HOME="/tmp/oct home"}"#.to_string()), "{argv:?}");
     }
 
     #[test]
