@@ -200,9 +200,10 @@ struct CommitPanel: View {
                             Text(amend ? "Amend" : staged > 0 ? "Commit \(staged) staged" : "Commit")
                             Text("⌘↩").opacity(0.7)
                         }
-                        .font(.system(size: T.k * 12, weight: .semibold)).foregroundStyle(.white)
+                        // Disabled: neutral, not a faded accent (white on a pale accent can't be read in light themes).
+                        .font(.system(size: T.k * 12, weight: .semibold)).foregroundStyle(canCommit ? Color.white : T.text3)
                         .padding(.horizontal, 12).frame(height: 26)
-                        .background(RoundedRectangle(cornerRadius: R.md, style: .continuous).fill(T.accent.opacity(canCommit ? 1 : 0.45)))
+                        .background(RoundedRectangle(cornerRadius: R.md, style: .continuous).fill(canCommit ? T.accent : T.text.opacity(0.07)))
                     }
                     .buttonStyle(.plain).disabled(!canCommit).pointerCursor()
                 }

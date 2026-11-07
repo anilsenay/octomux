@@ -618,16 +618,17 @@ private struct CommitButton: View {
             }
             .buttonStyle(.plain)
             .disabled(!canCommit)
-            Rectangle().fill(Color.white.opacity(0.25)).frame(width: 1, height: 16)
+            Rectangle().fill(canCommit ? Color.white.opacity(0.25) : T.border).frame(width: 1, height: 16)
             PopupMenuButton(menu: menu) {
                 Image(systemName: "chevron.down").font(.system(size: T.k * 10, weight: .bold)).frame(width: 28, height: 28)
             }
             .help("More commit actions")
         }
         .font(.system(size: T.k * 13, weight: .semibold))
-        .foregroundStyle(.white)
-        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(T.accent.opacity(hover ? 0.9 : 1)))
-        .opacity(canCommit || !changes.busy ? (canCommit ? 1 : 0.55) : 0.45)
+        // Disabled: neutral, not a faded accent (white on a pale accent can't be read in light themes).
+        .foregroundStyle(canCommit ? Color.white : T.text3)
+        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(canCommit ? T.accent.opacity(hover ? 0.9 : 1) : T.text.opacity(0.07)))
+        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(canCommit ? .clear : T.border))
         .onHover { hover = $0 }
         .pointerCursor()
     }

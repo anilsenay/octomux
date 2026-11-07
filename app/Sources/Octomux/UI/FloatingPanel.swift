@@ -170,7 +170,7 @@ struct PanelCard<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) { content() }
             .padding(5)
-            .frame(width: width, alignment: .leading)
+            .frame(width: width * T.k, alignment: .leading)   // grows with Settings → Interface size
             .background(RoundedRectangle(cornerRadius: R.xl, style: .continuous).fill(T.raised))
             .overlay(RoundedRectangle(cornerRadius: R.xl, style: .continuous).stroke(T.border))
             .clipShape(RoundedRectangle(cornerRadius: R.xl, style: .continuous))
