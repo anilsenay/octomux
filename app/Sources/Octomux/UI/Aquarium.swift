@@ -82,14 +82,29 @@ struct AquariumView: View {
     var style: Style = .full
     var still = false
     @State private var hovered: String?
-    /// Octomux in front: 12 frames a second (pixel art moves in steps anyway). Behind other apps: one a second —
-    /// still alive, for about the CPU of a still window (the cost goes with the frames: 12 a second ~7%, 1 ~0.4%).
+    /// 12 frames a second while you're at it (pixel art moves in steps anyway); one a second behind other apps, or
+    /// after 30 s without mouse or keyboard input and no agent changing state — still alive, for about the CPU of a
+    /// still window (the cost goes with the frames: 12 a second ~7%, 1 ~0.4%).
     @State private var active = NSApp.isActive
+    @State private var moodChanged = Date()
+    @State private var lively = true
+    static let restAfter: TimeInterval = 30
 
     /// Seconds between frames.
     static func frameInterval(style: Style, active: Bool) -> Double {
         if !active { return 1.0 }
         return style == .backdrop ? 1.0 / 8 : 1.0 / 12
+    }
+
+    /// Whether it swims at full speed: Octomux in front and someone around (input, or an agent changed state lately).
+    static func isLively(active: Bool, idleSeconds: TimeInterval, sinceMoodChange: TimeInterval) -> Bool {
+        active && (idleSeconds < restAfter || sinceMoodChange < restAfter)
+    }
+
+    private func refreshLively() {
+        let idle = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: ~0)!)
+        let l = Self.isLively(active: active, idleSeconds: idle, sinceMoodChange: Date().timeIntervalSince(moodChanged))
+        if l != lively { lively = l }
     }
 
     static let eyeColor = Color(hex: "#1E1B4B")
@@ -126,7 +141,7 @@ struct AquariumView: View {
         let list = fish
         let sprite = CGSize(width: 16 * px, height: 13 * px)
         GeometryReader { g in
-            TimelineView(.animation(minimumInterval: still ? 1000 : Self.frameInterval(style: style, active: active), paused: still)) { tl in
+            TimelineView(.animation(minimumInterval: still ? 1000 : Self.frameInterval(style: style, active: lively), paused: still)) { tl in
                 let t = still ? 37 : tl.date.timeIntervalSinceReferenceDate
                 Canvas { ctx, size in
                     if style != .backdrop { water(ctx, size, t) }
@@ -153,8 +168,11 @@ struct AquariumView: View {
         }
         .allowsHitTesting(style != .backdrop)
         .opacity(style == .backdrop ? 0.6 : 1)
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in active = true }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in active = false }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in active = true; refreshLively() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in active = false; refreshLively() }
+        // Looks every 2 s whether anyone is around (cheap: one system call).
+        .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in if !still { refreshLively() } }
+        .onChange(of: list.map { "\($0.id)\($0.mood)" }) { _, _ in moodChanged = Date(); refreshLively() }
     }
 
     // MARK: Drawing

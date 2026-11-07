@@ -61,4 +61,11 @@ final class AquariumFramesTests: XCTestCase {
         XCTAssertEqual(AquariumView.frameInterval(style: .backdrop, active: true), 1.0 / 8)
         for st in [AquariumView.Style.strip, .full, .backdrop] { XCTAssertEqual(AquariumView.frameInterval(style: st, active: false), 1.0) }
     }
+
+    func testRestsWhenNobodyIsAround() {
+        XCTAssertTrue(AquariumView.isLively(active: true, idleSeconds: 5, sinceMoodChange: 600))     // you're at it
+        XCTAssertTrue(AquariumView.isLively(active: true, idleSeconds: 600, sinceMoodChange: 3))     // an agent just changed
+        XCTAssertFalse(AquariumView.isLively(active: true, idleSeconds: 31, sinceMoodChange: 31))    // nobody around: rests
+        XCTAssertFalse(AquariumView.isLively(active: false, idleSeconds: 0, sinceMoodChange: 0))     // behind other apps
+    }
 }

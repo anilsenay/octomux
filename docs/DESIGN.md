@@ -154,8 +154,8 @@ A closed scale with no half points (`DesignTokenTests` fails on `N.5` sizes in `
   container keeps every child in its list and leaves one that is off out by its own `if` (identity by block).
 - Performance: the resolved layout is cached per change of the settings; the agents' transcripts are read once for
   every block that shows them (rail, Home, task detail), after the first frame, and only while one is on screen.
-  Measured per layout: idle CPU as the classic window (the Aquarium swims at 12 frames a second while Octomux is in
-  front, one a second behind other apps: ~0.4% then, as the others), +5–30 MB, switches mostly 90–230 ms, no terminal view made by a switch. A terminal area that
+  Measured per layout: idle CPU as the classic window (the Aquarium swims at 12 frames a second while you're at
+  it, one a second behind other apps or after 30 s without input and no agent changing state: ~0.4–0.8%), +5–30 MB, switches mostly 90–230 ms, no terminal view made by a switch. A terminal area that
   takes the panes draws them on the next turn; the Tasks window selects its assistant just after its first frame;
   the engine's blocks are drawn once off screen a few seconds after launch (no readers, no key monitors), so the
   first switch to a layout doesn't pay for loading them.
