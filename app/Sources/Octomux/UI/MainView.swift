@@ -614,6 +614,7 @@ struct DocChip: View {
         case .commit(let h, let s): return "\(h.prefix(8)) \(s)"
         case .newChat: return "New chat session"
         case .inbox: return "Pull requests, reviews and issues"
+        case .agents: return "Every agent: what it did, what it waits for"
         }
     }
 }

@@ -361,6 +361,9 @@ enum DebugActions {
                 if let r = (p["region"] as? String).flatMap(LayoutRegion.init(rawValue:)), let v = p["value"] as? String {
                     m.editLayout { LayoutEdit.move(v, in: r, by: (p["by"] as? Int) ?? -1, stored: $0) }
                 }
+            case "agents_home":       // value: board | columns | inbox; opens the Agents home
+                if let v = p["value"] as? String { UserDefaults.standard.set(v, forKey: "octomux.agentsHomeStyle") }
+                m.openAgentsHome()
             case "layout_reset": m.editLayout { LayoutEdit.reset(stored: $0) }
             case "layout_import": if let path = p["value"] as? String { NSLog("layout import: \(LayoutSettings.importLayout(from: URL(fileURLWithPath: path), model: m))") }
             case "layout_export": if let path = p["value"] as? String { try? LayoutEdit.exporting(m.layoutStored).write(to: URL(fileURLWithPath: path)) }

@@ -32,7 +32,7 @@ enum LayoutPreset: String, CaseIterable, Identifiable, Codable {
     var summary: String {
         switch self {
         case .terminal: return "Octomux as it comes: projects and their sessions, terminals first."
-        case .agents: return "Agents up front: the agent list open and tall, new agents open as chats."
+        case .agents: return "Agents up front: a home with every agent (board, columns or inbox), answers from the cards, new agents open as chats."
         case .review: return "Changes up front: the Changes panel open and wide, the Inbox first."
         case .minimal: return "Only the panes: no sidebar, no status bar, a quiet top bar."
         }
@@ -304,9 +304,7 @@ extension AppModel {
                 rightPanelWidth = Self.rightPanelDefaultWidth
             case .agents:
                 sidebarVisible = true
-                sidebarAgents = true
-                // About half the sidebar: the projects keep room for a few rows.
-                UserDefaults.standard.set(Double((NSApp.mainWindow?.frame.height ?? 820) * 0.55), forKey: "octomux.agentsPanelHeight")
+                sidebarAgents = false   // the home lists them
                 rightPanelVisible = false
             case .review:
                 sidebarVisible = true
@@ -321,6 +319,7 @@ extension AppModel {
         }
         sidebarPeek = false
         saveSelection()
+        if p == .agents { openAgentsHome() }
     }
 
     /// The first state after this version starts: the old "hide the cup" switch moves into the layout.

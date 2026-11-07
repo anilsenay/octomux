@@ -125,6 +125,12 @@ final class TerminalHost {
                 container.setRoot(pane)
                 return
             }
+            if case .agents = doc.kind {
+                let pane = PaneView(sessionId: "")
+                pane.setContent(NSHostingView(rootView: AgentsHomeView().environmentObject(model)))
+                container.setRoot(pane)
+                return
+            }
             if case .newChat = doc.kind {
                 let pane = PaneView(sessionId: "")
                 pane.setContent(NSHostingView(rootView: NewChatView(docId: doc.id).environmentObject(model)))

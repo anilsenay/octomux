@@ -10,6 +10,7 @@ struct DocTab: Codable, Identifiable, Equatable {
         case commit(String, String)  // hash, subject
         case newChat                 // start screen of a chat session (no agent running yet)
         case inbox                   // pull requests, reviews and issues (InboxView)
+        case agents                  // the Agents layout's home: every agent at a glance (AgentsHomeView)
     }
     var id: String
     var projectId: String
@@ -27,6 +28,7 @@ struct DocTab: Codable, Identifiable, Equatable {
         case .commit(let h, let subject): return subject.isEmpty ? String(h.prefix(7)) : subject
         case .newChat: return "New session"
         case .inbox: return "Inbox"
+        case .agents: return "Agents"
         }
     }
 
@@ -37,6 +39,7 @@ struct DocTab: Codable, Identifiable, Equatable {
         case .commit: return "clock.arrow.circlepath"
         case .newChat: return "bubble.left.and.text.bubble.right"
         case .inbox: return "tray"
+        case .agents: return "sparkles"
         }
     }
 
@@ -112,6 +115,8 @@ extension AppModel {
 
     /// The Inbox is on screen in a workspace without projects.
     var showsInboxWithoutProject: Bool { currentProject == nil && inboxWithoutProject != nil && inboxWithoutProject == selectedWorkspaceId }
+    /// The Agents home (one per project's tab row, showing every agent).
+    func openAgentsHome() { openDoc(.agents, workPath: currentProject?.path) }
     func openChanges(scrollTo: String? = nil) { openDoc(.changes, scrollTo: scrollTo) }
     func openCommit(_ hash: String, subject: String) { openDoc(.commit(hash, subject)) }
 
