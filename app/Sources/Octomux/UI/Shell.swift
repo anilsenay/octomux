@@ -116,7 +116,7 @@ struct ShellView: View {
                 .padding(.leading, edges.railLeft ? 0 : m.inset)
                 .padding(.trailing, edges.panelRight ? 0 : m.inset)
         case .home:
-            ShellPlaceholder(block: b)
+            ShellHome()
                 .background(CanvasBackground(scene: true))
                 .clipShape(RoundedRectangle(cornerRadius: m.cardR, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: m.cardR, style: .continuous).stroke(m.inset == 0 ? .clear : T.border))
@@ -140,13 +140,5 @@ struct ShellView: View {
     private var sidebarBackground: AnyView {
         theme.activeScene.map { _ in AnyView(Color.clear) }
             ?? (T.m.glass ? AnyView(Color.clear) : T.m.sidebarMaterial ? AnyView(VisualEffect(material: .sidebar)) : AnyView(WorkspaceTintedFrame()))
-    }
-}
-
-/// A block this build doesn't draw yet.
-struct ShellPlaceholder: View {
-    let block: ShellBlock
-    var body: some View {
-        Text(block.rawValue).font(T.meta).foregroundStyle(T.text3).frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
