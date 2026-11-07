@@ -94,6 +94,16 @@ struct SendElementPanel: View {
     @State private var showDetails = false
     @FocusState private var noteFocused: Bool
 
+    /// "button “Sign in”": the picked element's role (or tag) and name. Split up: as one expression the
+    /// CI's compiler gave up type-checking it.
+    static func pickedLabel(_ info: [String: Any]) -> String {
+        let role = info["role"] as? String ?? ""
+        let what: String = role.isEmpty ? (info["tag"] as? String ?? "") : role
+        let name = info["name"] as? String ?? ""
+        let suffix: String = name.isEmpty ? "" : " “\(name.prefix(40))”"
+        return what + suffix
+    }
+
     var body: some View {
         let picked = page.picked
         let targets = BrowserSend.targets(tab: tab)
@@ -104,7 +114,7 @@ struct SendElementPanel: View {
                 Image(systemName: "scope").foregroundStyle(T.accent)
                 Text("Send to agent").font(T.headline)
                 if let info = picked?.info {
-                    Text(((info["role"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? info["tag"] as? String ?? "") + ((info["name"] as? String).flatMap { $0.isEmpty ? nil : " “\($0.prefix(40))”" } ?? ""))
+                    Text(Self.pickedLabel(info))
                         .font(T.caption).foregroundStyle(T.text2).lineLimit(1)
                 }
                 Spacer()
