@@ -56,6 +56,17 @@ final class ShellTests: XCTestCase {
         XCTAssertFalse(ShellKeys.shellOnly(#selector(AppDelegate.prevTab(_:))))
     }
 
+    // MARK: Hidden blocks do nothing
+
+    func testDigestsOnlyWhileARailOrHomeIsOnScreen() throws {
+        let agents = try XCTUnwrap(ShellTree.builtIn("agents"))
+        XCTAssertTrue(ShellView.wantsDigests(agents, railShown: true, homeShown: false))
+        XCTAssertTrue(ShellView.wantsDigests(agents, railShown: false, homeShown: true))
+        XCTAssertFalse(ShellView.wantsDigests(agents, railShown: false, homeShown: false))   // ⌘B on a session: no readers
+        let bare = try ShellTree.parse(Data(#"{"schema":1,"root":{"row":[{"block":"agentRail"},{"block":"workArea"}]}}"#.utf8)).get()
+        XCTAssertFalse(ShellView.wantsDigests(bare, railShown: false, homeShown: true))      // no Home block in that tree
+    }
+
     // MARK: Home
 
     func testHomeWords() {

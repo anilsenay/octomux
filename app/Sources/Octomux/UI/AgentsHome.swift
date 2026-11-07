@@ -24,13 +24,18 @@ final class AgentDigests: ObservableObject {
     private var readers: [String: ChatModel] = [:]
     private var timer: Timer?
 
+    /// Readers running in the whole app (the engine window's checks: none while no block that shows them is on screen).
+    nonisolated(unsafe) static var running = 0
+
     func start() {
         guard timer == nil else { return }
+        Self.running += 1
         refresh()
         timer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in self?.refresh() }
     }
 
     func stop() {
+        if timer != nil { Self.running -= 1 }
         timer?.invalidate(); timer = nil
         readers.values.forEach { $0.attach(nil) }
         readers = [:]

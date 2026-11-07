@@ -30,14 +30,22 @@ struct ShellView: View {
     /// before the side panel).
     struct Edges { var railLeft = false; var panelRight = false }
 
+    /// Whether a block that shows the agents' digests is on screen: the rail (unless hidden with ⌘B) or Home.
+    static func wantsDigests(_ tree: ShellTree, railShown: Bool, homeShown: Bool) -> Bool {
+        let b = tree.root.blocks
+        return (b.contains(.agentRail) && railShown) || (b.contains(.home) && homeShown)
+    }
+
+    private var homeShown: Bool { model.shellHome || (model.activeTab == nil && model.activeDoc == nil) }
+    private var wants: Bool { Self.wantsDigests(tree, railShown: model.sidebarVisible, homeShown: homeShown) }
+
     var body: some View {
         node(tree.root, edges: Edges())
             .environmentObject(digests)
-            // After the first frame: the window shows the layout first, then reads the agents' transcripts.
-            .onAppear {
-                guard tree.root.blocks.contains(.agentRail) || tree.root.blocks.contains(.home) else { return }
-                DispatchQueue.main.async { digests.start() }
-            }
+            // Readers only while a block that shows them is on screen, and after the first frame (the window shows the
+            // layout first, then reads the agents' transcripts).
+            .onAppear { if wants { DispatchQueue.main.async { if wants { digests.start() } } } }
+            .onChange(of: wants) { _, w in if w { digests.start() } else { digests.stop() } }
             .onDisappear { digests.stop() }
     }
 
@@ -79,6 +87,7 @@ struct ShellView: View {
     private func visible(_ k: ShellChild) -> Bool {
         switch k.node {
         case .block(.sidePanel): return model.rightPanelVisible
+        case .block(.agentRail), .block(.projectTree): return model.sidebarVisible   // ⌘B hides the rail too
         default: return true
         }
     }

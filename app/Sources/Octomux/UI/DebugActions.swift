@@ -106,6 +106,7 @@ enum DebugActions {
                 "surfaces_made": TerminalHost.shared.surfacesMade,
                 "rail": m.railSessions.map(\.id),
                 "rail_keys": RailKeys.shared.active,
+                "digest_readers": AgentDigests.running,
                 "agent_menu": NSApp.mainMenu?.items.flatMap { $0.submenu?.items ?? [] }.filter { $0.action == #selector(AppDelegate.nextAgent(_:)) }
                     .map { "\($0.title) key=\($0.keyEquivalent) mods=\($0.keyEquivalentModifierMask.rawValue) enabled=\($0.isEnabled)" } ?? [],
                 "dock_open": m.isDockOpen(m.currentProject?.id),
