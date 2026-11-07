@@ -111,6 +111,11 @@ A closed scale with no half points (`DesignTokenTests` fails on `N.5` sizes in `
   layout, and drawn by the region's switch. Stored layouts that don't mention it get it where the built-in layout
   has it.
 - Layouts tile only; nothing floats over a terminal (its Metal surface stops drawing under a SwiftUI layer).
+- A feature never belongs to a layout. It ships in three layers: the core (daemon / model, reachable from the CLI and
+  the Octomux MCP), building blocks usable anywhere (a palette command, a sidebar section, a right-panel tab, a chip
+  in a session header, an Inbox action) registered as layout items so any layout can turn them on, and only then
+  layouts, which choose what is primary and the defaults. New items start off in Terminal. A pure visualisation may
+  live in one layout only.
 
 ## Terminal theme
 Each preset carries a terminal palette matched to its `surface` color (background = `surface`, so the card
