@@ -411,7 +411,7 @@ extension AppModel {
     func storeSavedLayouts(_ v: JSONValue?) {
         setSettingLocally(SavedLayouts.key, v, scope: "global")
         setSetting(SavedLayouts.key, v?.any, scope: "global")
-        (NSApp.delegate as? AppDelegate)?.refreshLayoutMenu()   // their ⌃⌘8 / ⌃⌘9 work before the menu is opened
+        (NSApp?.delegate as? AppDelegate)?.refreshLayoutMenu()   // their ⌃⌘8 / ⌃⌘9 work before the menu is opened
     }
 
     /// Switches the whole app to a layout and sets the window up for it (panels open or closed, their sizes).

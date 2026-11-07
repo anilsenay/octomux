@@ -112,3 +112,21 @@ final class TasksTests: XCTestCase {
         XCTAssertFalse(LayoutConfig.builtIn(.terminal).has("tasks", in: .sidebar))
     }
 }
+
+final class TasksWindowKeysTests: XCTestCase {
+    func testTasksWindowsListAndHome() {
+        let m = AppModel.shared
+        let (stored, task) = (m.layoutStored, m.shellTaskId)
+        defer { m.setSettingLocally(AppModel.layoutKey, stored, scope: "global"); m.shellTaskId = task; LayoutCache.reset() }
+        m.chooseLayout(.tasks)
+        XCTAssertEqual(m.shellNav, .tasks)
+        XCTAssertNil(m.shellTaskId)                                     // opens on the assistant
+        XCTAssertEqual(m.shellList, m.tasksRail.map(\.id))             // ⌘1…9 go through the tasks
+        m.shellTaskId = "t1"
+        XCTAssertEqual(m.shellListCurrent, "t1")
+        m.shellGoHome()                                                 // ⌘0: the assistant, no task
+        XCTAssertNil(m.shellTaskId)
+        m.shellSelectTask("gone")                                       // a task that isn't there: picked, nothing else
+        XCTAssertEqual(m.shellTaskId, "gone")
+    }
+}
