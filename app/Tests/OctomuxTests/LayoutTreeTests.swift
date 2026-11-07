@@ -133,6 +133,26 @@ final class LayoutTreeTests: XCTestCase {
         XCTAssertEqual(try ShellTree.parse(t.json).get().variant(of: .home), "workday")
     }
 
+    func testFilesCantAskForTheImpossible() throws {
+        // Numbers too big for an Int are "no schema", not a crash.
+        for n in ["1e300", "-1e300", "1.5", "9223372036854775808"] {
+            XCTAssertEqual(tree(#"{"schema":\#(n),"root":{"block":"workArea"}}"#).failure, .schema(0), n)
+            XCTAssertEqual(LayoutFile.read(Data(#"{"schema":\#(n),"name":"x","base":"agents"}"#.utf8), themes: nil, commands: nil).failure, .schema(0), n)
+        }
+        // Sizes within what a screen has.
+        let t = try tree(#"{"schema":1,"root":{"row":[{"block":"agentRail","size":{"fixed":1e300}},{"block":"workArea","size":{"flex":1e300}},{"block":"sidePanel","size":{"min":1e9}}]}}"#).get()
+        guard case .row(let kids) = t.root else { return XCTFail() }
+        XCTAssertEqual(kids.map(\.size), [.fixed(ShellTree.maxPoints), .flex(ShellTree.maxFlex), .min(ShellTree.maxPoints)])
+        let custom: [String: JSONValue] = ["sizes": json(#"{"agentRail":1e300}"#)]
+        if case .row(let k)? = ShellTree.resolve(preset: .agents, custom: custom)?.root { XCTAssertEqual(k.first?.size, .fixed(ShellTree.maxPoints)) } else { XCTFail() }
+        // Deep or huge trees are refused before anything is drawn.
+        var deep = #"{"block":"workArea"}"#
+        for _ in 0..<ShellTree.maxDepth { deep = #"{"stack":[\#(deep)]}"# }
+        if case .shape? = tree(#"{"schema":1,"root":\#(deep)}"#).failure {} else { XCTFail("too deep") }
+        let wide = (0..<ShellTree.maxNodes).map { _ in #"{"row":[{"stack":[{"block":"workArea"}]}]}"# }.joined(separator: ",")
+        if case .shape? = tree(#"{"schema":1,"root":{"column":[\#(wide)]}}"#).failure {} else { XCTFail("too many nodes") }
+    }
+
     func testProblemsHaveAMessage() {
         let all: [ShellTree.Problem] = [.unreadable, .schema(0), .schema(2), .unknownBlock("x"), .shape("y"), .twice(.home),
                                         .placement(.home, "z"), .tooSmall(.agentRail), .noWorkArea, .twoLists]

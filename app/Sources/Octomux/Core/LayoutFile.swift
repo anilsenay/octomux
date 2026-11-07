@@ -63,7 +63,7 @@ struct LayoutFile: Equatable {
 
     static func read(_ v: JSONValue, themes: Set<String>?, commands: Set<String>?) -> Result<(file: LayoutFile, notes: [String]), Problem> {
         guard case .object(let o) = v else { return .failure(.unreadable) }
-        let schema = o["schema"].flatMap { if case .number(let n) = $0 { return Int(n) } else { return nil } } ?? 0
+        let schema = ShellTree.schemaNumber(o["schema"])
         guard schema == Self.schema else { return .failure(.schema(schema)) }
         let name = (o["name"]?.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return .failure(.noName) }

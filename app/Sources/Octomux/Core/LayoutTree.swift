@@ -144,23 +144,38 @@ struct ShellTree: Equatable {
 
     static func parse(_ v: JSONValue) -> Result<ShellTree, Problem> {
         guard case .object(let o) = v else { return .failure(.unreadable) }
-        let schema = o["schema"].flatMap { if case .number(let n) = $0 { return Int(n) } else { return nil } } ?? 0
+        let schema = schemaNumber(o["schema"])
         guard schema == Self.schema else { return .failure(.schema(schema)) }
         guard let r = o["root"] else { return .failure(.shape("no root")) }
         do {
-            let t = ShellTree(root: try child(r).node)
+            var count = 0
+            let t = ShellTree(root: try child(r, depth: 0, count: &count).node)
             if let p = t.problem() { return .failure(p) }
             return .success(t)
         } catch let p as Problem { return .failure(p) } catch { return .failure(.unreadable) }
     }
 
-    private static func child(_ v: JSONValue) throws -> ShellChild {
+    /// A file's schema number; 0 when it has none or it isn't a whole number a layout could have (1e300 too).
+    static func schemaNumber(_ v: JSONValue?) -> Int {
+        guard case .number(let n)? = v, abs(n) < 1_000_000, let i = Int(exactly: n) else { return 0 }
+        return i
+    }
+    /// Sizes a file can ask for: points no screen is wider than, and flex shares within reason.
+    static let maxPoints: CGFloat = 4000, maxFlex = 100.0
+    /// How deep and how big a tree may be: far more than any window uses, little enough for any file to be cheap.
+    static let maxDepth = 12, maxNodes = 64
+    private static func points(_ n: Double) -> CGFloat { CGFloat(min(max(n, 0), Double(maxPoints))) }
+
+    private static func child(_ v: JSONValue, depth: Int, count: inout Int) throws -> ShellChild {
         guard case .object(let o) = v else { throw Problem.shape("a node is not an object") }
+        guard depth < maxDepth else { throw Problem.shape("it nests deeper than \(maxDepth) levels") }
+        count += 1
+        guard count <= maxNodes else { throw Problem.shape("it has more than \(maxNodes) nodes") }
         var size: ShellSize?
         if case .object(let s)? = o["size"] {
-            if case .number(let n)? = s["fixed"] { size = .fixed(CGFloat(n)) }
-            else if case .number(let n)? = s["min"] { size = .min(CGFloat(n)) }
-            else if case .number(let n)? = s["flex"] { size = .flex(max(0.01, n)) }
+            if case .number(let n)? = s["fixed"] { size = .fixed(points(n)) }
+            else if case .number(let n)? = s["min"] { size = .min(points(n)) }
+            else if case .number(let n)? = s["flex"] { size = .flex(min(max(0.01, n), maxFlex)) }
             else { throw Problem.shape("size needs fixed, min or flex") }
         }
         let keys = ["row", "column", "stack", "block"].filter { o[$0] != nil }
@@ -173,7 +188,7 @@ struct ShellTree: Equatable {
             return ShellChild(node: .block(b), size: size, variant: v)
         default:
             guard case .array(let list)? = o[keys[0]], !list.isEmpty else { throw Problem.shape("\(keys[0]) needs children") }
-            let kids = try list.map(child)
+            let kids = try list.map { try child($0, depth: depth + 1, count: &count) }
             switch keys[0] {
             case "row": return ShellChild(node: .row(kids), size: size)
             case "column": return ShellChild(node: .column(kids), size: size)
@@ -241,7 +256,7 @@ struct ShellTree: Equatable {
         if case .object(let sizes)? = custom["sizes"], t != nil {
             for (k, v) in sizes {
                 guard let b = ShellBlock(rawValue: k), case .number(let w) = v, CGFloat(w) >= b.minSize else { continue }
-                t!.root = t!.root.sized(b, .fixed(CGFloat(w)))
+                t!.root = t!.root.sized(b, .fixed(min(CGFloat(w), maxPoints)))
             }
         }
         return t
