@@ -229,7 +229,7 @@ struct KeepAwakePanel: View {
         // Keys: the three modes, Settings, Hide.
         let actions: [() -> Void] = modes.map { m in { awake.setMode(m.id) } } + [
             { SettingsWindow.show(section: .sessions) },
-            { UserDefaults.standard.set(true, forKey: KeepAwake.hiddenKey) }]
+            { UserDefaults.standard.set(true, forKey: KeepAwake.hiddenKey) }] + (s.lidSetup ? [] : [{ awake.installRule() }])
         let h = headline
         return PanelCard(width: 300) {
             HStack(spacing: 10) {
@@ -299,12 +299,9 @@ struct KeepAwakePanel: View {
                 }
                 .padding(.horizontal, 9).padding(.vertical, 6)
             } else {
-                Button { FloatingPanelController.shared.close(); awake.installRule() } label: {
-                    PanelRow(title: "Set Up Closed-Lid Mode…") {
-                        Image(systemName: "laptopcomputer").font(T.icon(11)).foregroundStyle(T.text3)
-                    }
-                }
-                .buttonStyle(.plain)
+                row(modes.count + 2, PanelRow(title: "Set Up Closed-Lid Mode…", highlighted: nav.index == modes.count + 2) {
+                    Image(systemName: "laptopcomputer").font(T.icon(11)).foregroundStyle(T.text3)
+                })
             }
             PanelDivider()
             row(modes.count, PanelRow(title: "Settings…", highlighted: nav.index == modes.count) {
@@ -318,7 +315,9 @@ struct KeepAwakePanel: View {
     }
 
     private func row<V: View>(_ i: Int, _ v: V) -> some View {
-        v.onHover { if $0 { nav.index = i } }.onTapGesture { nav.run(i) }
+        v.onHover { h in if h { nav.index = i } else if nav.index == i { nav.index = nil } }
+            .onTapGesture { nav.run(i) }
+            .pointerCursor()
     }
 }
 

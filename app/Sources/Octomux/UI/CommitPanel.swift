@@ -37,7 +37,7 @@ struct TopBarCommitButton: View {
             Button { primary(st, path) } label: {
                 HStack(spacing: 5) {
                     if pushing { ProgressView().controlSize(.mini).scaleEffect(0.8).frame(width: 12, height: 12) }
-                    else { Image(systemName: icon(st)).font(T.icon(11)).foregroundStyle(pushError != nil ? T.red : tint(st)) }
+                    else { Image(systemName: icon(st)).font(T.icon(11, .semibold)).foregroundStyle(pushError != nil ? T.red : tint(st)).frame(width: 13) }
                     Text(pushError != nil ? "Push failed" : title(st)).font(.system(size: T.k * 12, weight: .medium))
                 }
                 .foregroundStyle(st == .clean ? T.text3 : hover || panel ? T.text : T.text2)
@@ -89,7 +89,8 @@ struct TopBarCommitButton: View {
         switch s {
         case .commit, .clean: return "checkmark.circle"
         case .push: return "arrow.up.circle"
-        case .createPR, .openPR: return "arrow.triangle.pull"
+        case .createPR: return "plus.circle"
+        case .openPR: return "arrow.triangle.pull"
         }
     }
     private func tint(_ s: Step) -> Color {

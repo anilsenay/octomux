@@ -963,7 +963,7 @@ struct WorkspacePanel: View {
                 ForEach(Array(hosts.enumerated()), id: \.element.id) { j, h in
                     row(hostBase + j, PanelRow(title: h.name, detail: h.id == model.hostId && h.isRemote ? (model.connected ? "connected" : "connecting…") : nil,
                                                checked: h.id == model.hostId, highlighted: nav.index == hostBase + j) {
-                        Image(systemName: h.isRemote ? "server.rack" : "laptopcomputer").font(T.icon(11)).foregroundStyle(T.text3)
+                        Image(systemName: Self.hostSymbol(h)).font(T.icon(11)).foregroundStyle(T.text3)
                     })
                 }
                 row(tail - 1, PanelRow(title: "Manage Hosts…", highlighted: nav.index == tail - 1) {
@@ -981,6 +981,17 @@ struct WorkspacePanel: View {
         .onAppear { nav.set(actions); nav.attach() }
     }
 
+    /// This Mac, a container (a command host running docker / podman), a host over ssh, another command host.
+    static func hostSymbol(_ h: Host) -> String {
+        switch h.kind {
+        case "local": return "laptopcomputer"
+        case "ssh": return "network"
+        default:
+            let p = (h.prefix + " " + (h.attachPrefix ?? "")).lowercased()
+            return p.contains("docker") || p.contains("podman") || p.contains("container") ? "shippingbox" : "terminal"
+        }
+    }
+
     private func detail(_ a: (waiting: Int, unread: Int)) -> String? {
         if a.waiting > 0 { return "\(a.waiting) waiting" }
         if a.unread > 0 { return "\(a.unread) new" }
@@ -988,7 +999,8 @@ struct WorkspacePanel: View {
     }
 
     private func row<V: View>(_ i: Int, _ v: V) -> some View {
-        v.onHover { if $0 { nav.index = i } }
+        v.onHover { h in if h { nav.index = i } else if nav.index == i { nav.index = nil } }
             .onTapGesture { nav.run(i) }
+            .pointerCursor()
     }
 }
