@@ -147,6 +147,18 @@ final class LayoutFileTests: XCTestCase {
         XCTAssertNil(LayoutEdit.object(LayoutEdit.object(forgot)["custom"])["user:u0000000a"])
     }
 
+    func testASavedLayoutThatIsGoneTakesNoChanges() throws {
+        let f = try read(#"{"schema":1,"name":"Desk","base":"agents","tree":\#(tree)}"#).get().file
+        let saved = SavedLayouts.adding(f, id: "u0000000a", to: nil)
+        let stored = LayoutEdit.chooseUser("u0000000a", base: .agents, in: nil)
+        XCTAssertEqual(LayoutEdit.withoutMissingUser(stored, saved: saved), stored)
+        let gone = try XCTUnwrap(LayoutEdit.withoutMissingUser(stored, saved: nil))
+        XCTAssertNil(LayoutEdit.object(gone)["user"])
+        XCTAssertEqual(LayoutEdit.activeKey(LayoutEdit.object(gone)), "agents")          // edits go to the base
+        XCTAssertEqual(LayoutCache.get(gone, saved: nil).tree, ShellTree.builtIn("agents"))
+        LayoutCache.reset()
+    }
+
     func testSavedLayoutsWindow() throws {
         let own = try read(#"{"schema":1,"name":"A","base":"terminal","tree":\#(tree)}"#).get().file
         let classic = try read(#"{"schema":1,"name":"B","base":"terminal"}"#).get().file

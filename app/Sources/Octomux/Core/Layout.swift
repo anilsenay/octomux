@@ -312,6 +312,14 @@ enum LayoutEdit {
         return .object(o)
     }
 
+    /// `stored` without its saved layout when that isn't among `saved` (its own changes stay, for when it is back).
+    static func withoutMissingUser(_ stored: JSONValue?, saved: JSONValue?) -> JSONValue? {
+        guard case .object(var o)? = stored, let id = o["user"]?.string else { return stored }
+        if SavedLayouts.isId(id), object(saved)[id] != nil { return stored }
+        o["user"] = nil
+        return .object(o)
+    }
+
     /// A saved layout's changes forgotten (it is deleted, or replaced).
     static func forget(user id: String, in stored: JSONValue?) -> JSONValue? {
         guard stored != nil else { return nil }
@@ -380,7 +388,9 @@ extension AppModel {
     static let rightPanelDefaultWidth: CGFloat = 320
     static let rightPanelWidths: ClosedRange<CGFloat> = 260...900
 
-    var layoutStored: JSONValue? { settingValue(Self.layoutKey, scope: "global") }
+    /// The stored layout; a saved layout in use that isn't here (deleted, or saved on another Mac) reads as its
+    /// base, so your changes then go to the base and not to a layout you can't see.
+    var layoutStored: JSONValue? { LayoutEdit.withoutMissingUser(settingValue(Self.layoutKey, scope: "global"), saved: savedLayoutsStored) }
     var savedLayoutsStored: JSONValue? { settingValue(SavedLayouts.key, scope: "global") }
     /// The layouts you saved or imported, by id.
     var savedLayouts: [String: LayoutFile] { LayoutCache.get(revision: settingsRevision) { (layoutStored, savedLayoutsStored) }.saved }
