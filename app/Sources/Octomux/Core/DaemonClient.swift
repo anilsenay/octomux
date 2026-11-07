@@ -96,8 +96,13 @@ final class DaemonClient {
 
     func openStream() -> LineStream? {
         if let argv = host.controlArgv { return ProcessLineStream(argv: argv) }
+        if Self.isolated { return nil }
         return LineSocket(path: Paths.daemonSocket.path)
     }
+
+    /// Unit tests without their own OCTOMUX_HOME: the default home is the user's, so no call reaches (or starts, or
+    /// re-points the launchd agent of) the user's daemon. Settings the tests set stay in the test's model.
+    static let isolated = NSClassFromString("XCTestCase") != nil && !Paths.homeFromEnv
 
     /// Points the client at another host; the subscription loop reconnects.
     func switchHost(_ h: Host) {
@@ -125,6 +130,7 @@ final class DaemonClient {
 
     /// Makes sure a daemon is running (installs/kickstarts the launchd agent if needed).
     static func ensureDaemon() -> Bool {
+        if isolated { return false }
         if held { return LineSocket(path: Paths.daemonSocket.path) != nil }
         let agents = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/LaunchAgents")
         let plist = agents.appendingPathComponent("\(Paths.launchLabel).plist")
