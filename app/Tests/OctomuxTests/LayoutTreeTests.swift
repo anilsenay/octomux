@@ -104,6 +104,13 @@ final class LayoutTreeTests: XCTestCase {
         XCTAssertEqual(Set(keys).count, keys.count)
     }
 
+    func testTasksIsAWindowOfItsOwn() throws {
+        let t = try XCTUnwrap(ShellTree.builtIn("tasks"))
+        XCTAssertEqual(t.nav, .tasks)
+        XCTAssertTrue(t.has(.taskDetail) && t.has(.breadcrumb) && !t.has(.tabStrip) && !t.has(.home))
+        XCTAssertNil(ShellTree.builtIn("terminal"))                          // Terminal: the classic window
+    }
+
     func testVariantsReadUnknownOnesAsTheFirst() throws {
         let w = try tree(#"{"schema":1,"root":{"row":[{"block":"agentRail"},{"stack":[{"block":"home","variant":"workday"},{"block":"workArea"}]}]}}"#).get()
         XCTAssertEqual(w.variant(of: .home), "workday")

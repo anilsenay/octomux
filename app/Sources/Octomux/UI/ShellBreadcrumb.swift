@@ -12,15 +12,23 @@ struct ShellBreadcrumb: View {
     }
 
     private func content(compact: Bool) -> some View {
-        let home = model.shellHome || (model.activeTab == nil && model.activeDoc == nil)
+        // The Tasks window has no Home: its root is the tasks (⌘0 opens the assistant), then the picked task.
+        let tasks = model.shellNav == .tasks
+        let home = !tasks && (model.shellHome || (model.activeTab == nil && model.activeDoc == nil))
         let s = home ? nil : model.session(model.focusedSessionId)
+        let task = tasks ? model.task(model.shellTaskId) : nil
         return HStack(spacing: 6) {
             if !model.sidebarVisible { WindowDragArea().frame(width: TopLeftControls.width) }
             Button { model.shellGoHome() } label: {
-                Text("Home").font(.system(size: T.k * 13, weight: home ? .semibold : .medium)).foregroundStyle(home ? T.text : T.text2)
+                Text(tasks ? "Tasks" : "Home").font(.system(size: T.k * 13, weight: home ? .semibold : .medium)).foregroundStyle(home ? T.text : T.text2)
             }
-            .buttonStyle(.plain).pointerCursor().help("Home (⌘0)")
+            .buttonStyle(.plain).pointerCursor().help(tasks ? "The assistant (⌘0)" : "Home (⌘0)")
             Text("·").foregroundStyle(T.text3)
+            if let task {
+                TaskRow.glyph(task.state).frame(width: 14)
+                Text(task.title).font(.system(size: T.k * 13, weight: .semibold)).lineLimit(1)
+                if s != nil { Text("·").foregroundStyle(T.text3) }
+            }
             if home {
                 Text(model.workspace?.name ?? "").font(.system(size: T.k * 13)).foregroundStyle(T.text3).lineLimit(1)
             } else if let d = model.activeDoc {
@@ -28,7 +36,7 @@ struct ShellBreadcrumb: View {
                 Text(d.title).font(.system(size: T.k * 13, weight: .semibold)).lineLimit(1)
             } else if let s {
                 AgentIcon(icon: iconName(for: s, model: model), size: 12)
-                Text(s.displayTitle).font(.system(size: T.k * 13, weight: .semibold)).lineLimit(1)
+                Text(s.displayTitle).font(.system(size: T.k * 13, weight: task == nil ? .semibold : .regular)).lineLimit(1)
                 if let p = model.project(s.projectId) {
                     Text("·").foregroundStyle(T.text3)
                     Text(p.name).font(.system(size: T.k * 13)).foregroundStyle(T.text2).lineLimit(1)

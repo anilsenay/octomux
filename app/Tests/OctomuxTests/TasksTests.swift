@@ -45,6 +45,20 @@ final class TasksTests: XCTestCase {
         XCTAssertEqual(TaskRules.derive(t, sessions: [session("a", .working)], pr: pr), .planned)   // by hand stays
     }
 
+    func testTasksRailGroupsByWhatTheyNeedDoneOnlyWhenAsked() {
+        var a = WorkTask(id: "a", projectId: "p", title: "a", state: .planned); a.createdAt = 1
+        var b = WorkTask(id: "b", projectId: "p", title: "b", state: .needsYou); b.createdAt = 2
+        var c = WorkTask(id: "c", projectId: "p", title: "c", state: .working); c.createdAt = 3
+        let d = WorkTask(id: "d", projectId: "p", title: "d", state: .done)
+        let all = [a, b, c, d]
+        XCTAssertEqual(TasksRailModel.grouped(all, filter: nil, showDone: false).map(\.0), [.needsYou, .working, .planned])
+        XCTAssertEqual(TasksRailModel.flat(all, filter: nil, showDone: false).map(\.id), ["b", "c", "a"])   // ⌘1…9 order
+        XCTAssertEqual(TasksRailModel.flat(all, filter: nil, showDone: true).map(\.id), ["b", "c", "a", "d"])
+        XCTAssertEqual(TasksRailModel.flat(all, filter: .working, showDone: false).map(\.id), ["c"])
+        XCTAssertEqual(TasksRailModel.flat(all, filter: .done, showDone: false).map(\.id), ["d"])           // the Done chip shows them
+        XCTAssertTrue(TasksRailModel.grouped([], filter: nil, showDone: true).isEmpty)
+    }
+
     func testBranchPromptAndOrder() {
         XCTAssertEqual(TaskRules.branch("Fix the cart total!", id: "abc"), "task/fix-the-cart-total")
         XCTAssertEqual(TaskRules.branch("Sepet toplamını düzelt", id: "abc"), "task/sepet-toplamini-duzelt")

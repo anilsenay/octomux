@@ -42,7 +42,7 @@ enum LayoutPreset: String, CaseIterable, Identifiable, Codable {
         case .workday: return "Your day on one page: who needs you, what happened while you were away, your pull requests and issues with their next step."
         case .minimal: return "Only the panes: no sidebar, no status bar, a quiet top bar."
         case .editor: return "Code next to its agent: the agent's chat on the left, the file in the middle with its changed lines marked, the files it touched on the right. Notes on lines go to the agent."
-        case .tasks: return "Work in tasks: the workspace assistant in the middle plans and starts them, the Tasks panel on the right shows what needs you, what is ready to review and what works."
+        case .tasks: return "Work in tasks: your tasks on the left by what they need, the assistant (or the picked task's agent) in the middle, the picked task in detail on the right."
         case .aquarium: return "Every agent as an octopus above the panes: swimming while it works, \"!\" when it waits, asleep when it finished. Click one to open it below."
         }
     }
@@ -386,11 +386,9 @@ extension AppModel {
                 sidebarAgents = false
                 rightPanelVisible = false
             case .tasks:
-                sidebarVisible = true
+                sidebarVisible = true      // the tasks rail
                 sidebarAgents = false
-                UserDefaults.standard.set(RightTab.tasks.rawValue, forKey: "octomux.rightTab")
-                rightPanelWidth = 460
-                rightPanelVisible = true
+                rightPanelVisible = true   // the picked task's detail
             }
         }
         sidebarPeek = false
@@ -404,7 +402,11 @@ extension AppModel {
             }
             shellHome = true
         }
-        if p == .tasks, let a = assistantSession(workspace: selectedWorkspaceId) { selectSession(a.id) }
+        // The Tasks window opens on its assistant (the middle), no task picked.
+        if p == .tasks {
+            shellTaskId = nil
+            if let a = assistantSession(workspace: selectedWorkspaceId) { selectSession(a.id) }
+        }
     }
 
     /// The first state after this version starts: the old "hide the cup" switch moves into the layout.
@@ -432,7 +434,7 @@ extension AppModel {
 /// The resolved layout for the stored setting, kept until the setting changes.
 enum LayoutCache {
     /// Layouts drawn by the layout engine (the others keep the classic window in this version).
-    static let engine: Set<LayoutPreset> = [.agents, .workday, .minimal, .editor, .aquarium]
+    static let engine: Set<LayoutPreset> = [.agents, .workday, .minimal, .editor, .tasks, .aquarium]
     nonisolated(unsafe) private static var last: (stored: JSONValue?, config: LayoutConfig, tree: ShellTree?)?
     nonisolated(unsafe) static var misses = 0
 

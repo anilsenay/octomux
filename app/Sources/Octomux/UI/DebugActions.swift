@@ -104,6 +104,8 @@ enum DebugActions {
                 "shell": m.shellTree != nil,
                 "shell_home": m.shellHome,
                 "shell_drawn": ShellView.drawn,
+                "shell_task": m.shellTaskId as Any,
+                "shell_list": m.shellListNav ? m.shellList : [],
                 "terminal_area_in_window": TerminalHost.shared.container.window != nil,
                 "surfaces_made": TerminalHost.shared.surfacesMade,
                 "rail": m.railSessions.map(\.id),
@@ -392,6 +394,7 @@ enum DebugActions {
             case "tasks": m.showTasks()
             case "aquarium": m.openAquarium()
             case "assistant": m.openAssistant()
+            case "task_select": if let v = p["value"] as? String { m.shellSelectTask(v) }   // the Tasks window
             case "autopilot":         // value: off | start | pr (the current workspace)
                 m.setAutopilot(Autopilot(rawValue: p["value"] as? String ?? "off") ?? .off, workspace: m.selectedWorkspaceId)
             case "task_start":        // value: task id; "profile_id": one-off agent
