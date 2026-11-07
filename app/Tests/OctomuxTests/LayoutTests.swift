@@ -131,23 +131,5 @@ final class LayoutTests: XCTestCase {
         XCTAssertNil(LayoutEdit.migrate(stored: LayoutEdit.choose(.agents, in: nil), keepAwakeHidden: true))   // already has a layout
     }
 
-    // MARK: Files
-
-    func testExportImportRoundTrip() throws {
-        var v = LayoutEdit.choose(.minimal, in: nil)
-        v = LayoutEdit.toggle("git", in: .topBar, on: false, stored: v)
-        let data = LayoutEdit.exporting(v)
-        let back = try XCTUnwrap(LayoutEdit.importing(data))
-        XCTAssertEqual(LayoutConfig.resolve(back), LayoutConfig.resolve(v))
-    }
-
-    func testImportRejectsOtherFiles() {
-        XCTAssertNil(LayoutEdit.importing(Data(#"{"hello":1}"#.utf8)))
-        XCTAssertNil(LayoutEdit.importing(Data(#"{"layout":"huge"}"#.utf8)))
-        XCTAssertNil(LayoutEdit.importing(Data(#"{"layout":"agents","custom":3}"#.utf8)))
-        XCTAssertNil(LayoutEdit.importing(Data("not json".utf8)))
-        // Extra keys are dropped.
-        let v = LayoutEdit.importing(Data(#"{"layout":"agents","x":1}"#.utf8))
-        XCTAssertEqual(v, json(#"{"layout":"agents"}"#))
-    }
+    // Files: a layout as a file (format v1) — LayoutFileTests.
 }

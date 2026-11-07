@@ -104,6 +104,12 @@ enum DebugActions {
                 "shell": m.shellTree != nil,
                 "shell_home": m.shellHome,
                 "shell_drawn": ShellView.drawn,
+                "layout_user": m.layout.userId as Any,
+                "saved_layouts": SavedLayouts.sorted(m.savedLayouts).map { ["id": $0.id, "name": $0.file.name, "base": $0.file.base.rawValue, "tree": $0.file.tree != nil, "preview": SavedLayouts.preview($0.id) != nil] },
+                "layout_import_result": LayoutImport.last,
+                "layout_menu": (NSApp.mainMenu?.items.first { $0.submenu?.title == "View" }?.submenu?.items ?? [])
+                    .filter { $0.tag >= AppDelegate.savedLayoutTag }
+                    .map { "\($0.title) \($0.keyEquivalentModifierMask.contains(.control) ? "⌃⌘" + $0.keyEquivalent : "") \($0.state == .on ? "✓" : "")" },
                 "shell_task": m.shellTaskId as Any,
                 "shell_list": m.shellListNav ? m.shellList : [],
                 "terminal_area_in_window": TerminalHost.shared.container.window != nil,
@@ -367,11 +373,13 @@ enum DebugActions {
                 else { m.setSettingLocally(AppModel.layoutKey, nil, scope: "global"); m.setSetting(AppModel.layoutKey, nil) }
             case "layout_toggle":     // region, value: item id, on
                 if let r = (p["region"] as? String).flatMap(LayoutRegion.init(rawValue:)), let v = p["value"] as? String {
-                    m.editLayout { LayoutEdit.toggle(v, in: r, on: (p["on"] as? Bool) ?? true, stored: $0) }
+                    let saved = m.savedLayouts
+                    m.editLayout { LayoutEdit.toggle(v, in: r, on: (p["on"] as? Bool) ?? true, stored: $0, saved: saved) }
                 }
             case "layout_move":       // region, value: item id, by: -1 | 1
                 if let r = (p["region"] as? String).flatMap(LayoutRegion.init(rawValue:)), let v = p["value"] as? String {
-                    m.editLayout { LayoutEdit.move(v, in: r, by: (p["by"] as? Int) ?? -1, stored: $0) }
+                    let saved = m.savedLayouts
+                    m.editLayout { LayoutEdit.move(v, in: r, by: (p["by"] as? Int) ?? -1, stored: $0, saved: saved) }
                 }
             case "agents_home":       // value: board | columns | inbox; opens the Agents home
                 if let v = p["value"] as? String { UserDefaults.standard.set(v, forKey: "octomux.agentsHomeStyle") }
@@ -412,8 +420,28 @@ enum DebugActions {
             case "looked":            // value: session id; "since you looked" starts now for it
                 if let v = p["value"] as? String { m.lookedAt(v) }
             case "layout_reset": m.editLayout { LayoutEdit.reset(stored: $0) }
-            case "layout_import": if let path = p["value"] as? String { NSLog("layout import: \(LayoutSettings.importLayout(from: URL(fileURLWithPath: path), model: m))") }
-            case "layout_export": if let path = p["value"] as? String { try? LayoutEdit.exporting(m.layoutStored).write(to: URL(fileURLWithPath: path)) }
+            case "layout_import":     // value: path; use, theme, keys: Bool — as the import sheet's buttons
+                if let path = p["value"] as? String {
+                    switch LayoutImport.read(URL(fileURLWithPath: path), model: m) {
+                    case .success(let r):
+                        let id = m.addLayout(r.file, use: (p["use"] as? Bool) ?? false, applyTheme: (p["theme"] as? Bool) ?? false, applyKeys: (p["keys"] as? Bool) ?? false)
+                        LayoutImport.last = "added \(id)" + (r.notes.isEmpty ? "" : ": " + r.notes.joined(separator: " "))
+                    case .failure(let e): LayoutImport.last = "refused: " + e.message
+                    }
+                }
+            case "layout_import_sheet":   // value: path; shows the import sheet (Settings → Layout)
+                if let path = p["value"] as? String { LayoutImport.shared.open(URL(fileURLWithPath: path), model: m); SettingsWindow.show(section: .layout) }
+                else { LayoutImport.shared.pending = nil }   // no path: closes it
+            case "layout_export":     // value: path; id (a saved layout, else the one in use); theme, keys: Bool
+                if let path = p["value"] as? String {
+                    let f = m.layoutFileForExport(p["id"] as? String, includeTheme: (p["theme"] as? Bool) ?? false, includeKeys: (p["keys"] as? Bool) ?? false)
+                    try? f.data().write(to: URL(fileURLWithPath: path))
+                }
+            case "layout_save_new": m.saveLayoutAsNew(name: p["value"] as? String ?? "My layout", author: p["author"] as? String ?? "")
+            case "layout_use_saved": if let v = p["value"] as? String { m.chooseSavedLayout(v) }
+            case "layout_duplicate_saved": if let v = p["value"] as? String { m.duplicateSavedLayout(v) }
+            case "layout_delete_saved": if let v = p["value"] as? String { m.deleteSavedLayout(v) }
+            case "layout_snapshot": if let v = p["value"] as? String ?? m.layout.userId { LayoutPreviewShot.take(for: v) }
             case "panel_snapshot":
                 if let r = FloatingPanelController.shared.snapshot(to: p["value"] as? String ?? "/tmp/octomux-panel.png") { return r }
             case "git_refresh": if let p = m.currentWorkPath { GitInfo.shared.invalidate(p) }

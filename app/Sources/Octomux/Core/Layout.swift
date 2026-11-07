@@ -148,6 +148,11 @@ struct LayoutConfig: Equatable {
     var chat: Bool
     /// The project's agent in a column beside the work area (its chat, or its terminal's summary).
     var sideChat = false
+    /// A layout you saved or imported (Settings → Layout → Your layouts): its id and name; nil = a built-in one.
+    var userId: String? = nil
+    var userName: String? = nil
+    /// The layout's name as people see it.
+    var title: String { userName ?? preset.title }
 
     func items(_ r: LayoutRegion) -> [LayoutItem] { regions[r] ?? LayoutConfig.builtIn(preset).regions[r] ?? [] }
     /// The ids shown in a region, in order.
@@ -204,12 +209,27 @@ struct LayoutConfig: Equatable {
         }
     }
 
-    /// Reads the stored setting; anything it can't read falls back to the built-in values.
-    static func resolve(_ stored: JSONValue?) -> LayoutConfig {
+    /// Reads the stored setting; anything it can't read falls back to the built-in values. A saved layout
+    /// (`"user": "<id>"`, one of `saved`) is its base with the file's settings, then what you changed in it.
+    static func resolve(_ stored: JSONValue?, saved: [String: LayoutFile] = [:]) -> LayoutConfig {
         guard case .object(let o)? = stored else { return .default }
+        let customs = LayoutEdit.object(o["custom"])
+        if let id = o["user"]?.string, let f = saved[id] {
+            var c = builtIn(f.base)
+            apply(f.settings, to: &c)
+            apply(LayoutEdit.object(customs[LayoutEdit.userKey(id)]), to: &c)
+            c.userId = id
+            c.userName = f.name
+            return c
+        }
         let preset = o["layout"]?.string.flatMap(LayoutPreset.init(rawValue:)) ?? .terminal
         var c = builtIn(preset)
-        guard case .object(let customs)? = o["custom"], case .object(let mine)? = customs[preset.rawValue] else { return c }
+        apply(LayoutEdit.object(customs[preset.rawValue]), to: &c)
+        return c
+    }
+
+    /// A layout's changes (`regions`, the switches) over `c`.
+    static func apply(_ mine: [String: JSONValue], to c: inout LayoutConfig) {
         if case .object(let regions)? = mine["regions"] {
             for r in LayoutRegion.allCases {
                 if case .array(let list)? = regions[r.rawValue] { c.regions[r] = merge(list, into: c.items(r), known: r.items) }
@@ -218,7 +238,13 @@ struct LayoutConfig: Equatable {
         if let b = mine["statusBar"]?.bool { c.statusBar = b }
         if let b = mine["chat"]?.bool { c.chat = b }
         if let b = mine["sideChat"]?.bool { c.sideChat = b }
-        return c
+    }
+
+    /// The layout's parts as a saved layout keeps them: every region whole, and the switches.
+    var settings: [String: JSONValue] {
+        var regions: [String: JSONValue] = [:]
+        for r in LayoutRegion.allCases { regions[r.rawValue] = LayoutEdit.encode(items(r)) }
+        return ["regions": .object(regions), "statusBar": .bool(statusBar), "chat": .bool(chat), "sideChat": .bool(sideChat)]
     }
 
     /// A stored item list over the built-in one: its known items in its order (each once), then any item it
@@ -250,7 +276,26 @@ enum LayoutEdit {
     static func choose(_ p: LayoutPreset, in stored: JSONValue?) -> JSONValue {
         var o = object(stored)
         o["layout"] = .string(p.rawValue)
+        o["user"] = nil
         return .object(o)
+    }
+
+    /// A saved layout becomes the one in use (`base` is its built-in base, kept as `layout` so an older version, or
+    /// one without the saved layout, opens its base).
+    static func chooseUser(_ id: String, base: LayoutPreset, in stored: JSONValue?) -> JSONValue {
+        var o = object(stored)
+        o["layout"] = .string(base.rawValue)
+        o["user"] = .string(id)
+        return .object(o)
+    }
+
+    /// Where a saved layout's changes are kept in `custom`.
+    static func userKey(_ id: String) -> String { "user:" + id }
+
+    /// The key of the layout in use in `custom`: its preset's, or a saved layout's.
+    static func activeKey(_ o: [String: JSONValue]) -> String {
+        if let id = o["user"]?.string { return userKey(id) }
+        return (o["layout"]?.string.flatMap(LayoutPreset.init(rawValue:)) ?? .terminal).rawValue
     }
 
     /// The current layout's custom part, changed by `f`.
@@ -258,11 +303,23 @@ enum LayoutEdit {
         var o = object(stored)
         let p = o["layout"]?.string.flatMap(LayoutPreset.init(rawValue:)) ?? .terminal
         o["layout"] = .string(p.rawValue)
+        let key = activeKey(o)
         var customs = object(o["custom"])
-        var mine = object(customs[p.rawValue])
+        var mine = object(customs[key])
         f(&mine)
-        customs[p.rawValue] = mine.isEmpty ? nil : .object(mine)
+        customs[key] = mine.isEmpty ? nil : .object(mine)
         o["custom"] = customs.isEmpty ? nil : .object(customs)
+        return .object(o)
+    }
+
+    /// A saved layout's changes forgotten (it is deleted, or replaced).
+    static func forget(user id: String, in stored: JSONValue?) -> JSONValue? {
+        guard stored != nil else { return nil }
+        var o = object(stored)
+        var customs = object(o["custom"])
+        customs[userKey(id)] = nil
+        o["custom"] = customs.isEmpty ? nil : .object(customs)
+        if o["user"]?.string == id { o["user"] = nil }
         return .object(o)
     }
 
@@ -279,15 +336,15 @@ enum LayoutEdit {
         }
     }
 
-    static func toggle(_ id: String, in r: LayoutRegion, on: Bool, stored: JSONValue?) -> JSONValue {
-        var items = LayoutConfig.resolve(stored).items(r)
+    static func toggle(_ id: String, in r: LayoutRegion, on: Bool, stored: JSONValue?, saved: [String: LayoutFile] = [:]) -> JSONValue {
+        var items = LayoutConfig.resolve(stored, saved: saved).items(r)
         if let i = items.firstIndex(where: { $0.id == id }) { items[i].on = on }
         return set(r, items, in: stored)
     }
 
     /// Moves an item one place up (-1) or down (+1).
-    static func move(_ id: String, in r: LayoutRegion, by d: Int, stored: JSONValue?) -> JSONValue {
-        var items = LayoutConfig.resolve(stored).items(r)
+    static func move(_ id: String, in r: LayoutRegion, by d: Int, stored: JSONValue?, saved: [String: LayoutFile] = [:]) -> JSONValue {
+        var items = LayoutConfig.resolve(stored, saved: saved).items(r)
         guard let i = items.firstIndex(where: { $0.id == id }), items.indices.contains(i + d) else { return stored ?? .object([:]) }
         items.swapAt(i, i + d)
         return set(r, items, in: stored)
@@ -305,8 +362,7 @@ enum LayoutEdit {
     /// Whether the current layout has changes.
     static func isCustomized(_ stored: JSONValue?) -> Bool {
         let o = object(stored)
-        let p = o["layout"]?.string ?? LayoutPreset.terminal.rawValue
-        return !object(object(o["custom"])[p]).isEmpty
+        return !object(object(o["custom"])[activeKey(o)]).isEmpty
     }
 
     /// The old per-Mac "hide the cup" switch becomes the Keep Mac awake item turned off in Terminal's status bar.
@@ -314,21 +370,6 @@ enum LayoutEdit {
     static func migrate(stored: JSONValue?, keepAwakeHidden: Bool) -> JSONValue? {
         guard stored == nil, keepAwakeHidden else { return nil }
         return toggle("keepAwake", in: .statusRight, on: false, stored: .object(["layout": .string(LayoutPreset.terminal.rawValue)]))
-    }
-
-    /// Reads an exported file: a layout object (`layout`, `custom`) or nil when it isn't one.
-    static func importing(_ data: Data) -> JSONValue? {
-        guard let v = try? JSONDecoder().decode(JSONValue.self, from: data), case .object(let o) = v else { return nil }
-        guard let name = o["layout"]?.string, LayoutPreset(rawValue: name) != nil else { return nil }
-        if let c = o["custom"] { guard case .object = c else { return nil } }
-        return .object(o.filter { $0.key == "layout" || $0.key == "custom" })
-    }
-
-    static func exporting(_ stored: JSONValue?) -> Data {
-        let v: JSONValue = stored ?? .object(["layout": .string(LayoutPreset.terminal.rawValue)])
-        let enc = JSONEncoder()
-        enc.outputFormatting = [.prettyPrinted, .sortedKeys]
-        return (try? enc.encode(v)) ?? Data()
     }
 }
 
@@ -340,10 +381,13 @@ extension AppModel {
     static let rightPanelWidths: ClosedRange<CGFloat> = 260...900
 
     var layoutStored: JSONValue? { settingValue(Self.layoutKey, scope: "global") }
+    var savedLayoutsStored: JSONValue? { settingValue(SavedLayouts.key, scope: "global") }
+    /// The layouts you saved or imported, by id.
+    var savedLayouts: [String: LayoutFile] { LayoutCache.get(layoutStored, saved: savedLayoutsStored).saved }
     /// The layout in use, read from the setting once per change (views ask for it on every draw).
-    var layout: LayoutConfig { LayoutCache.get(layoutStored).config }
+    var layout: LayoutConfig { LayoutCache.get(layoutStored, saved: savedLayoutsStored).config }
     /// The window the layout engine draws for the layout in use; nil = the classic window.
-    var shellTree: ShellTree? { LayoutCache.get(layoutStored).tree }
+    var shellTree: ShellTree? { LayoutCache.get(layoutStored, saved: savedLayoutsStored).tree }
 
     /// Stores the layout (global only) and shows it right away.
     func storeLayout(_ v: JSONValue) {
@@ -354,9 +398,27 @@ extension AppModel {
 
     func editLayout(_ f: (JSONValue?) -> JSONValue) { storeLayout(f(layoutStored)) }
 
+    func storeSavedLayouts(_ v: JSONValue?) {
+        setSettingLocally(SavedLayouts.key, v, scope: "global")
+        setSetting(SavedLayouts.key, v?.any, scope: "global")
+        (NSApp.delegate as? AppDelegate)?.refreshLayoutMenu()   // their ⌃⌘8 / ⌃⌘9 work before the menu is opened
+    }
+
     /// Switches the whole app to a layout and sets the window up for it (panels open or closed, their sizes).
     func chooseLayout(_ p: LayoutPreset) {
         storeLayout(LayoutEdit.choose(p, in: layoutStored))
+        arrangeWindow(for: p)
+    }
+
+    /// Switches to a saved layout: its window set up as its base's.
+    func chooseSavedLayout(_ id: String) {
+        guard let f = savedLayouts[id] else { return }
+        storeLayout(LayoutEdit.chooseUser(id, base: f.base, in: layoutStored))
+        arrangeWindow(for: f.base)
+    }
+
+    /// The window as layout `p` starts: panels open or closed, their sizes, its Home.
+    private func arrangeWindow(for p: LayoutPreset) {
         withAnimation(.easeOut(duration: 0.18)) {
             switch p {
             case .terminal:
@@ -421,7 +483,8 @@ extension AppModel {
 
     /// The status bar's cup on or off (its panel's Hide, Settings → Sessions).
     func setKeepAwakeShown(_ on: Bool) {
-        editLayout { LayoutEdit.toggle("keepAwake", in: .statusRight, on: on, stored: $0) }
+        let saved = savedLayouts
+        editLayout { LayoutEdit.toggle("keepAwake", in: .statusRight, on: on, stored: $0, saved: saved) }
     }
 
     /// A new agent session opens as a chat in a layout that wants it (when the agent has a chat view).
@@ -431,26 +494,36 @@ extension AppModel {
     }
 }
 
-/// The resolved layout for the stored setting, kept until the setting changes.
+/// The resolved layout for the stored settings, kept until they change.
 enum LayoutCache {
     /// Layouts drawn by the layout engine. Terminal keeps the classic window: drawn by the engine it was not the same
     /// to the pixel (the sidebar's list sat a point lower with a file open), and the default look never moves. Its
     /// tree (terminal.json) is the starting point of a layout saved from Terminal.
     static let engine: Set<LayoutPreset> = [.agents, .workday, .minimal, .editor, .tasks, .aquarium]
-    nonisolated(unsafe) private static var last: (stored: JSONValue?, config: LayoutConfig, tree: ShellTree?)?
+    typealias Entry = (config: LayoutConfig, tree: ShellTree?, saved: [String: LayoutFile])
+    nonisolated(unsafe) private static var last: (stored: JSONValue?, savedStored: JSONValue?, entry: Entry)?
     nonisolated(unsafe) static var misses = 0
 
-    static func get(_ stored: JSONValue?) -> (config: LayoutConfig, tree: ShellTree?) {
-        if let l = last, l.stored == stored { return (l.config, l.tree) }
+    static func get(_ stored: JSONValue?, saved savedStored: JSONValue? = nil) -> Entry {
+        if let l = last, l.stored == stored, l.savedStored == savedStored { return l.entry }
         misses += 1
-        let c = LayoutConfig.resolve(stored)
+        let saved = SavedLayouts.parse(savedStored)
+        let c = LayoutConfig.resolve(stored, saved: saved)
+        let custom = LayoutEdit.object(LayoutEdit.object(LayoutEdit.object(stored)["custom"])[LayoutEdit.activeKey(LayoutEdit.object(stored))])
         var tree: ShellTree?
-        if engine.contains(c.preset) {
-            let custom = LayoutEdit.object(LayoutEdit.object(LayoutEdit.object(stored)["custom"])[c.preset.rawValue])
+        if let id = c.userId, let f = saved[id] {
+            // A saved layout: your changes to its window, its own window, else its base's (as the base draws it).
+            tree = custom["tree"].flatMap { try? ShellTree.parse($0).get() } ?? f.tree
+                ?? (engine.contains(f.base) ? ShellTree.builtIn(f.base.rawValue) : nil)
+            if tree != nil, case .object(let sizes)? = custom["sizes"] {
+                tree = ShellTree.resolve(preset: f.base, custom: ["tree": tree!.json, "sizes": .object(sizes)])
+            }
+        } else if engine.contains(c.preset) {
             tree = ShellTree.resolve(preset: c.preset, custom: custom)
         }
-        last = (stored, c, tree)
-        return (c, tree)
+        let e: Entry = (c, tree, saved)
+        last = (stored, savedStored, e)
+        return e
     }
 
     static func reset() { last = nil }

@@ -35,7 +35,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         switch self {
         case .general: return "The version you run, how Octomux updates itself, and the apps it opens projects in."
         case .appearance: return "Theme, scene, and the icons in the Dock and the menu bar."
-        case .layout: return "Which parts of the window show and in what order: Terminal, Agents, Review or Minimal, and your changes to each."
+        case .layout: return "Which parts of the window show and in what order: the built-in layouts, the ones you saved or imported, and your changes to each."
         case .terminal: return "Font, cursor and scrollback of every terminal, and what happens when you close one."
         case .notifications: return "When Octomux tells you an agent finished or needs you."
         case .permissions: return "What macOS lets the programs in your sessions do, such as an agent taking a screenshot."

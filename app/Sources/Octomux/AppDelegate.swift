@@ -6,6 +6,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var mainWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Saved layouts' menu items (and their ⌃⌘8 / ⌃⌘9) once the daemon's settings are in.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in self?.refreshLayoutMenu() }
         Paths.exportVariant()
         guard GhosttyRuntime.shared.start() else {
             let alert = NSAlert()
@@ -173,6 +175,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             view.addItem(i)
         }
         view.addItem(item("Customize Layout…", #selector(customizeLayout(_:)), ""))
+        view.delegate = self   // your saved layouts go under the built-in ones (menuNeedsUpdate)
         view.addItem(.separator())
         let prev = item("Previous Tab", #selector(prevTab(_:)), "{")
         view.addItem(prev)
@@ -249,6 +252,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         model.chooseLayout(LayoutPreset.allCases[n - 1])
     }
     @objc func customizeLayout(_ s: Any?) { SettingsWindow.show(section: .layout) }
+    @objc func chooseSavedLayout(_ s: NSMenuItem) { if let id = s.representedObject as? String { model.chooseSavedLayout(id) } }
+
+    /// Saved layouts in the View menu, under the built-in ones (⌃⌘8 and ⌃⌘9 for the first two), the one in use ticked.
+    func refreshLayoutMenu() {
+        guard let view = NSApp.mainMenu?.items.first(where: { $0.submenu?.title == "View" })?.submenu else { return }
+        for it in view.items where it.tag >= Self.savedLayoutTag { view.removeItem(it) }
+        guard let at = view.items.firstIndex(where: { $0.action == #selector(customizeLayout(_:)) }) else { return }
+        for (i, e) in SavedLayouts.sorted(model.savedLayouts).enumerated() {
+            let it = NSMenuItem(title: e.file.name, action: #selector(chooseSavedLayout(_:)), keyEquivalent: i < 2 ? "\(8 + i)" : "")
+            if i < 2 { it.keyEquivalentModifierMask = [.control, .command] }
+            it.target = self
+            it.tag = Self.savedLayoutTag + i
+            it.representedObject = e.id
+            it.state = model.layout.userId == e.id ? .on : .off
+            view.insertItem(it, at: at + i)
+        }
+    }
+    static let savedLayoutTag = 9000
     @objc func openAgentsHome(_ s: Any?) { openMainWindow(); model.openAgentsHome() }
     @objc func openWorkday(_ s: Any?) { openMainWindow(); model.openWorkday() }
     @objc func showTasks(_ s: Any?) { openMainWindow(); model.showTasks() }
@@ -345,6 +366,10 @@ enum ProtoWindow {
 /// through `WindowDragArea`), so tabs and rows can be dragged and title-bar buttons get every click.
 final class ContentHostingView<Content: View>: NSHostingView<Content> {
     override var mouseDownCanMoveWindow: Bool { false }
+}
+
+extension AppDelegate: NSMenuDelegate {
+    func menuNeedsUpdate(_ menu: NSMenu) { if menu.title == "View" { refreshLayoutMenu() } }
 }
 
 /// The menu speaks the engine window's language: agents and Home instead of tabs (the classic window keeps its names).
