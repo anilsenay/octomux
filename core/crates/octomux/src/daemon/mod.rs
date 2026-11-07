@@ -416,6 +416,14 @@ impl Daemon {
         Ok(())
     }
 
+    /// A closed-lid time limit setting in hours (0 = none), as a duration.
+    fn lid_hours(&self, key: &str, default: u64) -> Option<Duration> {
+        match self.setting(key, None).and_then(|v| v.as_u64()).unwrap_or(default) {
+            0 => None,
+            h => Some(Duration::from_secs(h * 3600)),
+        }
+    }
+
     /// Keep-awake from the `power.*` settings and how many agents are working now.
     pub fn apply_power(&self) -> Value {
         // A timed keep-awake (`power.until`, unix seconds) ends by going back to `power.after`.
@@ -438,13 +446,9 @@ impl Daemon {
             working,
             lid: b("power.lid"),
             lid_on_battery: b("power.lid_on_battery"),
-            lid_max: match self.setting("power.lid_max_hours", None).and_then(|v| v.as_u64()) {
-                Some(0) => None,
-                Some(h) => Some(Duration::from_secs(h * 3600)),
-                None => Some(Duration::from_secs(power::DEFAULT_LID_HOURS * 3600)),
-            },
+            lid_max: self.lid_hours("power.lid_max_hours", power::DEFAULT_LID_HOURS),
+            lid_max_battery: self.lid_hours("power.lid_max_hours_battery", power::DEFAULT_LID_HOURS_BATTERY),
         };
-        let hours = inputs.lid_max.map(|d| d.as_secs() / 3600).unwrap_or(0);
         let (mut st, tripped) = self.power.apply(inputs, &self.paths.run_dir().join("lid-awake"));
         if let Some(t) = tripped {
             self.events.push(util::now_millis(), "", "power", t.reason, "closed-lid keep-awake stopped");
@@ -453,7 +457,7 @@ impl Daemon {
                 project_id: String::new(),
                 kind: "power".into(),
                 title: "Octomux let your Mac sleep".into(),
-                body: power::trip_message(t.reason, hours),
+                body: power::trip_message(t.reason, t.hours),
             });
         }
         if let Some(until) = self.setting("power.until", None) {

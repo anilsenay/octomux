@@ -10,7 +10,8 @@
 //! unless `power.lid_on_battery`, and put back to 0 when that ends, on daemon start (after a crash) and exit.
 //!
 //! Safety limits, whatever the mode (so a forgotten setting or a stuck "working" agent can't keep a closed Mac
-//! up for days): the lid may stay closed awake for at most `power.lid_max_hours` (default 8; 0 = no limit),
+//! up for days): the lid may stay closed awake for at most `power.lid_max_hours` on the power adapter (default
+//! 12; 0 = no limit) or `power.lid_max_hours_battery` on battery (default 4),
 //! never below 20 % battery, and never under heavy thermal pressure. A limit ends it until the lid is opened
 //! again, and says so in a notification.
 
@@ -41,7 +42,8 @@ struct Inner {
 }
 
 pub const BATTERY_FLOOR: u32 = 20;
-pub const DEFAULT_LID_HOURS: u64 = 8;
+pub const DEFAULT_LID_HOURS: u64 = 12;
+pub const DEFAULT_LID_HOURS_BATTERY: u64 = 4;
 
 /// What a safety limit says when it stops the closed-lid mode.
 pub fn trip_message(reason: &str, hours: u64) -> String {
@@ -98,13 +100,16 @@ pub struct Inputs {
     pub working: usize,
     pub lid: bool,
     pub lid_on_battery: bool,
-    /// None: no limit.
+    /// Longest closed-lid time on the power adapter / on battery. None: no limit.
     pub lid_max: Option<Duration>,
+    pub lid_max_battery: Option<Duration>,
 }
 
 /// A safety limit stopped the closed-lid mode just now (to notify about).
 pub struct Tripped {
     pub reason: &'static str,
+    /// The time limit that applied (hours), for the message.
+    pub hours: u64,
 }
 
 impl Keeper {
@@ -149,9 +154,10 @@ impl Keeper {
                 let since = *s.lid_closed_since.get_or_insert_with(Instant::now);
                 if s.tripped.is_none() {
                     let battery = if on_ac { None } else { battery_percent() };
-                    if let Some(r) = limit_hit(since.elapsed(), i.lid_max, battery, thermal_pressure()) {
+                    let max = if on_ac { i.lid_max } else { i.lid_max_battery };
+                    if let Some(r) = limit_hit(since.elapsed(), max, battery, thermal_pressure()) {
                         s.tripped = Some(r);
-                        tripped_now = Some(Tripped { reason: r });
+                        tripped_now = Some(Tripped { reason: r, hours: max.map(|d| d.as_secs() / 3600).unwrap_or(0) });
                     }
                 }
             } else {
@@ -179,7 +185,8 @@ impl Keeper {
             "working": i.working,
             "grace": i.mode == Mode::Agents && hold && i.working == 0,
             "lid": { "enabled": i.lid, "setup": setup, "active": s.lid_set, "on_ac": on_ac, "on_battery_allowed": i.lid_on_battery,
-                     "max_hours": i.lid_max.map(|d| d.as_secs() / 3600).unwrap_or(0), "stopped": s.tripped },
+                     "max_hours": i.lid_max.map(|d| d.as_secs() / 3600).unwrap_or(0),
+                     "max_hours_battery": i.lid_max_battery.map(|d| d.as_secs() / 3600).unwrap_or(0), "stopped": s.tripped },
         });
         s.last = st.clone();
         (st, tripped_now)

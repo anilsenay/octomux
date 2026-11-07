@@ -19,17 +19,24 @@ final class KeepAwake: ObservableObject {
         /// Always, until then (a timed keep-awake), then back to the previous mode.
         var until: Date?
         /// Longest a closed lid stays awake (0: no limit).
-        var lidMaxHours = 8
+        var lidMaxHours = 12
+        var lidMaxHoursBattery = 4
         /// A safety limit stopped the closed-lid mode until the lid opens: "time", "battery" or "thermal".
         var lidStopped: String?
     }
 
     static let lidLimits: [(hours: Int, title: String)] = [(2, "2 hours"), (4, "4 hours"), (8, "8 hours"), (12, "12 hours"), (24, "24 hours"), (0, "No limit")]
+    static let lidLimitsBattery: [(hours: Int, title: String)] = [(1, "1 hour"), (2, "2 hours"), (4, "4 hours"), (8, "8 hours")]
     static func lidLimitTitle(_ h: Int) -> String { lidLimits.first { $0.hours == h }?.title ?? "\(h) hours" }
 
-    func setLidMax(_ h: Int) {
-        AppModel.shared.setSetting("power.lid_max_hours", h == 8 ? nil : h)
-        status.lidMaxHours = h
+    func setLidMax(_ h: Int, battery: Bool = false) {
+        if battery {
+            AppModel.shared.setSetting("power.lid_max_hours_battery", h == 4 ? nil : h)
+            status.lidMaxHoursBattery = h
+        } else {
+            AppModel.shared.setSetting("power.lid_max_hours", h == 12 ? nil : h)
+            status.lidMaxHours = h
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { self.refresh() }
     }
 
@@ -59,7 +66,8 @@ final class KeepAwake: ObservableObject {
                            lidActive: lid["active"] as? Bool ?? false, onAC: lid["on_ac"] as? Bool ?? true,
                            lidOnBattery: lid["on_battery_allowed"] as? Bool ?? false,
                            until: (d["until"] as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue) },
-                           lidMaxHours: (lid["max_hours"] as? NSNumber)?.intValue ?? 8, lidStopped: lid["stopped"] as? String)
+                           lidMaxHours: (lid["max_hours"] as? NSNumber)?.intValue ?? 12,
+                           lidMaxHoursBattery: (lid["max_hours_battery"] as? NSNumber)?.intValue ?? 4, lidStopped: lid["stopped"] as? String)
             DispatchQueue.main.async { if self?.status != s { self?.status = s } }
         }
     }
@@ -195,15 +203,26 @@ struct KeepAwakeControl: View {
             }
             Divider()
             if s.lidSetup {
-                let title = "Also with the Lid Closed" + (s.lidMaxHours > 0 ? " (up to \(KeepAwake.lidLimitTitle(s.lidMaxHours)))" : "")
+                let title = "Also with the Lid Closed" + (s.lidMaxHours > 0 ? " (up to \(KeepAwake.lidLimitTitle(s.lidMaxHours)) on power)" : "")
                 Button { awake.setLid(!s.lidEnabled) } label: {
                     if s.lidEnabled { Label(title, systemImage: "checkmark") } else { Text(title) }
                 }
                 .disabled(s.mode == "off")
                 Menu("Lid Closed at Most") {
-                    ForEach(KeepAwake.lidLimits, id: \.hours) { l in
-                        Button { awake.setLidMax(l.hours) } label: {
-                            if s.lidMaxHours == l.hours { Label(l.title, systemImage: "checkmark") } else { Text(l.title) }
+                    Section("On the power adapter") {
+                        ForEach(KeepAwake.lidLimits, id: \.hours) { l in
+                            Button { awake.setLidMax(l.hours) } label: {
+                                if s.lidMaxHours == l.hours { Label(l.title, systemImage: "checkmark") } else { Text(l.title) }
+                            }
+                        }
+                    }
+                    if s.lidOnBattery {
+                        Section("On battery") {
+                            ForEach(KeepAwake.lidLimitsBattery, id: \.hours) { l in
+                                Button { awake.setLidMax(l.hours, battery: true) } label: {
+                                    if s.lidMaxHoursBattery == l.hours { Label(l.title, systemImage: "checkmark") } else { Text(l.title) }
+                                }
+                            }
                         }
                     }
                 }
@@ -258,7 +277,7 @@ struct KeepAwakeSettings: View {
             SettingRow("Show in the status bar", desc: "The cup next to the usage meters: the mode at a click, lit while the Mac is kept awake.") {
                 Toggle("", isOn: Binding(get: { !hidden }, set: { hidden = !$0 })).labelsHidden().toggleStyle(.switch)
             }
-            SettingRow("Also with the lid closed", desc: (s.lidSetup && s.lidEnabled ? (s.lidMaxHours > 0 ? "Up to \(KeepAwake.lidLimitTitle(s.lidMaxHours)) each time. " : "No time limit. ") : "") + "macOS sleeps when the lid closes whatever apps ask. This turns that off (pmset disablesleep) only while Octomux keeps the Mac awake, and turns it back on after. It stops after a time limit you choose (8 hours unless you change it), below 20% battery, or when the Mac gets hot. Needs your administrator password once. A closed Mac in a bag gets hot: leave it on a desk.") {
+            SettingRow("Also with the lid closed", desc: (s.lidSetup && s.lidEnabled ? (s.lidMaxHours > 0 ? "Up to \(KeepAwake.lidLimitTitle(s.lidMaxHours)) each time on the power adapter. " : "No time limit on the power adapter. ") : "") + "macOS sleeps when the lid closes whatever apps ask. This turns that off (pmset disablesleep) only while Octomux keeps the Mac awake, and turns it back on after. It stops after a time limit you choose (12 hours on the power adapter, 4 on battery, unless you change them), below 20% battery, or when the Mac gets hot. Needs your administrator password once. A closed Mac in a bag gets hot: leave it on a desk.") {
                 if s.lidSetup {
                     Toggle("", isOn: Binding(get: { s.lidEnabled }, set: { awake.setLid($0) })).labelsHidden().toggleStyle(.switch)
                 } else {
@@ -267,7 +286,7 @@ struct KeepAwakeSettings: View {
                 }
             }
             if s.lidSetup {
-                SettingRow("Lid closed at most", desc: "Then the Mac sleeps even if agents still work, so a setting you forgot can't keep a closed Mac up for days. It also sleeps below 20% battery or when it gets hot. Counted from each time you close the lid; a notification tells you when a limit ended it.") {
+                SettingRow("Lid closed at most", desc: "On the power adapter. Then the Mac sleeps even if agents still work, so a setting you forgot can't keep a closed Mac up for days. It also sleeps when it gets hot. Counted from each time you close the lid (with no external display); a notification tells you when a limit ended it.") {
                     Picker("", selection: Binding(get: { s.lidMaxHours }, set: { awake.setLidMax($0) })) {
                         ForEach(KeepAwake.lidLimits, id: \.hours) { Text($0.title).tag($0.hours) }
                     }
@@ -276,6 +295,14 @@ struct KeepAwakeSettings: View {
                 SettingRow("On battery too", desc: "Off: with the lid closed it stays awake only on the power adapter.") {
                     Toggle("", isOn: Binding(get: { s.lidOnBattery }, set: { awake.setLidOnBattery($0) })).labelsHidden().toggleStyle(.switch)
                         .disabled(!s.lidEnabled)
+                }
+                if s.lidOnBattery {
+                    SettingRow("On battery, at most", desc: "A shorter limit for the battery, and never below 20% charge.") {
+                        Picker("", selection: Binding(get: { s.lidMaxHoursBattery }, set: { awake.setLidMax($0, battery: true) })) {
+                            ForEach(KeepAwake.lidLimitsBattery, id: \.hours) { Text($0.title).tag($0.hours) }
+                        }
+                        .labelsHidden().fixedSize().disabled(!s.lidEnabled)
+                    }
                 }
                 SettingRow("Permission", desc: "The rule in \(KeepAwake.ruleFile) that lets Octomux run only `pmset -a disablesleep 0/1`.") {
                     Button("Remove…") { awake.installRule(remove: true) }.buttonStyle(SecondaryButtonStyle()).disabled(awake.installing)
