@@ -121,6 +121,22 @@ final class ShellTests: XCTestCase {
         XCTAssertTrue(m.shellHome)
     }
 
+    func testLayoutIsReadAgainOnlyWhenASettingChanged() {
+        let m = AppModel.shared
+        let saved = m.layoutStored
+        defer { m.setSettingLocally(AppModel.layoutKey, saved, scope: "global"); LayoutCache.reset() }
+        LayoutCache.reset()
+        var loads = 0
+        let load: () -> (stored: JSONValue?, saved: JSONValue?) = { loads += 1; return (m.layoutStored, m.savedLayoutsStored) }
+        _ = LayoutCache.get(revision: m.settingsRevision, load)
+        _ = LayoutCache.get(revision: m.settingsRevision, load)
+        XCTAssertEqual(loads, 1)
+        m.setSettingLocally(AppModel.layoutKey, LayoutEdit.choose(.tasks, in: saved), scope: "global")
+        XCTAssertEqual(LayoutCache.get(revision: m.settingsRevision, load).config.preset, .tasks)
+        XCTAssertEqual(loads, 2)
+        XCTAssertEqual(m.layout.preset, .tasks)
+    }
+
     // MARK: Switching layouts
 
     func testSwitchingLayoutsKeepsTheSelection() {

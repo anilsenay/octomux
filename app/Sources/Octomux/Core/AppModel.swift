@@ -9,6 +9,8 @@ final class AppModel: ObservableObject {
 
     let client = DaemonClient()
     @Published private(set) var state = DaemonState()
+    /// Goes up whenever a setting may have changed (what reads settings on every draw caches by it).
+    private(set) var settingsRevision = 0
     @Published var connected = false
     /// The first catalog from the daemon has arrived. Until then the window shows `LaunchCover`, not an empty
     /// catalog (after an update the daemon restarts first, which takes a few seconds).
@@ -281,6 +283,7 @@ final class AppModel: ObservableObject {
             "\(x.displayTitle)" + (self?.project(x.projectId).map { " · \($0.name)" } ?? "")
         }
         TaskAutopilot.shared.observe(old: state.sessions, new: s.sessions, model: self)
+        if s.settings != state.settings { settingsRevision += 1 }
         state = s
         migrateLayoutIfNeeded()
         if !s.tasks.isEmpty { syncTasks(); claimAssistantTasks() }
@@ -509,6 +512,7 @@ final class AppModel: ObservableObject {
 
     /// Applies a setting to the local state before the daemon's echo (for instant UI); nil removes it.
     func setSettingLocally(_ key: String, _ value: JSONValue?, scope: String) {
+        settingsRevision += 1
         if let k = state.settings.firstIndex(where: { $0.scope == scope && $0.key == key }) {
             if let value { state.settings[k].value = value } else { state.settings.remove(at: k) }
         } else if let value {
@@ -789,6 +793,7 @@ final class AppModel: ObservableObject {
         hostId = id
         TerminalHost.shared.closeAll()
         state = DaemonState()
+        settingsRevision += 1
         connected = false
         selectedWorkspaceId = nil
         selectedProjectId = nil

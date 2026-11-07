@@ -383,11 +383,11 @@ extension AppModel {
     var layoutStored: JSONValue? { settingValue(Self.layoutKey, scope: "global") }
     var savedLayoutsStored: JSONValue? { settingValue(SavedLayouts.key, scope: "global") }
     /// The layouts you saved or imported, by id.
-    var savedLayouts: [String: LayoutFile] { LayoutCache.get(layoutStored, saved: savedLayoutsStored).saved }
+    var savedLayouts: [String: LayoutFile] { LayoutCache.get(revision: settingsRevision) { (layoutStored, savedLayoutsStored) }.saved }
     /// The layout in use, read from the setting once per change (views ask for it on every draw).
-    var layout: LayoutConfig { LayoutCache.get(layoutStored, saved: savedLayoutsStored).config }
+    var layout: LayoutConfig { LayoutCache.get(revision: settingsRevision) { (layoutStored, savedLayoutsStored) }.config }
     /// The window the layout engine draws for the layout in use; nil = the classic window.
-    var shellTree: ShellTree? { LayoutCache.get(layoutStored, saved: savedLayoutsStored).tree }
+    var shellTree: ShellTree? { LayoutCache.get(revision: settingsRevision) { (layoutStored, savedLayoutsStored) }.tree }
 
     /// Stores the layout (global only) and shows it right away.
     func storeLayout(_ v: JSONValue) {
@@ -507,7 +507,20 @@ enum LayoutCache {
     nonisolated(unsafe) private static var last: (stored: JSONValue?, savedStored: JSONValue?, entry: Entry)?
     nonisolated(unsafe) static var misses = 0
 
+    nonisolated(unsafe) private static var lastRevision: Int?
+
+    /// For the model: while no setting changed since the last read, the last result without comparing anything (views
+    /// ask on every draw; comparing the stored JSON took a few µs each time).
+    static func get(revision: Int, _ load: () -> (stored: JSONValue?, saved: JSONValue?)) -> Entry {
+        if revision == lastRevision, let l = last { return l.entry }
+        let v = load()
+        let e = get(v.stored, saved: v.saved)
+        lastRevision = revision
+        return e
+    }
+
     static func get(_ stored: JSONValue?, saved savedStored: JSONValue? = nil) -> Entry {
+        lastRevision = nil
         if let l = last, l.stored == stored, l.savedStored == savedStored { return l.entry }
         misses += 1
         let saved = SavedLayouts.parse(savedStored)
@@ -529,5 +542,5 @@ enum LayoutCache {
         return e
     }
 
-    static func reset() { last = nil }
+    static func reset() { last = nil; lastRevision = nil }
 }
