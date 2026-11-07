@@ -123,7 +123,9 @@ struct AgentRail: View {
             switch code {
             case 125: move(1, flat)
             case 126: move(-1, flat)
-            case 36, 76: if let id = cursor { keys.active = false; model.selectSession(id) }
+            case 36, 76:
+                guard let id = cursor else { return false }
+                keys.active = false; model.selectSession(id)
             case 53: keys.active = false
             default: return false
             }
@@ -237,13 +239,20 @@ struct RailKeyMonitor: NSViewRepresentable {
         func set(_ on: Bool) {
             if on, monitor == nil {
                 monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
-                    guard let self, e.modifierFlags.intersection([.command, .control, .option]).isEmpty,
-                          !(e.window?.firstResponder is NSTextView) else { return e }   // typing in a field: its keys
+                    guard let self, RailKeyMonitor.mine(e.window, flags: e.modifierFlags, rail: self.window, modal: NSApp.modalWindow) else { return e }
                     return self.handle?(e.keyCode) == true ? nil : e
                 }
             } else if !on, let m = monitor { NSEvent.removeMonitor(m); monitor = nil }
         }
         override func viewDidMoveToWindow() { if window == nil { set(false) } }
+        deinit { if let m = monitor { NSEvent.removeMonitor(m) } }
+    }
+    /// A key is the rail's only in the rail's own window, with no ⌘ ⌃ ⌥, no sheet or alert up, and nobody typing in a
+    /// field there; Settings, alerts and other windows keep their ↩ Esc ↑ ↓.
+    static func mine(_ eventWindow: NSWindow?, flags: NSEvent.ModifierFlags, rail: NSWindow?, modal: NSWindow?) -> Bool {
+        guard let rail, eventWindow === rail, modal == nil, rail.attachedSheet == nil,
+              flags.intersection([.command, .control, .option]).isEmpty else { return false }
+        return !(rail.firstResponder is NSTextView)                                    // typing in a field: its keys
     }
     func makeNSView(context: Context) -> V { let v = V(); v.handle = handle; v.set(active); return v }
     func updateNSView(_ v: V, context: Context) { v.handle = handle; v.set(active) }

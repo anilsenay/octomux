@@ -1,4 +1,5 @@
 import XCTest
+import AppKit
 @testable import Octomux
 
 final class ShellTests: XCTestCase {
@@ -57,6 +58,18 @@ final class ShellTests: XCTestCase {
         XCTAssertTrue(ShellKeys.shellOnly(#selector(AppDelegate.prevAgent(_:))))   // ⌘[ / ⌘]: list windows only
         XCTAssertTrue(ShellKeys.shellOnly(#selector(AppDelegate.nextAgent(_:))))
         XCTAssertFalse(ShellKeys.shellOnly(#selector(AppDelegate.prevTab(_:))))
+    }
+
+    func testRailKeysStayInTheRailsWindow() {
+        let rail = NSWindow(contentRect: .init(x: 0, y: 0, width: 200, height: 200), styleMask: [.titled], backing: .buffered, defer: true)
+        let settings = NSWindow(contentRect: .init(x: 0, y: 0, width: 200, height: 200), styleMask: [.titled], backing: .buffered, defer: true)
+        XCTAssertTrue(RailKeyMonitor.mine(rail, flags: [], rail: rail, modal: nil))
+        XCTAssertTrue(RailKeyMonitor.mine(rail, flags: [.shift], rail: rail, modal: nil))
+        XCTAssertFalse(RailKeyMonitor.mine(settings, flags: [], rail: rail, modal: nil))        // Settings keeps ↩ Esc ↑ ↓
+        XCTAssertFalse(RailKeyMonitor.mine(nil, flags: [], rail: rail, modal: nil))
+        XCTAssertFalse(RailKeyMonitor.mine(rail, flags: [], rail: rail, modal: settings))       // an alert is up
+        XCTAssertFalse(RailKeyMonitor.mine(rail, flags: [.command], rail: rail, modal: nil))
+        XCTAssertFalse(RailKeyMonitor.mine(rail, flags: [], rail: nil, modal: nil))             // the rail left its window
     }
 
     // MARK: Hidden blocks do nothing

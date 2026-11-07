@@ -95,7 +95,9 @@ struct TasksRail: View {
             switch code {
             case 125: move(1, flat)
             case 126: move(-1, flat)
-            case 36, 76: if let id = cursor { keys.active = false; model.shellSelectTask(id) }
+            case 36, 76:
+                guard let id = cursor else { return false }
+                keys.active = false; model.shellSelectTask(id)
             case 53: keys.active = false
             default: return false
             }
