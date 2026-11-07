@@ -222,6 +222,7 @@ struct AgentsList: View {
                 }
                 .padding(.horizontal, 10).padding(.bottom, 8)
             }
+            .scrollIndicators(.never)
         }
     }
 

@@ -61,6 +61,7 @@ struct SidebarView: View {
                 .padding(.top, 4)
                 .padding(.bottom, 8)
             }
+            .scrollIndicators(.never)   // the list scrolls with the trackpad / wheel; no bar beside the rows
     }
 
     struct WorktreeGroup { let path: String; let branch: String; let sessions: [Session] }
