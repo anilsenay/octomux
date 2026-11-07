@@ -110,7 +110,7 @@ struct ShellView: View {
         case .tabStrip:
             TopBar()
         case .breadcrumb:
-            ShellPlaceholder(block: b).frame(height: T.m.topH)
+            ShellBreadcrumb()
         case .workArea:
             WorkAreaBlock()
                 .padding(.leading, edges.railLeft ? 0 : m.inset)
