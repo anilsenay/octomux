@@ -29,6 +29,8 @@ struct HomePage: View {
     let layout: HomeLayout
     /// Customize: each section with its handle, name and eye; "+ Add section" under the columns.
     var editing: HomeEditing? = nil
+    /// The agents of the project the agent rail shows (the Agents layout's Home, beside the rail); else the workspace's.
+    var railFilter = true
 
     /// Columns of equal width when the side column holds a wide section (pull requests, a list of agents); else the
     /// side column is narrow, as on today's Agents Home.
@@ -37,7 +39,7 @@ struct HomePage: View {
     }
 
     var body: some View {
-        let agents = HomeAgents(model.railSessions)
+        let agents = HomeAgents(model.railSessions(filtered: railFilter))
         Group {
             if let big = layout.filling, editing == nil {
                 filled(big, agents)

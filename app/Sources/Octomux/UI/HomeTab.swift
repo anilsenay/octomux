@@ -7,7 +7,7 @@ struct HomeTabView: View {
     @StateObject private var digests = AgentDigests()
     var body: some View {
         let reads = model.homeLayout.all.contains { $0.readsDigests } || HomeCustomizeState.shared.on
-        YourHome()
+        YourHome(railFilter: false)
             .environmentObject(digests)
             .background(T.surface)
             .onAppear { if reads { digests.start() } }

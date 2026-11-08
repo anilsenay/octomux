@@ -63,9 +63,10 @@ final class HomeCustomizeState: ObservableObject {
 struct YourHome: View {
     @EnvironmentObject var model: AppModel
     @ObservedObject private var c = HomeCustomizeState.shared
+    var railFilter = true
     var body: some View {
         let l = model.homeLayout
-        HomePage(layout: c.on ? HomeCustomizeState.drawn(l, hidden: c.hidden) : l, editing: model.homeEditing(c))
+        HomePage(layout: c.on ? HomeCustomizeState.drawn(l, hidden: c.hidden) : l, editing: model.homeEditing(c), railFilter: railFilter)
     }
 }
 
@@ -95,7 +96,7 @@ struct HomeCustomizeBar: View {
             if h.changed || !c.hidden.isEmpty {
                 Button("Reset to \(h.preset.title)") { c.hidden = []; model.chooseHomePreset(h.preset) }.buttonStyle(SmallButtonStyle())
             }
-            Button("Done") { c.done() }.buttonStyle(SmallButtonStyle(prominent: true)).keyboardShortcut(.defaultAction)
+            Button("Done") { c.done() }.buttonStyle(SmallButtonStyle(prominent: true))
         }
         .padding(.horizontal, 12).frame(height: 40)
         .background(RoundedRectangle(cornerRadius: R.xl, style: .continuous).fill(T.raised))

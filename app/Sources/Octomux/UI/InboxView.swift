@@ -51,7 +51,7 @@ struct HomeSidebarRow: View {
 
     var body: some View {
         let active = model.activeDoc?.kind == .home || model.shellHomeShown
-        let waiting = HomeAgents(model.railSessions).waiting.count
+        let waiting = HomeAgents(model.railSessions(filtered: false)).waiting.count
         Button { model.openHome() } label: {
             HStack(spacing: 8) {
                 Image(systemName: "house").font(.system(size: T.k * 12, weight: .medium)).foregroundStyle(T.text2).frame(width: 16)

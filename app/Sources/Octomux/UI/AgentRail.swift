@@ -59,9 +59,11 @@ enum AgentRailModel {
 
 extension AppModel {
     /// The rail's sessions in order, for the current workspace and the chosen project filter.
-    var railSessions: [Session] {
+    var railSessions: [Session] { railSessions(filtered: true) }
+    /// The rail's sessions; `filtered`: only the project the rail shows (else the workspace's, as a Home tab shows them).
+    func railSessions(filtered: Bool) -> [Session] {
         let ps = Set(projects.map(\.id))
-        let filter = UserDefaults.standard.string(forKey: AgentRail.filterKey).flatMap { ps.contains($0) ? $0 : nil }
+        let filter = filtered ? UserDefaults.standard.string(forKey: AgentRail.filterKey).flatMap { ps.contains($0) ? $0 : nil } : nil
         return AgentRailModel.flat(AgentRailModel.sessions(state.sessions, projects: ps, filter: filter))
     }
 }
