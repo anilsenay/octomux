@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **Fixed: Octomux quit when an agent's browser tool call was cancelled** (or timed out) before its answer: writing
+  the answer to the closed connection raised an exception the app couldn't catch. Such a call now just ends.
+
 - **Option+Backspace deletes a word in Claude Code** (and Option with Delete, Return, Tab, Esc or an arrow reaches
   programs as Alt in the kitty keyboard mode they ask for). Option still types its characters (Option+Q is "@" on a
   Turkish keyboard): it counts as Alt only on keys where it doesn't change the character.

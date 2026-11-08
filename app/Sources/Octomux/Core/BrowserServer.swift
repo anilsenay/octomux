@@ -50,19 +50,8 @@ final class BrowserServer {
     }
 
     private func serve(_ c: Int32) {
-        let handle = FileHandle(fileDescriptor: c, closeOnDealloc: true)
-        var buffer = Data()
-        while true {
-            let chunk = handle.availableData
-            if chunk.isEmpty { return }
-            buffer.append(chunk)
-            while let nl = buffer.firstIndex(of: 0x0A) {
-                let line = buffer.subdata(in: buffer.startIndex..<nl)
-                buffer.removeSubrange(buffer.startIndex...nl)
-                let reply = Self.process(line)
-                handle.write(reply + Data([0x0A]))
-            }
-        }
+        // A tool call whose caller has gone (cancelled, timed out) just ends its connection (SocketLines).
+        SocketLines.serve(c) { Self.process($0) }
     }
 
     /// Runs one call on the main actor and waits for its result (on this connection's thread).

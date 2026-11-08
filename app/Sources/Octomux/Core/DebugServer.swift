@@ -52,19 +52,7 @@ final class DebugServer {
     }
 
     private func serve(_ c: Int32) {
-        let handle = FileHandle(fileDescriptor: c, closeOnDealloc: true)
-        var buffer = Data()
-        while true {
-            let chunk = handle.availableData
-            if chunk.isEmpty { return }
-            buffer.append(chunk)
-            while let nl = buffer.firstIndex(of: 0x0A) {
-                let line = buffer.subdata(in: buffer.startIndex..<nl)
-                buffer.removeSubrange(buffer.startIndex...nl)
-                let reply = self.process(line: line)
-                handle.write(reply + Data([0x0A]))
-            }
-        }
+        SocketLines.serve(c) { self.process(line: $0) }
     }
 
     private func process(line: Data) -> Data {
