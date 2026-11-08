@@ -39,6 +39,7 @@ struct HomePage: View {
     @State private var dragStart: Double = 0
 
     static let columnGap: CGFloat = 18
+    static let columnsSpace = "homeColumns"
 
     /// The main and side columns' widths for the columns' width `w` and the side's share `split`.
     static func columnWidths(_ w: CGFloat, split: Double) -> (main: CGFloat, side: CGFloat) {
@@ -87,6 +88,7 @@ struct HomePage: View {
                         splitLine
                         band(.side, agents)
                     }
+                    .coordinateSpace(name: Self.columnsSpace)
                     .overlay(GeometryReader { g in
                         Color.clear
                             .onAppear { columnsWidth = g.size.width }
@@ -114,7 +116,9 @@ struct HomePage: View {
                 .frame(width: Self.columnGap, height: 120)
                 .contentShape(Rectangle())
                 .onHover { h in if h { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() } }
-                .gesture(DragGesture(minimumDistance: 1)
+                // Measured in the columns' space: the line moves while you drag, so its own space would shift under the
+                // pointer (the split jittered back and forth).
+                .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .named(Self.columnsSpace))
                     .onChanged { g in
                         if dragging == nil { dragStart = layout.split }
                         let inner = max(1, columnsWidth - Self.columnGap)
