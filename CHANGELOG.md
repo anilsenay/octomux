@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **Window**: the traffic lights are the size other current Mac apps have and sit on one line with the sidebar
+  button, the bell and the tabs (the app is now built for the current macOS design, which also refreshes the
+  system's own controls: switches, pop-ups and segments in Settings). Pop-up values in Settings are no longer in the
+  accent color.
+
 - **Layouts**: pick how the window is arranged for the way you work, for the whole app: **Terminal** (the window as
   it always was, still the default), **Agents** (the agents' window below; new Claude and Codex sessions open as
   chats) or **Tasks** (a window of its own, below). Switch with ⌃⌘1…3, the

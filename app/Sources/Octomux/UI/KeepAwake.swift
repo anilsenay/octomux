@@ -276,7 +276,7 @@ struct KeepAwakePanel: View {
                         Text("Also with the lid closed").font(.system(size: T.k * 13)).foregroundStyle(s.mode == "off" ? T.text3 : T.text)
                         Spacer(minLength: 4)
                         Toggle("", isOn: Binding(get: { s.lidEnabled }, set: { awake.setLid($0) }))
-                            .toggleStyle(.switch).controlSize(.mini).labelsHidden().disabled(s.mode == "off")
+                            .toggleStyle(.switch).controlSize(.mini).labelsHidden().tint(T.accent).disabled(s.mode == "off")
                     }
                     if s.lidEnabled {
                         Text("At most, on power").font(T.meta).foregroundStyle(T.text3).padding(.leading, 24)
@@ -332,7 +332,7 @@ struct KeepAwakeSettings: View {
                 Picker("", selection: Binding(get: { s.mode }, set: { awake.setMode($0) })) {
                     ForEach(KeepAwake.modes, id: \.id) { Text($0.title).tag($0.id) }
                 }
-                .labelsHidden().pickerStyle(.segmented).fixedSize()
+                .labelsHidden().pickerStyle(.segmented).tint(T.accent).fixedSize()
             }
             SettingRow("For a while", desc: s.until.map { "Always until \(KeepAwake.clock($0)), then back to what it was." } ?? "Always for a set time, then back to the mode above.") {
                 Menu {
@@ -351,11 +351,11 @@ struct KeepAwakeSettings: View {
                 }
             }
             SettingRow("Show in the status bar", desc: "The cup next to the usage meters: the mode at a click, lit while the Mac is kept awake.") {
-                Toggle("", isOn: Binding(get: { model.layout.has("keepAwake", in: .statusRight) }, set: { model.setKeepAwakeShown($0) })).labelsHidden().toggleStyle(.switch)
+                Toggle("", isOn: Binding(get: { model.layout.has("keepAwake", in: .statusRight) }, set: { model.setKeepAwakeShown($0) })).labelsHidden().toggleStyle(.switch).tint(T.accent)
             }
             SettingRow("Also with the lid closed", desc: (s.lidSetup && s.lidEnabled ? (s.lidMaxHours > 0 ? "Up to \(KeepAwake.lidLimitTitle(s.lidMaxHours)) each time on the power adapter. " : "No time limit on the power adapter. ") : "") + "macOS sleeps when the lid closes whatever apps ask. This turns that off (pmset disablesleep) only while Octomux keeps the Mac awake, and turns it back on after. It stops after a time limit you choose (12 hours on the power adapter, 4 on battery, unless you change them), below 20% battery, or when the Mac gets hot. Needs your administrator password once. A closed Mac in a bag gets hot: leave it on a desk.") {
                 if s.lidSetup {
-                    Toggle("", isOn: Binding(get: { s.lidEnabled }, set: { awake.setLid($0) })).labelsHidden().toggleStyle(.switch)
+                    Toggle("", isOn: Binding(get: { s.lidEnabled }, set: { awake.setLid($0) })).labelsHidden().toggleStyle(.switch).tint(T.accent)
                 } else {
                     Button(awake.installing ? "Waiting…" : "Set Up…") { awake.installRule() }
                         .buttonStyle(SecondaryButtonStyle()).disabled(awake.installing)
@@ -369,7 +369,7 @@ struct KeepAwakeSettings: View {
                     .labelsHidden().fixedSize().disabled(!s.lidEnabled)
                 }
                 SettingRow("On battery too", desc: "Off: with the lid closed it stays awake only on the power adapter.") {
-                    Toggle("", isOn: Binding(get: { s.lidOnBattery }, set: { awake.setLidOnBattery($0) })).labelsHidden().toggleStyle(.switch)
+                    Toggle("", isOn: Binding(get: { s.lidOnBattery }, set: { awake.setLidOnBattery($0) })).labelsHidden().toggleStyle(.switch).tint(T.accent)
                         .disabled(!s.lidEnabled)
                 }
                 if s.lidOnBattery {

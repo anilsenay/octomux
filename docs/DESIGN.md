@@ -101,6 +101,18 @@ A closed scale with no half points (`DesignTokenTests` fails on `N.5` sizes in `
   done = green dot (unread); error = red dot; restoring = amber arrow. Usage limits in the status bar: 12 px rings.
 - **Chat** — the user's messages in a neutral bubble (white 7.5% / black 5%), never the accent.
 
+## Window chrome
+
+- The app is built for the current macOS design (the SDK version stamped in the binary is 26, `app/Package.swift`;
+  SwiftPM would stamp the deployment target, 14.0, and macOS would then draw the app in its older look: 12 px window
+  buttons, older controls). It still runs on macOS 14.
+- The main window's traffic lights sit in the middle of the top bar's row, inset from the left as from the top
+  (`UI/WindowChrome.swift`: Ink 16 / 23 pt); the sidebar and bell buttons and the tabs are on the same line. AppKit
+  moves them back when it lays the title bar out, so they are placed again on resize, key changes, full screen and
+  theme changes.
+- Settings is neutral by default (`.tint(T.text)`): in the current design a pop-up's value takes the tint. The accent
+  goes only on what is on or picked: switches, checkboxes, segments, the main buttons.
+
 ## Layouts
 
 - The window's chrome is read from the layout (`Core/Layout.swift`, global setting `ui.layout`): sidebar rows and

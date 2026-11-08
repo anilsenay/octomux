@@ -117,7 +117,7 @@ struct PromptEditor: View {
                 }
             }
             Toggle("Also in the Changes panel's Ask Agent menu (sends it to the focused agent, or a new one)", isOn: $template.changes)
-                .font(.system(size: T.k * 12))
+                .font(.system(size: T.k * 12)).tint(T.accent)
             TextEditor(text: $template.text).font(T.mono(13)).frame(height: 160)
                 .scrollContentBackground(.hidden).padding(6)
                 .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(T.surface))

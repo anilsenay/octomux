@@ -125,7 +125,7 @@ struct LayoutSettings: View {
         let customized = LayoutEdit.isCustomized(model.layoutStored)
         let saved = SavedLayouts.sorted(model.savedLayouts)
         VStack(alignment: .leading, spacing: 22) {
-            SettingsGroup("Layout", desc: "One layout for the whole app. Each keeps its own changes below; switch with ⌃⌘1…5, the command palette, or the Layout button in the status bar.") {
+            SettingsGroup("Layout", desc: "One layout for the whole app. Each keeps its own changes below; switch with ⌃⌘1…\(LayoutPreset.allCases.count), the command palette, or the Layout button in the status bar.") {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10, alignment: .top)], spacing: 10) {
                     ForEach(LayoutPreset.allCases) { p in card(p, on: p == c.preset && c.userId == nil) }
                 }

@@ -1643,7 +1643,7 @@ struct ScenePickerView: View {
                         Text(ws.name).tag(false)
                         Text("All workspaces").tag(true)
                     }
-                    .pickerStyle(.segmented).labelsHidden().fixedSize().controlSize(.small)
+                    .pickerStyle(.segmented).tint(T.accent).labelsHidden().fixedSize().controlSize(.small)
                 }
                 Spacer(minLength: 12)
                 Button { ScenePickerPanel.shared.close() } label: {

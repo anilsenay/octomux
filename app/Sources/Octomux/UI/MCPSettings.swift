@@ -338,7 +338,7 @@ struct BrowserToolsSettings: View {
                                               set: { v in model.setSettingLocally("browser.access", .string(v), scope: "global"); model.setSetting("browser.access", v) })) {
                     ForEach(BrowserAccess.Mode.allCases, id: \.self) { Text($0.title).tag($0.rawValue) }
                 }
-                .labelsHidden().pickerStyle(.segmented).fixedSize()
+                .labelsHidden().pickerStyle(.segmented).tint(T.accent).fixedSize()
             }
             SettingRow("Allowed sites", desc: "Agents can open only these (one per line or comma separated): example.com, *.example.com (and its subdomains), localhost:3000, file:// for local files. Empty: any site. Links they follow elsewhere are blocked too.") {
                 VStack(alignment: .trailing, spacing: 4) {

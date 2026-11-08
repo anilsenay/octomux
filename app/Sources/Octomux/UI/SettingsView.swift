@@ -164,7 +164,9 @@ struct SettingsView: View {
             .background(T.surface)
         }
         .foregroundStyle(T.text)
-        .tint(T.accent)
+        // Neutral by default: in the current macOS design a pop-up's value takes the tint (every value in the accent
+        // color); the accent stays on what is on or picked (switches, checkboxes, segments, the main buttons).
+        .tint(T.text)
         .ignoresSafeArea()
         .id(theme.revision)
     }
@@ -336,7 +338,7 @@ struct ScopeBar: View {
                 Text("Global").tag("global")
                 Text("Workspace").tag("workspace")
             }
-            .pickerStyle(.segmented).labelsHidden().fixedSize()
+            .pickerStyle(.segmented).tint(T.accent).labelsHidden().fixedSize()
             if let current {
                 Menu {
                     ForEach(ws) { w in Button(w.name) { sel.scope = "workspace:\(w.id)" } }
@@ -508,7 +510,7 @@ struct SettingsFootnote: View {
 /// The switch used on every page.
 struct SettingSwitch: View {
     @Binding var isOn: Bool
-    var body: some View { Toggle("", isOn: $isOn).labelsHidden().toggleStyle(.switch).controlSize(.small) }
+    var body: some View { Toggle("", isOn: $isOn).labelsHidden().toggleStyle(.switch).tint(T.accent).controlSize(.small).tint(T.accent) }
 }
 
 // MARK: Search
@@ -903,11 +905,11 @@ struct AgentsSettings: View {
         SettingsGroup("Usage limits", desc: "The Claude and Codex plan limits in the status bar. Click them there to pick which agents show.") {
             SettingRow("Meters show", desc: showsLeft ? "How much of each limit is left: the bar empties as you use it." : "How much of each limit is used: the bar fills as you use it.") {
                 Picker("", selection: $showsLeft) { Text("Used").tag(false); Text("Left").tag(true) }
-                    .pickerStyle(.segmented).labelsHidden().fixedSize()
+                    .pickerStyle(.segmented).tint(T.accent).labelsHidden().fixedSize()
             }
             SettingRow("Limits in the status bar", desc: "The popover always lists every limit.") {
                 Picker("", selection: $usageWindows) { Text("All").tag("all"); Text("5-hour").tag("five_hour"); Text("Weekly").tag("weekly") }
-                    .pickerStyle(.segmented).labelsHidden().fixedSize()
+                    .pickerStyle(.segmented).tint(T.accent).labelsHidden().fixedSize()
             }
         }
         SettingsFootnote("Tip: for a second Claude account, duplicate the claude agent and set CLAUDE_CONFIG_DIR, or point Command at a wrapper like `claude-work`.")
@@ -1045,14 +1047,14 @@ struct ProfileEditor: View {
                     Text("Environment (KEY=value per line)").font(.caption)
                     TextEditor(text: $envText).font(.system(.body, design: .monospaced)).frame(height: 60)
                 }
-                Toggle("Run through my login shell (aliases, PATH)", isOn: $profile.viaLoginShell)
+                Toggle("Run through my login shell (aliases, PATH)", isOn: $profile.viaLoginShell).tint(T.accent)
                 if profile.kind == .claude {
-                    Toggle("Read usage limits through Claude's status line (runs your own status line too)", isOn: $profile.statusline)
+                    Toggle("Read usage limits through Claude's status line (runs your own status line too)", isOn: $profile.statusline).tint(T.accent)
                 }
                 if !profile.id.isEmpty {
                     Toggle("Always show usage limits in the status bar (workspaces without their own list)", isOn: Binding(
                         get: { AppModel.shared.alwaysShowList(scope: "global")?.contains(profile.id) ?? false },
-                        set: { AppModel.shared.setUsageAlwaysShown(profile.id, $0, scope: "global") }))
+                        set: { AppModel.shared.setUsageAlwaysShown(profile.id, $0, scope: "global") })).tint(T.accent)
                 }
                 if profile.kind == .generic {
                     TextField("Resume command after reboot (optional)", text: $profile.resumeTemplate).font(.system(.body, design: .monospaced))
@@ -1256,7 +1258,7 @@ struct ThemePicker: View {
                 Picker("", selection: Binding(get: { Int((store.scale * 100).rounded()) }, set: { store.set(scale: CGFloat($0) / 100) })) {
                     ForEach([90, 100, 110, 120], id: \.self) { Text("\($0)%").tag($0) }
                 }
-                .pickerStyle(.segmented).labelsHidden().fixedSize()
+                .pickerStyle(.segmented).tint(T.accent).labelsHidden().fixedSize()
             }
             VisualSettingRow("Use theme colors in the terminal", desc: "Terminal background, text and palette follow the theme, or come from your terminal config (below).") {
                 HStack(spacing: 12) {
@@ -1376,7 +1378,7 @@ struct SystemNotificationStatus: View {
         case .notDetermined:
             warning("Notifications aren't allowed yet",
                     "macOS hasn't asked yet. Allow them to see a banner when an agent finishes, needs input or fails.",
-                    icon: "bell.badge.fill", color: T.amber, button: AnyView(Button("Allow Notifications") { permission.request() }.buttonStyle(.borderedProminent)))
+                    icon: "bell.badge.fill", color: T.amber, button: AnyView(Button("Allow Notifications") { permission.request() }.buttonStyle(.borderedProminent).tint(T.accent)))
         case .denied:
             warning("Notifications are off for Octomux",
                     "macOS doesn't show Octomux's notifications, so you won't see when an agent finishes, needs input or fails. Turn on Allow Notifications in System Settings.",
@@ -1390,7 +1392,7 @@ struct SystemNotificationStatus: View {
 
     private func settingsButton(prominent: Bool) -> some View {
         Group {
-            if prominent { Button("Open System Settings") { permission.openSystemSettings() }.buttonStyle(.borderedProminent) }
+            if prominent { Button("Open System Settings") { permission.openSystemSettings() }.buttonStyle(.borderedProminent).tint(T.accent) }
             else { Button("Open System Settings") { permission.openSystemSettings() } }
         }
     }
@@ -1727,7 +1729,7 @@ struct HostsSettings: View {
                     Spacer()
                     if h.isRemote, model.multiHost, model.hostId != h.id {
                         Toggle("Show here", isOn: Binding(get: { HostStore.attached.contains(h.id) }, set: { model.setAttached(h.id, $0); hosts = HostStore.all }))
-                            .toggleStyle(.checkbox).font(.system(size: T.k * 12))
+                            .toggleStyle(.checkbox).tint(T.accent).font(.system(size: T.k * 12))
                     }
                     if h.isRemote {
                         Button("Test") { test(h) }.buttonStyle(SecondaryButtonStyle())
@@ -1792,7 +1794,7 @@ struct HostEditor: View {
                 Text("SSH").tag("ssh")
                 Text("Custom command").tag("command")
             }
-            .pickerStyle(.segmented)
+            .pickerStyle(.segmented).tint(T.accent)
             if host.kind == "ssh" {
                 TextField("SSH destination (user@host, or a Host from ~/.ssh/config)", text: $host.target).textFieldStyle(.roundedBorder)
                 TextField("Extra ssh options (optional, e.g. -p 2222 -i ~/.ssh/devbox)", text: Binding(get: { host.sshOptions ?? "" }, set: { host.sshOptions = $0.isEmpty ? nil : $0 }))
