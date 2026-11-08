@@ -489,13 +489,30 @@ enum GhosttyInput {
         k.text = nil
         k.composing = false
         k.mods = mods(event.modifierFlags)
-        k.consumed_mods = mods((translationMods ?? event.modifierFlags).subtracting([.control, .command]))
+        let translation = translationMods ?? event.modifierFlags
+        var withOption: String?, withoutOption: String?
+        if event.type == .keyDown || event.type == .keyUp, translation.contains(.option) {
+            withOption = event.characters(byApplyingModifiers: translation)
+            withoutOption = event.characters(byApplyingModifiers: translation.subtracting(.option))
+        }
+        k.consumed_mods = mods(consumed(translation, withOption: withOption, withoutOption: withoutOption))
         k.unshifted_codepoint = 0
         if event.type == .keyDown || event.type == .keyUp,
            let chars = event.characters(byApplyingModifiers: []), let cp = chars.unicodeScalars.first {
             k.unshifted_codepoint = cp.value
         }
         return k
+    }
+
+    /// The modifiers macOS used to make the key's text (Ghostty leaves them out of the key's code). Option counts only
+    /// when it changed the character (Option+Q is "@" on a Turkish keyboard): on Backspace, Delete, Return, Tab, Esc
+    /// or an arrow it makes nothing, so it stays a modifier and the program sees Alt. Ghostty itself counts Option
+    /// always (with `macos-option-as-alt` off), so in the kitty keyboard mode Claude Code asks for, Option+Backspace
+    /// arrived as a plain Backspace and deleted a letter instead of a word.
+    static func consumed(_ translation: NSEvent.ModifierFlags, withOption: String?, withoutOption: String?) -> NSEvent.ModifierFlags {
+        var c = translation.subtracting([.control, .command])
+        if c.contains(.option), let a = withOption, let b = withoutOption, a == b { c.remove(.option) }
+        return c
     }
 
     static func characters(_ event: NSEvent) -> String? {

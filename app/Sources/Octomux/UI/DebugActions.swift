@@ -558,6 +558,7 @@ enum DebugActions {
                     if (p["cmd"] as? Bool) == true { flags.insert(.command) }
                     if (p["shift"] as? Bool) == true { flags.insert(.shift) }
                     if (p["ctrl"] as? Bool) == true { flags.insert(.control) }
+                    if (p["opt"] as? Bool) == true { flags.insert(.option) }
                     for type in [NSEvent.EventType.keyDown, .keyUp] {
                         if let e = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: flags, timestamp: ProcessInfo.processInfo.systemUptime,
                                                     windowNumber: win.windowNumber, context: nil, characters: chars,
