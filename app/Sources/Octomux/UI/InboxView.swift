@@ -43,6 +43,35 @@ struct InboxSidebarRow: View {
     }
 }
 
+/// "Home" at the top of the sidebar (opt-in: Settings → Layout → Sidebar): opens the Home tab; the agents waiting
+/// for you as an amber count.
+struct HomeSidebarRow: View {
+    @EnvironmentObject var model: AppModel
+    @State private var hover = false
+
+    var body: some View {
+        let active = model.activeDoc?.kind == .home || model.shellHomeShown
+        let waiting = HomeAgents(model.railSessions).waiting.count
+        Button { model.openHome() } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "house").font(.system(size: T.k * 12, weight: .medium)).foregroundStyle(T.text2).frame(width: 16)
+                Text("Home").font(.system(size: T.k * 13, weight: .medium)).foregroundStyle(T.text)
+                Spacer()
+                if waiting > 0 {
+                    Text("\(waiting)").font(.system(size: T.k * 11, weight: .semibold)).monospacedDigit().foregroundStyle(T.amber)
+                }
+            }
+            .padding(.horizontal, 10).frame(height: 28)
+            .background(RoundedRectangle(cornerRadius: T.m.rowR, style: .continuous).fill(active ? T.selection : hover ? T.hover : .clear))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hover = $0 }
+        .help(waiting > 0 ? "Home: \(waiting) waiting for you" : "Home")
+        .padding(.horizontal, 10)
+    }
+}
+
 /// "Search  ⌘K" at the top of the sidebar: opens the command palette.
 struct SearchSidebarRow: View {
     @EnvironmentObject var model: AppModel

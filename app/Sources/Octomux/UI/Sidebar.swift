@@ -26,10 +26,11 @@ struct SidebarView: View {
         }
     }
 
-    /// Rows (Search, Inbox) sit close under each other and further from a section.
+    /// Rows (Home, Search, Inbox) sit close under each other and further from a section.
     @ViewBuilder private func section(_ id: String, after prev: String?, agentsOnTop: Bool, height: CGFloat) -> some View {
-        let rowGap: CGFloat = prev == "search" || prev == "inbox" ? 1 : 6
+        let rowGap: CGFloat = prev == "home" || prev == "search" || prev == "inbox" ? 1 : 6
         switch id {
+        case "home": HomeSidebarRow().padding(.top, rowGap)
         case "search": SearchSidebarRow().padding(.top, rowGap)
         case "inbox": InboxSidebarRow().padding(.top, rowGap)
         case "projects":

@@ -69,7 +69,7 @@ enum LayoutRegion: String, CaseIterable, Identifiable, Codable {
     /// layout turns on what it wants.
     var optIn: Set<String> {
         switch self {
-        case .sidebar: return ["tasks"]
+        case .sidebar: return ["home", "tasks"]
         case .statusRight: return ["aquarium"]
         case .paneHeader: return ["work"]
         case .views: return ["touched", "marks", "notes", "tasks", "aquarium"]
@@ -79,7 +79,7 @@ enum LayoutRegion: String, CaseIterable, Identifiable, Codable {
     /// Every item this region knows, in Terminal's order.
     var items: [String] {
         switch self {
-        case .sidebar: return ["search", "inbox", "projects", "agents", "tasks"]
+        case .sidebar: return ["home", "search", "inbox", "projects", "agents", "tasks"]
         case .sidebarFooter: return ["add", "workspaces", "settings"]
         case .statusLeft: return ["agents", "git"]
         case .statusRight: return ["layout", "keepAwake", "usage", "actions", "aquarium", "dock"]
@@ -90,6 +90,7 @@ enum LayoutRegion: String, CaseIterable, Identifiable, Codable {
     }
     static func itemTitle(_ id: String, in region: LayoutRegion) -> String {
         switch (region, id) {
+        case (.sidebar, "home"): return "Home"
         case (.sidebar, "search"): return "Search"
         case (.sidebar, "inbox"): return "Inbox"
         case (.sidebar, "projects"): return "Projects"
@@ -175,7 +176,7 @@ struct LayoutConfig: Equatable {
             regions[.statusRight] = items(.statusRight)
             regions[.paneHeader] = items(.paneHeader, with: ["work"])
             regions[.views] = items(.views, with: ["tasks"])
-            regions[.sidebar] = items(.sidebar, with: ["tasks"], order: ["search", "inbox", "tasks", "projects", "agents"])
+            regions[.sidebar] = items(.sidebar, with: ["tasks"], order: ["home", "search", "inbox", "tasks", "projects", "agents"])
             return LayoutConfig(preset: p, regions: regions, statusBar: true, chat: true)
         }
     }

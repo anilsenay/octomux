@@ -210,4 +210,19 @@ final class HomeTests: XCTestCase {
         XCTAssertEqual(again, v)
         XCTAssertTrue(String(decoding: try JSONEncoder().encode(v[0]), as: UTF8.self).contains("\"home\""))
     }
+
+    // MARK: The sidebar's Home
+
+    /// Off in every layout as it ships (the Terminal window looks as it did); turned on, it is the first row, also in a
+    /// sidebar list stored before it existed.
+    func testSidebarHomeIsOptInAndFirst() {
+        for p in LayoutPreset.allCases { XCTAssertFalse(LayoutConfig.builtIn(p).has("home", in: .sidebar), p.rawValue) }
+        let on = LayoutEdit.toggle("home", in: .sidebar, on: true, stored: LayoutEdit.choose(.terminal, in: nil))
+        XCTAssertEqual(LayoutConfig.resolve(on).shown(.sidebar), ["home", "search", "inbox", "projects", "agents"])
+        let old = json(#"{"layout":"terminal","custom":{"terminal":{"regions":{"sidebar":[{"id":"search","on":true},{"id":"agents","on":true},{"id":"inbox","on":true},{"id":"projects","on":true}]}}}}"#)
+        XCTAssertEqual(LayoutConfig.resolve(old).items(.sidebar).map(\.id).first, "home")
+        XCTAssertFalse(LayoutConfig.resolve(old).has("home", in: .sidebar))
+        XCTAssertEqual(LayoutConfig.builtIn(.tasks).items(.sidebar).first?.id, "home")
+        XCTAssertEqual(LayoutRegion.itemTitle("home", in: .sidebar), "Home")
+    }
 }
