@@ -1,6 +1,22 @@
 # Changelog
 
-## Unreleased
+## 0.5.0
+
+Highlights:
+- **Layouts**: arrange the whole window for the way you work: **Terminal** (as before, the default), **Agents** (a
+  rail of agents by what they need from you, beside a Home) or **Tasks** (your tasks on a rail). ⌃⌘1…3 switches;
+  each layout can be changed in Settings → Layout, saved under a name, exported and imported.
+- **Home**: one page made of sections (greeting, composer, waiting agents, stats, pull requests, the Board, the
+  Aquarium…) in four presets, customized in place: drag, hide, add, narrow/wide/full.
+- **Tasks and the workspace assistant**: Octomux's own work items; the assistant splits what you ask into tasks
+  and starts agents on them.
+- **Aquarium**: every agent as a pixel octopus, swimming while it works.
+- **Browser for agents**: far less of an agent's context per page, a question before a session first uses it, and
+  Claude in Chrome as an option for Claude sessions.
+- **Fixes**: much less CPU while agents work, Octomux opens where you left it, Option+Backspace deletes a word in
+  Claude Code, no quit when a browser call is cancelled, no unread dot on the agent you are watching.
+
+All changes:
 
 - **Octomux opens where you left it**: after quitting (or an update) it opened the first project's first tab,
   because reading back the saved workspace saved the project and tab before they were read.
