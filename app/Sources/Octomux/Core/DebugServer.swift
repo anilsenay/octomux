@@ -11,9 +11,8 @@ final class DebugServer {
     private var handlers: [String: Handler] = [:]
     private var fd: Int32 = -1
 
-    static var enabled: Bool {
-        Paths.env("DEBUG") == "1" || CommandLine.arguments.contains("--debug")
-    }
+    /// Read once: views ask on every body (DesignAlt), and the environment is copied on each read.
+    static let enabled: Bool = Paths.env("DEBUG") == "1" || CommandLine.arguments.contains("--debug")
 
     func register(_ method: String, _ handler: @escaping Handler) {
         handlers[method] = handler
