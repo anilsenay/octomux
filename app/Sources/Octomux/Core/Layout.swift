@@ -450,7 +450,7 @@ extension AppModel {
         // it was in front).
         if p == .agents {
             switch activeDoc?.kind {
-            case .agents?, .workday?, .aquarium?: activeDocId = nil
+            case .home?, .aquarium?: activeDocId = nil
             default: break
             }
             shellHome = true

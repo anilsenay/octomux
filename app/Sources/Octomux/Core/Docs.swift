@@ -10,9 +10,37 @@ struct DocTab: Codable, Identifiable, Equatable {
         case commit(String, String)  // hash, subject
         case newChat                 // start screen of a chat session (no agent running yet)
         case inbox                   // pull requests, reviews and issues (InboxView)
-        case agents                  // the Agents layout's home: every agent at a glance (AgentsHomeView)
-        case workday                 // Workday's home: who needs you, while you were away, your PRs and issues
+        case home                    // your Home (HomePage), one tab per project
         case aquarium                // every agent as an octopus (AquariumHomeView)
+
+        /// As tabs were stored, also by older versions (their Agents and Workday tabs open as Home).
+        private enum Stored: Codable {
+            case file(String), changes, commit(String, String), newChat, inbox, home, agents, workday, aquarium
+        }
+        init(from decoder: Decoder) throws {
+            switch try Stored(from: decoder) {
+            case .file(let r): self = .file(r)
+            case .changes: self = .changes
+            case .commit(let h, let s): self = .commit(h, s)
+            case .newChat: self = .newChat
+            case .inbox: self = .inbox
+            case .home, .agents, .workday: self = .home
+            case .aquarium: self = .aquarium
+            }
+        }
+        func encode(to encoder: Encoder) throws {
+            let s: Stored
+            switch self {
+            case .file(let r): s = .file(r)
+            case .changes: s = .changes
+            case .commit(let h, let sub): s = .commit(h, sub)
+            case .newChat: s = .newChat
+            case .inbox: s = .inbox
+            case .home: s = .home
+            case .aquarium: s = .aquarium
+            }
+            try s.encode(to: encoder)
+        }
     }
     var id: String
     var projectId: String
@@ -30,8 +58,7 @@ struct DocTab: Codable, Identifiable, Equatable {
         case .commit(let h, let subject): return subject.isEmpty ? String(h.prefix(7)) : subject
         case .newChat: return "New session"
         case .inbox: return "Inbox"
-        case .agents: return "Agents"
-        case .workday: return "Workday"
+        case .home: return "Home"
         case .aquarium: return "Aquarium"
         }
     }
@@ -43,8 +70,7 @@ struct DocTab: Codable, Identifiable, Equatable {
         case .commit: return "clock.arrow.circlepath"
         case .newChat: return "bubble.left.and.text.bubble.right"
         case .inbox: return "tray"
-        case .agents: return "sparkles"
-        case .workday: return "sun.max"
+        case .home: return "house"
         case .aquarium: return "fish"
         }
     }
@@ -52,7 +78,13 @@ struct DocTab: Codable, Identifiable, Equatable {
     static func load() -> [DocTab] {
         guard let d = UserDefaults.standard.data(forKey: "octomux.docTabs"),
               let v = try? JSONDecoder().decode([DocTab].self, from: d) else { return [] }
-        return v
+        return oneHomePerProject(v)
+    }
+
+    /// One Home tab per project (an older version could have both an Agents and a Workday tab: they are both Home now).
+    static func oneHomePerProject(_ v: [DocTab]) -> [DocTab] {
+        var seen = Set<String>()
+        return v.filter { t in t.kind != .home || seen.insert(t.projectId).inserted }
     }
 
     static func save(_ v: [DocTab]) {
@@ -121,16 +153,11 @@ extension AppModel {
 
     /// The Inbox is on screen in a workspace without projects.
     var showsInboxWithoutProject: Bool { currentProject == nil && inboxWithoutProject != nil && inboxWithoutProject == selectedWorkspaceId }
-    /// The Agents home (one per project's tab row, showing every agent).
-    /// In a window whose Home is this page, its Home; elsewhere the page as a tab.
-    func openAgentsHome() {
+    /// Your Home: the Agents window's Home, elsewhere its tab (one per project; a second time goes to it).
+    func openHome() {
         if shellNav == .agents, shellHasHome { shellGoHome(); return }
-        openDoc(.agents, workPath: currentProject?.path)
-    }
-    /// Workday's home: your day on one page (any layout can open it).
-    func openWorkday() {
-        if shellNav == .agents, shellHasHome, homeLayout == HomePreset.workday.layout { shellGoHome(); return }
-        openDoc(.workday, workPath: currentProject?.path)
+        if let p = currentProject, let t = docTabs.first(where: { $0.projectId == p.id && $0.kind == .home }) { activeDocId = t.id; return }
+        openDoc(.home, workPath: currentProject?.path)
     }
     /// A new agent with the profile you started last (else your pinned or first one).
     func newDefaultAgent() { newSession(profileId: (profile(lastNewSessionProfile) ?? pinnedProfiles.first ?? enabledProfiles.first)?.id) }

@@ -406,8 +406,9 @@ extension AppModel {
         showHome()
         HomeCustomizeState.shared.start()
     }
-    /// The window shows Home: the Agents layout's, else (step 5) the Home tab.
+    /// The window shows Home: the Agents layout's, else the Home tab (unless Home is on screen already).
     func showHome() {
-        if shellNav == .agents, shellHasHome { shellHome = true }
+        if shellNav == .agents, shellHasHome { shellHome = true; return }
+        if activeDoc?.kind != .home { openHome() }
     }
 }

@@ -129,21 +129,15 @@ final class TerminalHost {
                 container.setRoot(pane)
                 return
             }
-            if case .agents = doc.kind {
-                let pane = PaneView(sessionId: "")
-                pane.setContent(NSHostingView(rootView: AgentsHomeView().environmentObject(model)))
-                container.setRoot(pane)
-                return
-            }
             if case .aquarium = doc.kind {
                 let pane = PaneView(sessionId: "")
                 pane.setContent(NSHostingView(rootView: AquariumHomeView().environmentObject(model)))
                 container.setRoot(pane)
                 return
             }
-            if case .workday = doc.kind {
+            if case .home = doc.kind {
                 let pane = PaneView(sessionId: "")
-                pane.setContent(NSHostingView(rootView: WorkdayHomeView().environmentObject(model)))
+                pane.setContent(NSHostingView(rootView: HomeTabView().environmentObject(model)))
                 container.setRoot(pane)
                 return
             }

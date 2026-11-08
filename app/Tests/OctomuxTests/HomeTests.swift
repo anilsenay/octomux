@@ -190,4 +190,24 @@ final class HomeTests: XCTestCase {
                        [.preset(.agents), .preset(.workday), .preset(.board), .preset(.aquarium), .customize])
         XCTAssertEqual(HomeMenuPanel.rows(HomeSetting(preset: .board, custom: HomeLayout(top: [.board]))).last, .reset)
     }
+
+    // MARK: The Home tab
+
+    /// An older version's Agents and Workday tabs open as Home, one per project; other tabs read as before.
+    func testOldTabsBecomeOneHomeTab() throws {
+        let stored = #"""
+        [{"id":"1","projectId":"p","workPath":"/w","kind":{"agents":{}}},
+         {"id":"2","projectId":"p","workPath":"/w","kind":{"workday":{}}},
+         {"id":"3","projectId":"q","workPath":"/v","kind":{"workday":{}}},
+         {"id":"4","projectId":"p","workPath":"/w","kind":{"file":{"_0":"a.swift"}}},
+         {"id":"5","projectId":"p","workPath":"/w","kind":{"aquarium":{}}}]
+        """#
+        let v = DocTab.oneHomePerProject(try JSONDecoder().decode([DocTab].self, from: Data(stored.utf8)))
+        XCTAssertEqual(v.map(\.id), ["1", "3", "4", "5"])
+        XCTAssertEqual(v.map(\.kind), [.home, .home, .file("a.swift"), .aquarium])
+        // written back as Home, read again the same
+        let again = try JSONDecoder().decode([DocTab].self, from: JSONEncoder().encode(v))
+        XCTAssertEqual(again, v)
+        XCTAssertTrue(String(decoding: try JSONEncoder().encode(v[0]), as: UTF8.self).contains("\"home\""))
+    }
 }

@@ -164,8 +164,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         ag.keyEquivalentModifierMask = [.command, .option]
         view.addItem(ag)
         view.addItem(item("Change Scene…", #selector(changeScene(_:)), ""))
-        view.addItem(item("Open Agents Home", #selector(openAgentsHome(_:)), ""))
-        view.addItem(item("Open Workday", #selector(openWorkday(_:)), ""))
+        view.addItem(item("Home", #selector(openHome(_:)), ""))
         view.addItem(item("Show Tasks", #selector(showTasks(_:)), ""))
         view.addItem(item("Open Aquarium", #selector(openAquarium(_:)), ""))
         view.addItem(item("Open Assistant", #selector(openAssistant(_:)), ""))
@@ -279,8 +278,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     static let savedLayoutTag = 9000
     nonisolated(unsafe) private static var lastLayoutMenu = ""
     private var layoutMenuSignature: String { get { Self.lastLayoutMenu } set { Self.lastLayoutMenu = newValue } }
-    @objc func openAgentsHome(_ s: Any?) { openMainWindow(); model.openAgentsHome() }
-    @objc func openWorkday(_ s: Any?) { openMainWindow(); model.openWorkday() }
+    @objc func openHome(_ s: Any?) { openMainWindow(); model.openHome() }
     @objc func showTasks(_ s: Any?) { openMainWindow(); model.showTasks() }
     @objc func openAquarium(_ s: Any?) { openMainWindow(); model.openAquarium() }
     @objc func openAssistant(_ s: Any?) { openMainWindow(); model.openAssistant() }

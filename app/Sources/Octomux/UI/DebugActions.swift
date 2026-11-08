@@ -393,10 +393,7 @@ enum DebugActions {
                     let saved = m.savedLayouts
                     m.editLayout { LayoutEdit.move(v, in: r, by: (p["by"] as? Int) ?? -1, stored: $0, saved: saved) }
                 }
-            case "agents_home":       // value: board | columns | inbox; opens the Agents home
-                if let v = p["value"] as? String { UserDefaults.standard.set(v, forKey: "octomux.agentsHomeStyle") }
-                m.openAgentsHome()
-            case "workday": m.openWorkday()
+            case "open_home", "agents_home", "workday": m.openHome()   // View → Home
             case "home":              // value: agents | workday | board | aquarium (Home's preset, as it ships)
                 if let v = p["value"] as? String, let h = HomePreset(rawValue: v) { m.chooseHomePreset(h) }
             case "home_customize":    // value: true (start) | false (Done)

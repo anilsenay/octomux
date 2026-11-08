@@ -583,6 +583,7 @@ struct DocChip: View {
             } else {
                 Text(TabChip.clip(doc.title, maxChars)).italic(doc.isPreview).lineLimit(1).fixedSize()
             }
+            if doc.kind == .home, selected { HomeMenuButton() }
             if width != nil { Spacer(minLength: 0) }
             Button { model.closeDoc(doc.id) } label: {
                 Image(systemName: "xmark").font(.system(size: T.k * 8, weight: .bold))
@@ -632,8 +633,7 @@ struct DocChip: View {
         case .commit(let h, let s): return "\(h.prefix(8)) \(s)"
         case .newChat: return "New chat session"
         case .inbox: return "Pull requests, reviews and issues"
-        case .agents: return "Every agent: what it did, what it waits for"
-        case .workday: return "Your day: who needs you, what happened, your pull requests and issues"
+        case .home: return "Your Home (its ⌄: presets and Customize)"
         case .aquarium: return "Every agent as an octopus: swimming while it works, ! when it waits"
         }
     }
