@@ -56,7 +56,7 @@ enum ShellBlock: String, CaseIterable, Codable {
     /// is read as the first (a later version's variant shows as today's block).
     var variants: [String] {
         switch self {
-        case .home: return ["agents", "workday", "aquarium"]
+        case .home: return ["agents", "workday", "aquarium", "board"]
         default: return []
         }
     }
