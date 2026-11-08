@@ -147,3 +147,16 @@ final class TasksRailProjectTests: XCTestCase {
         XCTAssertNil(TasksRailModel.newTaskProject(filter: nil, current: nil, projects: []))
     }
 }
+
+final class TasksRailSessionsTests: XCTestCase {
+    func testSessionsWithoutATaskAreListedButNotTheAssistant() throws {
+        func s(_ id: String, _ a: Activity) -> Session {
+            Session(id: id, projectId: "p", kind: .agent, profileId: nil, title: id, customTitle: "", cwd: "/", state: .running, activity: a,
+                    unread: false, agentSessionId: nil, createdAt: 0, lastActivityAt: 0, exitCode: nil, placement: .tab, command: nil,
+                    worktree: nil, transcriptPath: nil, agentTitle: nil)
+        }
+        let t = try JSONDecoder().decode(WorkTask.self, from: Data(#"{"id":"t","project_id":"p","title":"t","description":"","parent_id":null,"worktree":null,"branch":null,"sessions":["a"],"state":"working","state_manual":false,"pr_url":null,"source":null,"agent_profile":null,"created_by":"user","assistant_session":null,"turns":0,"created_at":1,"updated_at":1}"#.utf8))
+        let list = TasksRailModel.untasked([s("a", .working), s("b", .idle), s("c", .needsInput), s("asst", .idle)], tasks: [t], assistant: "asst")
+        XCTAssertEqual(list.map(\.id), ["c", "b"])                       // waiting first, as the agent rail orders them
+    }
+}

@@ -23,6 +23,12 @@ enum TasksRailModel {
         guard let project else { return tasks }
         return tasks.filter { $0.projectId == project }
     }
+    /// The sessions no task has (agents you started yourself, terminals), as the agent rail orders them; not the
+    /// assistant (it has its own row).
+    static func untasked(_ sessions: [Session], tasks: [WorkTask], assistant: String?) -> [Session] {
+        let tasked = Set(tasks.flatMap(\.sessions))
+        return AgentRailModel.flat(sessions.filter { !tasked.contains($0.id) && $0.id != assistant })
+    }
     /// Where a new task goes: the project the rail shows, else the one you picked last, else the first.
     static func newTaskProject(filter: String?, current: String?, projects: [String]) -> String? {
         if let filter, projects.contains(filter) { return filter }
@@ -68,6 +74,7 @@ struct TasksRail: View {
     @AppStorage(AppModel.tasksFilterKey) private var filterRaw = ""
     @AppStorage(AppModel.tasksDoneKey) private var showDone = false
     @AppStorage(AppModel.tasksProjectKey) private var projectRaw = ""
+    @AppStorage("octomux.tasksRailSessions") private var showSessions = false
     /// The project a new task goes to (nil: where the rail points, see TasksRailModel.newTaskProject).
     @State private var newProject: String?
     @State private var cursor: String?
@@ -110,6 +117,7 @@ struct TasksRail: View {
                         }
                         .buttonStyle(.plain).pointerCursor().padding(.horizontal, 14).padding(.vertical, 8)
                     }
+                    untaskedSessions
                 }
                 .padding(.bottom, 10)
             }
@@ -282,6 +290,48 @@ struct TasksRail: View {
         }
         .buttonStyle(.plain)
         .padding(.horizontal, 6)
+    }
+
+    /// Sessions without a task, folded at the bottom: nothing in the workspace is out of reach from this window.
+    @ViewBuilder private var untaskedSessions: some View {
+        let ps = Set(model.projects.map(\.id))
+        let sessions = AgentRailModel.sessions(model.state.sessions, projects: ps, filter: model.tasksProjectFilter)
+        let list = TasksRailModel.untasked(sessions, tasks: model.workspaceTasks, assistant: model.assistantSession(workspace: model.selectedWorkspaceId)?.id)
+        if !list.isEmpty {
+            Button { showSessions.toggle() } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: showSessions ? "chevron.down" : "chevron.right").font(T.icon(9, .semibold)).frame(width: 10)
+                    Text("Sessions without a task").font(.system(size: T.k * 11, weight: .semibold))
+                    Text("\(list.count)").font(.system(size: T.k * 11)).monospacedDigit()
+                    Spacer()
+                    let waiting = list.filter { RailGroup.of($0) == .waiting }.count
+                    if waiting > 0 { Text("\(waiting) waiting").font(T.meta).foregroundStyle(T.amber) }
+                }
+                .foregroundStyle(T.text3).padding(.horizontal, 14).padding(.top, 14).padding(.bottom, 4).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain).pointerCursor()
+            if showSessions { ForEach(list) { s in sessionRow(s) } }
+        }
+    }
+
+    private func sessionRow(_ s: Session) -> some View {
+        let selected = model.shellTaskId == nil && model.focusedSessionId == s.id && model.activeDoc == nil
+        return Button { keys.active = false; model.selectSession(s.id) } label: {
+            HStack(spacing: 8) {
+                AgentIcon(icon: iconName(for: s, model: model), size: 12).frame(width: 16)
+                Text(s.displayTitle).font(.system(size: T.k * 12, weight: selected ? .semibold : .regular)).foregroundStyle(T.text).lineLimit(1)
+                Spacer(minLength: 4)
+                if RailGroup.of(s) == .waiting { Circle().fill(T.amber).frame(width: 6, height: 6) }
+                else if RailGroup.of(s) == .working { WorkingRing().scaleEffect(0.6).frame(width: 10, height: 10) }
+                if let p = model.project(s.projectId), model.tasksProjectFilter == nil { Text(p.name).font(T.meta).foregroundStyle(T.text3).lineLimit(1) }
+            }
+            .padding(.horizontal, 10).frame(height: 28)
+            .background(RoundedRectangle(cornerRadius: R.md, style: .continuous).fill(selected ? T.selection : .clear))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 6)
+        .contextMenu { SessionMenu(session: s) }
     }
 
     private func move(_ d: Int, _ flat: [WorkTask]) {
