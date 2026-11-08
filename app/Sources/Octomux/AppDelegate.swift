@@ -74,11 +74,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         w.makeKeyAndOrderFront(nil)
         mainWindow = w
         ThemeStore.applyWindowGlass()
+        WindowChrome.place(w)
+        WindowChrome.follow(w)
     }
 
     func windowDidBecomeKey(_ notification: Notification) {
         if let id = AppModel.shared.focusedSessionId { AppModel.shared.markRead(id) }
+        if let w = notification.object as? NSWindow { WindowChrome.place(w) }
     }
+    func windowDidResignKey(_ notification: Notification) { if let w = notification.object as? NSWindow { WindowChrome.place(w) } }
+    func windowDidResize(_ notification: Notification) { if let w = notification.object as? NSWindow { WindowChrome.place(w) } }
+    func windowDidEnterFullScreen(_ notification: Notification) { if let w = notification.object as? NSWindow { WindowChrome.place(w) } }
+    func windowDidExitFullScreen(_ notification: Notification) { if let w = notification.object as? NSWindow { WindowChrome.place(w) } }
 
     /// Two-finger horizontal swipe over the sidebar switches workspaces.
     private func installSwipeMonitor() {
@@ -169,7 +176,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         view.addItem(item("Open Aquarium", #selector(openAquarium(_:)), ""))
         view.addItem(item("Open Assistant", #selector(openAssistant(_:)), ""))
         view.addItem(.separator())
-        for p in LayoutPreset.allCases {   // ⌃⌘1…5
+        for p in LayoutPreset.allCases {   // ⌃⌘1…3
             let i = item("\(p.title) Layout", #selector(chooseLayout(_:)), "\(p.number)")
             i.keyEquivalentModifierMask = [.control, .command]
             i.tag = p.number

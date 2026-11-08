@@ -193,7 +193,8 @@ struct PeekSidebarView: View {
 /// Sidebar toggle + search, next to the traffic lights; stays put whether the sidebar is shown or not.
 struct TopLeftControls: View {
     @EnvironmentObject var model: AppModel
-    static let width: CGFloat = 78 + 88
+    /// The lights and the buttons after them (the space a bar keeps free while the sidebar is hidden).
+    static var width: CGFloat { WindowChrome.controlsX + 88 }
 
     var body: some View {
         HStack(spacing: 2) {
@@ -210,9 +211,9 @@ struct TopLeftControls: View {
             }
             NotificationBell()
         }
-        .padding(.leading, 78)
+        .padding(.leading, WindowChrome.controlsX)
         .frame(height: 30)
-        .padding(.top, 1)
+        .padding(.top, WindowChrome.lights.center - 15)   // on the lights' line
     }
 }
 

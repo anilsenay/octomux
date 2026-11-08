@@ -18,6 +18,10 @@ let package = Package(
             linkerSettings: [
                 // Sparkle.framework: Contents/Frameworks in the bundle; next to the binary in a dev run.
                 .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks", "-Xlinker", "-rpath", "-Xlinker", "@executable_path"]),
+                // The SDK the app is built for, as macOS reads it: SwiftPM writes the deployment target (14.0) there, and
+                // macOS then draws the app in its older look (smaller window buttons, older controls). 26 is the
+                // current design; the app still runs on 14.
+                .unsafeFlags(["-Xlinker", "-platform_version", "-Xlinker", "macos", "-Xlinker", "14.0", "-Xlinker", "26.0"]),
                 .linkedFramework("AppKit"),
                 .linkedFramework("Metal"),
                 .linkedFramework("MetalKit"),
