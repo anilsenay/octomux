@@ -108,6 +108,9 @@ final class AppModel: ObservableObject {
 
     private var lastTabPerWorkspace: [String: String] = [:]
     private let defaults = UserDefaults.standard
+    /// While the saved selection is read back: setting the workspace runs its observer, which would save the
+    /// project and tab before they are read (as nil), so every launch opened the first project's first tab.
+    private var restoringSelection = true
 
     private init() {
         selectedWorkspaceId = defaults.string(forKey: "octomux.ws")
@@ -115,6 +118,7 @@ final class AppModel: ObservableObject {
         activeTabId = defaults.string(forKey: "octomux.tab")
         lastTabPerWorkspace = defaults.dictionary(forKey: "octomux.lastTabs") as? [String: String] ?? [:]
         sidebarVisible = defaults.object(forKey: "octomux.sidebar") as? Bool ?? true
+        restoringSelection = false
     }
 
     func start() {
@@ -147,6 +151,7 @@ final class AppModel: ObservableObject {
     }
 
     func saveSelection() {
+        guard !restoringSelection else { return }
         defaults.set(selectedWorkspaceId, forKey: "octomux.ws")
         defaults.set(selectedProjectId, forKey: "octomux.project")
         defaults.set(activeTabId, forKey: "octomux.tab")

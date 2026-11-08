@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **Octomux opens where you left it**: after quitting (or an update) it opened the first project's first tab,
+  because reading back the saved workspace saved the project and tab before they were read.
+
 - **Menu bar panel** opens centered under the Octomux icon (it hung to the right of it).
 
 - **Less CPU while agents work.** The spinning ring that marks a working agent (sidebar, tabs) re-rendered the
