@@ -7,7 +7,7 @@ final class HomeTests: XCTestCase {
 
     /// The presets are today's Homes, section for section.
     func testPresetsAreTodaysHomes() {
-        XCTAssertEqual(HomePreset.agents.layout, HomeLayout(top: [.greeting, .composer], main: [.waiting], side: [.recent, .usage]))
+        XCTAssertEqual(HomePreset.agents.layout, HomeLayout(top: [.greeting, .composer], main: [.waiting], side: [.recent, .usage], width: .narrow, split: HomeLayout.narrowSide))
         XCTAssertEqual(HomePreset.workday.layout, HomeLayout(top: [.today, .stats], main: [.waiting, .away], side: [.pullRequests, .reviews, .issues]))
         XCTAssertEqual(HomePreset.board.layout, HomeLayout(top: [.composer, .board]))
         XCTAssertEqual(HomePreset.aquarium.layout, HomeLayout(top: [.aquarium]))
@@ -70,7 +70,7 @@ final class HomeTests: XCTestCase {
 
     func testCustomRoundTripsAndDropsUnknownsAndRepeats() {
         let h = HomeSetting.read(json(#"{"preset":"agents","top":["greeting","sparkles","greeting"],"main":["waiting","usage"],"side":["usage","recent"]}"#))
-        XCTAssertEqual(h?.layout, HomeLayout(top: [.greeting], main: [.waiting, .usage], side: [.recent]))
+        XCTAssertEqual(h?.layout, HomeLayout(top: [.greeting], main: [.waiting, .usage], side: [.recent], width: .narrow, split: HomeLayout.narrowSide))
         XCTAssertEqual(h?.changed, true)
         XCTAssertEqual(HomeSetting.read(h!.json), h)
     }
@@ -137,11 +137,29 @@ final class HomeTests: XCTestCase {
         XCTAssertNil(HomeWaiting.next(after: nil, old: ["a"], new: ["b"]))                          // the first is open anyway
     }
 
-    /// Today's Agents Home keeps its narrow side column; a side column with pull requests is as wide as the main one.
-    func testColumnWidths() {
-        XCTAssertFalse(HomePage.equalColumns(HomePreset.agents.layout))
-        XCTAssertTrue(HomePage.equalColumns(HomePreset.workday.layout))
-        XCTAssertFalse(HomePage.equalColumns(HomeLayout(side: [.issues])))   // no main column: the side one is the page
+    /// The page's width and the columns' split come from the preset (Agents: today's 980 pt page with a 300 pt side
+    /// column; Workday: 1200 pt, halves) or your choice, never from what the columns hold.
+    func testWidthAndSplitAreSettings() {
+        XCTAssertEqual(HomePreset.agents.layout.width, .narrow)
+        XCTAssertEqual(HomePreset.workday.layout.width, .wide)
+        XCTAssertEqual(HomePreset.workday.layout.split, 0.5)
+        let agentsColumns = HomePage.columnWidths(980 - 88, split: HomePreset.agents.layout.split)
+        XCTAssertEqual(agentsColumns.side, 300)
+        XCTAssertEqual(agentsColumns.main + agentsColumns.side + HomePage.columnGap, 892)
+        // a wide section in the side column changes nothing
+        XCTAssertEqual(HomePreset.agents.layout.moving(.issues, to: .side).width, .narrow)
+
+        let h = HomeSetting.read(json(#"{"preset":"agents","width":"full","split":0.9}"#))
+        XCTAssertEqual(h?.layout.width, .full)
+        XCTAssertEqual(h?.layout.split, HomeLayout.splitRange.upperBound)       // clamped
+        XCTAssertEqual(h?.layout.top, HomePreset.agents.layout.top)             // bands not stored: the preset's
+        XCTAssertEqual(h?.changed, true)
+        XCTAssertEqual(HomeSetting.read(h!.json), h)
+        // bands stored before width/split existed: the preset's width and split
+        let older = HomeSetting.read(json(#"{"preset":"workday","top":["today"],"main":[],"side":[]}"#))
+        XCTAssertEqual(older?.layout.width, .wide)
+        XCTAssertEqual(older?.layout.split, 0.5)
+        XCTAssertEqual(HomeSetting.read(json(#"{"preset":"agents","width":"huge"}"#))?.layout.width, .narrow)
     }
 
     // MARK: Customize

@@ -404,6 +404,10 @@ enum DebugActions {
                 if let v = p["value"] as? String, let s = HomeSectionID(rawValue: v), let b = (p["band"] as? String).flatMap(HomeBand.init(rawValue:)) {
                     HomeCustomizeState.shared.drop(s, at: .init(band: b, index: (p["index"] as? Int) ?? Int.max), model: m)
                 }
+            case "home_width":        // value: narrow | wide | full
+                if let v = (p["value"] as? String).flatMap(HomeWidth.init(rawValue:)) { m.setHomeWidth(v) }
+            case "home_split":        // value: the side column's share, 0.2…0.8
+                if let v = p["value"] as? Double { m.setHomeSplit(v) }
             case "home_layout":       // value: {"top": […], "main": […], "side": […]} as a string (your arrangement)
                 if let str = p["value"] as? String, let d = str.data(using: .utf8), case .object(let o)? = try? JSONDecoder().decode(JSONValue.self, from: d) {
                     m.setHomeLayout(HomeLayout.read(o))

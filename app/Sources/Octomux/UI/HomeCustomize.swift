@@ -91,8 +91,11 @@ struct HomeCustomizeBar: View {
         HStack(spacing: 10) {
             Image(systemName: "slider.horizontal.3").font(T.icon(12)).foregroundStyle(T.accent)
             Text("Customizing Home").font(.system(size: T.k * 13, weight: .semibold))
-            Text("Drag a section by its handle; changes are saved as you make them.").font(T.meta).foregroundStyle(T.text3).lineLimit(1)
+            Text("Drag sections by their handle; saved as you go.").font(T.meta).foregroundStyle(T.text3).lineLimit(1)
             Spacer(minLength: 8)
+            SegmentedTabs(items: HomeWidth.allCases.map { ($0, $0.title) },
+                          selection: Binding(get: { h.layout.width }, set: { model.setHomeWidth($0) }))
+                .frame(width: 210).help("The page's width")
             if h.changed || !c.hidden.isEmpty {
                 Button("Reset to \(h.preset.title)") { c.hidden = []; model.chooseHomePreset(h.preset) }.buttonStyle(SmallButtonStyle())
             }

@@ -32,10 +32,19 @@ struct HomePage: View {
     /// The agents of the project the agent rail shows (the Agents layout's Home, beside the rail); else the workspace's.
     var railFilter = true
 
-    /// Columns of equal width when the side column holds a wide section (pull requests, a list of agents); else the
-    /// side column is narrow, as on today's Agents Home.
-    static func equalColumns(_ l: HomeLayout) -> Bool {
-        !l.main.isEmpty && l.side.contains { ![.recent, .usage, .greeting, .today, .composer].contains($0) }
+    /// The two columns' width, measured (0 until the first layout pass).
+    @State private var columnsWidth: CGFloat = 0
+    /// The split while you drag the line between the columns (Customize).
+    @State private var dragging: Double?
+    @State private var dragStart: Double = 0
+
+    static let columnGap: CGFloat = 18
+
+    /// The main and side columns' widths for the columns' width `w` and the side's share `split`.
+    static func columnWidths(_ w: CGFloat, split: Double) -> (main: CGFloat, side: CGFloat) {
+        let inner = max(0, w - columnGap)
+        let side = (inner * split).rounded()
+        return (inner - side, side)
     }
 
     var body: some View {
@@ -64,31 +73,63 @@ struct HomePage: View {
     }
 
     private func scrolled(_ agents: HomeAgents) -> some View {
-        let equal = Self.equalColumns(layout)
         let empty = layout.isEmpty && editing == nil
+        let both = editing != nil || (!layout.main.isEmpty && !layout.side.isEmpty)
         return ScrollView {
             VStack(alignment: .leading, spacing: 26) {
                 if let e = editing { e.toolbar }
                 band(.top, agents)
-                if !layout.main.isEmpty || !layout.side.isEmpty || editing != nil {
-                    HStack(alignment: .top, spacing: 18) {
-                        if !layout.main.isEmpty || editing != nil {
-                            band(.main, agents).frame(maxWidth: .infinity, alignment: .topLeading)
-                        }
-                        if !layout.side.isEmpty || editing != nil {
-                            band(.side, agents)
-                                .frame(maxWidth: equal || layout.main.isEmpty ? .infinity : 300, alignment: .topLeading)
-                                .frame(width: equal || layout.main.isEmpty ? nil : 300)
-                        }
+                if both {
+                    let w = Self.columnWidths(columnsWidth, split: dragging ?? layout.split)
+                    HStack(alignment: .top, spacing: 0) {
+                        band(.main, agents).frame(width: columnsWidth > 0 ? w.main : nil, alignment: .topLeading)
+                            .frame(maxWidth: columnsWidth > 0 ? nil : .infinity, alignment: .topLeading)
+                        splitLine
+                        band(.side, agents).frame(width: columnsWidth > 0 ? w.side : nil, alignment: .topLeading)
+                            .frame(maxWidth: columnsWidth > 0 ? nil : .infinity, alignment: .topLeading)
                     }
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .background(GeometryReader { g in
+                        Color.clear
+                            .onAppear { columnsWidth = g.size.width }
+                            .onChange(of: g.size.width) { _, v in columnsWidth = v }
+                    })
+                } else if !layout.main.isEmpty {
+                    band(.main, agents).frame(maxWidth: .infinity, alignment: .topLeading)
+                } else if !layout.side.isEmpty {
+                    band(.side, agents).frame(maxWidth: .infinity, alignment: .topLeading)
                 }
                 if empty {
                     Text("This Home has no sections. Home ⌄ → Customize this Home… adds them.").font(T.meta).foregroundStyle(T.text3)
                 }
             }
             .padding(.horizontal, 44).padding(.vertical, 40)
-            .frame(maxWidth: equal ? 1200 : 980, alignment: .topLeading)
+            .frame(maxWidth: layout.width.points.map { CGFloat($0) } ?? .infinity, alignment: .topLeading)
             .frame(maxWidth: .infinity)
+        }
+    }
+
+    /// The gap between the columns; while customizing, a line to drag (the split is saved when you let go).
+    @ViewBuilder private var splitLine: some View {
+        if editing != nil {
+            Capsule().fill(dragging != nil ? T.accent : T.border).frame(width: 3, height: 44)
+                .frame(width: Self.columnGap, height: 120)
+                .contentShape(Rectangle())
+                .onHover { h in if h { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() } }
+                .gesture(DragGesture(minimumDistance: 1)
+                    .onChanged { g in
+                        if dragging == nil { dragStart = layout.split }
+                        let inner = max(1, columnsWidth - Self.columnGap)
+                        let r = HomeLayout.splitRange
+                        dragging = min(max(dragStart - Double(g.translation.width / inner), r.lowerBound), r.upperBound)
+                    }
+                    .onEnded { _ in
+                        if let f = dragging { model.setHomeSplit(f) }
+                        dragging = nil
+                    })
+                .help("Drag to change the columns' widths")
+        } else {
+            Color.clear.frame(width: Self.columnGap, height: 1)
         }
     }
 

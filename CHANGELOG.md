@@ -17,7 +17,8 @@
   composer, waiting, recent, usage), **Workday** (your day: stats, waiting, while you were away, your pull requests,
   reviews and issues), **Board** (every agent in a column by state) and **Aquarium** (every agent as an octopus; ⌘T
   starts an agent) — and **Customize this Home…**: drag a section by its handle across the top row and the main and
-  side columns, hide one with its eye, add one with + Add section; each change is saved at once, Reset goes back to
+  side columns, hide one with its eye, add one with + Add section, pick the page's width (Narrow · Wide · Full) and
+  drag the line between the columns; each change is saved at once, Reset goes back to
   the preset. The agents waiting for you are rows in one card: the first is open with its answers, a click opens
   another, and answering opens the one that takes its place. An opt-in Home row at the top of the sidebar (Settings
   → Layout → Sidebar) shows how many agents wait for you. Agents and Workday tabs from earlier builds open as Home.

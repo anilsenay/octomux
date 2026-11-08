@@ -79,11 +79,30 @@ enum HomeBand: String, CaseIterable, Identifiable {
     var title: String { rawValue.uppercased() }
 }
 
-/// The sections in their bands, in order (each section at most once).
+/// How wide Home's page is: today's Agents Home (narrow), today's Workday (wide), or the whole window.
+enum HomeWidth: String, CaseIterable, Identifiable {
+    case narrow, wide, full
+    var id: String { rawValue }
+    var title: String { rawValue.capitalized }
+    /// The page's widest (nil: the window's width).
+    var points: Double? { switch self { case .narrow: return 980; case .wide: return 1200; case .full: return nil } }
+}
+
+/// The sections in their bands, in order (each section at most once), the page's width and the columns' split.
 struct HomeLayout: Equatable {
     var top: [HomeSectionID] = []
     var main: [HomeSectionID] = []
     var side: [HomeSectionID] = []
+    var width: HomeWidth = .wide
+    /// The side column's share of the two columns' width (when both have sections).
+    var split: Double = 0.5
+
+    /// The split you can drag to: neither column narrower than a fifth.
+    static let splitRange: ClosedRange<Double> = 0.2...0.8
+    /// Today's Agents Home: a 300 pt side column on its 980 pt page (874 pt of columns once the 44 pt margins and the
+    /// 18 pt gap are off). Splits are kept to three decimals, as stored.
+    static let narrowSide = 0.343
+    static func rounded(_ f: Double) -> Double { (min(max(f, splitRange.lowerBound), splitRange.upperBound) * 1000).rounded() / 1000 }
 
     subscript(b: HomeBand) -> [HomeSectionID] {
         get { switch b { case .top: return top; case .main: return main; case .side: return side } }
@@ -120,10 +139,13 @@ struct HomeLayout: Equatable {
         return last
     }
 
-    /// Read from JSON: known sections only, each once (the first place wins).
-    static func read(_ o: [String: JSONValue]) -> HomeLayout {
+    /// Read from JSON: known sections only, each once (the first place wins); the width and split `base` has unless
+    /// stored (and readable).
+    static func read(_ o: [String: JSONValue], base: HomeLayout = HomeLayout()) -> HomeLayout {
         var seen = Set<HomeSectionID>()
-        var l = HomeLayout()
+        var l = HomeLayout(width: base.width, split: base.split)
+        if let w = o["width"]?.string.flatMap(HomeWidth.init(rawValue:)) { l.width = w }
+        if case .number(let n)? = o["split"], n.isFinite { l.split = rounded(n) }
         for b in HomeBand.allCases {
             guard case .array(let list)? = o[b.rawValue] else { continue }
             for v in list {
@@ -137,6 +159,8 @@ struct HomeLayout: Equatable {
     var json: [String: JSONValue] {
         var o: [String: JSONValue] = [:]
         for b in HomeBand.allCases { o[b.rawValue] = .array(self[b].map { .string($0.rawValue) }) }
+        o["width"] = .string(width.rawValue)
+        o["split"] = .number(Self.rounded(split))
         return o
     }
 }
@@ -171,10 +195,10 @@ enum HomePreset: String, CaseIterable, Identifiable {
     }
     var layout: HomeLayout {
         switch self {
-        case .agents: return HomeLayout(top: [.greeting, .composer], main: [.waiting], side: [.recent, .usage])
-        case .workday: return HomeLayout(top: [.today, .stats], main: [.waiting, .away], side: [.pullRequests, .reviews, .issues])
-        case .board: return HomeLayout(top: [.composer, .board])
-        case .aquarium: return HomeLayout(top: [.aquarium])
+        case .agents: return HomeLayout(top: [.greeting, .composer], main: [.waiting], side: [.recent, .usage], width: .narrow, split: HomeLayout.narrowSide)
+        case .workday: return HomeLayout(top: [.today, .stats], main: [.waiting, .away], side: [.pullRequests, .reviews, .issues], width: .wide, split: 0.5)
+        case .board: return HomeLayout(top: [.composer, .board], width: .wide, split: 0.5)
+        case .aquarium: return HomeLayout(top: [.aquarium], width: .wide, split: 0.5)
         }
     }
     /// A Home's name from before (a layout file's `"variant"`, the layout's `home`); unknown ones are Agents.
@@ -203,9 +227,11 @@ struct HomeSetting: Equatable {
     static func read(_ v: JSONValue?) -> HomeSetting? {
         guard case .object(let o)? = v else { return nil }
         let p = HomePreset.named(o["preset"]?.string)
-        let hasBands = HomeBand.allCases.contains { o[$0.rawValue] != nil }
-        guard hasBands else { return HomeSetting(preset: p) }
-        let l = HomeLayout.read(o)
+        let hasChanges = (HomeBand.allCases.map(\.rawValue) + ["width", "split"]).contains { o[$0] != nil }
+        guard hasChanges else { return HomeSetting(preset: p) }
+        var l = HomeLayout.read(o, base: p.layout)
+        // Bands not stored (only the width or split changed): the preset's.
+        for b in HomeBand.allCases where o[b.rawValue] == nil { l[b] = p.layout[b] }
         return HomeSetting(preset: p, custom: l == p.layout ? nil : l)
     }
     var json: JSONValue {
@@ -240,6 +266,14 @@ extension AppModel {
     func storeHome(_ h: HomeSetting) {
         setSettingLocally(HomeSetting.key, h.json, scope: "global")
         setSetting(HomeSetting.key, h.json.any, scope: "global")
+    }
+    /// The page's width (Customize).
+    func setHomeWidth(_ w: HomeWidth) { var l = homeSetting.layout; l.width = w; setHomeLayout(l) }
+    /// The side column's share (Customize: the line between the columns).
+    func setHomeSplit(_ f: Double) {
+        var l = homeSetting.layout
+        l.split = HomeLayout.rounded(f)
+        setHomeLayout(l)
     }
     /// A preset as it ships (Reset, or picking one in Home ⌄).
     func chooseHomePreset(_ p: HomePreset) { storeHome(HomeSetting(preset: p)) }

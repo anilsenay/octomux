@@ -123,10 +123,13 @@ A closed scale with no half points (`DesignTokenTests` fails on `N.5` sizes in `
   one per project): `Core/Home.swift` (model), `UI/HomePage.swift` (sections), `UI/HomeCustomize.swift` (Customize).
 - Sections (`HomeSectionID`) are today's parts, nothing new: greeting, today, composer, stats, waiting, working, away,
   recent, pullRequests, reviews, issues, usage, board, aquarium. They sit in three bands: `top` (full width), then a
-  `main` and a `side` column (side 300 pt beside the main one, or as wide when it holds a wide section). Each section
-  appears at most once.
+  `main` and a `side` column. Each section appears at most once. The page's width (`narrow` 980 pt, `wide` 1200 pt,
+  `full`) and the side column's share of the columns (`split`, 0.2–0.8) are part of the arrangement, never derived
+  from what the columns hold: Agents is narrow with a 300 pt side column (0.343), the others wide with halves.
+  Customize has Narrow · Wide · Full and a line between the columns to drag.
 - A preset (`HomePreset`: agents, workday, board, aquarium) is a ready arrangement; global setting `ui.home` =
-  `{"preset": …}` plus `top` / `main` / `side` when you changed it (unknown sections dropped). Before it is set, the
+  `{"preset": …}` plus `top` / `main` / `side` / `width` / `split` when you changed it (unknown sections dropped;
+  what isn't stored is the preset's). Before it is set, the
   Home an earlier build kept with the layout (`home`, `custom.agents.home`, a layout file's `"variant"`, Columns →
   board) is read as that preset.
 - A big section (board, aquarium) fills the page when it is the last on top and the columns are empty; else it is a
