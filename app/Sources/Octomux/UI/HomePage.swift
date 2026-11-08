@@ -80,16 +80,14 @@ struct HomePage: View {
                 if let e = editing { e.toolbar }
                 band(.top, agents)
                 if both {
-                    let w = Self.columnWidths(columnsWidth, split: dragging ?? layout.split)
-                    HStack(alignment: .top, spacing: 0) {
-                        band(.main, agents).frame(width: columnsWidth > 0 ? w.main : nil, alignment: .topLeading)
-                            .frame(maxWidth: columnsWidth > 0 ? nil : .infinity, alignment: .topLeading)
+                    // The columns take the width they are given, split by the share; the width is read (for the drag)
+                    // but never fed back into their size.
+                    HomeColumns(split: dragging ?? layout.split) {
+                        band(.main, agents)
                         splitLine
-                        band(.side, agents).frame(width: columnsWidth > 0 ? w.side : nil, alignment: .topLeading)
-                            .frame(maxWidth: columnsWidth > 0 ? nil : .infinity, alignment: .topLeading)
+                        band(.side, agents)
                     }
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-                    .background(GeometryReader { g in
+                    .overlay(GeometryReader { g in
                         Color.clear
                             .onAppear { columnsWidth = g.size.width }
                             .onChange(of: g.size.width) { _, v in columnsWidth = v }
@@ -155,6 +153,34 @@ struct HomePage: View {
 
     /// The first of the pull request / review / issue sections (it says how to connect while none is connected).
     private var firstInbox: HomeSectionID? { layout.all.first { [.pullRequests, .reviews, .issues].contains($0) } }
+}
+
+/// Home's two columns and the gap between them: the main column, the gap (or the line to drag), the side column; the
+/// given width is shared by `split` (the side's share), so the columns follow the page whatever they held before.
+struct HomeColumns: Layout {
+    let split: Double
+
+    private func widths(_ total: CGFloat) -> (CGFloat, CGFloat) {
+        let w = HomePage.columnWidths(total, split: split)
+        return (w.main, w.side)
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard subviews.count == 3 else { return .zero }
+        let total = proposal.width ?? 980
+        let (m, s) = widths(total)
+        let h = max(subviews[0].sizeThatFits(.init(width: m, height: nil)).height,
+                    subviews[2].sizeThatFits(.init(width: s, height: nil)).height)
+        return CGSize(width: total, height: h)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard subviews.count == 3 else { return }
+        let (m, s) = widths(bounds.width)
+        subviews[0].place(at: bounds.origin, proposal: .init(width: m, height: nil))
+        subviews[1].place(at: CGPoint(x: bounds.minX + m, y: bounds.minY), proposal: .init(width: HomePage.columnGap, height: nil))
+        subviews[2].place(at: CGPoint(x: bounds.maxX - s, y: bounds.minY), proposal: .init(width: s, height: nil))
+    }
 }
 
 /// What Customize puts around Home's sections (HomeCustomize.swift).
