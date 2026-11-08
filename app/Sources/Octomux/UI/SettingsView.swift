@@ -550,7 +550,7 @@ enum SettingsIndex {
             e(.layout, "Top bar, right", "diff open in commit right panel buttons"),
             e(.terminal, "Font", "family typeface mono jetbrains"),
             e(.sessions, "Keep Mac awake", "caffeinate sleep awake lid closed clamshell battery power"),
-            e(.mcp, "Octomux browser", "browser web page agent tools playwright click screenshot cookies browsing data"),
+            e(.mcp, "Octomux browser", "browser web page agent tools playwright click screenshot cookies browsing data claude in chrome extension"),
             e(.permissions, "Screen recording", "screenshot screencapture capture privacy macos allow sessions agent"),
             e(.permissions, "Accessibility", "click type automation privacy macos allow sessions agent"),
             e(.terminal, "Size", "font size points bigger smaller zoom"),

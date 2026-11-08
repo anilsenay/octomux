@@ -55,7 +55,8 @@ enum BrowserTools {
             defer { page.endActivity() }
             let ok = await page.load(url)
             if !ok, let e = page.lastError { throw Failure(message: "Couldn't open \(url.absoluteString): \(e)") }
-            return try await afterAction(page, session: session, before: before, note: ok ? nil : "The page is still loading; the snapshot may be incomplete.")
+            return try await afterAction(page, session: session, before: before, note: ok ? nil : "The page is still loading; the snapshot may be incomplete.",
+                                         mode: .outline)
 
         case "browser_navigate_back":
             let page = try await pageFor(session)
@@ -65,7 +66,7 @@ enum BrowserTools {
             defer { page.endActivity() }
             page.web.goBack()
             _ = await page.waitForNavigation(timeout: 15)
-            return try await afterAction(page, session: session, before: before)
+            return try await afterAction(page, session: session, before: before, mode: .outline)
 
         case "browser_snapshot":
             let page = try await pageFor(session)
@@ -220,7 +221,11 @@ enum BrowserTools {
             // A new user agent (phone / tablet) only reaches the site with a reload.
             if (before.userAgent ?? "") != (page.web.customUserAgent ?? ""), page.web.url != nil { page.web.reload(); _ = await page.waitForNavigation(timeout: 15) }
             try? await Task.sleep(nanoseconds: 250_000_000)
-            var r = try await afterAction(page, session: session, before: before)
+            _ = try? await js(page, "return await __octomux.settle(120, 2000)", [:])
+            // No snapshot: a resize is mostly followed by a screenshot, and the page's whole tree at the new size
+            // cost thousands of tokens each time. browser_snapshot reads it when needed.
+            var r = Result(text: pageLines(page, session: session, before: before)
+                           + ["- Note: browser_take_screenshot shows the page at this size; browser_snapshot reads it."])
             let m = try? await js(page, "return __octomux.metrics()", [:]) as? [String: Any]
             let vw = (m?["viewportWidth"] as? Double).map { Int($0) } ?? 0, vh = (m?["viewportHeight"] as? Double).map { Int($0) } ?? 0
             r.text.insert(contentsOf: ["### Viewport", "- \(page.viewport?.label ?? "Follows the browser's size") (the page sees \(vw)×\(vh))"], at: 0)
@@ -252,7 +257,8 @@ enum BrowserTools {
         }
     }
 
-    enum SnapshotMode { case full, diff, auto }
+    /// `.outline` (a page just opened): the whole page when it is small, else only its landmarks and controls.
+    enum SnapshotMode { case full, diff, auto, outline }
 
     /// Up to this size an action's result carries the whole page (a diff saves little); above it, only what changed.
     static let smallSnapshot = 6_000
@@ -324,6 +330,11 @@ enum BrowserTools {
             guard let previous else { return full("no earlier snapshot of this page, so the whole page") }
             guard let d = SnapshotDiff.diff(old: previous, new: yaml) else { return full("it changed too much for a diff, so the whole page") }
             return diffText(d)
+        case .outline:
+            guard yaml.count > smallSnapshot else { return full() }
+            return ["### Snapshot (outline)",
+                    "Only the page's landmarks, headings, links, buttons and fields (their refs work); text and images left out. browser_snapshot gives the whole page.",
+                    "```yaml", SnapshotOutline.outline(yaml), "```"]
         case .auto:
             guard !urlChanged, let previous, yaml.count > smallSnapshot,
                   let d = SnapshotDiff.diff(old: previous, new: yaml), d.text.count < yaml.count / 2 else { return full() }

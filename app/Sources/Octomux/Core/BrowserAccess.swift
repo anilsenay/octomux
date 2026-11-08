@@ -9,10 +9,20 @@ enum BrowserAccess {
     }
 
     static var mode: Mode {
-        if case .string(let s)? = AppModel.shared.setting("browser.access"), let m = Mode(rawValue: s) { return m }
-        // Before Ask existed: a plain switch.
-        if AppModel.shared.setting("browser.agent_tools")?.bool == false { return .off }
-        return .on
+        var access: String?
+        if case .string(let s)? = AppModel.shared.setting("browser.access") { access = s }
+        return mode(access: access, legacySwitch: AppModel.shared.setting("browser.agent_tools")?.bool)
+    }
+
+    /// Unset, a session asks the first time it wants the browser (the user may browse with another tool, such as
+    /// Claude in Chrome). Before Ask existed the setting was a plain switch: a choice made there is kept.
+    nonisolated static func mode(access: String?, legacySwitch: Bool?) -> Mode {
+        if let access, let m = Mode(rawValue: access) { return m }
+        switch legacySwitch {
+        case false?: return .off
+        case true?: return .on
+        case nil: return .ask
+        }
     }
 
     static var allowedSites: [String] {

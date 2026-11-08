@@ -41,6 +41,7 @@ final class BrowserToolsTests: XCTestCase {
     override func setUp() async throws {
         BrowserTools.sessionName = { _ in "another agent" }
         for p in BrowserStore.shared.pages { BrowserStore.shared.close(p.id) }
+        AppModel.shared.setSettingLocally("browser.access", .string("on"), scope: "global")
     }
 
     private func call(_ tool: String, _ args: [String: Any] = [:], session: String = "s1") async -> (text: String, result: [String: Any]) {

@@ -66,6 +66,9 @@ enum Cmd {
         /// The Octomux session the agent runs in (its pages and live view belong to it).
         #[arg(long)]
         session: Option<String>,
+        /// Only the task tools, no browser (the user browses with another tool).
+        #[arg(long)]
+        no_browser: bool,
     },
     /// Print daemon status.
     Status,
@@ -197,9 +200,9 @@ fn run(cli: Cli, paths: Paths) -> anyhow::Result<i32> {
             Ok(0)
         }
         Cmd::Statusline => Ok(statusline::run(&paths)),
-        Cmd::Mcp { session } => {
+        Cmd::Mcp { session, no_browser } => {
             let session = session.or_else(|| octomux_proto::env_var_os("SESSION_ID").and_then(|v| v.into_string().ok()));
-            mcp::run(&paths, session)
+            mcp::run(&paths, session, !no_browser)
         }
         Cmd::Stdio => client::stdio_bridge(&paths),
         Cmd::Ctl { method, params } => {

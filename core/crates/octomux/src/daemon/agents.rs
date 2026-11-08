@@ -491,7 +491,7 @@ fn expand_alias<'a>(command: &str, aliases: &'a [(String, String)]) -> Option<&'
 }
 
 pub fn build_launch(paths: &Paths, session: &Session, profile: Option<&Profile>, restoring: bool, aliases: &[(String, String)]) -> LaunchSpec {
-    build_launch_with_prompt(paths, session, profile, restoring, aliases, None, false)
+    build_launch_with_prompt(paths, session, profile, restoring, aliases, None, BrowserMcp::Off)
 }
 
 /// Whether new sessions get the browser tools: Settings → MCP → Octomux browser access (off / ask / on), or the
@@ -503,13 +503,37 @@ pub fn browser_tools_enabled(access: Option<&str>, legacy_switch: Option<bool>) 
     }
 }
 
+/// Which Octomux MCP server a new session gets.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BrowserMcp {
+    /// None (Settings → MCP → Octomux browser: Off).
+    Off,
+    /// Browser and task tools.
+    On,
+    /// Claude sessions get only the task tools: the user prefers Claude in Chrome for browsing (Codex keeps ours).
+    OnExceptClaude,
+}
+
+impl BrowserMcp {
+    pub fn from_settings(access: Option<&str>, legacy_switch: Option<bool>, prefer_claude_chrome: bool) -> Self {
+        match (browser_tools_enabled(access, legacy_switch), prefer_claude_chrome) {
+            (false, _) => BrowserMcp::Off,
+            (true, false) => BrowserMcp::On,
+            (true, true) => BrowserMcp::OnExceptClaude,
+        }
+    }
+}
+
 /// Flags that give a Claude or Codex agent the Octomux browser: our stdio MCP server (`octomux mcp`), added for
 /// this launch only. The user's own MCP settings are never touched. The session id goes in the arguments since
 /// Codex starts MCP servers with a trimmed environment.
-pub fn browser_mcp_args(kind: AgentKind, paths: &Paths, session_id: &str) -> Vec<String> {
+pub fn browser_mcp_args(kind: AgentKind, paths: &Paths, session_id: &str, browser_tools: bool) -> Vec<String> {
     let exe = std::env::current_exe().map(|e| e.to_string_lossy().into_owned()).unwrap_or_else(|_| "octomux".into());
     let home = paths.home.to_string_lossy().into_owned();
-    let args = ["mcp", "--session", session_id];
+    let mut args = vec!["mcp", "--session", session_id];
+    if !browser_tools {
+        args.push("--no-browser");
+    }
     match kind {
         AgentKind::Claude => {
             let cfg = serde_json::json!({ "mcpServers": { "octomux": {
@@ -533,7 +557,7 @@ pub fn browser_mcp_args(kind: AgentKind, paths: &Paths, session_id: &str) -> Vec
 /// Like `build_launch`; `prompt` (a new session's first message, from the chat start screen) is passed
 /// as the CLI's positional prompt, so it is never typed before the agent is ready.
 /// `browser`: give the agent the Octomux browser tools (Settings → Browser).
-pub fn build_launch_with_prompt(paths: &Paths, session: &Session, profile: Option<&Profile>, restoring: bool, aliases: &[(String, String)], prompt: Option<&str>, browser: bool) -> LaunchSpec {
+pub fn build_launch_with_prompt(paths: &Paths, session: &Session, profile: Option<&Profile>, restoring: bool, aliases: &[(String, String)], prompt: Option<&str>, browser: BrowserMcp) -> LaunchSpec {
     let cwd = session.cwd.clone();
     let mut env = vec![(octomux_proto::HOME_VAR.to_string(), paths.home.to_string_lossy().into_owned())];
     match session.kind {
@@ -564,8 +588,9 @@ pub fn build_launch_with_prompt(paths: &Paths, session: &Session, profile: Optio
                 args = drop_unattended_flags(&args, profile.kind);
             }
             // Before our session flags (and Codex's `resume`): Claude's --mcp-config takes several values.
-            if browser {
-                args.extend(browser_mcp_args(profile.kind, paths, &session.id));
+            if browser != BrowserMcp::Off {
+                let tools = !(browser == BrowserMcp::OnExceptClaude && profile.kind == AgentKind::Claude);
+                args.extend(browser_mcp_args(profile.kind, paths, &session.id, tools));
             }
             let mut agent_id = session.agent_session_id.clone();
             let mut generic_resume: Option<String> = None;
@@ -861,6 +886,9 @@ mod tests {
         assert!(browser_tools_enabled(Some("ask"), Some(false)), "the new setting wins");
         assert!(browser_tools_enabled(Some("on"), None));
         assert!(!browser_tools_enabled(Some("off"), Some(true)));
+        assert_eq!(BrowserMcp::from_settings(Some("off"), None, true), BrowserMcp::Off);
+        assert_eq!(BrowserMcp::from_settings(Some("ask"), None, false), BrowserMcp::On);
+        assert_eq!(BrowserMcp::from_settings(None, None, true), BrowserMcp::OnExceptClaude);
     }
 
     #[test]
@@ -874,7 +902,7 @@ mod tests {
         .unwrap();
         let mut claude = default_profiles().into_iter().find(|p| p.kind == AgentKind::Claude).unwrap();
         claude.via_login_shell = false;
-        let argv = build_launch_with_prompt(&paths, &session, Some(&claude), false, &[], Some("hi"), true).argv;
+        let argv = build_launch_with_prompt(&paths, &session, Some(&claude), false, &[], Some("hi"), BrowserMcp::On).argv;
         let i = argv.iter().position(|a| a == "--mcp-config").expect("mcp config");
         let cfg: serde_json::Value = serde_json::from_str(&argv[i + 1]).unwrap();
         let server = &cfg["mcpServers"]["octomux"];
@@ -883,11 +911,16 @@ mod tests {
         // Followed by another flag, so the variadic --mcp-config never swallows the prompt.
         assert!(argv[i + 2].starts_with("--"), "{argv:?}");
         assert_eq!(argv.last().unwrap(), "hi");
-        assert!(!build_launch_with_prompt(&paths, &session, Some(&claude), false, &[], None, false).argv.iter().any(|a| a == "--mcp-config"));
+        assert!(!build_launch_with_prompt(&paths, &session, Some(&claude), false, &[], None, BrowserMcp::Off).argv.iter().any(|a| a == "--mcp-config"));
 
         let mut codex = default_profiles().into_iter().find(|p| p.kind == AgentKind::Codex).unwrap();
         codex.via_login_shell = false;
-        let argv = build_launch_with_prompt(&paths, &session, Some(&codex), true, &[], None, true).argv;
+        // Preferring Claude in Chrome: Claude keeps the task tools only, Codex keeps the browser.
+        let argv = build_launch_with_prompt(&paths, &session, Some(&claude), false, &[], None, BrowserMcp::OnExceptClaude).argv;
+        let i = argv.iter().position(|a| a == "--mcp-config").expect("mcp config");
+        let cfg: serde_json::Value = serde_json::from_str(&argv[i + 1]).unwrap();
+        assert_eq!(cfg["mcpServers"]["octomux"]["args"], serde_json::json!(["mcp", "--session", "s9", "--no-browser"]));
+        let argv = build_launch_with_prompt(&paths, &session, Some(&codex), true, &[], None, BrowserMcp::OnExceptClaude).argv;
         let resume = argv.iter().position(|a| a == "resume").expect("resume");
         let cmd = argv.iter().position(|a| a.starts_with("mcp_servers.octomux.command=")).expect("codex mcp");
         assert!(cmd < resume && argv[cmd - 1] == "-c", "{argv:?}");

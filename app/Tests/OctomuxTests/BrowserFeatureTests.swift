@@ -51,6 +51,48 @@ final class SnapshotDiffTests: XCTestCase {
         XCTAssertTrue(text(BrowserTools.snapshotText(yaml: small + "B", previous: small + "A", mode: .diff, urlChanged: false)).contains("+ - button [ref=e1]: B"))
         XCTAssertTrue(text(BrowserTools.snapshotText(yaml: big, previous: nil, mode: .diff, urlChanged: false)).contains("no earlier snapshot"))
         XCTAssertTrue(text(BrowserTools.snapshotText(yaml: big, previous: big, mode: .diff, urlChanged: false)).contains("Nothing changed"))
+        // A page just opened: whole when small, else its outline.
+        XCTAssertEqual(BrowserTools.snapshotText(yaml: small, previous: nil, mode: .outline, urlChanged: true).first, "### Snapshot")
+        XCTAssertEqual(BrowserTools.snapshotText(yaml: big, previous: nil, mode: .outline, urlChanged: true).first, "### Snapshot (outline)")
+    }
+
+    func testOutlineKeepsLandmarksAndControls() {
+        let yaml = """
+        - generic [ref=e2]:
+          - banner [ref=e4]:
+            - generic [ref=e6]:
+              - link "Home" [ref=e8] [cursor=pointer]:
+                - /url: /
+                - img "Logo" [ref=e9]
+            - search [ref=e17]:
+              - button "Search everything" [ref=e18] [cursor=pointer]:
+                - generic [ref=e21]: icon
+          - main [ref=e37]:
+            - heading "Deals" [level=2] [ref=e53]
+            - paragraph [ref=e55]: A long paragraph nobody acts on.
+            - generic [ref=e56]:
+              - link [ref=e99] [cursor=pointer]:
+                - /url: /product/1
+                - img [ref=e100]
+              - textbox "Email" [ref=e60]: a@b.co
+        """
+        XCTAssertEqual(SnapshotOutline.outline(yaml), """
+        - banner [ref=e4]:
+          - link "Home" [ref=e8]
+          - search [ref=e17]:
+            - button "Search everything" [ref=e18]
+        - main [ref=e37]:
+          - heading "Deals" [level=2] [ref=e53]
+          - link [ref=e99] → /product/1
+          - textbox "Email" [ref=e60]: a@b.co
+        """)
+        // Long names are cut; a huge page stops with a note.
+        let long = "- link \"\(String(repeating: "x", count: 200))\" [ref=e1]"
+        XCTAssertEqual(SnapshotOutline.outline(long), "- link \"\(String(repeating: "x", count: SnapshotOutline.maxName - 1))…\" [ref=e1]")
+        let many = (1...2000).map { "- button \"Button \($0)\" [ref=e\($0)]" }.joined(separator: "\n")
+        let o = SnapshotOutline.outline(many)
+        XCTAssertLessThanOrEqual(o.count, SnapshotOutline.maxLength + 100)
+        XCTAssertTrue(o.hasSuffix("browser_snapshot reads the whole page."), String(o.suffix(80)))
     }
 }
 
@@ -71,6 +113,13 @@ final class BrowserAccessTests: XCTestCase {
         XCTAssertFalse(ok("file:///tmp/a.html", ["example.com"]))
         XCTAssertTrue(ok("file:///tmp/a.html", ["file://"]))
         XCTAssertTrue(ok("https://x.org", ["*"]))
+    }
+
+    func testModeAsksUnlessChosen() {
+        XCTAssertEqual(BrowserAccess.mode(access: nil, legacySwitch: nil), .ask)
+        XCTAssertEqual(BrowserAccess.mode(access: nil, legacySwitch: true), .on, "a choice made with the old switch holds")
+        XCTAssertEqual(BrowserAccess.mode(access: nil, legacySwitch: false), .off)
+        XCTAssertEqual(BrowserAccess.mode(access: "on", legacySwitch: false), .on)
     }
 }
 
@@ -156,7 +205,7 @@ final class BrowserAgentReportTests: XCTestCase {
     override func setUp() async throws {
         BrowserTools.sessionName = { _ in "another agent" }
         for p in BrowserStore.shared.pages { BrowserStore.shared.close(p.id) }
-        AppModel.shared.setSettingLocally("browser.access", nil, scope: "global")
+        AppModel.shared.setSettingLocally("browser.access", .string("on"), scope: "global")
         AppModel.shared.setSettingLocally("browser.allowed_sites", nil, scope: "global")
         BrowserAccess.autoAnswer = nil
         BrowserAccess.decisions = [:]
@@ -176,7 +225,9 @@ final class BrowserAgentReportTests: XCTestCase {
 
     func testActionsReportWhatChanged() async throws {
         var (text, _) = await call("browser_navigate", ["url": Self.page.path])
-        XCTAssertTrue(text.contains("### Snapshot\n"), "first look: the whole page")
+        XCTAssertTrue(text.contains("### Snapshot (outline)"), "a long page just opened: its outline\n\(text)")
+        let whole = (await call("browser_snapshot")).text
+        XCTAssertLessThan(text.count * 2, whole.count, "the outline is much shorter than the page")
         let add = try ref(text, #"button "Add an item""#)
         (text, _) = await call("browser_click", ["ref": add, "element": "Add an item"])
         XCTAssertTrue(text.contains("### Snapshot (changes)"), "a long page that changed a little: only the change\n\(text)")

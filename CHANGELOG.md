@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **The browser tools take far less of an agent's context.** Opening a long page returns an outline (landmarks,
+  headings, links, buttons and fields, with their refs) instead of the whole page: about a quarter of the tokens;
+  `browser_snapshot` still reads all of it. Changing the screen size returns only the new size (it returned the whole
+  page each time, thousands of tokens, usually right before a screenshot).
+- **Agents ask before they first use the Octomux browser** (Settings → MCP → Octomux browser: Ask is now the
+  default; a choice you made there before stays). **Claude sessions browse with** picks Claude in Chrome instead:
+  Claude sessions then don't get the Octomux browser tools (they keep the task tools), Codex sessions do.
+
 - **Fixed: Octomux quit when an agent's browser tool call was cancelled** (or timed out) before its answer: writing
   the answer to the closed connection raised an exception the app couldn't catch. Such a call now just ends.
 

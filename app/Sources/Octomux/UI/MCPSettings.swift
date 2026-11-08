@@ -340,6 +340,16 @@ struct BrowserToolsSettings: View {
                 }
                 .labelsHidden().pickerStyle(.segmented).tint(T.accent).fixedSize()
             }
+            if BrowserAccess.mode != .off {
+                SettingRow("Claude sessions browse with", desc: claudeBrowserDesc) {
+                    Picker("", selection: Binding(get: { model.setting("browser.prefer_claude_chrome")?.bool == true },
+                                                  set: { v in model.setSettingLocally("browser.prefer_claude_chrome", .bool(v), scope: "global"); model.setSetting("browser.prefer_claude_chrome", v) })) {
+                        Text("Octomux browser").tag(false)
+                        Text("Claude in Chrome").tag(true)
+                    }
+                    .labelsHidden().pickerStyle(.segmented).tint(T.accent).fixedSize()
+                }
+            }
             SettingRow("Allowed sites", desc: "Agents can open only these (one per line or comma separated): example.com, *.example.com (and its subdomains), localhost:3000, file:// for local files. Empty: any site. Links they follow elsewhere are blocked too.") {
                 VStack(alignment: .trailing, spacing: 4) {
                     TextField("Any site", text: $sites, axis: .vertical)
@@ -384,6 +394,12 @@ struct BrowserToolsSettings: View {
         }
         .onAppear { sites = BrowserAccess.allowedSites.joined(separator: ", ") }
         .onReceive(NotificationCenter.default.publisher(for: .octomuxBrowserAccess)) { _ in decisions = BrowserAccess.decisions }
+    }
+
+    private var claudeBrowserDesc: String {
+        model.setting("browser.prefer_claude_chrome")?.bool == true
+            ? "Claude sessions don't get the Octomux browser tools, so they use Claude in Chrome (its extension must be connected). Codex sessions keep the Octomux browser. From the next session on."
+            : "Claude sessions get the Octomux browser tools. If you also use Claude in Chrome, pick it here so Claude doesn't choose between two browsers."
     }
 
     private var accessDesc: String {

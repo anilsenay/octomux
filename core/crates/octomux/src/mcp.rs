@@ -20,7 +20,7 @@ pub fn socket_path(paths: &Paths) -> std::path::PathBuf {
     paths.run_dir().join("browser.sock")
 }
 
-pub fn run(paths: &Paths, session: Option<String>) -> anyhow::Result<i32> {
+pub fn run(paths: &Paths, session: Option<String>, browser: bool) -> anyhow::Result<i32> {
     let stdin = std::io::stdin();
     let mut out = std::io::stdout().lock();
     for line in stdin.lock().lines() {
@@ -35,7 +35,7 @@ pub fn run(paths: &Paths, session: Option<String>) -> anyhow::Result<i32> {
         let mut call = |tool: &str, args: &Value| {
             if is_daemon_tool(tool) { call_daemon(paths, session.as_deref(), tool, args) } else { call_app(paths, session.as_deref(), tool, args) }
         };
-        if let Some(reply) = handle(&msg, &mut call) {
+        if let Some(reply) = handle_with(&msg, &mut call, browser) {
             write_msg(&mut out, &reply)?;
         }
     }
@@ -51,6 +51,11 @@ fn write_msg(out: &mut impl Write, v: &Value) -> std::io::Result<()> {
 
 /// One JSON-RPC message in, at most one reply out (notifications get none).
 pub fn handle(msg: &Value, call: &mut dyn FnMut(&str, &Value) -> Value) -> Option<Value> {
+    handle_with(msg, call, true)
+}
+
+/// `browser` false (`--no-browser`: the user browses with another tool): only the task and session tools.
+pub fn handle_with(msg: &Value, call: &mut dyn FnMut(&str, &Value) -> Value, browser: bool) -> Option<Value> {
     let id = msg.get("id").cloned();
     let method = msg.get("method").and_then(|m| m.as_str()).unwrap_or("");
     let id = id?; // notifications (initialized, cancelled, …) need no answer
@@ -62,15 +67,15 @@ pub fn handle(msg: &Value, call: &mut dyn FnMut(&str, &Value) -> Value) -> Optio
                 "protocolVersion": version,
                 "capabilities": { "tools": {} },
                 "serverInfo": { "name": "octomux", "title": "Octomux", "version": env!("CARGO_PKG_VERSION") },
-                "instructions": INSTRUCTIONS,
+                "instructions": if browser { format!("{BROWSER_INSTRUCTIONS} {TASK_INSTRUCTIONS}") } else { TASK_INSTRUCTIONS.to_string() },
             })
         }
         "ping" => json!({}),
-        "tools/list" => json!({ "tools": tools() }),
+        "tools/list" => json!({ "tools": tools_for(browser) }),
         "tools/call" => {
             let name = msg.pointer("/params/name").and_then(|v| v.as_str()).unwrap_or("");
             let args = msg.pointer("/params/arguments").cloned().unwrap_or_else(|| json!({}));
-            let Some(tool) = tools().into_iter().find(|t| t["name"] == name) else {
+            let Some(tool) = tools_for(browser).into_iter().find(|t| t["name"] == name) else {
                 return Some(json!({ "jsonrpc": "2.0", "id": id, "error": { "code": -32602, "message": format!("unknown tool: {name}") } }));
             };
             // The app checks the browser tools' arguments itself.
@@ -166,13 +171,13 @@ fn call_app(paths: &Paths, session: Option<&str>, tool: &str, args: &Value) -> V
     }
 }
 
-const INSTRUCTIONS: &str = "Octomux browser: a real web browser inside the Octomux app that the user watches live in its Browser panel. \
+const BROWSER_INSTRUCTIONS: &str = "Octomux browser: a real web browser inside the Octomux app that the user watches live in its Browser panel. \
 Use it to open and check web pages (local dev servers, docs, the app you are building): navigate, read the page with browser_snapshot, \
 act on elements by their ref from the latest snapshot, and take screenshots to check how things look. After each action the result \
-says what changed (address, title, new pages, downloads, console errors) and shows the page: whole when it is small or new, else only \
-the lines that changed (marked so). Pages keep cookies between sessions, so sites the user signed in to stay signed in; don't sign in, \
-buy, post or send anything unless the user asked you to. \
-Octomux tasks: the user's work items in Octomux (not Jira or GitHub issues). task_list and task_get read them; task_create adds a \
+says what changed (address, title, new pages, downloads, console errors) and shows the page: a newly opened page whole when it is small, \
+else as an outline (landmarks, headings, links, buttons, fields); after a click or typing, only the lines that changed (marked so). Pages keep cookies between sessions, so sites the user signed in to stay signed in; don't sign in, \
+buy, post or send anything unless the user asked you to.";
+const TASK_INSTRUCTIONS: &str = "Octomux tasks: the user's work items in Octomux (not Jira or GitHub issues). task_list and task_get read them; task_create adds a \
 planned task (or a subtask with parent_id); task_update changes a task's title, description or state (planned, working, \
 ready_to_review, done). Only a workspace assistant uses task_start and the session_* tools, for the sessions of tasks it owns.";
 
@@ -193,7 +198,11 @@ fn obj(props: Value, required: &[&str]) -> Value {
 
 /// Every tool: the browser's, then the task and session ones.
 pub fn tools() -> Vec<Value> {
-    let mut v = browser_tools();
+    tools_for(true)
+}
+
+fn tools_for(browser: bool) -> Vec<Value> {
+    let mut v = if browser { browser_tools() } else { vec![] };
     v.extend(task_tools());
     v
 }
@@ -267,12 +276,12 @@ fn browser_tools() -> Vec<Value> {
     vec![
         json!({
             "name": "browser_navigate",
-            "description": "Open a URL in the current page (creates a page if there is none). Returns the page snapshot.",
+            "description": "Open a URL in the current page (creates a page if there is none). Returns the page: whole when it is small, else an outline of its landmarks, headings, links, buttons and fields with their refs (browser_snapshot reads the whole page).",
             "inputSchema": obj(json!({ "url": s("The URL to open (http, https, file, or a bare host like localhost:3000).") }), &["url"]),
         }),
         json!({
             "name": "browser_navigate_back",
-            "description": "Go back to the previous page in the current page's history.",
+            "description": "Go back to the previous page in the current page's history. Returns the page like browser_navigate.",
             "inputSchema": obj(json!({}), &[]),
         }),
         json!({
@@ -357,7 +366,7 @@ fn browser_tools() -> Vec<Value> {
         }),
         json!({
             "name": "browser_resize",
-            "description": "Lay the page out at a screen size, to check a mobile or tablet layout: a preset (mobile 390×844 and tablet 820×1180 also send a phone/tablet user agent, laptop 1280×800, desktop 1920×1080, fit = the browser's own size) or width and height.",
+            "description": "Lay the page out at a screen size, to check a mobile or tablet layout: a preset (mobile 390×844 and tablet 820×1180 also send a phone/tablet user agent, laptop 1280×800, desktop 1920×1080, fit = the browser's own size) or width and height. Returns the new size, not the page: take a screenshot or a snapshot to see it.",
             "inputSchema": obj(json!({
                 "preset": { "type": "string", "enum": ["mobile", "tablet", "laptop", "desktop", "fit"], "description": "A screen size preset." },
                 "width": { "type": "number", "description": "Width in CSS pixels (with height, instead of a preset)." },
@@ -404,6 +413,23 @@ mod tests {
         }
         let r = handle(&rpc("nope", json!({})), &mut never).unwrap();
         assert_eq!(r["error"]["code"], -32601);
+        assert!(r_text(&handle(&rpc("initialize", json!({})), &mut never).unwrap()).contains("Octomux browser"));
+    }
+
+    fn r_text(r: &Value) -> String {
+        r["result"]["instructions"].as_str().unwrap_or("").to_string()
+    }
+
+    #[test]
+    fn without_the_browser() {
+        let mut never = |_: &str, _: &Value| -> Value { panic!("no call expected") };
+        let r = handle_with(&rpc("initialize", json!({})), &mut never, false).unwrap();
+        assert!(!r_text(&r).contains("browser") && r_text(&r).contains("Octomux tasks"), "{}", r_text(&r));
+        let r = handle_with(&rpc("tools/list", json!({})), &mut never, false).unwrap();
+        let names: Vec<&str> = r["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
+        assert!(names.contains(&"task_list") && !names.iter().any(|n| n.starts_with("browser_")), "{names:?}");
+        let r = handle_with(&rpc("tools/call", json!({ "name": "browser_navigate", "arguments": { "url": "x" } })), &mut never, false).unwrap();
+        assert_eq!(r["error"]["code"], -32602);
     }
 
     #[test]
