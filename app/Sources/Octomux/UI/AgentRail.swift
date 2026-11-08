@@ -98,7 +98,12 @@ struct AgentRail: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain).pointerCursor().padding(.horizontal, 10)
-            chips(ps)
+            if model.projects.count > 1 {
+                ProjectScopeButton(selected: ps.contains(filter) ? filter : nil, count: { id in
+                    AgentRailModel.sessions(model.state.sessions, projects: ps, filter: id).filter { RailGroup.of($0) == .waiting }.count
+                }) { filter = $0 ?? "" }
+                .padding(.horizontal, 10).padding(.top, 10)
+            }
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(groups, id: \.0) { g, sessions in
@@ -141,27 +146,6 @@ struct AgentRail: View {
         guard !flat.isEmpty else { return }
         let i = flat.firstIndex { $0.id == cursor } ?? (d > 0 ? -1 : flat.count)
         cursor = flat[min(max(0, i + d), flat.count - 1)].id
-    }
-
-    private func chips(_ ps: Set<String>) -> some View {
-        FlowLayout(spacing: 4, lineSpacing: 4) {
-            chip("All", nil, on: !ps.contains(filter))
-            ForEach(model.projects) { p in chip(p.name, p, on: filter == p.id) }
-        }
-        .padding(.horizontal, 10).padding(.top, 10)
-    }
-
-    private func chip(_ title: String, _ p: Project?, on: Bool) -> some View {
-        Button { filter = p?.id ?? "" } label: {
-            HStack(spacing: 5) {
-                if let p { Circle().fill(Color(hex: p.color)).frame(width: 6, height: 6) }
-                Text(title).font(.system(size: T.k * 11, weight: on ? .semibold : .regular)).lineLimit(1)
-            }
-            .foregroundStyle(on ? T.text : T.text2)
-            .padding(.horizontal, 7).frame(height: 22)
-            .background(RoundedRectangle(cornerRadius: R.sm, style: .continuous).fill(on ? T.selection : T.hover.opacity(0.6)))
-        }
-        .buttonStyle(.plain).pointerCursor()
     }
 
     private func row(_ s: Session, selected: Bool, cursor: Bool) -> some View {

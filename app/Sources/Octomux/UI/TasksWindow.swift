@@ -85,7 +85,12 @@ struct TasksRail: View {
             Color.clear.frame(height: T.m.topH)            // traffic lights and the top-left buttons
             assistantRow
             newTask
-            if model.projects.count > 1 { projectChips }
+            if model.projects.count > 1 {
+                ProjectScopeButton(selected: model.tasksProjectFilter, count: { id in
+                    TasksRailModel.inProject(model.workspaceTasks, id).filter { $0.state == .needsYou }.count
+                }) { projectRaw = $0 ?? ""; newProject = nil }
+                .padding(.horizontal, 10).padding(.top, 10)
+            }
             chips(all)
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
@@ -176,16 +181,10 @@ struct TasksRail: View {
         if adding {
             HStack(spacing: 6) {
                 if model.projects.count > 1 {
-                    Menu {
-                        ForEach(model.projects) { p in Button(p.name) { newProject = p.id; addFocused = true } }
-                    } label: {
-                        HStack(spacing: 4) {
-                            Circle().fill(Color(hex: targetProject?.color ?? "#888888")).frame(width: 6, height: 6)
-                            Text(targetProject?.name ?? "Project").font(.system(size: T.k * 11, weight: .medium)).lineLimit(1)
-                        }
+                    ProjectScopeButton(selected: targetProject?.id, allowsAll: false, compact: true) { id in
+                        newProject = id; addFocused = true
                     }
-                    .menuStyle(.borderlessButton).menuIndicator(.visible).fixedSize()
-                    .help("The project the task is for")
+                    .fixedSize()
                 }
                 TextField(model.projects.count > 1 ? "New task (↩)" : "New task in \(targetProject?.name ?? "the project") (↩)", text: $newTitle)
                     .textFieldStyle(.plain).font(.system(size: T.k * 12))
@@ -210,29 +209,6 @@ struct TasksRail: View {
             }
             .buttonStyle(.plain).pointerCursor().padding(.horizontal, 10).padding(.top, 6)
         }
-    }
-
-    /// The workspace's projects: the rail shows one, or all.
-    private var projectChips: some View {
-        let on = model.tasksProjectFilter
-        return FlowLayout(spacing: 4, lineSpacing: 4) {
-            projectChip("All projects", nil, on: on == nil)
-            ForEach(model.projects) { p in projectChip(p.name, p, on: on == p.id) }
-        }
-        .padding(.horizontal, 10).padding(.top, 10)
-    }
-
-    private func projectChip(_ title: String, _ p: Project?, on: Bool) -> some View {
-        Button { projectRaw = p?.id ?? ""; newProject = nil } label: {
-            HStack(spacing: 5) {
-                if let p { Circle().fill(Color(hex: p.color)).frame(width: 6, height: 6) }
-                Text(title).font(.system(size: T.k * 11, weight: on ? .semibold : .regular)).lineLimit(1)
-            }
-            .foregroundStyle(on ? T.text : T.text2)
-            .padding(.horizontal, 7).frame(height: 22)
-            .background(RoundedRectangle(cornerRadius: R.sm, style: .continuous).fill(on ? T.selection : T.hover.opacity(0.6)))
-        }
-        .buttonStyle(.plain).pointerCursor()
     }
 
     private var targetProject: Project? {
