@@ -18,16 +18,34 @@ enum TasksRailModel {
     static func flat(_ tasks: [WorkTask], filter: TaskState?, showDone: Bool) -> [WorkTask] {
         grouped(tasks, filter: filter, showDone: showDone).flatMap(\.1)
     }
+    /// A project's tasks (nil: every project's).
+    static func inProject(_ tasks: [WorkTask], _ project: String?) -> [WorkTask] {
+        guard let project else { return tasks }
+        return tasks.filter { $0.projectId == project }
+    }
+    /// Where a new task goes: the project the rail shows, else the one you picked last, else the first.
+    static func newTaskProject(filter: String?, current: String?, projects: [String]) -> String? {
+        if let filter, projects.contains(filter) { return filter }
+        if let current, projects.contains(current) { return current }
+        return projects.first
+    }
 }
 
 extension AppModel {
     static let tasksFilterKey = "octomux.tasksRailFilter"
     static let tasksDoneKey = "octomux.tasksRailDone"
+    static let tasksProjectKey = "octomux.tasksRailProject"
+
+    /// The project the tasks rail shows (nil: all of the workspace's; a project of another workspace counts as none).
+    var tasksProjectFilter: String? {
+        UserDefaults.standard.string(forKey: Self.tasksProjectKey).flatMap { id in projects.contains { $0.id == id } ? id : nil }
+    }
 
     /// The tasks rail top to bottom, as it shows now.
     var tasksRail: [WorkTask] {
         let f = UserDefaults.standard.string(forKey: Self.tasksFilterKey).flatMap(TaskState.init(rawValue:))
-        return TasksRailModel.flat(workspaceTasks, filter: f, showDone: UserDefaults.standard.bool(forKey: Self.tasksDoneKey))
+        return TasksRailModel.flat(TasksRailModel.inProject(workspaceTasks, tasksProjectFilter), filter: f,
+                                   showDone: UserDefaults.standard.bool(forKey: Self.tasksDoneKey))
     }
 
     /// Picks a task in the Tasks window: its detail on the right, its agent (else the assistant) in the middle.
@@ -49,6 +67,9 @@ struct TasksRail: View {
     @ObservedObject private var keys = RailKeys.shared
     @AppStorage(AppModel.tasksFilterKey) private var filterRaw = ""
     @AppStorage(AppModel.tasksDoneKey) private var showDone = false
+    @AppStorage(AppModel.tasksProjectKey) private var projectRaw = ""
+    /// The project a new task goes to (nil: where the rail points, see TasksRailModel.newTaskProject).
+    @State private var newProject: String?
     @State private var cursor: String?
     @State private var adding = false
     @State private var newTitle = ""
@@ -57,13 +78,14 @@ struct TasksRail: View {
     private var filter: TaskState? { TaskState(rawValue: filterRaw) }
 
     var body: some View {
-        let all = model.workspaceTasks
+        let all = TasksRailModel.inProject(model.workspaceTasks, model.tasksProjectFilter)
         let groups = TasksRailModel.grouped(all, filter: filter, showDone: showDone)
         let flat = groups.flatMap(\.1)
         VStack(alignment: .leading, spacing: 0) {
             Color.clear.frame(height: T.m.topH)            // traffic lights and the top-left buttons
             assistantRow
             newTask
+            if model.projects.count > 1 { projectChips }
             chips(all)
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
@@ -153,7 +175,19 @@ struct TasksRail: View {
     @ViewBuilder private var newTask: some View {
         if adding {
             HStack(spacing: 6) {
-                TextField("New task in \(model.currentProject?.name ?? "the project") (↩)", text: $newTitle)
+                if model.projects.count > 1 {
+                    Menu {
+                        ForEach(model.projects) { p in Button(p.name) { newProject = p.id; addFocused = true } }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Circle().fill(Color(hex: targetProject?.color ?? "#888888")).frame(width: 6, height: 6)
+                            Text(targetProject?.name ?? "Project").font(.system(size: T.k * 11, weight: .medium)).lineLimit(1)
+                        }
+                    }
+                    .menuStyle(.borderlessButton).menuIndicator(.visible).fixedSize()
+                    .help("The project the task is for")
+                }
+                TextField(model.projects.count > 1 ? "New task (↩)" : "New task in \(targetProject?.name ?? "the project") (↩)", text: $newTitle)
                     .textFieldStyle(.plain).font(.system(size: T.k * 12))
                     .focused($addFocused)
                     .onSubmit(add)
@@ -176,6 +210,34 @@ struct TasksRail: View {
             }
             .buttonStyle(.plain).pointerCursor().padding(.horizontal, 10).padding(.top, 6)
         }
+    }
+
+    /// The workspace's projects: the rail shows one, or all.
+    private var projectChips: some View {
+        let on = model.tasksProjectFilter
+        return FlowLayout(spacing: 4, lineSpacing: 4) {
+            projectChip("All projects", nil, on: on == nil)
+            ForEach(model.projects) { p in projectChip(p.name, p, on: on == p.id) }
+        }
+        .padding(.horizontal, 10).padding(.top, 10)
+    }
+
+    private func projectChip(_ title: String, _ p: Project?, on: Bool) -> some View {
+        Button { projectRaw = p?.id ?? ""; newProject = nil } label: {
+            HStack(spacing: 5) {
+                if let p { Circle().fill(Color(hex: p.color)).frame(width: 6, height: 6) }
+                Text(title).font(.system(size: T.k * 11, weight: on ? .semibold : .regular)).lineLimit(1)
+            }
+            .foregroundStyle(on ? T.text : T.text2)
+            .padding(.horizontal, 7).frame(height: 22)
+            .background(RoundedRectangle(cornerRadius: R.sm, style: .continuous).fill(on ? T.selection : T.hover.opacity(0.6)))
+        }
+        .buttonStyle(.plain).pointerCursor()
+    }
+
+    private var targetProject: Project? {
+        model.project(newProject ?? TasksRailModel.newTaskProject(filter: model.tasksProjectFilter, current: model.currentProject?.id,
+                                                                 projects: model.projects.map(\.id)) ?? "")
     }
 
     private func chips(_ all: [WorkTask]) -> some View {
@@ -254,9 +316,11 @@ struct TasksRail: View {
 
     private func add() {
         let t = newTitle.trimmingCharacters(in: .whitespaces)
-        guard !t.isEmpty, let p = model.currentProject ?? model.projects.first else { return }
+        guard !t.isEmpty else { return }
+        guard let p = targetProject else { model.lastError = "Add a project first (⌘⇧O)."; return }
         model.createTask(projectId: p.id, title: t, source: "manual") { id in model.shellTaskId = id }
         newTitle = ""
+        newProject = nil
         adding = false
     }
 }

@@ -130,3 +130,20 @@ final class TasksWindowKeysTests: XCTestCase {
         XCTAssertEqual(m.shellTaskId, "gone")
     }
 }
+
+final class TasksRailProjectTests: XCTestCase {
+    func testTheRailShowsOneProjectOrAllAndNewTasksGoWhereItPoints() throws {
+        let json = #"{"id":"ID","project_id":"P","title":"t","description":"","parent_id":null,"worktree":null,"branch":null,"sessions":[],"state":"planned","state_manual":false,"pr_url":null,"source":null,"agent_profile":null,"created_by":"user","assistant_session":null,"turns":0,"created_at":1,"updated_at":1}"#
+        func task(_ id: String, _ p: String) throws -> WorkTask {
+            try JSONDecoder().decode(WorkTask.self, from: Data(json.replacingOccurrences(of: "\"ID\"", with: "\"\(id)\"").replacingOccurrences(of: "\"P\"", with: "\"\(p)\"").utf8))
+        }
+        let all = [try task("a", "web"), try task("b", "api"), try task("c", "web")]
+        XCTAssertEqual(TasksRailModel.inProject(all, "web").map(\.id), ["a", "c"])
+        XCTAssertEqual(TasksRailModel.inProject(all, nil).count, 3)
+        let ps = ["web", "api"]
+        XCTAssertEqual(TasksRailModel.newTaskProject(filter: "api", current: "web", projects: ps), "api")   // the rail's project
+        XCTAssertEqual(TasksRailModel.newTaskProject(filter: nil, current: "web", projects: ps), "web")     // else the current one
+        XCTAssertEqual(TasksRailModel.newTaskProject(filter: "gone", current: "elsewhere", projects: ps), "web")
+        XCTAssertNil(TasksRailModel.newTaskProject(filter: nil, current: nil, projects: []))
+    }
+}
