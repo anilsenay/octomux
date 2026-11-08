@@ -694,6 +694,12 @@ struct HomeRecent: View {
     }
 }
 
+/// The widest of a list's chips (measured before they are widened, so it never feeds back).
+struct ChipWidthKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+}
+
 /// Your pull requests, reviews for you, or your issues, each with its next step.
 struct HomeInboxSection: View {
     @EnvironmentObject var model: AppModel
@@ -703,6 +709,8 @@ struct HomeInboxSection: View {
     var first = true
     @AppStorage(InboxPrefs.startMode) private var startMode = "tab"
     @State private var more = false
+    /// The widest chip in the list: every chip takes it, so the titles start on one line.
+    @State private var chipWidth: CGFloat = 0
 
     var body: some View {
         if !store.anyConnected {
@@ -741,12 +749,16 @@ struct HomeInboxSection: View {
                 MoreToggle(hidden: list.count - shown.count, expanded: $more)
             }
             .homeCard(padding: 0)
+            .onPreferenceChange(ChipWidthKey.self) { w in if w != chipWidth { chipWidth = w } }
         }
     }
 
     private func row<A: View>(_ item: InboxItem, @ViewBuilder action: () -> A) -> some View {
         HStack(spacing: 10) {
             WorkChip(item: item)
+                .fixedSize()
+                .background(GeometryReader { g in Color.clear.preference(key: ChipWidthKey.self, value: g.size.width) })
+                .frame(minWidth: chipWidth, alignment: .leading)
             VStack(alignment: .leading, spacing: 1) {
                 Text(item.title).font(.system(size: T.k * 12, weight: .medium)).lineLimit(1)
                 Text("\(item.place) · \(item.status) · \(AgentRow.elapsed(since: Int(item.updated.timeIntervalSince1970)))")
