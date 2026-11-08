@@ -96,6 +96,33 @@ final class SnapshotDiffTests: XCTestCase {
     }
 }
 
+@MainActor
+final class BrowserPruneTests: XCTestCase {
+    func testPagesOfGoneAgentsClose() {
+        let b = BrowserStore.shared
+        for p in b.pages { b.close(p.id) }
+        defer { for p in b.pages { b.close(p.id) } }
+        let mine = b.newPage(owner: nil)
+        let gone = b.newPage(owner: "gone1")
+        let shown = b.newPage(owner: "gone2")
+        b.show(shown, in: "tab1")
+        let shownInClosedTab = b.newPage(owner: "gone3")
+        b.show(shownInClosedTab, in: "closedTab")
+        let borrowed = b.newPage(owner: "gone4")
+        b.select(borrowed.id, for: "alive")
+        let alive = b.newPage(owner: "alive2")
+
+        b.prune(liveSessions: ["alive", "alive2"], liveTabs: ["tab1"])
+        let left = Set(b.pages.map(\.id))
+        XCTAssertTrue(left.contains(mine.id), "yours stay")
+        XCTAssertTrue(left.contains(shown.id), "an open tab shows it")
+        XCTAssertTrue(left.contains(borrowed.id), "a live session works in it")
+        XCTAssertTrue(left.contains(alive.id), "its agent is alive")
+        XCTAssertFalse(left.contains(gone.id))
+        XCTAssertFalse(left.contains(shownInClosedTab.id), "shown only in a tab that is gone")
+    }
+}
+
 final class BrowserAccessTests: XCTestCase {
     func testAllowedSites() {
         func ok(_ u: String, _ p: [String]) -> Bool { BrowserAccess.allows(URL(string: u)!, patterns: p) }

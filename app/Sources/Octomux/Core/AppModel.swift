@@ -347,6 +347,12 @@ final class AppModel: ObservableObject {
         if s.workspaces.first(where: { $0.id == selectedWorkspaceId })?.color != lastTintColor { workspaceTintChanged() }
         KeyBindings.shared.sync(from: self)
         TerminalHost.shared.reconcile(with: s)
+        // Pages of agents that are gone close (state arrives on the main queue).
+        MainActor.assumeIsolated {
+            if !BrowserStore.shared.pages.isEmpty {
+                BrowserStore.shared.prune(liveSessions: Set(s.sessions.map(\.id)), liveTabs: Set(s.tabs.map(\.id)))
+            }
+        }
     }
 
     // MARK: Derived

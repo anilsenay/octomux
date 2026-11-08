@@ -541,7 +541,28 @@ final class BrowserStore: ObservableObject {
         if let d = try? JSONEncoder().encode(SavedState(pages: v, splits: splits, last: lastShownId)) { UserDefaults.standard.set(d, forKey: Self.savedKey) }
     }
 
+    /// Pages an agent opened, once that agent's session is gone: closed, unless a live session still works in one or
+    /// an open tab's browser shows it. Pages you opened (no owner) stay. Before, they piled up (a web process each)
+    /// until closed by hand, and came back after every launch.
+    func prune(liveSessions: Set<String>, liveTabs: Set<String>) {
+        let shown = Set(splits.filter { liveTabs.contains($0.key) }.map(\.value))
+        let used = Set(current.filter { liveSessions.contains($0.key) }.map(\.value))
+        let gone = pages.filter { p in
+            guard let o = p.owner, !liveSessions.contains(o) else { return false }
+            return !shown.contains(p.id) && !used.contains(p.id)
+        }
+        let stale = current.keys.filter { !liveSessions.contains($0) }
+        guard !gone.isEmpty || !stale.isEmpty else { return }
+        for k in stale { current[k] = nil }
+        for p in gone { close(p.id) }
+        save()
+    }
+
     func restore() {
+        defer {
+            let m = AppModel.shared
+            if m.loaded { prune(liveSessions: Set(m.state.sessions.map(\.id)), liveTabs: Set(m.state.tabs.map(\.id))) }
+        }
         guard pages.isEmpty, let d = UserDefaults.standard.data(forKey: Self.savedKey),
               let state = try? JSONDecoder().decode(SavedState.self, from: d) else { return }
         for s in state.pages.prefix(20) {
