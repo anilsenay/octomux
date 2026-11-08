@@ -87,6 +87,11 @@ final class AppModel: ObservableObject {
     @Published var rightPanelWidth: CGFloat = CGFloat(UserDefaults.standard.object(forKey: "octomux.rightPanelWidth") as? Double ?? 320) {
         didSet { UserDefaults.standard.set(Double(rightPanelWidth), forKey: "octomux.rightPanelWidth") }
     }
+    /// The agent column beside the work area (drag its right edge); 420 until changed.
+    @Published var sideAgentWidth: CGFloat = CGFloat(UserDefaults.standard.object(forKey: "octomux.sideAgentWidth") as? Double ?? 420) {
+        didSet { UserDefaults.standard.set(Double(sideAgentWidth), forKey: "octomux.sideAgentWidth") }
+    }
+    static let sideAgentWidths: ClosedRange<CGFloat> = 320...900
     @Published var rightPanelVisible = UserDefaults.standard.bool(forKey: "octomux.rightPanel") {
         didSet { UserDefaults.standard.set(rightPanelVisible, forKey: "octomux.rightPanel") }
     }

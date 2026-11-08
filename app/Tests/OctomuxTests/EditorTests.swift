@@ -61,6 +61,14 @@ final class EditorTests: XCTestCase {
         XCTAssertTrue(AppModel.noteText("n", path: "r.md", from: 1, to: 1, excerpt: "```x```").contains("r.md:1\n~~~"))
     }
 
+    func testTheAgentColumnDoesntRepeatTheWorkArea() {
+        XCTAssertTrue(SideAgentColumn.showsTwice("a", focused: "a", docInFront: false, picked: nil))
+        XCTAssertFalse(SideAgentColumn.showsTwice("a", focused: "a", docInFront: true, picked: nil))    // a file in front: beside it
+        XCTAssertFalse(SideAgentColumn.showsTwice("a", focused: "b", docInFront: false, picked: nil))
+        XCTAssertFalse(SideAgentColumn.showsTwice("a", focused: "a", docInFront: false, picked: "a"))   // you pinned it here
+        XCTAssertEqual(AppModel.sideAgentWidths.lowerBound, 320)
+    }
+
     func testTerminalKeepsTheEditorsPartsOff() {
         let t = LayoutConfig.builtIn(.terminal)
         XCTAssertFalse(t.sideChat)

@@ -152,7 +152,7 @@ struct ShellView: View {
         guard case .block(let b) = k.node, Self.isCard(b) else { return nil }
         switch k.size {
         case .fixed(let w)?: return w
-        case nil: return b == .sidePanel ? model.rightPanelWidth : b.defaultWidth
+        case nil: return b == .sidePanel ? model.rightPanelWidth : b == .sideAgent ? model.sideAgentWidth : b.defaultWidth
         default: return nil
         }
     }
@@ -226,6 +226,7 @@ struct ShellView: View {
         case .sideAgent:
             SideAgentColumn()
                 .frame(width: width)
+                .overlay(alignment: .trailing) { if width == model.sideAgentWidth { SideAgentResizeHandle() } }
                 .background(CanvasBackground(minOpacity: 0.9))
                 .clipShape(RoundedRectangle(cornerRadius: m.cardR, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: m.cardR, style: .continuous).stroke(T.border))

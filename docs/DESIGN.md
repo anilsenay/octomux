@@ -130,12 +130,12 @@ A closed scale with no half points (`DesignTokenTests` fails on `N.5` sizes in `
 
   | Block | What | Kind | Minimum |
   |---|---|---|---|
-  | `agentRail` | sessions by state (Waiting / Working / Done / Idle), project chips, New session | rail (in a row) | 220 |
-  | `tasksRail` | the workspace's tasks by state, project chips and status filters, the assistant, New task (with a project picker) | rail | 240 |
+  | `agentRail` | sessions by state (Waiting / Working / Done / Idle), the project control (`ProjectScopeButton`), New session | rail (in a row) | 220 |
+  | `tasksRail` | the workspace's tasks by state, the project control and status filters, the assistant, New task (with a project picker), sessions without a task (folded) | rail | 240 |
   | `projectTree` | the classic sidebar (its width and resize handle) | rail | 200 |
   | `sidePanel` | the right panel (Files / Changes / Sessions / Tasks), shown with ⌘⌥B | rail | 260 |
   | `taskDetail` | the picked task: state, agents and what they last said, PR, subtasks, next step (⌘⌥B) | rail | 280 |
-  | `sideAgent` | the project's agent beside the work area (the layout's "Agent beside the work area") | rail | 280 |
+  | `sideAgent` | the project's agent beside the work area (the layout's "Agent beside the work area"; drag its right edge, 320–900; when the work area shows that agent it offers another instead of showing it twice) | rail | 280 |
   | `tabStrip` | the classic top bar with tabs | bar (in a column) | — |
   | `breadcrumb` | Home · workspace (Tasks · task), or agent · project · branch, and the project's buttons | bar | — |
   | `aquariumStrip` | the aquarium above the panes (no built-in tree places it; else the layout's views switch puts it over the work area; not while its tab is open) | bar | 120 |

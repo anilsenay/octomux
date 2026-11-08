@@ -91,6 +91,27 @@ struct RightPanelResizeHandle: View {
     }
 }
 
+/// Drag the agent column's right edge: right makes it wider.
+struct SideAgentResizeHandle: View {
+    @EnvironmentObject var model: AppModel
+    @State private var start: CGFloat?
+
+    var body: some View {
+        Rectangle().fill(Color.clear).frame(width: 6)
+            .contentShape(Rectangle())
+            .onHover { h in if h { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() } }
+            .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                .onChanged { v in
+                    if start == nil { start = model.sideAgentWidth }
+                    let r = AppModel.sideAgentWidths
+                    model.sideAgentWidth = min(r.upperBound, max(r.lowerBound, (start ?? 420) + v.translation.width))
+                }
+                .onEnded { _ in start = nil })
+            .offset(x: 3)
+            .help("Drag to resize")
+    }
+}
+
 // MARK: - Settings → Layout
 
 struct LayoutSettings: View {
