@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Less CPU while agents work.** The spinning ring that marks a working agent (sidebar, tabs) re-rendered the
+  whole window every frame — over half a core on a 120 Hz screen for as long as any agent worked. It now spins in
+  Core Animation and looks the same.
+
 - **The browser tools take far less of an agent's context.** Opening a long page returns an outline (landmarks,
   headings, links, buttons and fields, with their refs) instead of the whole page: about a quarter of the tokens;
   `browser_snapshot` still reads all of it. Changing the screen size returns only the new size (it returned the whole

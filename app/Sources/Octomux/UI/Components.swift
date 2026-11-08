@@ -277,18 +277,94 @@ func iconName(for session: Session, model: AppModel) -> String {
 }
 
 /// Rotating accent arc: an agent is working.
+/// Spun by Core Animation in the render server: a SwiftUI `repeatForever` rotation re-rendered the whole window's
+/// view tree every frame while any agent worked (over half a core on a 120 Hz screen).
 struct WorkingRing: View {
     var size: CGFloat = 11
-    @State private var spin = false
     var body: some View {
-        ZStack {
-            Circle().stroke(T.border, lineWidth: 2)
-            Circle().trim(from: 0, to: 0.28).stroke(T.accent, style: StrokeStyle(lineWidth: 2, lineCap: .round))
-                .rotationEffect(.degrees(spin ? 360 : 0))
-                .animation(.linear(duration: 0.9).repeatForever(autoreverses: false), value: spin)
+        WorkingRingLayer(track: NSColor(T.border), arc: NSColor(T.accent))
+            .frame(width: size, height: size)
+    }
+}
+
+private struct WorkingRingLayer: NSViewRepresentable {
+    let track: NSColor
+    let arc: NSColor
+    func makeNSView(context: Context) -> RingView { RingView() }
+    func updateNSView(_ v: RingView, context: Context) { v.colors(track: track, arc: arc) }
+
+    final class RingView: NSView {
+        private let trackLayer = CAShapeLayer()
+        private let arcHolder = CALayer()
+        private let arcLayer = CAShapeLayer()
+        static let lineWidth: CGFloat = 2
+        static let period: CFTimeInterval = 0.9
+
+        override init(frame: NSRect) {
+            super.init(frame: frame)
+            wantsLayer = true
+            layer?.masksToBounds = false
+            for l in [trackLayer, arcLayer] {
+                l.fillColor = nil
+                l.lineWidth = Self.lineWidth
+            }
+            arcLayer.lineCap = .round
+            arcLayer.strokeEnd = 0.28
+            arcHolder.addSublayer(arcLayer)
+            layer?.addSublayer(trackLayer)
+            layer?.addSublayer(arcHolder)
         }
-        .frame(width: size, height: size)
-        .onAppear { spin = true }
+        required init?(coder: NSCoder) { fatalError() }
+
+        override var isFlipped: Bool { true }
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        func colors(track: NSColor, arc: NSColor) {
+            effectiveAppearance.performAsCurrentDrawingAppearance {
+                trackLayer.strokeColor = track.cgColor
+                arcLayer.strokeColor = arc.cgColor
+            }
+        }
+
+        override func layout() {
+            super.layout()
+            CATransaction.begin(); CATransaction.setDisableActions(true)
+            let b = bounds
+            // Like SwiftUI's Circle: the circle fills the frame, the stroke is centered on it; the arc starts at
+            // 3 o'clock and runs clockwise.
+            let path = CGPath(ellipseIn: CGRect(origin: .zero, size: b.size), transform: nil)
+            trackLayer.frame = b; trackLayer.path = path
+            arcHolder.bounds = CGRect(origin: .zero, size: b.size)
+            arcHolder.position = CGPoint(x: b.midX, y: b.midY)
+            arcLayer.frame = arcHolder.bounds
+            let p = CGMutablePath()
+            p.addArc(center: CGPoint(x: b.width / 2, y: b.height / 2), radius: min(b.width, b.height) / 2,
+                     startAngle: 0, endAngle: 2 * .pi, clockwise: false)
+            arcLayer.path = p
+            CATransaction.commit()
+            spin()
+        }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            spin()
+        }
+
+        override func viewDidChangeEffectiveAppearance() {
+            super.viewDidChangeEffectiveAppearance()
+            needsLayout = true
+        }
+
+        private func spin() {
+            guard window != nil, arcHolder.animation(forKey: "spin") == nil else { return }
+            let a = CABasicAnimation(keyPath: "transform.rotation.z")
+            a.fromValue = 0
+            a.toValue = 2 * Double.pi
+            a.duration = Self.period
+            a.repeatCount = .infinity
+            a.isRemovedOnCompletion = false
+            arcHolder.add(a, forKey: "spin")
+        }
     }
 }
 
