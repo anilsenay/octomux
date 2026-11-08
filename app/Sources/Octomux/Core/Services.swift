@@ -416,9 +416,9 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
 
     func deliver(_ n: AppNotification) {
         let model = AppModel.shared
-        // Nothing to say about the pane the user is looking at.
+        // Nothing to say about the pane the user is looking at (read only if nothing covers it: a Home or file tab).
         if NSApp.isActive, model.focusedSessionId == n.sessionId, n.kind != "command_done" {
-            model.markRead(n.sessionId)
+            if model.watchingFocusedSession { model.markRead(n.sessionId) }
             return
         }
         if NSApp.isActive, model.activeTab?.layout.sessions.contains(n.sessionId) == true, n.kind == "command_done" { return }

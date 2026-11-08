@@ -396,6 +396,8 @@ enum DebugActions {
             case "open_home", "agents_home", "workday": m.openHome()   // View → Home
             case "home":              // value: agents | workday | board | aquarium (Home's preset, as it ships)
                 if let v = p["value"] as? String, let h = HomePreset(rawValue: v) { m.chooseHomePreset(h) }
+            case "in_front":          // value: true | false — the window counts as in front (watched-read checks)
+                AppModel.debugInFront = (p["value"] as? Bool) ?? true
             case "home_customize":    // value: true (start) | false (Done)
                 if (p["value"] as? Bool) ?? true { HomeCustomizeState.shared.start() } else { HomeCustomizeState.shared.done() }
             case "home_eye":          // value: section id; the eye on that section while customizing

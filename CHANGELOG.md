@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **No dot on the agent you are watching**: a turn that ends (or a question, an error) while that agent is on screen in
+  front of you is read at once — also with notifications off, for that project or that kind. Before, the green dot
+  stayed until you switched away and back. A Home or file tab over it still leaves it unread.
+
 - **Window**: the traffic lights are the size other current Mac apps have and sit on one line with the sidebar
   button, the bell and the tabs (the app is now built for the current macOS design, which also refreshes the
   system's own controls: switches, pop-ups and segments in Settings). Pop-up values in Settings are no longer in the

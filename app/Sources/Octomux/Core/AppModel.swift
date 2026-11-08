@@ -290,6 +290,10 @@ final class AppModel: ObservableObject {
         TaskAutopilot.shared.observe(old: state.sessions, new: s.sessions, model: self)
         if s.settings != state.settings { settingsRevision += 1 }
         state = s
+        // A turn that ended (or an error, a question) while you were watching it isn't new to you.
+        if let id = Self.watchedUnread(focused: focusedSessionId, sessions: s.sessions, watching: watchingFocusedSession) {
+            DispatchQueue.main.async { self.markRead(id) }
+        }
         migrateLayoutIfNeeded()
         if !s.tasks.isEmpty { syncTasks(); claimAssistantTasks() }
         // Keep selection valid.
@@ -626,6 +630,23 @@ final class AppModel: ObservableObject {
         if let t = tab(containing: id), t.activeSessionId != id {
             client(for: t.id).call("tab.update", ["id": t.id, "active_session_id": id])
         }
+    }
+
+    /// The focused session is on screen in front of you: Octomux is the active app, its window has the keys and isn't
+    /// minimized, and nothing covers the session (a file or Inbox tab, Home).
+    var watchingFocusedSession: Bool {
+        guard focusedSessionId != nil, activeDoc == nil, !shellHomeShown else { return false }
+        if Self.debugInFront { return true }
+        guard NSApp?.isActive == true, let w = (NSApp?.delegate as? AppDelegate)?.mainWindow, w.isKeyWindow, !w.isMiniaturized else { return false }
+        return true
+    }
+    /// Debug (`ui_action in_front`): the window counts as in front, so the fixture can be checked in the background.
+    nonisolated(unsafe) static var debugInFront = false
+
+    /// The focused session when it has just become unread while you watch it (it is marked read at once).
+    static func watchedUnread(focused: String?, sessions: [Session], watching: Bool) -> String? {
+        guard watching, let id = focused, let s = sessions.first(where: { $0.id == id }), s.unread else { return nil }
+        return id
     }
 
     func markRead(_ id: String) {
