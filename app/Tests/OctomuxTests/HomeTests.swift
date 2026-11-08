@@ -243,4 +243,30 @@ final class HomeTests: XCTestCase {
         XCTAssertEqual(LayoutConfig.builtIn(.tasks).items(.sidebar).first?.id, "home")
         XCTAssertEqual(LayoutRegion.itemTitle("home", in: .sidebar), "Home")
     }
+
+    // MARK: Keys
+
+    /// ↑ ↓ go through the waiting agents (stopping at the ends); the number keys are 1…9, also on the keypad.
+    func testWaitingKeys() {
+        let ids = ["a", "b", "c"]
+        XCTAssertEqual(HomeWaiting.step(ids, open: "a", by: 1), "b")
+        XCTAssertEqual(HomeWaiting.step(ids, open: "c", by: 1), "c")
+        XCTAssertEqual(HomeWaiting.step(ids, open: "a", by: -1), "a")
+        XCTAssertEqual(HomeWaiting.step(ids, open: nil, by: 1), "a")      // all closed: the first
+        XCTAssertEqual(HomeWaiting.step(ids, open: nil, by: -1), "c")     // or the last
+        XCTAssertNil(HomeWaiting.step([], open: nil, by: 1))
+        XCTAssertEqual(HomeWaiting.digit(18), 1)
+        XCTAssertEqual(HomeWaiting.digit(20), 3)
+        XCTAssertEqual(HomeWaiting.digit(85), 3)
+        XCTAssertNil(HomeWaiting.digit(29))                               // 0 isn't an answer
+    }
+
+    /// Home's keys are free only while nobody types: not in a field, a terminal or a web page.
+    func testHomeKeysLeaveFieldsAlone() {
+        XCTAssertTrue(HomeKeyMonitor.free(nil))
+        XCTAssertTrue(HomeKeyMonitor.free(NSView()))
+        XCTAssertFalse(HomeKeyMonitor.free(NSTextView()))
+        let inField = NSView(); let field = NSTextView(); field.addSubview(inField)
+        XCTAssertFalse(HomeKeyMonitor.free(inField))
+    }
 }

@@ -1,4 +1,5 @@
 import SwiftUI
+import WebKit
 
 // Home: its sections (Core/Home.swift) drawn in their bands. The row on top spans the page; the main and side
 // columns sit under it. A big section (the board, the aquarium) alone fills the page, else it is a tall strip on top.
@@ -346,6 +347,8 @@ struct HomeStats: View {
 struct HomeWaiting: View {
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var digests: AgentDigests
+    @ObservedObject private var rail = RailKeys.shared
+    @ObservedObject private var customize = HomeCustomizeState.shared
     let list: [Session]
     /// The row you opened (nil: the first).
     @State private var openId: String?
@@ -358,6 +361,18 @@ struct HomeWaiting: View {
         if let p = picked, ids.contains(p) { return p }
         return ids.first
     }
+    /// ↑ ↓: the row after or before the open one (from none: the first or the last).
+    static func step(_ ids: [String], open: String?, by d: Int) -> String? {
+        guard !ids.isEmpty else { return nil }
+        guard let o = open, let i = ids.firstIndex(of: o) else { return d > 0 ? ids.first : ids.last }
+        return ids[min(max(i + d, 0), ids.count - 1)]
+    }
+    /// The number keys 1…9 (and the keypad's).
+    static func digit(_ code: UInt16) -> Int? {
+        let row: [UInt16] = [18, 19, 20, 21, 23, 22, 26, 28, 25], pad: [UInt16] = [83, 84, 85, 86, 87, 88, 89, 91, 92]
+        return (row.firstIndex(of: code) ?? pad.firstIndex(of: code)).map { $0 + 1 }
+    }
+
     /// After the list changed: the row you had open left it (answered), so the one now in its place opens.
     static func next(after picked: String?, old: [String], new: [String]) -> String? {
         guard let p = picked, !new.contains(p), let i = old.firstIndex(of: p), !new.isEmpty else { return picked }
@@ -369,7 +384,8 @@ struct HomeWaiting: View {
         let current = Self.open(ids, picked: openId, allClosed: allClosed)
         VStack(alignment: .leading, spacing: 10) {
             HomeSection(title: "Waiting for you", count: list.count, dot: list.isEmpty ? nil : T.amber,
-                        trailing: AnyView(Text("answer here or open").font(T.meta).foregroundStyle(T.text3)))
+                        trailing: AnyView(Text("answer here or open").font(T.meta).foregroundStyle(T.text3)
+                            .help("↑ ↓ move between them · 1 2 3 answer the open one · ↩ opens it")))
             if list.isEmpty {
                 Text("Nobody is waiting for you.").font(T.meta).foregroundStyle(T.text3).homeCard()
             } else {
@@ -386,6 +402,28 @@ struct HomeWaiting: View {
         .onChange(of: ids) { old, new in
             let n = Self.next(after: openId, old: old, new: new)
             if n != openId { openId = n }
+        }
+        // Keys while Home is on screen and nothing else has them (the rail, a field, a terminal, Customize).
+        .background(HomeKeyMonitor(active: !list.isEmpty && !rail.active && !customize.on) { code in key(code, ids: ids, current: current) })
+    }
+
+    private func key(_ code: UInt16, ids: [String], current: String?) -> Bool {
+        switch code {
+        case 125, 126:
+            let n = Self.step(ids, open: current, by: code == 125 ? 1 : -1)
+            withAnimation(.easeOut(duration: 0.12)) { allClosed = n == nil; openId = n }
+            return true
+        case 36, 76:
+            guard let s = list.first(where: { $0.id == current }) else { return false }
+            open(s); return true
+        default:
+            guard let n = Self.digit(code), let s = list.first(where: { $0.id == current }) else { return false }
+            switch digests.digests[s.id]?.pending {
+            case .question(_, let opts)? where n <= opts.count: AgentDigests.answer(s.id, option: n - 1); return true
+            case .permission? where n == 1: AgentDigests.answer(s.id, option: 0); return true
+            case .permission? where n == 2: AgentDigests.deny(s.id); return true
+            default: return false
+            }
         }
     }
 
@@ -457,6 +495,41 @@ struct HomeWaiting: View {
         if s.isDormant { model.restart(s.id) }
         model.selectSession(s.id)
     }
+}
+
+/// Home's keys: an app-local monitor that takes a key only in Home's window, with no ⌘ ⌃ ⌥, no sheet or alert, and the
+/// keys free — not in a field, a terminal or a web page (the dock's terminal beside a Home tab keeps its keys).
+struct HomeKeyMonitor: NSViewRepresentable {
+    let active: Bool
+    let handle: (UInt16) -> Bool
+    final class V: NSView {
+        var handle: ((UInt16) -> Bool)?
+        var monitor: Any?
+        func set(_ on: Bool) {
+            if on, monitor == nil {
+                monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
+                    guard let self, let w = self.window, e.window === w, NSApp.modalWindow == nil, w.attachedSheet == nil,
+                          e.modifierFlags.intersection([.command, .control, .option]).isEmpty,
+                          HomeKeyMonitor.free(w.firstResponder) else { return e }
+                    return self.handle?(e.keyCode) == true ? nil : e
+                }
+            } else if !on, let m = monitor { NSEvent.removeMonitor(m); monitor = nil }
+        }
+        override func viewDidMoveToWindow() { if window == nil { set(false) } }
+        deinit { if let m = monitor { NSEvent.removeMonitor(m) } }
+    }
+    /// Nobody is typing: the keys are the window's, not a field's, a terminal's or a web page's.
+    static func free(_ r: NSResponder?) -> Bool {
+        guard let v = r as? NSView else { return true }
+        var p: NSView? = v
+        while let x = p {
+            if x is NSTextView || x is TerminalSurfaceView || x is WKWebView { return false }
+            p = x.superview
+        }
+        return true
+    }
+    func makeNSView(context: Context) -> V { let v = V(); v.handle = handle; v.set(active); return v }
+    func updateNSView(_ v: V, context: Context) { v.handle = handle; v.set(active) }
 }
 
 /// A row for an agent: its dot, name, project, one line and how long ago (Working, While you were away).

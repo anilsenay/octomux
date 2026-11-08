@@ -20,7 +20,8 @@
   side columns, hide one with its eye, add one with + Add section, pick the page's width (Narrow · Wide · Full) and
   drag the line between the columns; each change is saved at once, Reset goes back to
   the preset. The agents waiting for you are rows in one card: the first is open with its answers, a click opens
-  another, and answering opens the one that takes its place. An opt-in Home row at the top of the sidebar (Settings
+  another, and answering opens the one that takes its place; ↑ ↓ move between them, 1 2 3 answer the open one and ↩
+  opens it (while no field, terminal or the rail has the keys). Esc or leaving Home ends Customize. An opt-in Home row at the top of the sidebar (Settings
   → Layout → Sidebar) shows how many agents wait for you. Agents and Workday tabs from earlier builds open as Home.
 - **The Tasks layout is a window of its own**: your tasks on a rail on the left by what they need from you (with
   status filters and a New task field, ⌘T), the assistant — or the picked task's agent — in the middle, and the

@@ -67,6 +67,8 @@ struct YourHome: View {
     var body: some View {
         let l = model.homeLayout
         HomePage(layout: c.on ? HomeCustomizeState.drawn(l, hidden: c.hidden) : l, editing: model.homeEditing(c), railFilter: railFilter)
+            // Leaving Home (an agent, another tab) ends Customize: every change is saved already.
+            .onDisappear { if c.on { c.done() } }
     }
 }
 
@@ -102,6 +104,11 @@ struct HomeCustomizeBar: View {
             Button("Done") { c.done() }.buttonStyle(SmallButtonStyle(prominent: true))
         }
         .padding(.horizontal, 12).frame(height: 40)
+        // Esc is Done (a panel open over it closes first: its own window has the key).
+        .background(HomeKeyMonitor(active: true) { code in
+            guard code == 53 else { return false }
+            c.done(); return true
+        })
         .background(RoundedRectangle(cornerRadius: R.xl, style: .continuous).fill(T.raised))
         .overlay(RoundedRectangle(cornerRadius: R.xl, style: .continuous).stroke(T.accent.opacity(0.5)))
     }

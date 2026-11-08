@@ -136,10 +136,13 @@ A closed scale with no half points (`DesignTokenTests` fails on `N.5` sizes in `
   strip (board 360 pt, aquarium 260 pt). Only sections that show agents' words (`readsDigests`) start transcript
   readers; ⌘T goes to the composer, or starts an agent when Home has none.
 - Waiting: rows in one card; one row open (the first to start with) with its answers, an amber strip on its left and
-  no fill; a click opens another or closes it; answering opens the row that takes its place.
+  no fill; a click opens another or closes it; answering opens the row that takes its place. Keys (`HomeKeyMonitor`,
+  only while nobody types: no field, terminal or web page has the keys, the rail hasn't taken them, not customizing):
+  ↑ ↓ the next / previous row, 1…9 an answer of the open row (a permission: 1 allow, 2 deny), ↩ opens it.
 - Customize (Home ⌄ → Customize this Home…): handles, names and eyes over the live sections (they take no clicks),
   + Add section per band (Octomux's panel), drag across bands, every change saved at once; a hidden section stays
-  faded in place until Done. Home ⌄ is the only place to pick a Home.
+  faded in place until Done. Esc or leaving Home (an agent, another tab) ends it. Home ⌄ is the only place to pick a
+  Home.
 - Sidebar item `home` (first, opt-in, off in every built-in layout): opens Home; the agents waiting as an amber count.
   Outside the Agents layout Home shows the workspace's agents (the rail's project filter isn't visible there).
 
