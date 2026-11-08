@@ -320,35 +320,9 @@ enum ShellPrewarm {
     }
 }
 
-/// The Agents layout's Homes: start and answer agents, your day, or the aquarium.
-enum HomeStyle: String, CaseIterable, Identifiable {
-    case agents, workday, aquarium
-    var id: String { rawValue }
-    var title: String {
-        switch self {
-        case .agents: return "Agents"
-        case .workday: return "Workday"
-        case .aquarium: return "Aquarium"
-        }
-    }
-    var icon: String {
-        switch self {
-        case .agents: return "sparkles"
-        case .workday: return "sun.max"
-        case .aquarium: return "fish"
-        }
-    }
-    var summary: String {
-        switch self {
-        case .agents: return "Start an agent, answer the ones waiting, recent sessions and usage."
-        case .workday: return "Your day: who needs you, what happened while you were away, pull requests and issues."
-        case .aquarium: return "Every agent as an octopus; click one to open it."
-        }
-    }
-}
-
-/// A chevron after "Home": Octomux's panel with the three Homes, the one in use checked.
-struct HomeStyleButton: View {
+/// A chevron after "Home": Octomux's panel with the presets (the one in use checked, "changed" when you customized
+/// it), Customize and Reset.
+struct HomeMenuButton: View {
     @EnvironmentObject var model: AppModel
     @State private var open = false
     @State private var hover = false
@@ -360,41 +334,80 @@ struct HomeStyleButton: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain).pointerCursor().onHover { hover = $0 }
-        .help("Which Home")
-        .floatingPanel(isPresented: $open) { HomeStylePanel() }
-        .debugOpens("home_style", $open)
+        .help("Home: presets and Customize")
+        .floatingPanel(isPresented: $open) { HomeMenuPanel() }
+        .debugOpens("home_menu", $open)
     }
 }
 
-struct HomeStylePanel: View {
+struct HomeMenuPanel: View {
     @EnvironmentObject var model: AppModel
     @StateObject private var nav = PanelNav()
+
+    /// The panel's rows, in order: the presets, Customize, then Reset when the preset was changed.
+    enum Row: Hashable { case preset(HomePreset), customize, reset }
+    static func rows(_ h: HomeSetting) -> [Row] { HomePreset.allCases.map(Row.preset) + [.customize] + (h.changed ? [.reset] : []) }
+
     var body: some View {
-        let styles = HomeStyle.allCases
-        PanelCard(width: 300) {
+        let h = model.homeSetting
+        let rows = Self.rows(h)
+        PanelCard(width: 350) {
             PanelSectionTitle("Home")
-            ForEach(Array(styles.enumerated()), id: \.element) { i, h in
-                PanelRow(title: h.title, detail: nil, checked: model.homeSetting.preset.rawValue == h.rawValue, highlighted: nav.index == i) {
-                    Image(systemName: h.icon).font(T.icon(11)).foregroundStyle(T.text3)
-                }
-                .help(h.summary)
-                .onHover { on in if on { nav.index = i } else if nav.index == i { nav.index = nil } }
-                .onTapGesture { nav.run(i) }
-                .panelPointer()
+            ForEach(Array(rows.enumerated()), id: \.element) { i, r in
+                if r == .customize { PanelDivider() }
+                row(r, h, highlighted: nav.index == i)
+                    .onHover { on in if on { nav.index = i } else if nav.index == i { nav.index = nil } }
+                    .onTapGesture { nav.run(i) }
+                    .panelPointer()
             }
         }
         .onAppear {
-            nav.set(styles.map { h in { model.chooseHome(h) } })
+            nav.set(rows.map { r in { run(r) } })
             nav.attach()
+        }
+    }
+
+    @ViewBuilder private func row(_ r: Row, _ h: HomeSetting, highlighted: Bool) -> some View {
+        switch r {
+        case .preset(let p):
+            let mine = h.preset == p
+            PanelRow(title: p.title + (mine && h.changed ? " (changed)" : ""), detail: p.summary, checked: mine, highlighted: highlighted) {
+                Image(systemName: p.icon).font(T.icon(11)).foregroundStyle(T.text3)
+            }
+        case .customize:
+            PanelRow(title: "Customize this Home…", highlighted: highlighted) {
+                Image(systemName: "slider.horizontal.3").font(T.icon(11)).foregroundStyle(T.text3)
+            }
+        case .reset:
+            PanelRow(title: "Reset to \(h.preset.title)", highlighted: highlighted) {
+                Image(systemName: "arrow.uturn.backward").font(T.icon(11)).foregroundStyle(T.text3)
+            }
+        }
+    }
+
+    private func run(_ r: Row) {
+        switch r {
+        case .preset(let p): model.chooseHome(p)
+        case .customize: model.customizeHome()
+        case .reset: model.chooseHome(model.homeSetting.preset)
         }
     }
 }
 
 extension AppModel {
-    /// The Agents layout's Home (kept with the layout, or the saved layout in use), and the window goes to it.
-    func chooseHome(_ h: HomeStyle) {
-        editLayout { LayoutEdit.home(h.rawValue, stored: $0) }
-        chooseHomePreset(HomePreset.named(h.rawValue))
-        shellHome = true
+    /// Home becomes a preset as it ships, and the window goes to Home.
+    func chooseHome(_ p: HomePreset) {
+        HomeCustomizeState.shared.hidden = []
+        chooseHomePreset(p)
+        showHome()
+    }
+    /// Customize your Home (on Home).
+    func customizeHome() {
+        showHome()
+        HomeCustomizeState.shared.start()
+    }
+    /// The window shows Home: the Agents layout's, else (step 5) the Home tab.
+    func showHome() {
+        if shellNav == .agents, shellHasHome { shellHome = true }
     }
 }

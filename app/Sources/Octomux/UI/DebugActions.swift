@@ -378,7 +378,7 @@ enum DebugActions {
                 if let v = p["value"] as? String, let l = LayoutPreset(rawValue: v) { m.chooseLayout(l) }
                 else if let v = p["value"] as? String, let (l, home) = LayoutEdit.folded[v] {   // workday, aquarium: Agents with that Home
                     m.chooseLayout(l)
-                    if let h = home.flatMap(HomeStyle.init(rawValue:)) { m.chooseHome(h) }
+                    if let home { m.chooseHome(HomePreset.named(home)) }
                 }
             case "layout_store":      // value: the stored JSON as a string (null = nothing stored)
                 if let str = p["value"] as? String, let d = str.data(using: .utf8), let v = try? JSONDecoder().decode(JSONValue.self, from: d) { m.storeLayout(v) }

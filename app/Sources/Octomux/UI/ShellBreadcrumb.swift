@@ -24,7 +24,7 @@ struct ShellBreadcrumb: View {
             }
             .buttonStyle(.plain).pointerCursor().help(tasks ? "The assistant (⌘0)" : "Home (⌘0)")
             // On Home, which Home (when the window's tree leaves it to the layout).
-            if home, !tasks, model.shellTree?.has(.home) == true, model.shellTree?.variant(of: .home) == nil { HomeStyleButton() }
+            if home, !tasks, model.shellTree?.has(.home) == true, model.shellTree?.variant(of: .home) == nil { HomeMenuButton() }
             Text("·").foregroundStyle(T.text3)
             if let task {
                 TaskRow.glyph(task.state).frame(width: 14)

@@ -4,10 +4,12 @@ import XCTest
 /// The saved layouts' operations on the model (settings stay in the test's model: no daemon in unit tests).
 final class SavedLayoutOpsTests: XCTestCase {
     private var saved: (JSONValue?, JSONValue?) = (nil, nil)
+    private var savedHome: JSONValue?
     override func setUp() {
         let m = AppModel.shared
         XCTAssertTrue(DaemonClient.isolated)
         saved = (m.layoutStored, m.savedLayoutsStored)
+        savedHome = m.settingValue(HomeSetting.key, scope: "global")
         m.setSettingLocally(AppModel.layoutKey, nil, scope: "global")
         m.setSettingLocally(SavedLayouts.key, nil, scope: "global")
     }
@@ -15,6 +17,7 @@ final class SavedLayoutOpsTests: XCTestCase {
         let m = AppModel.shared
         m.setSettingLocally(AppModel.layoutKey, saved.0, scope: "global")
         m.setSettingLocally(SavedLayouts.key, saved.1, scope: "global")
+        m.setSettingLocally(HomeSetting.key, savedHome, scope: "global")
         LayoutCache.reset()
     }
 
@@ -26,9 +29,8 @@ final class SavedLayoutOpsTests: XCTestCase {
         XCTAssertEqual(m.savedLayouts[id]?.name, "Desk")
         XCTAssertEqual(m.savedLayouts[id]?.base, .agents)
         XCTAssertEqual(m.savedLayouts[id]?.tree, ShellTree.builtIn("agents"))    // the window as it was
-        XCTAssertEqual(m.savedLayouts[id]?.settings["home"], .string("workday"))  // and its Home
         XCTAssertEqual(m.layout.userId, id)                                      // in use
-        XCTAssertEqual(m.homeSetting.preset, .workday)
+        XCTAssertEqual(m.homeSetting.preset, .workday)                          // Home is yours, whatever the layout
 
         let copy = try XCTUnwrap(m.duplicateSavedLayout(id))
         XCTAssertEqual(m.savedLayouts[copy]?.name, "Desk 2")

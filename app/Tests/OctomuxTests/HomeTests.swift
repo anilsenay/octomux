@@ -183,4 +183,11 @@ final class HomeTests: XCTestCase {
         // a hidden one that came back another way (+ Add section) is not drawn twice
         XCTAssertEqual(HomeCustomizeState.drawn(HomeLayout(side: [.recent]), hidden: [.init(id: .recent, band: .side, index: 0)]).side, [.recent])
     }
+
+    /// Home ⌄: the four presets, Customize, and Reset only when you changed the preset.
+    func testMenuRows() {
+        XCTAssertEqual(HomeMenuPanel.rows(HomeSetting(preset: .agents)),
+                       [.preset(.agents), .preset(.workday), .preset(.board), .preset(.aquarium), .customize])
+        XCTAssertEqual(HomeMenuPanel.rows(HomeSetting(preset: .board, custom: HomeLayout(top: [.board]))).last, .reset)
+    }
 }
