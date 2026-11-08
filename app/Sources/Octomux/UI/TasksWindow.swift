@@ -89,7 +89,7 @@ struct TasksRail: View {
         let groups = TasksRailModel.grouped(all, filter: filter, showDone: showDone)
         let flat = groups.flatMap(\.1)
         VStack(alignment: .leading, spacing: 0) {
-            Color.clear.frame(height: T.m.topH)            // traffic lights and the top-left buttons
+            WindowDragArea().frame(height: T.m.topH)       // traffic lights and the top-left buttons: drags the window
             assistantRow
             newTask
             if model.projects.count > 1 {

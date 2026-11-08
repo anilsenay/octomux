@@ -86,7 +86,7 @@ struct AgentRail: View {
         let groups = AgentRailModel.grouped(list)
         let flat = groups.flatMap(\.1)
         VStack(alignment: .leading, spacing: 0) {
-            Color.clear.frame(height: T.m.topH)            // traffic lights and the top-left buttons
+            WindowDragArea().frame(height: T.m.topH)       // traffic lights and the top-left buttons: drags the window
             Button { model.shellNew() } label: {
                 HStack(spacing: 7) {
                     Image(systemName: "plus").font(T.icon(11, .semibold))
