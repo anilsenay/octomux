@@ -15,17 +15,14 @@ extension AppModel {
 
     /// The engine window shows its Home: the window has one and is on it (a tree may have the rail but no Home).
     var shellHomeShown: Bool { shellHome && shellTree?.has(.home) == true }
-    /// Which Home the window has: the one its tree names, else the layout's choice (nil: no Home in the window).
-    var shellHomeVariant: String? {
-        guard let t = shellTree, t.has(.home) else { return nil }
-        return t.variant(of: .home) ?? layout.home
-    }
+    /// The window has a Home (its tree has the block).
+    var shellHasHome: Bool { shellTree?.has(.home) == true }
 
     /// The engine window's "new" (⌘T): Home's composer, or the tasks rail's new task (a window without Home: a
     /// terminal, as in the classic window).
     func shellNew() {
         if shellNav == .agents, shellTree?.has(.home) != true { newSession(profileId: nil); return }
-        if shellNav == .agents, shellHomeVariant == "aquarium" { newDefaultAgent(); return }   // no composer there
+        if shellNav == .agents, !homeLayout.contains(.composer) { newDefaultAgent(); return }   // no composer there
         if shellNav == .agents { shellHome = true }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { NotificationCenter.default.post(name: .octomuxShellComposer, object: nil) }
     }
@@ -58,10 +55,11 @@ struct ShellView: View {
     struct Edges { var railLeft = false; var panelRight = false }
 
     /// Whether a block that shows the agents' digests is on screen: the rail (unless hidden with ⌘B) or Home.
-    static func wantsDigests(_ tree: ShellTree, railShown: Bool, homeShown: Bool, detailShown: Bool = false, home: String? = nil) -> Bool {
+    static func wantsDigests(_ tree: ShellTree, railShown: Bool, homeShown: Bool, detailShown: Bool = false, home: HomeLayout = HomePreset.agents.layout) -> Bool {
         let b = tree.root.blocks
-        // The aquarium's Home shows moods only (from the sessions), no agent's words.
-        return (b.contains(.agentRail) && railShown) || (b.contains(.home) && homeShown && (tree.variant(of: .home) ?? home) != "aquarium")
+        // Only Home's sections that show the agents' words read them (the aquarium shows moods, from the sessions).
+        let fromHome = (tree.variant(of: .home).map { HomePreset.named($0).layout } ?? home).all.contains { $0.readsDigests }
+        return (b.contains(.agentRail) && railShown) || (b.contains(.home) && homeShown && fromHome)
             || (b.contains(.taskDetail) && detailShown)
     }
 
@@ -69,7 +67,7 @@ struct ShellView: View {
     private var wants: Bool {
         // The task detail shows agents' words only for a picked task (its overview has none).
         Self.wantsDigests(tree, railShown: model.sidebarVisible, homeShown: homeShown, detailShown: model.rightPanelVisible && model.shellTaskId != nil,
-                          home: model.layout.home)
+                          home: model.homeLayout)
     }
 
     /// The blocks the last draw put on screen, in order (debug state; E2E checks).
@@ -208,13 +206,7 @@ struct ShellView: View {
                 .padding(.leading, edges.railLeft ? 0 : m.inset)
                 .padding(.trailing, edges.panelRight ? 0 : m.inset)
         case .home:
-            Group {
-                switch variant ?? model.layout.home {
-                case "workday": WorkdayHomeContent(surface: false)
-                case "aquarium": AquariumHomeView(home: true)
-                default: ShellHome()
-                }
-            }
+            HomePage(layout: variant.map { HomePreset.named($0).layout } ?? model.homeLayout)
                 .background(CanvasBackground(scene: true))
                 .clipShape(RoundedRectangle(cornerRadius: m.cardR, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: m.cardR, style: .continuous).stroke(m.inset == 0 ? .clear : T.border))
@@ -313,7 +305,7 @@ enum ShellPrewarm {
         let root = HStack(spacing: 0) {
             AgentRail()
             TasksRail()
-            VStack(spacing: 0) { ShellBreadcrumb(); ShellHome(); WorkdayHomeContent(surface: false) }
+            VStack(spacing: 0) { ShellBreadcrumb(); HomePage(layout: HomePreset.agents.layout); HomePage(layout: HomePreset.workday.layout) }
             TaskDetailPanel()
             // Not the side agent: its chat is live (it attaches to a session and takes pending text when it appears).
         }
@@ -380,7 +372,7 @@ struct HomeStylePanel: View {
         PanelCard(width: 300) {
             PanelSectionTitle("Home")
             ForEach(Array(styles.enumerated()), id: \.element) { i, h in
-                PanelRow(title: h.title, detail: nil, checked: model.layout.home == h.rawValue, highlighted: nav.index == i) {
+                PanelRow(title: h.title, detail: nil, checked: model.homeSetting.preset.rawValue == h.rawValue, highlighted: nav.index == i) {
                     Image(systemName: h.icon).font(T.icon(11)).foregroundStyle(T.text3)
                 }
                 .help(h.summary)
@@ -400,6 +392,7 @@ extension AppModel {
     /// The Agents layout's Home (kept with the layout, or the saved layout in use), and the window goes to it.
     func chooseHome(_ h: HomeStyle) {
         editLayout { LayoutEdit.home(h.rawValue, stored: $0) }
+        chooseHomePreset(HomePreset.named(h.rawValue))
         shellHome = true
     }
 }

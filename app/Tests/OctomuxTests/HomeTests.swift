@@ -119,4 +119,28 @@ final class HomeTests: XCTestCase {
         m.chooseHomePreset(.board)                                            // Reset
         XCTAssertFalse(m.homeSetting.changed)
     }
+
+    // MARK: The page
+
+    /// The first waiting agent is open; one you open stays open while it waits; once answered, the one in its place opens.
+    func testWaitingOpensFirstThenTheNext() {
+        XCTAssertEqual(HomeWaiting.open(["a", "b", "c"], picked: nil, allClosed: false), "a")
+        XCTAssertEqual(HomeWaiting.open(["a", "b", "c"], picked: "b", allClosed: false), "b")
+        XCTAssertNil(HomeWaiting.open(["a", "b"], picked: nil, allClosed: true))          // you closed it
+        XCTAssertEqual(HomeWaiting.open(["a", "c"], picked: "b", allClosed: false), "a")  // gone without a next: the first
+        XCTAssertNil(HomeWaiting.open([], picked: nil, allClosed: false))
+        // b answered: c (now in its place) opens; the last answered: the one before it
+        XCTAssertEqual(HomeWaiting.next(after: "b", old: ["a", "b", "c"], new: ["a", "c"]), "c")
+        XCTAssertEqual(HomeWaiting.next(after: "c", old: ["a", "b", "c"], new: ["a", "b"]), "b")
+        XCTAssertNil(HomeWaiting.open([], picked: HomeWaiting.next(after: "a", old: ["a"], new: []), allClosed: false))   // the last answered: none
+        XCTAssertEqual(HomeWaiting.next(after: "a", old: ["a", "b"], new: ["a", "b", "c"]), "a")   // still waiting: stays
+        XCTAssertNil(HomeWaiting.next(after: nil, old: ["a"], new: ["b"]))                          // the first is open anyway
+    }
+
+    /// Today's Agents Home keeps its narrow side column; a side column with pull requests is as wide as the main one.
+    func testColumnWidths() {
+        XCTAssertFalse(HomePage.equalColumns(HomePreset.agents.layout))
+        XCTAssertTrue(HomePage.equalColumns(HomePreset.workday.layout))
+        XCTAssertFalse(HomePage.equalColumns(HomeLayout(side: [.issues])))   // no main column: the side one is the page
+    }
 }

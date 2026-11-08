@@ -86,9 +86,9 @@ final class ShellTests: XCTestCase {
             let t = try XCTUnwrap(ShellTree.builtIn(name))
             XCTAssertFalse(ShellView.wantsDigests(t, railShown: true, homeShown: true, detailShown: true), name)
         }
-        XCTAssertTrue(ShellView.wantsDigests(agents, railShown: true, homeShown: true, home: "aquarium"))
-        XCTAssertFalse(ShellView.wantsDigests(agents, railShown: false, homeShown: true, home: "aquarium"))   // ⌘B on the aquarium: none
-        XCTAssertTrue(ShellView.wantsDigests(agents, railShown: false, homeShown: true, home: "workday"))
+        XCTAssertTrue(ShellView.wantsDigests(agents, railShown: true, homeShown: true, home: HomePreset.aquarium.layout))
+        XCTAssertFalse(ShellView.wantsDigests(agents, railShown: false, homeShown: true, home: HomePreset.aquarium.layout))   // ⌘B on the aquarium: none
+        XCTAssertTrue(ShellView.wantsDigests(agents, railShown: false, homeShown: true, home: HomePreset.workday.layout))
         let tasks = try XCTUnwrap(ShellTree.builtIn("tasks"))
         XCTAssertTrue(ShellView.wantsDigests(tasks, railShown: true, homeShown: false, detailShown: true))
         XCTAssertFalse(ShellView.wantsDigests(tasks, railShown: true, homeShown: true, detailShown: false))   // ⌘⌥B: none
@@ -100,11 +100,11 @@ final class ShellTests: XCTestCase {
         var c = DateComponents(); c.year = 2026; c.month = 11; c.day = 7
         c.hour = 9; let morning = Calendar.current.date(from: c)!
         c.hour = 21; let night = Calendar.current.date(from: c)!
-        XCTAssertEqual(ShellHome.greeting(morning, name: "Ada Lovelace"), "Good morning, Ada.")
-        XCTAssertEqual(ShellHome.greeting(night, name: ""), "Good evening.")
-        XCTAssertEqual(ShellHome.status(waiting: 3, working: 1, done: 0), "3 agents are waiting for you · 1 working")
-        XCTAssertEqual(ShellHome.status(waiting: 1, working: 0, done: 2), "1 agent is waiting for you · 2 done")
-        XCTAssertEqual(ShellHome.status(waiting: 0, working: 0, done: 0), "No agent is running. Start one below.")
+        XCTAssertEqual(HomeGreeting.greeting(morning, name: "Ada Lovelace"), "Good morning, Ada.")
+        XCTAssertEqual(HomeGreeting.greeting(night, name: ""), "Good evening.")
+        XCTAssertEqual(HomeGreeting.status(waiting: 3, working: 1, done: 0), "3 agents are waiting for you · 1 working")
+        XCTAssertEqual(HomeGreeting.status(waiting: 1, working: 0, done: 2), "1 agent is waiting for you · 2 done")
+        XCTAssertEqual(HomeGreeting.status(waiting: 0, working: 0, done: 0), "No agent is running. Start one below.")
     }
 
     // MARK: Home and docs

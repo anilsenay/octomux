@@ -103,6 +103,8 @@ enum DebugActions {
                 "focused_session": m.focusedSessionId ?? NSNull(),
                 "shell": m.shellTree != nil,
                 "shell_home": m.shellHome,
+                "home": m.homeSetting.json.any,
+                "home_layout": m.homeLayout.json.mapValues { $0.any },
                 "app_active": NSApp.isActive,
                 "first_responder": ((NSApp.delegate as? AppDelegate)?.mainWindow?.firstResponder).map { String(describing: type(of: $0)) } ?? "none",
                 "shell_drawn": m.shellTree == nil ? [] : ShellView.drawn,
@@ -393,6 +395,12 @@ enum DebugActions {
                 if let v = p["value"] as? String { UserDefaults.standard.set(v, forKey: "octomux.agentsHomeStyle") }
                 m.openAgentsHome()
             case "workday": m.openWorkday()
+            case "home":              // value: agents | workday | board | aquarium (Home's preset, as it ships)
+                if let v = p["value"] as? String, let h = HomePreset(rawValue: v) { m.chooseHomePreset(h) }
+            case "home_layout":       // value: {"top": […], "main": […], "side": […]} as a string (your arrangement)
+                if let str = p["value"] as? String, let d = str.data(using: .utf8), case .object(let o)? = try? JSONDecoder().decode(JSONValue.self, from: d) {
+                    m.setHomeLayout(HomeLayout.read(o))
+                }
             case "rail_focus": NotificationCenter.default.post(name: .octomuxRailFocus, object: nil)
             case "layout_timing":     // value: layout; switches and logs how long until the window has drawn it (ms)
                 if let v = p["value"] as? String, let l = LayoutPreset(rawValue: v), let w = (NSApp.delegate as? AppDelegate)?.mainWindow {

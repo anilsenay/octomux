@@ -215,34 +215,9 @@ struct AgentsHomeView: View {
     // MARK: B · Columns
 
     private func columns(_ agents: [Session]) -> some View {
-        let g = Dictionary(grouping: agents, by: AgentsList.Group.of)
-        let cols: [(String, Color, [Session])] = [
-            ("Waiting for you", T.amber, (g[.needsInput] ?? []) + (g[.error] ?? [])),
-            ("Working", T.accent, g[.working] ?? []),
-            ("Finished", T.green, g[.finished] ?? []),
-            ("Idle", T.text3, (g[.idle] ?? []) + (g[.stopped] ?? []).prefix(8)),
-        ]
-        return VStack(spacing: 10) {
+        VStack(spacing: 10) {
             StartBox(compact: true)
-            HStack(alignment: .top, spacing: 10) {
-                ForEach(cols, id: \.0) { title, color, list in
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack(spacing: 6) {
-                            Circle().fill(color).frame(width: 6, height: 6)
-                            Text(title).font(.system(size: T.k * 12, weight: .semibold)).foregroundStyle(T.text2)
-                            Text("\(list.count)").font(T.meta).foregroundStyle(T.text3)
-                        }
-                        .padding(.horizontal, 4).padding(.top, 2)
-                        ScrollView {
-                            VStack(spacing: 8) { ForEach(list) { card($0, compact: true) } }
-                        }
-                        .scrollIndicators(.never)
-                    }
-                    .padding(8)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                    .background(RoundedRectangle(cornerRadius: R.xl, style: .continuous).fill(T.hover))
-                }
-            }
+            AgentBoard(agents: agents)
         }
         .padding(16)
     }
@@ -342,7 +317,88 @@ struct AgentsHomeView: View {
         }
     }
 
-    @ViewBuilder private func card(_ s: Session, prominent: Bool = false, compact: Bool = false) -> some View {
+    private func card(_ s: Session, prominent: Bool = false, compact: Bool = false) -> some View {
+        AgentCard(session: s, compact: compact)
+    }
+
+    private func recentRow(_ s: Session) -> some View {
+        HStack(spacing: 8) {
+            AgentIcon(icon: iconName(for: s, model: model), size: 12).frame(width: 14)
+            Text(s.displayTitle).font(.system(size: T.k * 13)).lineLimit(1)
+            Text("\(model.project(s.projectId)?.name ?? "") · \(AgentRow.elapsed(since: s.lastActivityAt))").font(T.meta).foregroundStyle(T.text3)
+            Spacer()
+            openLink(s)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .background(RoundedRectangle(cornerRadius: R.md, style: .continuous).stroke(T.border))
+    }
+
+    private func openLink(_ s: Session) -> some View {
+        Button { open(s) } label: { Text(s.isDormant ? "Resume ›" : "Open ›").font(T.meta).foregroundStyle(T.accent) }
+            .buttonStyle(.plain).pointerCursor()
+    }
+
+    private func open(_ s: Session) {
+        if s.isDormant { model.restart(s.id) }
+        model.selectSession(s.id)
+    }
+
+    private func reviewChanges(_ s: Session) {
+        let base = s.worktree ?? model.project(s.projectId)?.path ?? s.cwd
+        if model.selectedProjectId != s.projectId { model.selectedProjectId = s.projectId }
+        model.openDoc(.changes, workPath: base)
+        model.lookedAt(s.id)
+    }
+
+    private func branch(_ s: Session) -> String? {
+        let path = s.worktree ?? model.project(s.projectId)?.path ?? s.cwd
+        return GitInfo.shared.branch(for: path)
+    }
+}
+
+/// Every agent by state, in four columns: waiting for you, working, finished, idle (Home's Board section).
+struct AgentBoard: View {
+    let agents: [Session]
+
+    var body: some View {
+        let g = Dictionary(grouping: agents.sorted { $0.lastActivityAt > $1.lastActivityAt }, by: AgentsList.Group.of)
+        let cols: [(String, Color, [Session])] = [
+            ("Waiting for you", T.amber, (g[.needsInput] ?? []) + (g[.error] ?? [])),
+            ("Working", T.accent, g[.working] ?? []),
+            ("Finished", T.green, g[.finished] ?? []),
+            ("Idle", T.text3, (g[.idle] ?? []) + (g[.stopped] ?? []).prefix(8)),
+        ]
+        HStack(alignment: .top, spacing: 10) {
+            ForEach(cols, id: \.0) { title, color, list in
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 6) {
+                        Circle().fill(color).frame(width: 6, height: 6)
+                        Text(title).font(.system(size: T.k * 12, weight: .semibold)).foregroundStyle(T.text2)
+                        Text("\(list.count)").font(T.meta).foregroundStyle(T.text3)
+                    }
+                    .padding(.horizontal, 4).padding(.top, 2)
+                    ScrollView {
+                        VStack(spacing: 8) { ForEach(list) { AgentCard(session: $0, compact: true) } }
+                    }
+                    .scrollIndicators(.never)
+                }
+                .padding(8)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .background(RoundedRectangle(cornerRadius: R.xl, style: .continuous).fill(T.hover))
+            }
+        }
+    }
+}
+
+/// An agent as a card: its name, project and checkout, its question to answer or what it did, and its next step.
+struct AgentCard: View {
+    @EnvironmentObject var model: AppModel
+    @EnvironmentObject var digests: AgentDigests
+    let session: Session
+    var compact = false
+
+    var body: some View {
+        let s = session
         let g = AgentsList.Group.of(s)
         let d = digests.digests[s.id] ?? AgentDigest()
         let p = model.project(s.projectId)
@@ -363,7 +419,7 @@ struct AgentsHomeView: View {
                 WorkChips(session: s, limit: compact ? 1 : 2)
             }
             if let pending = d.pending {
-                pendingBox(s, pending, compact: compact)
+                PendingAnswer(session: s, pending: pending, compact: compact) { open(s) }
             } else {
                 let line = d.summary.isEmpty ? (s.firstPrompt ?? "") : d.summary
                 if !line.isEmpty {
@@ -395,21 +451,6 @@ struct AgentsHomeView: View {
         .onTapGesture(count: 2) { open(s) }
     }
 
-    @ViewBuilder private func pendingBox(_ s: Session, _ p: AgentDigest.Pending, compact: Bool) -> some View {
-        PendingAnswer(session: s, pending: p, compact: compact) { open(s) }
-    }
-
-    private func recentRow(_ s: Session) -> some View {
-        HStack(spacing: 8) {
-            AgentIcon(icon: iconName(for: s, model: model), size: 12).frame(width: 14)
-            Text(s.displayTitle).font(.system(size: T.k * 13)).lineLimit(1)
-            Text("\(model.project(s.projectId)?.name ?? "") · \(AgentRow.elapsed(since: s.lastActivityAt))").font(T.meta).foregroundStyle(T.text3)
-            Spacer()
-            openLink(s)
-        }
-        .padding(.horizontal, 12).padding(.vertical, 8)
-        .background(RoundedRectangle(cornerRadius: R.md, style: .continuous).stroke(T.border))
-    }
 
     private func openLink(_ s: Session) -> some View {
         Button { open(s) } label: { Text(s.isDormant ? "Resume ›" : "Open ›").font(T.meta).foregroundStyle(T.accent) }

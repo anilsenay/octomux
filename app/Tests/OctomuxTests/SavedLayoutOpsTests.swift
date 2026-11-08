@@ -28,7 +28,7 @@ final class SavedLayoutOpsTests: XCTestCase {
         XCTAssertEqual(m.savedLayouts[id]?.tree, ShellTree.builtIn("agents"))    // the window as it was
         XCTAssertEqual(m.savedLayouts[id]?.settings["home"], .string("workday"))  // and its Home
         XCTAssertEqual(m.layout.userId, id)                                      // in use
-        XCTAssertEqual(m.shellHomeVariant, "workday")
+        XCTAssertEqual(m.homeSetting.preset, .workday)
 
         let copy = try XCTUnwrap(m.duplicateSavedLayout(id))
         XCTAssertEqual(m.savedLayouts[copy]?.name, "Desk 2")

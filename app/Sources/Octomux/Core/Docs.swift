@@ -124,19 +124,19 @@ extension AppModel {
     /// The Agents home (one per project's tab row, showing every agent).
     /// In a window whose Home is this page, its Home; elsewhere the page as a tab.
     func openAgentsHome() {
-        if shellNav == .agents, shellHomeVariant == "agents" { shellGoHome(); return }
+        if shellNav == .agents, shellHasHome { shellGoHome(); return }
         openDoc(.agents, workPath: currentProject?.path)
     }
     /// Workday's home: your day on one page (any layout can open it).
     func openWorkday() {
-        if shellNav == .agents, shellHomeVariant == "workday" { shellGoHome(); return }
+        if shellNav == .agents, shellHasHome, homeLayout == HomePreset.workday.layout { shellGoHome(); return }
         openDoc(.workday, workPath: currentProject?.path)
     }
     /// A new agent with the profile you started last (else your pinned or first one).
     func newDefaultAgent() { newSession(profileId: (profile(lastNewSessionProfile) ?? pinnedProfiles.first ?? enabledProfiles.first)?.id) }
     /// The aquarium: every agent as an octopus (any layout can open it).
     func openAquarium() {
-        if shellNav == .agents, shellHomeVariant == "aquarium" { shellGoHome(); return }
+        if shellNav == .agents, shellHasHome, homeLayout.filling == .aquarium { shellGoHome(); return }
         openDoc(.aquarium, workPath: currentProject?.path)
     }
     func openChanges(scrollTo: String? = nil) { openDoc(.changes, scrollTo: scrollTo) }
