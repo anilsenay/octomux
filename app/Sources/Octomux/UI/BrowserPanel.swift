@@ -137,15 +137,11 @@ extension BrowserUI {
 /// Who drives the page: live ("Claude · Fix login — Clicking “Sign in”"), or who used it last.
 struct AgentBanner: View {
     @ObservedObject var page: BrowserPage
-    @State private var pulse = false
 
     var body: some View {
         if let a = page.activity {
             HStack(spacing: 7) {
-                Circle().fill(T.accent).frame(width: 7, height: 7)
-                    .scaleEffect(pulse ? 1.25 : 0.85).opacity(pulse ? 1 : 0.6)
-                    .animation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true), value: pulse)
-                    .onAppear { pulse = true }
+                PulsingDot(color: NSColor(T.accent)).frame(width: 7, height: 7)
                 Text(BrowserUI.agentLabel(a.sessionId)).font(T.caption.weight(.semibold)).foregroundStyle(T.text).lineLimit(1)
                 Text(a.label).font(T.caption).foregroundStyle(T.text2).lineLimit(1).truncationMode(.tail)
                 Spacer(minLength: 0)

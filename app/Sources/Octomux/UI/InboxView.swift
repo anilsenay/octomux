@@ -420,8 +420,8 @@ struct InboxView: View {
                 Button { store.markAllRead() } label: { Image(systemName: "checkmark.circle") }
                     .buttonStyle(IconButtonStyle(size: 22)).help("Mark all read")
                 Button { store.refreshNow() } label: {
-                    Image(systemName: "arrow.clockwise").rotationEffect(.degrees(store.refreshing ? 360 : 0))
-                        .animation(store.refreshing ? .linear(duration: 0.9).repeatForever(autoreverses: false) : .default, value: store.refreshing)
+                    // Turned by Core Animation while refreshing (see LayerAnimations).
+                    if store.refreshing { SpinningSymbol(name: "arrow.clockwise", color: NSColor(T.text2)) } else { Image(systemName: "arrow.clockwise") }
                 }
                 .buttonStyle(IconButtonStyle(size: 22))
                 .help(store.lastRefresh.map { "Refresh · checked \(RelativeDateTimeFormatter().localizedString(for: $0, relativeTo: Date()))" } ?? "Refresh")
