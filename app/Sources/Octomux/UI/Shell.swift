@@ -206,7 +206,9 @@ struct ShellView: View {
                 .padding(.leading, edges.railLeft ? 0 : m.inset)
                 .padding(.trailing, edges.panelRight ? 0 : m.inset)
         case .home:
-            HomePage(layout: variant.map { HomePreset.named($0).layout } ?? model.homeLayout)
+            Group {
+                if let v = variant { HomePage(layout: HomePreset.named(v).layout) } else { YourHome() }
+            }
                 .background(CanvasBackground(scene: true))
                 .clipShape(RoundedRectangle(cornerRadius: m.cardR, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: m.cardR, style: .continuous).stroke(m.inset == 0 ? .clear : T.border))

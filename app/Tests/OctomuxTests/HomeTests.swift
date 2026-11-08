@@ -143,4 +143,44 @@ final class HomeTests: XCTestCase {
         XCTAssertTrue(HomePage.equalColumns(HomePreset.workday.layout))
         XCTAssertFalse(HomePage.equalColumns(HomeLayout(side: [.issues])))   // no main column: the side one is the page
     }
+
+    // MARK: Customize
+
+    /// The eye takes a section off Home at once and keeps it faded in its place until Done; again, it comes back there.
+    func testHideKeepsItsPlaceUntilDone() {
+        let m = AppModel.shared
+        let saved = m.settingValue(HomeSetting.key, scope: "global")
+        defer { m.setSettingLocally(HomeSetting.key, saved, scope: "global"); HomeCustomizeState.shared.done() }
+        let c = HomeCustomizeState.shared
+        m.chooseHomePreset(.agents)
+        c.start()
+        c.toggleEye(.recent, model: m)
+        XCTAssertEqual(m.homeLayout.side, [.usage])                                         // saved at once
+        XCTAssertEqual(HomeCustomizeState.drawn(m.homeLayout, hidden: c.hidden).side, [.recent, .usage])   // drawn faded in place
+        c.toggleEye(.recent, model: m)
+        XCTAssertEqual(m.homeLayout, HomePreset.agents.layout)
+        XCTAssertFalse(m.homeSetting.changed)
+
+        // A drop counts in the drawn band: past the faded section, it lands after usage.
+        c.toggleEye(.recent, model: m)
+        c.drop(.waiting, at: .init(band: .side, index: 2), model: m)
+        XCTAssertEqual(m.homeLayout.side, [.usage, .waiting])
+        XCTAssertEqual(m.homeLayout.main, [])
+        c.drop(.greeting, at: .init(band: .side, index: Int.max), model: m)
+        XCTAssertEqual(m.homeLayout.side, [.usage, .waiting, .greeting])
+        c.done()
+        XCTAssertTrue(c.hidden.isEmpty)
+        XCTAssertFalse(m.homeLayout.contains(.recent))                                     // gone after Done
+    }
+
+    func testStoredIndexSkipsFaded() {
+        let stored = HomeLayout(side: [.usage])
+        let drawn = HomeCustomizeState.drawn(stored, hidden: [.init(id: .recent, band: .side, index: 0)])
+        XCTAssertEqual(drawn.side, [.recent, .usage])
+        XCTAssertEqual(HomeCustomizeState.storedIndex(0, band: .side, drawn: drawn, stored: stored), 0)
+        XCTAssertEqual(HomeCustomizeState.storedIndex(1, band: .side, drawn: drawn, stored: stored), 0)
+        XCTAssertEqual(HomeCustomizeState.storedIndex(2, band: .side, drawn: drawn, stored: stored), 1)
+        // a hidden one that came back another way (+ Add section) is not drawn twice
+        XCTAssertEqual(HomeCustomizeState.drawn(HomeLayout(side: [.recent]), hidden: [.init(id: .recent, band: .side, index: 0)]).side, [.recent])
+    }
 }

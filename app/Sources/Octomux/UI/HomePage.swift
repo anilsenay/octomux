@@ -118,11 +118,11 @@ struct HomePage: View {
 struct HomeEditing {
     var toolbar: AnyView
     var bandLabel: (HomeBand) -> AnyView
-    var frame: (HomeSectionID, HomeBand, Int, () -> AnyView) -> AnyView
+    var frame: (HomeSectionID, HomeBand, Int, AnyView) -> AnyView
     var addButton: (HomeBand) -> AnyView
 
     func frame<V: View>(_ s: HomeSectionID, band: HomeBand, index: Int, @ViewBuilder content: @escaping () -> V) -> AnyView {
-        frame(s, band, index) { AnyView(content()) }
+        frame(s, band, index, AnyView(content()))
     }
 }
 

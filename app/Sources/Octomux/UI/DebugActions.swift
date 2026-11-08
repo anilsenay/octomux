@@ -104,6 +104,8 @@ enum DebugActions {
                 "shell": m.shellTree != nil,
                 "shell_home": m.shellHome,
                 "home": m.homeSetting.json.any,
+                "home_customizing": HomeCustomizeState.shared.on,
+                "home_hidden": HomeCustomizeState.shared.hidden.map(\.id.rawValue),
                 "home_layout": m.homeLayout.json.mapValues { $0.any },
                 "app_active": NSApp.isActive,
                 "first_responder": ((NSApp.delegate as? AppDelegate)?.mainWindow?.firstResponder).map { String(describing: type(of: $0)) } ?? "none",
@@ -397,6 +399,14 @@ enum DebugActions {
             case "workday": m.openWorkday()
             case "home":              // value: agents | workday | board | aquarium (Home's preset, as it ships)
                 if let v = p["value"] as? String, let h = HomePreset(rawValue: v) { m.chooseHomePreset(h) }
+            case "home_customize":    // value: true (start) | false (Done)
+                if (p["value"] as? Bool) ?? true { HomeCustomizeState.shared.start() } else { HomeCustomizeState.shared.done() }
+            case "home_eye":          // value: section id; the eye on that section while customizing
+                if let v = p["value"] as? String, let s = HomeSectionID(rawValue: v) { HomeCustomizeState.shared.toggleEye(s, model: m) }
+            case "home_drop":         // value: section id, band, index (in the drawn band): a drag and drop while customizing
+                if let v = p["value"] as? String, let s = HomeSectionID(rawValue: v), let b = (p["band"] as? String).flatMap(HomeBand.init(rawValue:)) {
+                    HomeCustomizeState.shared.drop(s, at: .init(band: b, index: (p["index"] as? Int) ?? Int.max), model: m)
+                }
             case "home_layout":       // value: {"top": […], "main": […], "side": […]} as a string (your arrangement)
                 if let str = p["value"] as? String, let d = str.data(using: .utf8), case .object(let o)? = try? JSONDecoder().decode(JSONValue.self, from: d) {
                     m.setHomeLayout(HomeLayout.read(o))
