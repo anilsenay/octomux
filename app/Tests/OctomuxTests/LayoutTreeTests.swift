@@ -59,7 +59,7 @@ final class LayoutTreeTests: XCTestCase {
 
     func testOnlyEngineLayoutsGetATreeAndTheResultIsCached() {
         XCTAssertEqual(LayoutCache.get(nil).tree, ShellTree.builtIn("terminal"))   // nothing stored: Terminal's tree
-        XCTAssertNotNil(LayoutCache.get(LayoutEdit.choose(.editor, in: nil)).tree)   // phase 2: on the engine
+        XCTAssertNotNil(LayoutCache.get(LayoutEdit.choose(.tasks, in: nil)).tree)   // phase 2: on the engine
         LayoutCache.reset()
         let v = LayoutEdit.choose(.agents, in: nil)
         let before = LayoutCache.misses
@@ -94,7 +94,7 @@ final class LayoutTreeTests: XCTestCase {
     }
 
     func testClassicLayoutsOnTheEngineKeepTheirParts() throws {
-        for (name, extra) in [("minimal", ShellBlock.sideAgent), ("editor", .sideAgent), ("aquarium", .aquariumStrip)] {
+        for (name, extra) in [("terminal", ShellBlock.sideAgent), ("aquarium", .aquariumStrip)] {
             let t = try XCTUnwrap(ShellTree.builtIn(name), name)
             XCTAssertEqual(t.nav, .tabs, name)                               // tabs, as before: ⌘T is a new tab
             for b in [ShellBlock.projectTree, .tabStrip, .workArea, .sidePanel, .statusBar, extra] { XCTAssertTrue(t.has(b), "\(name) \(b)") }

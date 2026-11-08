@@ -57,7 +57,7 @@ final class SavedLayoutOpsTests: XCTestCase {
         XCTAssertEqual(SavedLayouts.sorted(m.savedLayouts).map(\.file.name), ["Focus", "Focus 2"])
         XCTAssertNotEqual(a, b)
         XCTAssertEqual(m.layout.userId, b)
-        XCTAssertEqual(m.layout.preset, .minimal)
+        XCTAssertEqual(m.layout.preset, .terminal)                     // Minimal is gone: a file made with it opens on Terminal
         // Too big on disk: refused before it is read.
         try Data(count: LayoutFile.maxBytes + 1).write(to: url)
         XCTAssertEqual(LayoutImport.read(url, model: m).failure, .tooBig)

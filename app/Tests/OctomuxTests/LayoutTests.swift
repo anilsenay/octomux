@@ -41,8 +41,7 @@ final class LayoutTests: XCTestCase {
         XCTAssertEqual(LayoutConfig.builtIn(.aquarium).shown(.views), ["aquarium"])
         XCTAssertEqual(LayoutConfig.builtIn(.tasks).shown(.views), ["tasks"])
         XCTAssertTrue(LayoutConfig.builtIn(.tasks).has("tasks", in: .sidebar))
-        XCTAssertEqual(LayoutConfig.builtIn(.editor).shown(.views), ["touched", "marks", "notes"])
-        for p in [LayoutPreset.agents, .workday, .minimal, .editor, .tasks] {
+        for p in [LayoutPreset.agents, .workday, .tasks] {
             XCTAssertFalse(LayoutConfig.builtIn(p).has("aquarium", in: .statusRight), p.rawValue)
         }
     }
@@ -51,7 +50,6 @@ final class LayoutTests: XCTestCase {
         for p in LayoutPreset.allCases where p != .terminal {
             XCTAssertTrue(LayoutConfig.builtIn(p).has("layout", in: .statusRight), p.rawValue)
         }
-        XCTAssertFalse(LayoutConfig.builtIn(.minimal).statusBar)
         XCTAssertTrue(LayoutConfig.builtIn(.agents).chat)
         XCTAssertEqual(LayoutConfig.builtIn(.workday).shown(.sidebar).first, "inbox")
     }

@@ -82,7 +82,7 @@ final class ShellTests: XCTestCase {
         let bare = try ShellTree.parse(Data(#"{"schema":1,"root":{"row":[{"block":"agentRail"},{"block":"workArea"}]}}"#.utf8)).get()
         XCTAssertFalse(ShellView.wantsDigests(bare, railShown: false, homeShown: true))      // no Home block in that tree
         // Every built-in tree: readers only where a rail, Home or the task detail shows.
-        for name in ["minimal", "editor", "aquarium", "terminal"] {
+        for name in ["aquarium", "terminal"] {
             let t = try XCTUnwrap(ShellTree.builtIn(name))
             XCTAssertFalse(ShellView.wantsDigests(t, railShown: true, homeShown: true, detailShown: true), name)
         }

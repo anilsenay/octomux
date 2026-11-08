@@ -68,7 +68,9 @@ struct LayoutFile: Equatable {
         guard schema == Self.schema else { return .failure(.schema(schema)) }
         let name = (o["name"]?.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return .failure(.noName) }
-        let baseName = o["base"]?.string ?? ""
+        var baseName = o["base"]?.string ?? ""
+        // Layouts this version no longer has (Minimal, Editor: the Terminal window with other parts on).
+        if ["minimal", "editor"].contains(baseName) { baseName = LayoutPreset.terminal.rawValue }
         guard let base = LayoutPreset(rawValue: baseName) else { return .failure(.base(baseName)) }
         var f = LayoutFile(name: String(name.prefix(60)), base: base)
         var notes: [String] = []

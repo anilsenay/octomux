@@ -30,6 +30,7 @@ final class LayoutFileTests: XCTestCase {
         XCTAssertEqual(read(#"{"schema":2,"name":"x","base":"agents"}"#).failure, .schema(2))
         XCTAssertEqual(read(#"{"schema":1,"name":"  ","base":"agents"}"#).failure, .noName)
         XCTAssertEqual(read(#"{"schema":1,"name":"x","base":"review"}"#).failure, .base("review"))
+        XCTAssertEqual(try read(#"{"schema":1,"name":"x","base":"editor"}"#).get().file.base, .terminal)   // a layout this version dropped
         XCTAssertEqual(read(#"{"schema":1,"name":"x","base":"agents","tree":{"row":[{"block":"agentRail"}]}}"#).failure, .tree(.noWorkArea))
         XCTAssertEqual(read(#"{"schema":1,"name":"x","base":"agents","tree":{"row":[{"block":"clippy"},{"block":"workArea"}]}}"#).failure, .tree(.unknownBlock("clippy")))
         XCTAssertEqual(LayoutFile.read(Data(count: LayoutFile.maxBytes + 1), themes: nil, commands: nil).failure, .tooBig)
@@ -197,9 +198,9 @@ final class LayoutFileTests: XCTestCase {
     }
 
     func testConfigSettingsRoundTrip() {
-        var c = LayoutConfig.builtIn(.editor)
+        var c = LayoutConfig.builtIn(.agents)
         c.statusBar = false
-        var back = LayoutConfig.builtIn(.editor)
+        var back = LayoutConfig.builtIn(.agents)
         LayoutConfig.apply(c.settings, to: &back)
         XCTAssertEqual(back, c)
     }
