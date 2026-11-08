@@ -117,6 +117,29 @@ A closed scale with no half points (`DesignTokenTests` fails on `N.5` sizes in `
   layouts, which choose what is primary and the defaults. New items start off in Terminal. A pure visualisation may
   live in one layout only.
 
+### Home
+
+- One page, the same in the Agents layout (the `home` block) and in the Terminal window (the Home tab, `DocTab.Kind.home`,
+  one per project): `Core/Home.swift` (model), `UI/HomePage.swift` (sections), `UI/HomeCustomize.swift` (Customize).
+- Sections (`HomeSectionID`) are today's parts, nothing new: greeting, today, composer, stats, waiting, working, away,
+  recent, pullRequests, reviews, issues, usage, board, aquarium. They sit in three bands: `top` (full width), then a
+  `main` and a `side` column (side 300 pt beside the main one, or as wide when it holds a wide section). Each section
+  appears at most once.
+- A preset (`HomePreset`: agents, workday, board, aquarium) is a ready arrangement; global setting `ui.home` =
+  `{"preset": …}` plus `top` / `main` / `side` when you changed it (unknown sections dropped). Before it is set, the
+  Home an earlier build kept with the layout (`home`, `custom.agents.home`, a layout file's `"variant"`, Columns →
+  board) is read as that preset.
+- A big section (board, aquarium) fills the page when it is the last on top and the columns are empty; else it is a
+  strip (board 360 pt, aquarium 260 pt). Only sections that show agents' words (`readsDigests`) start transcript
+  readers; ⌘T goes to the composer, or starts an agent when Home has none.
+- Waiting: rows in one card; one row open (the first to start with) with its answers, an amber strip on its left and
+  no fill; a click opens another or closes it; answering opens the row that takes its place.
+- Customize (Home ⌄ → Customize this Home…): handles, names and eyes over the live sections (they take no clicks),
+  + Add section per band (Octomux's panel), drag across bands, every change saved at once; a hidden section stays
+  faded in place until Done. Home ⌄ is the only place to pick a Home.
+- Sidebar item `home` (first, opt-in, off in every built-in layout): opens Home; the agents waiting as an amber count.
+  Outside the Agents layout Home shows the workspace's agents (the rail's project filter isn't visible there).
+
 ### Layout engine
 - A layout's window is a JSON tree (`app/Resources/layouts/<layout>.json`, schema 1) that `Core/LayoutTree.swift`
   reads and `UI/Shell.swift` draws — every layout, Terminal included: its tree draws today's window to the pixel
@@ -141,7 +164,7 @@ A closed scale with no half points (`DesignTokenTests` fails on `N.5` sizes in `
   | `aquariumStrip` | the aquarium above the panes (no built-in tree places it; else the layout's views switch puts it over the work area; not while its tab is open) | bar | 120 |
   | `statusBar` | the status bar (the layout's on/off) | bar | — |
   | `workArea` | the current tab's panes or doc, browser, dock; required | main | 320 |
-  | `home` | the window's Home; variants `agents` (greeting, composer, waiting, recent, usage), `workday` (the day page) and `aquarium` (the workspace's agents as octopuses; ⌘T starts an agent; no digest readers of its own). A tree that names no variant leaves it to the layout's `home` setting (Settings → Layout → Home, or the ▾ after "Home"); the built-in Agents tree does. Stored `"layout": "workday"` / `"aquarium"` (earlier builds) read as Agents with that Home, `"minimal"` / `"editor"` as Terminal | main (also in a stack) | 320 |
+  | `home` | the window's Home (your Home, below). A `variant` (`agents`, `workday`, `board`, `aquarium`) fixes that preset as it ships and hides Home ⌄; without one (the built-in Agents tree) it is your Home. Stored `"layout": "workday"` / `"aquarium"` (earlier builds) read as Agents with that Home, `"minimal"` / `"editor"` as Terminal | main (also in a stack) | 320 |
 
   Every block at most once; a stack holds main blocks and containers; `agentRail` and `tasksRail` not together. An
   unknown variant reads as the block's first (a later version's variant shows as today's block).

@@ -10,10 +10,17 @@
   for you, Working, Done, Idle) with their last words and a project control (one project or all), a breadcrumb instead of tabs
   ("Home · Personal", "agent · project · branch" with a Chat / Terminal switch), and Home in the middle: a greeting,
   a big composer (project, checkout or a new worktree, agent), the agents waiting for you answered in place, recent
-  sessions and usage. Or pick another Home with the ▾ after "Home" (or Settings → Layout → Home): **Workday** (your
-  day) or **Aquarium** (every agent as an octopus; ⌘T starts an agent). Home isn't a tab: ⌘0 or ⌘T comes back to it. ⌘1…8 and ⌘[ / ⌘] move over the rail (⌘9: the
-  last); after a
-  click on the rail (or ⌥⌘A) ↑ ↓ ↩ do too.
+  sessions and usage (your Home, below). Home isn't a tab here: ⌘0 or ⌘T comes back to it. ⌘1…8 and ⌘[ / ⌘] move
+  over the rail (⌘9: the last); after a click on the rail (or ⌥⌘A) ↑ ↓ ↩ do too.
+- **Home, one page made of sections**: the same Home in the Agents layout and, as a tab, in the Terminal window
+  (View → Home; one tab per project). Its ⌄ (after "Home", or on the tab) offers four presets — **Agents** (greeting,
+  composer, waiting, recent, usage), **Workday** (your day: stats, waiting, while you were away, your pull requests,
+  reviews and issues), **Board** (every agent in a column by state) and **Aquarium** (every agent as an octopus; ⌘T
+  starts an agent) — and **Customize this Home…**: drag a section by its handle across the top row and the main and
+  side columns, hide one with its eye, add one with + Add section; each change is saved at once, Reset goes back to
+  the preset. The agents waiting for you are rows in one card: the first is open with its answers, a click opens
+  another, and answering opens the one that takes its place. An opt-in Home row at the top of the sidebar (Settings
+  → Layout → Sidebar) shows how many agents wait for you. Agents and Workday tabs from earlier builds open as Home.
 - **The Tasks layout is a window of its own**: your tasks on a rail on the left by what they need from you (with
   status filters and a New task field, ⌘T), the assistant — or the picked task's agent — in the middle, and the
   picked task in detail on the right: its state, where it works, its agents and what they last said or ask, its pull
@@ -22,7 +29,7 @@
   task are folded at the bottom of the rail. ⌘1…8 and ⌘[ / ⌘] go through the tasks (⌘9: the last), ⌘0 opens
   the assistant (and starts it when there is none).
 - **Layouts as data**: every layout is a tree of rows, columns and stacks over Octomux's own blocks
-  (agent rail, tasks rail, project tree, tabs, breadcrumb, work area, Home and its Workday and Aquarium variants, side panel, task
+  (agent rail, tasks rail, project tree, tabs, breadcrumb, work area, Home, side panel, task
   detail, agent column, aquarium, status bar), read from a JSON file; a tree that doesn't read or breaks a block's
   rules falls back to the built-in one. Terminal's tree draws the window it always was, to the pixel.
 - **Your own layouts, as files**: Settings → Layout → Your layouts. Save the layout you arranged under a name, then
@@ -33,12 +40,9 @@
   command off or take ⌘Q, ⌘W, ⌘H, ⌘M or ⌘,. A layout file is data only — it arranges Octomux's own parts and can't
   run anything; a broken one (or one too big, too deep, or with a picture over 4096 px a side) is refused with the
   reason. Duplicate, delete, and use the window as a layout's picture.
-- **Agents home** (in other layouts, View → Open Agents Home): every agent at a glance, in three ways to try: **Board**
-  (who waits for you, who works, who finished, recent), **Columns** (one column per state) and **Inbox** (agents by
-  urgency on the left, the selected one's chat on the right, ↑↓ to move). Cards show the agent's last words, the
-  steps and files of its turn, and what it waits for: allow or deny a tool, or pick an answer, right on the card.
-  "What should an agent work on?" continues on the start screen.
-- **Workday home** (a Home of the Agents layout; View → Open Workday as a tab anywhere): your day on one page. Who
+- **Agent cards** (Home's Board): the agent's last words, the steps and files of its turn, and what it waits for:
+  allow or deny a tool, or pick an answer, right on the card.
+- **Workday** (a Home preset): your day on one page. Who
   needs you, answered right there; what happened while you were away (agents that finished, with the files they
   changed since you last looked, and automations that started work); your pull requests with their next step
   (fix the checks with an agent, mark ready, merge), reviews waiting for you, and your issues ("Work on it").
@@ -61,7 +65,7 @@
   another agent.
 - **Aquarium**: every agent as a pixel octopus in its project's color, swimming while it works, with a "!" when it
   waits for you, asleep on the sand when it finished; click one to open it. A Home of the Agents layout (the
-  agent rail beside it, ⌘0 back, ⌘T starts an agent); elsewhere a tab (View → Open Aquarium), a strip above the panes
+  agent rail beside it, ⌘0 back, ⌘T starts an agent) or a Home section; elsewhere a tab (View → Open Aquarium), a strip above the panes
   (its corner button opens the whole aquarium), a status bar button, or the Aquarium scene behind the sidebar.
 - **Settings → Layout**: in each layout, turn off and reorder what the sidebar, its bottom row, the status bar and
   the top bar show; hide the status bar; open new agents as chats. Each layout keeps its own changes (Reset brings
