@@ -15,12 +15,17 @@ extension AppModel {
 
     /// The engine window shows its Home: the window has one and is on it (a tree may have the rail but no Home).
     var shellHomeShown: Bool { shellHome && shellTree?.has(.home) == true }
+    /// Which Home the window has: the one its tree names, else the layout's choice (nil: no Home in the window).
+    var shellHomeVariant: String? {
+        guard let t = shellTree, t.has(.home) else { return nil }
+        return t.variant(of: .home) ?? layout.home
+    }
 
     /// The engine window's "new" (⌘T): Home's composer, or the tasks rail's new task (a window without Home: a
     /// terminal, as in the classic window).
     func shellNew() {
         if shellNav == .agents, shellTree?.has(.home) != true { newSession(profileId: nil); return }
-        if shellNav == .agents, shellTree?.variant(of: .home) == "aquarium" { newDefaultAgent(); return }   // no composer there
+        if shellNav == .agents, shellHomeVariant == "aquarium" { newDefaultAgent(); return }   // no composer there
         if shellNav == .agents { shellHome = true }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { NotificationCenter.default.post(name: .octomuxShellComposer, object: nil) }
     }
@@ -53,17 +58,18 @@ struct ShellView: View {
     struct Edges { var railLeft = false; var panelRight = false }
 
     /// Whether a block that shows the agents' digests is on screen: the rail (unless hidden with ⌘B) or Home.
-    static func wantsDigests(_ tree: ShellTree, railShown: Bool, homeShown: Bool, detailShown: Bool = false) -> Bool {
+    static func wantsDigests(_ tree: ShellTree, railShown: Bool, homeShown: Bool, detailShown: Bool = false, home: String? = nil) -> Bool {
         let b = tree.root.blocks
         // The aquarium's Home shows moods only (from the sessions), no agent's words.
-        return (b.contains(.agentRail) && railShown) || (b.contains(.home) && homeShown && tree.variant(of: .home) != "aquarium")
+        return (b.contains(.agentRail) && railShown) || (b.contains(.home) && homeShown && (tree.variant(of: .home) ?? home) != "aquarium")
             || (b.contains(.taskDetail) && detailShown)
     }
 
     private var homeShown: Bool { model.shellHome || (model.activeTab == nil && model.activeDoc == nil) }
     private var wants: Bool {
         // The task detail shows agents' words only for a picked task (its overview has none).
-        Self.wantsDigests(tree, railShown: model.sidebarVisible, homeShown: homeShown, detailShown: model.rightPanelVisible && model.shellTaskId != nil)
+        Self.wantsDigests(tree, railShown: model.sidebarVisible, homeShown: homeShown, detailShown: model.rightPanelVisible && model.shellTaskId != nil,
+                          home: model.layout.home)
     }
 
     /// The blocks the last draw put on screen, in order (debug state; E2E checks).
@@ -203,7 +209,7 @@ struct ShellView: View {
                 .padding(.trailing, edges.panelRight ? 0 : m.inset)
         case .home:
             Group {
-                switch variant {
+                switch variant ?? model.layout.home {
                 case "workday": WorkdayHomeContent(surface: false)
                 case "aquarium": AquariumHomeView(home: true)
                 default: ShellHome()
@@ -317,5 +323,83 @@ enum ShellPrewarm {
         host.frame = NSRect(x: 0, y: 0, width: 1600, height: 820)
         host.layoutSubtreeIfNeeded()
         if let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) { host.cacheDisplay(in: host.bounds, to: rep) }
+    }
+}
+
+/// The Agents layout's Homes: start and answer agents, your day, or the aquarium.
+enum HomeStyle: String, CaseIterable, Identifiable {
+    case agents, workday, aquarium
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .agents: return "Agents"
+        case .workday: return "Workday"
+        case .aquarium: return "Aquarium"
+        }
+    }
+    var icon: String {
+        switch self {
+        case .agents: return "sparkles"
+        case .workday: return "sun.max"
+        case .aquarium: return "fish"
+        }
+    }
+    var summary: String {
+        switch self {
+        case .agents: return "Start an agent, answer the ones waiting, recent sessions and usage."
+        case .workday: return "Your day: who needs you, what happened while you were away, pull requests and issues."
+        case .aquarium: return "Every agent as an octopus; click one to open it."
+        }
+    }
+}
+
+/// A chevron after "Home": Octomux's panel with the three Homes, the one in use checked.
+struct HomeStyleButton: View {
+    @EnvironmentObject var model: AppModel
+    @State private var open = false
+    @State private var hover = false
+    var body: some View {
+        Button { open.toggle() } label: {
+            Image(systemName: "chevron.down").font(T.icon(8, .semibold)).foregroundStyle(T.text3)
+                .frame(width: 18, height: 18)
+                .background(RoundedRectangle(cornerRadius: R.sm, style: .continuous).fill(open || hover ? T.hover : .clear))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain).pointerCursor().onHover { hover = $0 }
+        .help("Which Home")
+        .floatingPanel(isPresented: $open) { HomeStylePanel() }
+        .debugOpens("home_style", $open)
+    }
+}
+
+struct HomeStylePanel: View {
+    @EnvironmentObject var model: AppModel
+    @StateObject private var nav = PanelNav()
+    var body: some View {
+        let styles = HomeStyle.allCases
+        PanelCard(width: 300) {
+            PanelSectionTitle("Home")
+            ForEach(Array(styles.enumerated()), id: \.element) { i, h in
+                PanelRow(title: h.title, detail: nil, checked: model.layout.home == h.rawValue, highlighted: nav.index == i) {
+                    Image(systemName: h.icon).font(T.icon(11)).foregroundStyle(T.text3)
+                }
+                .help(h.summary)
+                .onHover { on in if on { nav.index = i } else if nav.index == i { nav.index = nil } }
+                .onTapGesture { nav.run(i) }
+                .panelPointer()
+            }
+        }
+        .onAppear {
+            nav.set(styles.map { h in { model.chooseHome(h) } })
+            nav.attach()
+        }
+    }
+}
+
+extension AppModel {
+    /// The Agents layout's Home (kept with the layout, or the saved layout in use), and the window goes to it.
+    func chooseHome(_ h: HomeStyle) {
+        editLayout { LayoutEdit.home(h.rawValue, stored: $0) }
+        shellHome = true
     }
 }

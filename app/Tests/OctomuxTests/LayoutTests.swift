@@ -33,15 +33,14 @@ final class LayoutTests: XCTestCase {
         let old = json(#"{"layout":"terminal","custom":{"terminal":{"regions":{"statusRight":[{"id":"usage","on":false}]}}}}"#)
         let c = LayoutConfig.resolve(old)
         for id in LayoutRegion.statusRight.optIn { XCTAssertFalse(c.has(id, in: .statusRight), id) }
-        XCTAssertTrue(LayoutConfig.builtIn(.workday).has("work", in: .paneHeader))
+        XCTAssertTrue(LayoutConfig.builtIn(.agents).has("work", in: .paneHeader))
     }
 
     /// Each layout turns on only the opt-in parts it is about.
     func testLayoutsTurnOnTheirOwnParts() {
-        XCTAssertEqual(LayoutConfig.builtIn(.aquarium).shown(.views), [])               // its Home is the aquarium: no strip
         XCTAssertEqual(LayoutConfig.builtIn(.tasks).shown(.views), ["tasks"])
         XCTAssertTrue(LayoutConfig.builtIn(.tasks).has("tasks", in: .sidebar))
-        for p in [LayoutPreset.agents, .workday, .tasks] {
+        for p in [LayoutPreset.agents, .tasks] {
             XCTAssertFalse(LayoutConfig.builtIn(p).has("aquarium", in: .statusRight), p.rawValue)
         }
     }
@@ -51,7 +50,27 @@ final class LayoutTests: XCTestCase {
             XCTAssertTrue(LayoutConfig.builtIn(p).has("layout", in: .statusRight), p.rawValue)
         }
         XCTAssertTrue(LayoutConfig.builtIn(.agents).chat)
-        XCTAssertEqual(LayoutConfig.builtIn(.workday).shown(.sidebar).first, "inbox")
+    }
+
+    // MARK: Folded layouts
+
+    func testWorkdayAndAquariumAreAgentsWithThatHome() throws {
+        for (name, home) in [("workday", "workday"), ("aquarium", "aquarium")] {
+            let c = LayoutConfig.resolve(json(#"{"layout":"\#(name)"}"#))
+            XCTAssertEqual(c.preset, .agents, name)
+            XCTAssertEqual(c.home, home, name)
+        }
+        // A Home you chose in Agents stays.
+        let mine = LayoutConfig.resolve(json(#"{"layout":"workday","custom":{"agents":{"home":"aquarium"}}}"#))
+        XCTAssertEqual(mine.home, "aquarium")
+        XCTAssertEqual(LayoutConfig.resolve(json(#"{"layout":"editor"}"#)).preset, .terminal)
+        XCTAssertEqual(LayoutConfig.builtIn(.agents).home, "agents")
+        // Choosing a Home is a change of the layout in use, kept with it.
+        var v = LayoutEdit.home("workday", stored: LayoutEdit.choose(.agents, in: nil))
+        XCTAssertEqual(LayoutConfig.resolve(v).home, "workday")
+        v = LayoutEdit.home("nonsense", stored: v)
+        XCTAssertEqual(LayoutConfig.resolve(v).home, "agents")             // unknown: the first
+        XCTAssertEqual(LayoutPreset.allCases, [.terminal, .agents, .tasks])
     }
 
     // MARK: Broken values fall back
@@ -64,11 +83,11 @@ final class LayoutTests: XCTestCase {
     }
 
     func testPartlyBrokenKeepsWhatItCanRead() {
-        let v = json(#"{"layout":"workday","custom":{"workday":{"statusBar":"x","regions":{"sidebar":"oops","topBar":[{"id":"zzz"},{"id":"rightPanel","on":false},{"id":"rightPanel","on":true},7]}}}}"#)
+        let v = json(#"{"layout":"agents","custom":{"agents":{"statusBar":"x","regions":{"sidebar":"oops","topBar":[{"id":"zzz"},{"id":"rightPanel","on":false},{"id":"rightPanel","on":true},7]}}}}"#)
         let c = LayoutConfig.resolve(v)
-        XCTAssertEqual(c.preset, .workday)
+        XCTAssertEqual(c.preset, .agents)
         XCTAssertTrue(c.statusBar)                                               // wrong type: built-in
-        XCTAssertEqual(c.items(.sidebar), LayoutConfig.builtIn(.workday).items(.sidebar))   // not a list: built-in
+        XCTAssertEqual(c.items(.sidebar), LayoutConfig.builtIn(.agents).items(.sidebar))   // not a list: built-in
         XCTAssertEqual(c.shown(.topBar), ["diff", "openIn", "git"])               // unknown and repeated dropped
         XCTAssertEqual(c.items(.topBar).map(\.id), ["diff", "openIn", "git", "rightPanel"])
     }
@@ -90,7 +109,7 @@ final class LayoutTests: XCTestCase {
         var v = LayoutEdit.choose(.agents, in: nil)
         v = LayoutEdit.toggle("usage", in: .statusRight, on: false, stored: v)
         XCTAssertFalse(LayoutConfig.resolve(v).has("usage", in: .statusRight))
-        v = LayoutEdit.choose(.workday, in: v)
+        v = LayoutEdit.choose(.tasks, in: v)
         XCTAssertTrue(LayoutConfig.resolve(v).has("usage", in: .statusRight))
         v = LayoutEdit.choose(.agents, in: v)
         XCTAssertFalse(LayoutConfig.resolve(v).has("usage", in: .statusRight))

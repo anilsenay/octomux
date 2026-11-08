@@ -141,7 +141,7 @@ A closed scale with no half points (`DesignTokenTests` fails on `N.5` sizes in `
   | `aquariumStrip` | the aquarium above the panes (no built-in tree places it; else the layout's views switch puts it over the work area; not while its tab is open) | bar | 120 |
   | `statusBar` | the status bar (the layout's on/off) | bar | — |
   | `workArea` | the current tab's panes or doc, browser, dock; required | main | 320 |
-  | `home` | the window's Home; variants `agents` (greeting, composer, waiting, recent, usage), `workday` (the day page) and `aquarium` (the workspace's agents as octopuses; ⌘T starts an agent; no digest readers of its own) | main (also in a stack) | 320 |
+  | `home` | the window's Home; variants `agents` (greeting, composer, waiting, recent, usage), `workday` (the day page) and `aquarium` (the workspace's agents as octopuses; ⌘T starts an agent; no digest readers of its own). A tree that names no variant leaves it to the layout's `home` setting (Settings → Layout → Home, or the ▾ after "Home"); the built-in Agents tree does. Stored `"layout": "workday"` / `"aquarium"` (earlier builds) read as Agents with that Home, `"minimal"` / `"editor"` as Terminal | main (also in a stack) | 320 |
 
   Every block at most once; a stack holds main blocks and containers; `agentRail` and `tasksRail` not together. An
   unknown variant reads as the block's first (a later version's variant shows as today's block).

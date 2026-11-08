@@ -20,13 +20,15 @@ final class SavedLayoutOpsTests: XCTestCase {
 
     func testSaveDuplicateExportDelete() throws {
         let m = AppModel.shared
-        m.chooseLayout(.workday)
+        m.chooseLayout(.agents)
+        m.chooseHome(.workday)
         let id = m.saveLayoutAsNew(name: "Desk")
         XCTAssertEqual(m.savedLayouts[id]?.name, "Desk")
-        XCTAssertEqual(m.savedLayouts[id]?.base, .workday)
-        XCTAssertEqual(m.savedLayouts[id]?.tree, ShellTree.builtIn("workday"))   // the window as it was
+        XCTAssertEqual(m.savedLayouts[id]?.base, .agents)
+        XCTAssertEqual(m.savedLayouts[id]?.tree, ShellTree.builtIn("agents"))    // the window as it was
+        XCTAssertEqual(m.savedLayouts[id]?.settings["home"], .string("workday"))  // and its Home
         XCTAssertEqual(m.layout.userId, id)                                      // in use
-        XCTAssertEqual(m.shellTree?.variant(of: .home), "workday")
+        XCTAssertEqual(m.shellHomeVariant, "workday")
 
         let copy = try XCTUnwrap(m.duplicateSavedLayout(id))
         XCTAssertEqual(m.savedLayouts[copy]?.name, "Desk 2")
@@ -42,7 +44,7 @@ final class SavedLayoutOpsTests: XCTestCase {
         m.deleteSavedLayout(id)                                                  // the one in use: back to its base
         XCTAssertNil(m.savedLayouts[id])
         XCTAssertNil(m.layout.userId)
-        XCTAssertEqual(m.layout.preset, .workday)
+        XCTAssertEqual(m.layout.preset, .agents)
         XCTAssertEqual(m.savedLayouts.count, 1)
     }
 

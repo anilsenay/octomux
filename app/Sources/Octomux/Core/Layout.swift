@@ -10,34 +10,28 @@ import SwiftUI
 /// change to a built-in layout still reaches everyone who didn't touch that part. Anything unreadable falls back
 /// to the built-in values (a wrong type, an unknown layout or item), never to a broken window.
 enum LayoutPreset: String, CaseIterable, Identifiable, Codable {
-    case terminal, agents, workday, tasks, aquarium
+    case terminal, agents, tasks
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .terminal: return "Terminal"
         case .agents: return "Agents"
-        case .workday: return "Workday"
         case .tasks: return "Tasks"
-        case .aquarium: return "Aquarium"
         }
     }
     var icon: String {
         switch self {
         case .terminal: return "terminal"
         case .agents: return "sparkles"
-        case .workday: return "sun.max"
         case .tasks: return "checklist"
-        case .aquarium: return "fish"
         }
     }
     var summary: String {
         switch self {
         case .terminal: return "Octomux as it comes: projects and their sessions, terminals first."
-        case .agents: return "Agents up front: a rail of every agent by what it needs from you, a Home to start one and answer the ones waiting; new agents open as chats."
-        case .workday: return "The agents' window with your day as its Home: who needs you, what happened while you were away, your pull requests and issues with their next step."
+        case .agents: return "Agents up front: a rail of every agent by what it needs from you, and a Home: start one and answer the ones waiting, your day (Workday), or every agent as an octopus (Aquarium)."
         case .tasks: return "Work in tasks: your tasks on the left by what they need, the assistant (or the picked task's agent) in the middle, the picked task in detail on the right."
-        case .aquarium: return "The agents' window with the aquarium as its Home: every agent as an octopus, swimming while it works, \"!\" when it waits, asleep when it finished. Click one to open it; ⌘0 swims back."
         }
     }
     /// ⌃⌘1…
@@ -145,6 +139,8 @@ struct LayoutConfig: Equatable {
     /// A layout you saved or imported (Settings → Layout → Your layouts): its id and name; nil = a built-in one.
     var userId: String? = nil
     var userName: String? = nil
+    /// The Home the window shows when its tree doesn't name one: agents | workday | aquarium (ShellBlock.home.variants).
+    var home = "agents"
     /// The layout's name as people see it.
     var title: String { userName ?? preset.title }
 
@@ -175,20 +171,11 @@ struct LayoutConfig: Equatable {
             regions[.statusRight] = items(.statusRight)
             regions[.paneHeader] = items(.paneHeader, with: ["work"])
             return LayoutConfig(preset: p, regions: regions, statusBar: true, chat: true)
-        case .workday:
-            regions[.sidebar] = items(.sidebar, order: ["inbox", "search", "projects", "agents"])
-            regions[.statusRight] = items(.statusRight)
-            regions[.paneHeader] = items(.paneHeader, with: ["work"])
-            return LayoutConfig(preset: p, regions: regions, statusBar: true, chat: false)
         case .tasks:
             regions[.statusRight] = items(.statusRight)
             regions[.paneHeader] = items(.paneHeader, with: ["work"])
             regions[.views] = items(.views, with: ["tasks"])
             regions[.sidebar] = items(.sidebar, with: ["tasks"], order: ["search", "inbox", "tasks", "projects", "agents"])
-            return LayoutConfig(preset: p, regions: regions, statusBar: true, chat: true)
-        case .aquarium:
-            regions[.statusRight] = items(.statusRight)   // the aquarium is its Home already
-            regions[.paneHeader] = items(.paneHeader, with: ["work"])
             return LayoutConfig(preset: p, regions: regions, statusBar: true, chat: true)
         }
     }
@@ -196,7 +183,7 @@ struct LayoutConfig: Equatable {
     /// Reads the stored setting; anything it can't read falls back to the built-in values. A saved layout
     /// (`"user": "<id>"`, one of `saved`) is its base with the file's settings, then what you changed in it.
     static func resolve(_ stored: JSONValue?, saved: [String: LayoutFile] = [:]) -> LayoutConfig {
-        guard case .object(let o)? = stored else { return .default }
+        guard case .object(let o)? = LayoutEdit.unfold(stored) else { return .default }
         let customs = LayoutEdit.object(o["custom"])
         if let id = o["user"]?.string, let f = saved[id] {
             var c = builtIn(f.base)
@@ -222,13 +209,14 @@ struct LayoutConfig: Equatable {
         if let b = mine["statusBar"]?.bool { c.statusBar = b }
         if let b = mine["chat"]?.bool { c.chat = b }
         if let b = mine["sideChat"]?.bool { c.sideChat = b }
+        if let h = mine["home"]?.string, ShellBlock.home.variants.contains(h) { c.home = h }
     }
 
     /// The layout's parts as a saved layout keeps them: every region whole, and the switches.
     var settings: [String: JSONValue] {
         var regions: [String: JSONValue] = [:]
         for r in LayoutRegion.allCases { regions[r.rawValue] = LayoutEdit.encode(items(r)) }
-        return ["regions": .object(regions), "statusBar": .bool(statusBar), "chat": .bool(chat), "sideChat": .bool(sideChat)]
+        return ["regions": .object(regions), "statusBar": .bool(statusBar), "chat": .bool(chat), "sideChat": .bool(sideChat), "home": .string(home)]
     }
 
     /// A stored item list over the built-in one: its known items in its order (each once), then any item it
@@ -294,6 +282,30 @@ enum LayoutEdit {
         customs[key] = mine.isEmpty ? nil : .object(mine)
         o["custom"] = customs.isEmpty ? nil : .object(customs)
         return .object(o)
+    }
+
+    /// Layouts this version folded into others: Workday and Aquarium are the Agents layout with that Home, Minimal and
+    /// Editor were the Terminal window with other parts on.
+    static let folded: [String: (LayoutPreset, home: String?)] = ["workday": (.agents, "workday"), "aquarium": (.agents, "aquarium"),
+                                                                  "minimal": (.terminal, nil), "editor": (.terminal, nil)]
+
+    /// `stored` with a folded layout as what it became (its Home chosen in Agents unless you chose one there).
+    static func unfold(_ stored: JSONValue?) -> JSONValue? {
+        guard case .object(var o)? = stored, let name = o["layout"]?.string, let (p, home) = folded[name] else { return stored }
+        o["layout"] = .string(p.rawValue)
+        var customs = object(o["custom"])
+        if let home {
+            var mine = object(customs[p.rawValue])
+            if mine["home"] == nil { mine["home"] = .string(home) }
+            customs[p.rawValue] = .object(mine)
+        }
+        o["custom"] = customs.isEmpty ? nil : .object(customs)
+        return .object(o)
+    }
+
+    /// The Home of the layout in use (agents | workday | aquarium).
+    static func home(_ h: String, stored: JSONValue?) -> JSONValue {
+        custom(in: stored) { $0["home"] = .string(h) }
     }
 
     /// `stored` without its saved layout when that isn't among `saved` (its own changes stay, for when it is back).
@@ -374,7 +386,9 @@ extension AppModel {
 
     /// The stored layout; a saved layout in use that isn't here (deleted, or saved on another Mac) reads as its
     /// base, so your changes then go to the base and not to a layout you can't see.
-    var layoutStored: JSONValue? { LayoutEdit.withoutMissingUser(settingValue(Self.layoutKey, scope: "global"), saved: savedLayoutsStored) }
+    var layoutStored: JSONValue? {
+        LayoutEdit.unfold(LayoutEdit.withoutMissingUser(settingValue(Self.layoutKey, scope: "global"), saved: savedLayoutsStored))
+    }
     var savedLayoutsStored: JSONValue? { settingValue(SavedLayouts.key, scope: "global") }
     /// The layouts you saved or imported, by id.
     var savedLayouts: [String: LayoutFile] { LayoutCache.get(revision: settingsRevision) { (layoutStored, savedLayoutsStored) }.saved }
@@ -424,14 +438,6 @@ extension AppModel {
                 sidebarVisible = true
                 sidebarAgents = false   // the home lists them
                 rightPanelVisible = false
-            case .workday:
-                sidebarVisible = true
-                sidebarAgents = false
-                rightPanelVisible = false
-            case .aquarium:
-                sidebarVisible = true
-                sidebarAgents = false
-                rightPanelVisible = false
             case .tasks:
                 sidebarVisible = true      // the tasks rail
                 sidebarAgents = false
@@ -440,9 +446,9 @@ extension AppModel {
         }
         sidebarPeek = false
         saveSelection()
-        // The Agents and Workday layouts are the engine's window: their Home is a mode, not a tab (the tab of the
-        // same page is closed if it was in front).
-        if p == .agents || p == .workday || p == .aquarium {
+        // The Agents layout is the engine's window: its Home is a mode, not a tab (the tab of a Home page is closed if
+        // it was in front).
+        if p == .agents {
             switch activeDoc?.kind {
             case .agents?, .workday?, .aquarium?: activeDocId = nil
             default: break
@@ -467,6 +473,9 @@ extension AppModel {
     func migrateLayoutIfNeeded() {
         guard !Self.layoutMigrated, !host.isRemote else { return }
         Self.layoutMigrated = true
+        // Workday, Aquarium, Minimal, Editor chosen in an earlier build: stored as what they became.
+        let raw = settingValue(Self.layoutKey, scope: "global")
+        if let u = LayoutEdit.unfold(raw), u != raw { storeLayout(u) }
         let hidden = UserDefaults.standard.bool(forKey: KeepAwake.hiddenKey)
         if let v = LayoutEdit.migrate(stored: layoutStored, keepAwakeHidden: hidden) { storeLayout(v) }
         if hidden { UserDefaults.standard.removeObject(forKey: KeepAwake.hiddenKey) }
@@ -510,6 +519,7 @@ enum LayoutCache {
 
     static func get(_ stored: JSONValue?, saved savedStored: JSONValue? = nil) -> Entry {
         lastRevision = nil
+        let stored = LayoutEdit.unfold(stored)
         if let l = last, l.stored == stored, l.savedStored == savedStored { return l.entry }
         misses += 1
         let saved = SavedLayouts.parse(savedStored)

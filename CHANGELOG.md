@@ -4,14 +4,14 @@
 
 - **Layouts**: pick how the window is arranged for the way you work, for the whole app: **Terminal** (the window as
   it always was, still the default), **Agents** (the agents' window below; new Claude and Codex sessions open as
-  chats), **Workday** (the agents' window with the Workday home as its Home), **Tasks** (a window of its own,
-  below) or **Aquarium** (the agents' window with the aquarium as its Home). Switch with ⌃⌘1…5, the
+  chats) or **Tasks** (a window of its own, below). Switch with ⌃⌘1…3, the
   command palette (View → … Layout), or the Layout button the other layouts show in the status bar.
 - **The Agents layout is a window of its own**: a rail of agents on the left by what they need from you (Waiting
   for you, Working, Done, Idle) with their last words and a project control (one project or all), a breadcrumb instead of tabs
   ("Home · Personal", "agent · project · branch" with a Chat / Terminal switch), and Home in the middle: a greeting,
   a big composer (project, checkout or a new worktree, agent), the agents waiting for you answered in place, recent
-  sessions and usage. Home isn't a tab: ⌘0 or ⌘T comes back to it. ⌘1…8 and ⌘[ / ⌘] move over the rail (⌘9: the
+  sessions and usage. Or pick another Home with the ▾ after "Home" (or Settings → Layout → Home): **Workday** (your
+  day) or **Aquarium** (every agent as an octopus; ⌘T starts an agent). Home isn't a tab: ⌘0 or ⌘T comes back to it. ⌘1…8 and ⌘[ / ⌘] move over the rail (⌘9: the
   last); after a
   click on the rail (or ⌥⌘A) ↑ ↓ ↩ do too.
 - **The Tasks layout is a window of its own**: your tasks on a rail on the left by what they need from you (with
@@ -22,7 +22,7 @@
   task are folded at the bottom of the rail. ⌘1…8 and ⌘[ / ⌘] go through the tasks (⌘9: the last), ⌘0 opens
   the assistant (and starts it when there is none).
 - **Layouts as data**: every layout is a tree of rows, columns and stacks over Octomux's own blocks
-  (agent rail, tasks rail, project tree, tabs, breadcrumb, work area, Home and its Workday variant, side panel, task
+  (agent rail, tasks rail, project tree, tabs, breadcrumb, work area, Home and its Workday and Aquarium variants, side panel, task
   detail, agent column, aquarium, status bar), read from a JSON file; a tree that doesn't read or breaks a block's
   rules falls back to the built-in one. Terminal's tree draws the window it always was, to the pixel.
 - **Your own layouts, as files**: Settings → Layout → Your layouts. Save the layout you arranged under a name, then
@@ -38,12 +38,12 @@
   urgency on the left, the selected one's chat on the right, ↑↓ to move). Cards show the agent's last words, the
   steps and files of its turn, and what it waits for: allow or deny a tool, or pick an answer, right on the card.
   "What should an agent work on?" continues on the start screen.
-- **Workday home** (the Workday layout's Home; View → Open Workday in any other layout): your day on one page. Who
+- **Workday home** (a Home of the Agents layout; View → Open Workday as a tab anywhere): your day on one page. Who
   needs you, answered right there; what happened while you were away (agents that finished, with the files they
   changed since you last looked, and automations that started work); your pull requests with their next step
   (fix the checks with an agent, mark ready, merge), reviews waiting for you, and your issues ("Work on it").
 - **Work chips**: an agent's pull request (with its checks) and issue show next to it on cards, and in the pane
-  header in the Agents and Workday layouts (Settings → Layout → Pane header elsewhere).
+  header in the Agents layout (Settings → Layout → Pane header elsewhere).
 - **Since you looked**: an agent card says how many files changed after you last looked at the agent, and lists
   them with their diffs.
 - **Working on code with an agent** (the Editor layout has all of them; Settings → Layout turns them on anywhere):
@@ -60,8 +60,8 @@
 - **Default agent** (Settings → Agents) for tasks, the assistant and "Work on it"; each can be started once with
   another agent.
 - **Aquarium**: every agent as a pixel octopus in its project's color, swimming while it works, with a "!" when it
-  waits for you, asleep on the sand when it finished; click one to open it. The Aquarium layout's Home (the agent
-  rail beside it, ⌘0 back, ⌘T starts an agent); elsewhere a tab (View → Open Aquarium), a strip above the panes
+  waits for you, asleep on the sand when it finished; click one to open it. A Home of the Agents layout (the
+  agent rail beside it, ⌘0 back, ⌘T starts an agent); elsewhere a tab (View → Open Aquarium), a strip above the panes
   (its corner button opens the whole aquarium), a status bar button, or the Aquarium scene behind the sidebar.
 - **Settings → Layout**: in each layout, turn off and reorder what the sidebar, its bottom row, the status bar and
   the top bar show; hide the status bar; open new agents as chats. Each layout keeps its own changes (Reset brings

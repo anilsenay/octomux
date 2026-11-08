@@ -69,8 +69,9 @@ struct LayoutFile: Equatable {
         let name = (o["name"]?.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return .failure(.noName) }
         var baseName = o["base"]?.string ?? ""
-        // Layouts this version no longer has (Minimal, Editor: the Terminal window with other parts on).
-        if ["minimal", "editor"].contains(baseName) { baseName = LayoutPreset.terminal.rawValue }
+        // Layouts this version folded into others (Workday and Aquarium: Agents with that Home).
+        var foldedHome: String?
+        if let (p, home) = LayoutEdit.folded[baseName] { baseName = p.rawValue; foldedHome = home }
         guard let base = LayoutPreset(rawValue: baseName) else { return .failure(.base(baseName)) }
         var f = LayoutFile(name: String(name.prefix(60)), base: base)
         var notes: [String] = []
@@ -86,8 +87,9 @@ struct LayoutFile: Equatable {
         }
         if case .object(let s)? = o["settings"] {
             // Only the parts a layout keeps; each read again (and checked) when the layout is resolved.
-            for k in ["regions", "statusBar", "chat", "sideChat"] { if let x = s[k] { f.settings[k] = x } }
+            for k in ["regions", "statusBar", "chat", "sideChat", "home"] { if let x = s[k] { f.settings[k] = x } }
         }
+        if let foldedHome, f.settings["home"] == nil { f.settings["home"] = .string(foldedHome) }
         if case .object(let t)? = o["theme"], let id = t["id"]?.string {
             let mode = t["mode"]?.string.flatMap { ["dark", "light", "system"].contains($0) ? $0 : nil }
             if themes?.contains(id) ?? true { f.theme = Theme(id: id, mode: mode) } else { notes.append("Its theme “\(id)” isn't on this Mac; left out.") }

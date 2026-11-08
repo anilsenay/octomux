@@ -372,6 +372,10 @@ enum DebugActions {
             case "right_panel_width": if let w = p["value"] as? Double { m.rightPanelWidth = CGFloat(w) }
             case "layout":            // value: terminal | agents | workday | minimal | … (as the menu / ⌃⌘n)
                 if let v = p["value"] as? String, let l = LayoutPreset(rawValue: v) { m.chooseLayout(l) }
+                else if let v = p["value"] as? String, let (l, home) = LayoutEdit.folded[v] {   // workday, aquarium: Agents with that Home
+                    m.chooseLayout(l)
+                    if let h = home.flatMap(HomeStyle.init(rawValue:)) { m.chooseHome(h) }
+                }
             case "layout_store":      // value: the stored JSON as a string (null = nothing stored)
                 if let str = p["value"] as? String, let d = str.data(using: .utf8), let v = try? JSONDecoder().decode(JSONValue.self, from: d) { m.storeLayout(v) }
                 else { m.setSettingLocally(AppModel.layoutKey, nil, scope: "global"); m.setSetting(AppModel.layoutKey, nil) }

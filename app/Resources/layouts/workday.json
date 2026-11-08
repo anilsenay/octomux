@@ -1,1 +1,0 @@
-{"schema":1,"root":{"row":[{"block":"agentRail","size":{"fixed":268}},{"column":[{"block":"breadcrumb"},{"row":[{"stack":[{"block":"home","variant":"workday"},{"block":"workArea"}],"size":{"flex":1}},{"block":"sidePanel"}],"size":{"flex":1}},{"block":"statusBar"}],"size":{"flex":1}}]}}

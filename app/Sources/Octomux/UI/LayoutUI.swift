@@ -161,6 +161,14 @@ struct LayoutSettings: View {
                 SettingRow("Open new agents as chats", desc: "New Claude and Codex sessions start in the chat view (⌘⇧C switches any session).") {
                     SettingSwitch(isOn: Binding(get: { c.chat }, set: { v in model.editLayout { LayoutEdit.flag("chat", v, stored: $0) } }))
                 }
+                if let t = model.shellTree, t.has(.home), t.variant(of: .home) == nil {
+                    SettingRow("Home", desc: HomeStyle(rawValue: c.home)?.summary ?? "") {
+                        Picker("", selection: Binding(get: { c.home }, set: { v in HomeStyle(rawValue: v).map(model.chooseHome) })) {
+                            ForEach(HomeStyle.allCases) { h in Text(h.title).tag(h.rawValue) }
+                        }
+                        .labelsHidden().fixedSize()
+                    }
+                }
                 SettingRow("Agent beside the work area", desc: "The project's agent in a column on the left: its chat next to the files you open.") {
                     SettingSwitch(isOn: Binding(get: { c.sideChat }, set: { v in model.editLayout { LayoutEdit.flag("sideChat", v, stored: $0) } }))
                 }

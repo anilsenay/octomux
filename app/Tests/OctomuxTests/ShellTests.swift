@@ -86,11 +86,9 @@ final class ShellTests: XCTestCase {
             let t = try XCTUnwrap(ShellTree.builtIn(name))
             XCTAssertFalse(ShellView.wantsDigests(t, railShown: true, homeShown: true, detailShown: true), name)
         }
-        let aquarium = try XCTUnwrap(ShellTree.builtIn("aquarium"))
-        XCTAssertTrue(ShellView.wantsDigests(aquarium, railShown: true, homeShown: true))
-        XCTAssertFalse(ShellView.wantsDigests(aquarium, railShown: false, homeShown: true))   // ⌘B on the aquarium: none
-        let workday = try XCTUnwrap(ShellTree.builtIn("workday"))
-        XCTAssertTrue(ShellView.wantsDigests(workday, railShown: false, homeShown: true))
+        XCTAssertTrue(ShellView.wantsDigests(agents, railShown: true, homeShown: true, home: "aquarium"))
+        XCTAssertFalse(ShellView.wantsDigests(agents, railShown: false, homeShown: true, home: "aquarium"))   // ⌘B on the aquarium: none
+        XCTAssertTrue(ShellView.wantsDigests(agents, railShown: false, homeShown: true, home: "workday"))
         let tasks = try XCTUnwrap(ShellTree.builtIn("tasks"))
         XCTAssertTrue(ShellView.wantsDigests(tasks, railShown: true, homeShown: false, detailShown: true))
         XCTAssertFalse(ShellView.wantsDigests(tasks, railShown: true, homeShown: true, detailShown: false))   // ⌘⌥B: none

@@ -85,19 +85,12 @@ final class LayoutTreeTests: XCTestCase {
         XCTAssertEqual(tree(#"{"schema":1,"root":{"row":[{"block":"agentRail"},{"block":"tasksRail"},{"block":"workArea"}]}}"#).failure, .twoLists)
     }
 
-    func testAquariumIsTheAgentsWindowWithTheAquariumAsHome() throws {
-        let t = try XCTUnwrap(ShellTree.builtIn("aquarium"))
-        XCTAssertEqual(t.nav, .agents)
-        XCTAssertEqual(t.variant(of: .home), "aquarium")
-        XCTAssertFalse(t.has(.aquariumStrip))
-    }
-
-    func testWorkdayIsTheAgentsWindowWithItsOwnHome() throws {
-        let w = try XCTUnwrap(ShellTree.builtIn("workday"))
-        XCTAssertEqual(w.nav, .agents)
-        XCTAssertEqual(w.variant(of: .home), "workday")
-        XCTAssertNil(try XCTUnwrap(ShellTree.builtIn("agents")).variant(of: .home))
-        XCTAssertNotNil(LayoutCache.get(LayoutEdit.choose(.workday, in: nil)).tree)
+    func testTheAgentsTreeLeavesItsHomeToTheLayout() throws {
+        XCTAssertNil(try XCTUnwrap(ShellTree.builtIn("agents")).variant(of: .home))   // Settings → Layout → Home, or Home's ▾
+        XCTAssertNil(ShellTree.builtIn("workday"))
+        XCTAssertNil(ShellTree.builtIn("aquarium"))
+        XCTAssertEqual(LayoutCache.get(json(#"{"layout":"workday"}"#)).tree, ShellTree.builtIn("agents"))
+        LayoutCache.reset()
     }
 
     func testClassicLayoutsOnTheEngineKeepTheirParts() throws {
