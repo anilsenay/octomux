@@ -183,9 +183,9 @@ final class ProjectScopeTests: XCTestCase {
             Project(id: id, workspaceId: "w", name: name, path: "/x", color: "#888888", icon: ProjectIcon(kind: "initial", value: nil), sort: 0, archived: false)
         }
         let ps = [p("a", "marketing-dashboard"), p("b", "shop-chatbot"), p("c", "Octomux")]
-        XCTAssertEqual(ProjectScopeList.matching(ps, "").count, 3)
-        XCTAssertEqual(ProjectScopeList.matching(ps, " octo ").map(\.id), ["c"])
-        XCTAssertEqual(ProjectScopeList.matching(ps, "DASH").map(\.id), ["a"])
-        XCTAssertTrue(ProjectScopeList.matching(ps, "zzz").isEmpty)
+        XCTAssertEqual(ProjectScopePanel.matching(ps, "").count, 3)
+        XCTAssertEqual(ProjectScopePanel.matching(ps, " octo ").map(\.id), ["c"])
+        XCTAssertEqual(ProjectScopePanel.matching(ps, "DASH").map(\.id), ["a"])
+        XCTAssertTrue(ProjectScopePanel.matching(ps, "zzz").isEmpty)
     }
 }

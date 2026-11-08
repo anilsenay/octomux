@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// Which of the workspace's projects a list shows, as one control however many projects there are: the project (its
-/// icon and name, or "All projects") and a list to pick from, with a search field once there are many. The agent
-/// rail, the tasks rail and New task's project use it.
+/// icon and name, or "All projects") and Octomux's own panel to pick from, with a search field once there are many.
+/// The agent rail, the tasks rail and New task's project use it.
 struct ProjectScopeButton: View {
     @EnvironmentObject var model: AppModel
     /// The picked project (nil: all of them).
@@ -14,8 +14,9 @@ struct ProjectScopeButton: View {
     var compact = false
     let pick: (String?) -> Void
     @State private var open = false
+    @State private var hover = false
 
-    /// From this many projects on, the list has a search field.
+    /// From this many projects on, the panel has a search field.
     static let searchFrom = 7
 
     var body: some View {
@@ -30,26 +31,29 @@ struct ProjectScopeButton: View {
             }
             .foregroundStyle(T.text)
             .padding(.horizontal, compact ? 4 : 8).frame(height: compact ? 22 : 26)
-            .background(RoundedRectangle(cornerRadius: R.sm, style: .continuous).fill(compact ? Color.clear : T.hover.opacity(0.6)))
+            .background(RoundedRectangle(cornerRadius: R.sm, style: .continuous)
+                .fill(open || hover ? T.hover : compact ? Color.clear : T.hover.opacity(0.6)))
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain).pointerCursor()
+        .buttonStyle(.plain).pointerCursor().onHover { hover = $0 }
         .help(allowsAll ? "Show one project, or all" : "The project")
-        .popover(isPresented: $open, arrowEdge: .bottom) {
-            ProjectScopeList(selected: selected, allowsAll: allowsAll, count: count) { id in open = false; pick(id) }
-                .environmentObject(model)
+        .floatingPanel(isPresented: $open, alignment: .leading) {
+            ProjectScopePanel(selected: selected, allowsAll: allowsAll, count: count, pick: pick)
         }
+        .debugOpens(allowsAll ? "project_scope" : "project_pick", $open)
     }
 }
 
-/// The projects to pick from: All, then each (icon, name, count); typing filters them.
-struct ProjectScopeList: View {
+/// The projects to pick from: All, then each (icon, name, count, the picked one checked); typing filters them,
+/// ↑ ↓ move, ↩ picks.
+struct ProjectScopePanel: View {
     @EnvironmentObject var model: AppModel
     let selected: String?
     let allowsAll: Bool
     let count: ((String?) -> Int)?
     let pick: (String?) -> Void
     @State private var query = ""
+    @State private var index: Int?
     @FocusState private var searching: Bool
 
     static func matching(_ projects: [Project], _ q: String) -> [Project] {
@@ -57,47 +61,65 @@ struct ProjectScopeList: View {
         return q.isEmpty ? projects : projects.filter { $0.name.localizedCaseInsensitiveContains(q) }
     }
 
+    /// The rows in order: nil is "All projects".
+    private var choices: [String?] {
+        let shown = Self.matching(model.projects, query).map { Optional($0.id) }
+        return (allowsAll && query.isEmpty ? [nil] : []) + shown
+    }
+    private var searchable: Bool { model.projects.count >= ProjectScopeButton.searchFrom }
+
     var body: some View {
-        let shown = Self.matching(model.projects, query)
-        VStack(alignment: .leading, spacing: 2) {
-            if model.projects.count >= ProjectScopeButton.searchFrom {
-                TextField("Find a project", text: $query)
-                    .textFieldStyle(.roundedBorder).font(.system(size: T.k * 12))
-                    .focused($searching)
-                    .onSubmit { if let first = shown.first { pick(first.id) } }
-                    .padding(.bottom, 4)
+        let rows = choices
+        PanelCard(width: 260) {
+            if searchable {
+                HStack(spacing: 6) {
+                    Image(systemName: "magnifyingglass").font(T.icon(11)).foregroundStyle(T.text3)
+                    TextField("Find a project", text: $query).textFieldStyle(.plain).font(.system(size: T.k * 13))
+                        .focused($searching)
+                }
+                .padding(.horizontal, 9).frame(height: 30)
+                PanelDivider()
+            } else {
+                PanelSectionTitle("Project")
             }
             ScrollView {
-                VStack(alignment: .leading, spacing: 1) {
-                    if allowsAll && query.isEmpty {
-                        row(nil) { Image(systemName: "square.stack").font(T.icon(11)).frame(width: 16) }
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(rows.enumerated()), id: \.offset) { i, id in
+                        let p = id.flatMap { model.project($0) }
+                        let n = count?(id) ?? 0
+                        PanelRow(title: p?.name ?? "All projects", detail: n > 0 ? "\(n)" : nil, detailColor: T.amber,
+                                 checked: id == selected, highlighted: index == i) {
+                            if let p { ProjectIconView(project: p, size: 16) } else { Image(systemName: "square.stack").font(T.icon(11)).foregroundStyle(T.text3) }
+                        }
+                        .onHover { h in if h { index = i } else if index == i { index = nil } }
+                        .onTapGesture { choose(id) }
+                        .panelPointer()
                     }
-                    ForEach(shown) { p in row(p.id) { ProjectIconView(project: p, size: 16) } }
-                    if shown.isEmpty { Text("No project matches.").font(T.meta).foregroundStyle(T.text3).padding(8) }
+                    if rows.isEmpty { Text("No project matches.").font(T.meta).foregroundStyle(T.text3).padding(9) }
                 }
             }
-            .frame(maxHeight: 360)
+            .frame(maxHeight: 340)
+            .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(8)
-        .frame(width: 250)
-        .onAppear { if model.projects.count >= ProjectScopeButton.searchFrom { searching = true } }
+        .onChange(of: query) { _, _ in index = choices.isEmpty ? nil : 0 }
+        .onAppear {
+            if searchable { searching = true }
+            FloatingPanelController.shared.onKey = { e in
+                let n = choices.count
+                switch e.keyCode {
+                case 125: index = n == 0 ? nil : min((index ?? -1) + 1, n - 1); return true
+                case 126: index = n == 0 ? nil : max((index ?? n) - 1, 0); return true
+                case 36, 76:
+                    guard let i = index ?? (query.isEmpty ? nil : 0), i < n else { return false }
+                    choose(choices[i]); return true
+                default: return false   // typing goes to the search field
+                }
+            }
+        }
     }
 
-    private func row(_ id: String?, @ViewBuilder icon: () -> some View) -> some View {
-        let on = selected == id
-        return Button { pick(id) } label: {
-            HStack(spacing: 8) {
-                icon()
-                Text(id.flatMap { model.project($0)?.name } ?? "All projects").font(.system(size: T.k * 12, weight: on ? .semibold : .regular)).lineLimit(1)
-                Spacer(minLength: 4)
-                if let n = count?(id), n > 0 { Text("\(n)").font(.system(size: T.k * 11)).foregroundStyle(T.text3).monospacedDigit() }
-                if on { Image(systemName: "checkmark").font(T.icon(10, .semibold)).foregroundStyle(T.accent) }
-            }
-            .foregroundStyle(T.text)
-            .padding(.horizontal, 8).frame(height: 28)
-            .background(RoundedRectangle(cornerRadius: R.sm, style: .continuous).fill(on ? T.selection : Color.clear))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
+    private func choose(_ id: String?) {
+        FloatingPanelController.shared.close()
+        pick(id)
     }
 }
