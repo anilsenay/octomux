@@ -112,6 +112,31 @@ final class InboxReviewTests: XCTestCase {
         var head: String? = nil, ancestry: Set<String> = []
     }
 
+    func testFinishedReviewsAgentsRestWhenQuiet() {
+        let (m, rec) = manager()
+        let p = Project(id: "p1", workspaceId: "w", name: "r", path: "/tmp/r", color: "#fff", icon: ProjectIcon(kind: "letter", value: "R"), sort: 0, archived: false)
+        var quiet: [String: TimeInterval] = [:]
+        var stopped: [String] = []
+        m.quietFor = { quiet[$0] }
+        m.stopSession = { stopped.append($0) }
+        m.start(pr(1), in: p, profileId: nil, auto: false)
+        m.start(pr(2), in: p, profileId: nil, auto: false)
+        // Still working: never stopped, however quiet.
+        quiet["s-gh:o/r#1"] = 3 * 3600
+        m.rest()
+        XCTAssertEqual(stopped, [])
+        // Done: stopped once quiet for long enough, not before; one you are in (nil) stays.
+        rec.answers["s-gh:o/r#1"] = InboxReviews.parse(answer)
+        rec.answers["s-gh:o/r#2"] = InboxReviews.parse(answer)
+        m.check()
+        quiet["s-gh:o/r#1"] = InboxReviews.restAfter - 60
+        m.rest()
+        XCTAssertEqual(stopped, [])
+        quiet["s-gh:o/r#1"] = InboxReviews.restAfter + 1
+        m.rest()
+        XCTAssertEqual(stopped, ["s-gh:o/r#1"])
+    }
+
     func testAgainReviewsTheNewCommitsAndChecksEarlierFindings() {
         let (m, rec) = manager()
         let p = Project(id: "p1", workspaceId: "w", name: "r", path: "/tmp/r", color: "#fff", icon: ProjectIcon(kind: "letter", value: "R"), sort: 0, archived: false)

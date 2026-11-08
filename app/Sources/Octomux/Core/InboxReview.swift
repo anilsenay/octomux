@@ -100,8 +100,42 @@ final class InboxReviews: ObservableObject {
                 m.remove(s.id, confirm: false)
             }
         }
+        r.startResting()
         return r
     }()
+
+    // MARK: Resting finished reviews' agents
+
+    /// A finished review whose agent still runs with nobody in it (brought back as a conversation after a restart,
+    /// or one you asked something and left) is stopped after this long; Go to session → Resume brings it back.
+    static let restAfter: TimeInterval = 30 * 60
+    /// How long the session has been quiet when it may be stopped: running, neither working nor waiting, in no tab
+    /// and not focused. Nil: leave it (tests swap it).
+    var quietFor: (_ sessionId: String) -> TimeInterval? = InboxReviews.sessionQuietFor
+    var stopSession: (_ sessionId: String) -> Void = { AppModel.shared.stop($0, confirm: false) }
+    private var restTimer: Timer?
+
+    /// Stops the agents of finished reviews that have been quiet for `restAfter`.
+    func rest() {
+        for r in runs.values where !r.isActive {
+            guard let sid = r.sessionId, let q = quietFor(sid), q >= Self.restAfter else { continue }
+            stopSession(sid)
+        }
+    }
+
+    func startResting() {
+        guard restTimer == nil else { return }
+        restTimer = Timer.scheduledTimer(withTimeInterval: 5 * 60, repeats: true) { [weak self] _ in self?.rest() }
+        // Soon after launch too, once the daemon's sessions are in.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 60) { [weak self] in self?.rest() }
+    }
+
+    static func sessionQuietFor(_ sid: String) -> TimeInterval? {
+        let m = AppModel.shared
+        guard let s = m.session(sid), s.state == .running, s.activity != .working, s.activity != .needsInput,
+              m.tab(containing: sid) == nil, m.focusedSessionId != sid else { return nil }
+        return Date().timeIntervalSince1970 - TimeInterval(s.lastActivityAt)
+    }
     /// Closes the earlier review sessions in a review's folder when the next review of the pull request starts (the
     /// app's instance only). Ones still running stay (a review you resumed to ask about).
     var closeSessions: ((String) -> Void)?

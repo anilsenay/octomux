@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- **Finished reviews no longer keep an agent running**: a review's agent that is still up with nobody in it (brought
+  back as a conversation after a restart, or one you asked something and left) is stopped after 30 quiet minutes.
+  Go to session → Resume brings the conversation back.
+
 ## 0.5.0
 
 Highlights:
