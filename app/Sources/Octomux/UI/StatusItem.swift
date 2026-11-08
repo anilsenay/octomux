@@ -9,6 +9,11 @@ import SwiftUI
 /// Unread notifications put a dot on its top-right corner (not while it bounces). A click opens a small panel with
 /// them (MenuBarPanel); a right-click or Control-click the menu.
 final class StatusItemController: NSObject, NSMenuDelegate {
+    /// The panel's left edge: centered under the menu bar icon, at least 6 pt inside the screen's visible frame.
+    static func panelX(icon: NSRect, width: CGFloat, screen: NSRect) -> CGFloat {
+        min(max((icon.midX - width / 2).rounded(), screen.minX + 6), screen.maxX - width - 6)
+    }
+
     static let shared = StatusItemController()
 
     enum Style: String { case color, mono, hidden }
@@ -200,11 +205,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         w.level = .popUpMenu
         w.appearance = NSAppearance(named: ThemeStore.shared.isDark ? .darkAqua : .aqua)
         w.contentView = host
-        // Under the icon, left edges aligned, kept on screen.
+        // Centered under the icon, kept on screen.
         if let bw = button.window {
             let f = bw.convertToScreen(button.convert(button.bounds, to: nil))
             let vis = bw.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? .zero
-            let x = min(max(f.minX - 8, vis.minX + 6), vis.maxX - size.width - 6)
+            let x = Self.panelX(icon: f, width: size.width, screen: vis)
             w.setFrameOrigin(NSPoint(x: x, y: f.minY - size.height - 5))
         }
         w.orderFrontRegardless()
