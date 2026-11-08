@@ -131,17 +131,17 @@ A closed scale with no half points (`DesignTokenTests` fails on `N.5` sizes in `
   | Block | What | Kind | Minimum |
   |---|---|---|---|
   | `agentRail` | sessions by state (Waiting / Working / Done / Idle), project chips, New session | rail (in a row) | 220 |
-  | `tasksRail` | the workspace's tasks by state, status filters, the assistant, New task | rail | 240 |
+  | `tasksRail` | the workspace's tasks by state, project chips and status filters, the assistant, New task (with a project picker) | rail | 240 |
   | `projectTree` | the classic sidebar (its width and resize handle) | rail | 200 |
   | `sidePanel` | the right panel (Files / Changes / Sessions / Tasks), shown with ⌘⌥B | rail | 260 |
   | `taskDetail` | the picked task: state, agents and what they last said, PR, subtasks, next step (⌘⌥B) | rail | 280 |
   | `sideAgent` | the project's agent beside the work area (the layout's "Agent beside the work area") | rail | 280 |
   | `tabStrip` | the classic top bar with tabs | bar (in a column) | — |
   | `breadcrumb` | Home · workspace (Tasks · task), or agent · project · branch, and the project's buttons | bar | — |
-  | `aquariumStrip` | the aquarium above the panes (the layout's views switch; not while its tab is open) | bar | 120 |
+  | `aquariumStrip` | the aquarium above the panes (no built-in tree places it; else the layout's views switch puts it over the work area; not while its tab is open) | bar | 120 |
   | `statusBar` | the status bar (the layout's on/off) | bar | — |
   | `workArea` | the current tab's panes or doc, browser, dock; required | main | 320 |
-  | `home` | the window's Home; variants `agents` (greeting, composer, waiting, recent, usage) and `workday` (the day page) | main (also in a stack) | 320 |
+  | `home` | the window's Home; variants `agents` (greeting, composer, waiting, recent, usage), `workday` (the day page) and `aquarium` (the workspace's agents as octopuses; ⌘T starts an agent; no digest readers of its own) | main (also in a stack) | 320 |
 
   Every block at most once; a stack holds main blocks and containers; `agentRail` and `tasksRail` not together. An
   unknown variant reads as the block's first (a later version's variant shows as today's block).

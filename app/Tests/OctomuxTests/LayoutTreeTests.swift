@@ -85,6 +85,13 @@ final class LayoutTreeTests: XCTestCase {
         XCTAssertEqual(tree(#"{"schema":1,"root":{"row":[{"block":"agentRail"},{"block":"tasksRail"},{"block":"workArea"}]}}"#).failure, .twoLists)
     }
 
+    func testAquariumIsTheAgentsWindowWithTheAquariumAsHome() throws {
+        let t = try XCTUnwrap(ShellTree.builtIn("aquarium"))
+        XCTAssertEqual(t.nav, .agents)
+        XCTAssertEqual(t.variant(of: .home), "aquarium")
+        XCTAssertFalse(t.has(.aquariumStrip))
+    }
+
     func testWorkdayIsTheAgentsWindowWithItsOwnHome() throws {
         let w = try XCTUnwrap(ShellTree.builtIn("workday"))
         XCTAssertEqual(w.nav, .agents)
@@ -94,13 +101,14 @@ final class LayoutTreeTests: XCTestCase {
     }
 
     func testClassicLayoutsOnTheEngineKeepTheirParts() throws {
-        for (name, extra) in [("terminal", ShellBlock.sideAgent), ("aquarium", .aquariumStrip)] {
-            let t = try XCTUnwrap(ShellTree.builtIn(name), name)
-            XCTAssertEqual(t.nav, .tabs, name)                               // tabs, as before: ⌘T is a new tab
-            for b in [ShellBlock.projectTree, .tabStrip, .workArea, .sidePanel, .statusBar, extra] { XCTAssertTrue(t.has(b), "\(name) \(b)") }
-        }
+        let t = try XCTUnwrap(ShellTree.builtIn("terminal"))
+        XCTAssertEqual(t.nav, .tabs)                                          // tabs, as before: ⌘T is a new tab
+        for b in [ShellBlock.projectTree, .tabStrip, .workArea, .sidePanel, .statusBar, .sideAgent] { XCTAssertTrue(t.has(b), "\(b)") }
+        // The aquarium strip is a block any tree can place (none of the built-in ones does).
+        let strip = try tree(#"{"schema":1,"root":{"row":[{"block":"projectTree"},{"column":[{"block":"tabStrip"},{"block":"aquariumStrip"},{"block":"workArea"}]}]}}"#).get()
+        XCTAssertTrue(strip.has(.aquariumStrip))
         // Each child of a container keeps one identity while blocks come and go.
-        let keys = try XCTUnwrap(ShellTree.builtIn("aquarium")).root.blocks.map { ShellChild(node: .block($0)).key }
+        let keys = strip.root.blocks.map { ShellChild(node: .block($0)).key }
         XCTAssertEqual(Set(keys).count, keys.count)
     }
 

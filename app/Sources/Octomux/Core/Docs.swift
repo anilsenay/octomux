@@ -132,8 +132,13 @@ extension AppModel {
         if shellNav == .agents, shellTree?.variant(of: .home) == "workday" { shellGoHome(); return }
         openDoc(.workday, workPath: currentProject?.path)
     }
+    /// A new agent with the profile you started last (else your pinned or first one).
+    func newDefaultAgent() { newSession(profileId: (profile(lastNewSessionProfile) ?? pinnedProfiles.first ?? enabledProfiles.first)?.id) }
     /// The aquarium: every agent as an octopus (any layout can open it).
-    func openAquarium() { openDoc(.aquarium, workPath: currentProject?.path) }
+    func openAquarium() {
+        if shellNav == .agents, shellTree?.variant(of: .home) == "aquarium" { shellGoHome(); return }
+        openDoc(.aquarium, workPath: currentProject?.path)
+    }
     func openChanges(scrollTo: String? = nil) { openDoc(.changes, scrollTo: scrollTo) }
     func openCommit(_ hash: String, subject: String) { openDoc(.commit(hash, subject)) }
 

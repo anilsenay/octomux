@@ -4,9 +4,8 @@
 
 - **Layouts**: pick how the window is arranged for the way you work, for the whole app: **Terminal** (the window as
   it always was, still the default), **Agents** (the agents' window below; new Claude and Codex sessions open as
-  chats), **Workday** (the agents' window with the Workday home as its Home), **Minimal** (only the panes) or
-  **Editor** (code next to its agent: its chat on the left, the file in the middle, the Files panel on the right) or
-  **Tasks** (a window of its own, below) or **Aquarium** (the aquarium above the panes). Switch with ⌃⌘1…7, the
+  chats), **Workday** (the agents' window with the Workday home as its Home), **Tasks** (a window of its own,
+  below) or **Aquarium** (the agents' window with the aquarium as its Home). Switch with ⌃⌘1…5, the
   command palette (View → … Layout), or the Layout button the other layouts show in the status bar.
 - **The Agents layout is a window of its own**: a rail of agents on the left by what they need from you (Waiting
   for you, Working, Done, Idle) with their last words and project filter chips, a breadcrumb instead of tabs
@@ -18,7 +17,8 @@
 - **The Tasks layout is a window of its own**: your tasks on a rail on the left by what they need from you (with
   status filters and a New task field, ⌘T), the assistant — or the picked task's agent — in the middle, and the
   picked task in detail on the right: its state, where it works, its agents and what they last said or ask, its pull
-  request and source, subtasks and the next step. ⌘1…8 and ⌘[ / ⌘] go through the tasks (⌘9: the last), ⌘0 opens
+  request and source, subtasks and the next step. Project chips above the rail show one project's tasks, and New
+  task has a project picker. ⌘1…8 and ⌘[ / ⌘] go through the tasks (⌘9: the last), ⌘0 opens
   the assistant (and starts it when there is none).
 - **Layouts as data**: every layout is a tree of rows, columns and stacks over Octomux's own blocks
   (agent rail, tasks rail, project tree, tabs, breadcrumb, work area, Home and its Workday variant, side panel, task
@@ -59,8 +59,9 @@
 - **Default agent** (Settings → Agents) for tasks, the assistant and "Work on it"; each can be started once with
   another agent.
 - **Aquarium**: every agent as a pixel octopus in its project's color, swimming while it works, with a "!" when it
-  waits for you, asleep on the sand when it finished; click one to open it. As a tab (View → Open Aquarium), a
-  strip above the panes, a status bar button, or the Aquarium scene behind the sidebar.
+  waits for you, asleep on the sand when it finished; click one to open it. The Aquarium layout's Home (the agent
+  rail beside it, ⌘0 back, ⌘T starts an agent); elsewhere a tab (View → Open Aquarium), a strip above the panes
+  (its corner button opens the whole aquarium), a status bar button, or the Aquarium scene behind the sidebar.
 - **Settings → Layout**: in each layout, turn off and reorder what the sidebar, its bottom row, the status bar and
   the top bar show; hide the status bar; open new agents as chats. Each layout keeps its own changes (Reset brings
   it back as it comes), and a layout can be exported to a file and imported on another Mac.

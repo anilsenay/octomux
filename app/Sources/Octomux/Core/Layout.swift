@@ -37,7 +37,7 @@ enum LayoutPreset: String, CaseIterable, Identifiable, Codable {
         case .agents: return "Agents up front: a rail of every agent by what it needs from you, a Home to start one and answer the ones waiting; new agents open as chats."
         case .workday: return "The agents' window with your day as its Home: who needs you, what happened while you were away, your pull requests and issues with their next step."
         case .tasks: return "Work in tasks: your tasks on the left by what they need, the assistant (or the picked task's agent) in the middle, the picked task in detail on the right."
-        case .aquarium: return "Every agent as an octopus above the panes: swimming while it works, \"!\" when it waits, asleep when it finished. Click one to open it below."
+        case .aquarium: return "The agents' window with the aquarium as its Home: every agent as an octopus, swimming while it works, \"!\" when it waits, asleep when it finished. Click one to open it; ⌘0 swims back."
         }
     }
     /// ⌃⌘1…
@@ -187,9 +187,8 @@ struct LayoutConfig: Equatable {
             regions[.sidebar] = items(.sidebar, with: ["tasks"], order: ["search", "inbox", "tasks", "projects", "agents"])
             return LayoutConfig(preset: p, regions: regions, statusBar: true, chat: true)
         case .aquarium:
-            regions[.statusRight] = items(.statusRight)   // the aquarium is on screen already
+            regions[.statusRight] = items(.statusRight)   // the aquarium is its Home already
             regions[.paneHeader] = items(.paneHeader, with: ["work"])
-            regions[.views] = items(.views, with: ["aquarium"])
             return LayoutConfig(preset: p, regions: regions, statusBar: true, chat: true)
         }
     }
@@ -443,9 +442,9 @@ extension AppModel {
         saveSelection()
         // The Agents and Workday layouts are the engine's window: their Home is a mode, not a tab (the tab of the
         // same page is closed if it was in front).
-        if p == .agents || p == .workday {
+        if p == .agents || p == .workday || p == .aquarium {
             switch activeDoc?.kind {
-            case .agents?, .workday?: activeDocId = nil
+            case .agents?, .workday?, .aquarium?: activeDocId = nil
             default: break
             }
             shellHome = true

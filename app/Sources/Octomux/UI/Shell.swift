@@ -20,6 +20,7 @@ extension AppModel {
     /// terminal, as in the classic window).
     func shellNew() {
         if shellNav == .agents, shellTree?.has(.home) != true { newSession(profileId: nil); return }
+        if shellNav == .agents, shellTree?.variant(of: .home) == "aquarium" { newDefaultAgent(); return }   // no composer there
         if shellNav == .agents { shellHome = true }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { NotificationCenter.default.post(name: .octomuxShellComposer, object: nil) }
     }
@@ -54,7 +55,8 @@ struct ShellView: View {
     /// Whether a block that shows the agents' digests is on screen: the rail (unless hidden with ⌘B) or Home.
     static func wantsDigests(_ tree: ShellTree, railShown: Bool, homeShown: Bool, detailShown: Bool = false) -> Bool {
         let b = tree.root.blocks
-        return (b.contains(.agentRail) && railShown) || (b.contains(.home) && homeShown)
+        // The aquarium's Home shows moods only (from the sessions), no agent's words.
+        return (b.contains(.agentRail) && railShown) || (b.contains(.home) && homeShown && tree.variant(of: .home) != "aquarium")
             || (b.contains(.taskDetail) && detailShown)
     }
 
@@ -201,7 +203,11 @@ struct ShellView: View {
                 .padding(.trailing, edges.panelRight ? 0 : m.inset)
         case .home:
             Group {
-                if variant == "workday" { WorkdayHomeContent(surface: false) } else { ShellHome() }
+                switch variant {
+                case "workday": WorkdayHomeContent(surface: false)
+                case "aquarium": AquariumHomeView(home: true)
+                default: ShellHome()
+                }
             }
                 .background(CanvasBackground(scene: true))
                 .clipShape(RoundedRectangle(cornerRadius: m.cardR, style: .continuous))

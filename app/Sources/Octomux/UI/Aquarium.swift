@@ -81,6 +81,8 @@ struct AquariumView: View {
     @ObservedObject private var model = AppModel.shared
     var style: Style = .full
     var still = false
+    /// Only the current workspace's agents (as the agent rail beside it lists them).
+    var onlyWorkspace = false
     @State private var hovered: String?
     /// 12 frames a second while you're at it (pixel art moves in steps anyway); one a second behind other apps, or
     /// after 30 s without mouse or keyboard input and no agent changing state — still alive, for about the CPU of a
@@ -127,7 +129,7 @@ struct AquariumView: View {
     ]
 
     private var fish: [AquariumFish] {
-        let agents = model.agentSessions(onlyCurrentWorkspace: style == .backdrop || style == .strip)
+        let agents = model.agentSessions(onlyCurrentWorkspace: onlyWorkspace || style == .backdrop || style == .strip)
             .filter { !$0.isDormant || $0.lastActivityAt > Int(Date().timeIntervalSince1970) - 6 * 3600 }
             .sorted { $0.createdAt < $1.createdAt }
         return agents.prefix(style == .backdrop ? 6 : 24).map { s in
@@ -296,12 +298,14 @@ struct AquariumView: View {
     }
 }
 
-/// The Aquarium tab: the aquarium, with a line saying who does what.
+/// The Aquarium tab, and the Aquarium layout's Home: the aquarium, with a line saying who does what.
 struct AquariumHomeView: View {
     @EnvironmentObject var model: AppModel
+    /// The layout's Home: the workspace's agents (the rail's), and ⌘T starts one.
+    var home = false
     var body: some View {
-        AquariumView(style: .full)
-            .overlay(alignment: .top) { AquariumHeader(big: true).padding(.horizontal, 20).padding(.top, 16) }
+        AquariumView(style: .full, onlyWorkspace: home)
+            .overlay(alignment: .top) { AquariumHeader(big: true, onlyWorkspace: home).padding(.horizontal, 20).padding(.top, 16) }
     }
 }
 
@@ -309,6 +313,7 @@ struct AquariumHomeView: View {
 struct AquariumHeader: View {
     @ObservedObject private var model = AppModel.shared
     var big = false
+    var onlyWorkspace = false
 
     static func counts(_ moods: [AquariumFish.Mood]) -> String {
         let swim = moods.filter { $0 == .working }.count, wait = moods.filter { $0 == .waiting || $0 == .error }.count
@@ -318,15 +323,22 @@ struct AquariumHeader: View {
     }
 
     var body: some View {
-        let agents = model.agentSessions(onlyCurrentWorkspace: !big).filter { !$0.isDormant || $0.lastActivityAt > Int(Date().timeIntervalSince1970) - 6 * 3600 }
+        let agents = model.agentSessions(onlyCurrentWorkspace: !big || onlyWorkspace).filter { !$0.isDormant || $0.lastActivityAt > Int(Date().timeIntervalSince1970) - 6 * 3600 }
         let moods = agents.map(AquariumFish.moodOf)
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Aquarium").font(.system(size: big ? 20 : 13, weight: .semibold))
-                if big { Text(agents.isEmpty ? "An empty reef: start an agent (⌘N)." : "\(agents.count) agent\(agents.count == 1 ? "" : "s"), one reef.").font(T.meta) }
+                if big {
+                    Text(agents.isEmpty ? "An empty reef: start an agent (\(onlyWorkspace ? "⌘T" : "⌘N"))." : "\(agents.count) agent\(agents.count == 1 ? "" : "s"), one reef.\(onlyWorkspace ? " Click one to open it." : "")").font(T.meta)
+                }
             }
             Spacer()
             Text(Self.counts(moods)).font(T.meta)
+            if !big {
+                // The strip: the whole aquarium (the Aquarium layout's Home, else its tab).
+                Button { model.openAquarium() } label: { Image(systemName: "arrow.up.left.and.arrow.down.right").font(T.icon(10, .semibold)) }
+                    .buttonStyle(.plain).pointerCursor().help("The whole aquarium")
+            }
         }
         .foregroundStyle(.white.opacity(0.85))
         .shadow(color: .black.opacity(0.35), radius: 3, y: 1)

@@ -288,7 +288,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if model.shellListNav { openMainWindow(); model.shellNew(); return }   // the engine window: Home's composer, a new task
         model.newSession(profileId: nil)
     }
-    @objc func newAgent(_ s: Any?) { model.newSession(profileId: (model.profile(model.lastNewSessionProfile) ?? model.pinnedProfiles.first ?? model.enabledProfiles.first)?.id) }
+    @objc func newAgent(_ s: Any?) { model.newDefaultAgent() }
     @objc func splitRight(_ s: Any?) { model.newSession(profileId: nil, split: .right) }
     @objc func splitDown(_ s: Any?) { model.newSession(profileId: nil, split: .down) }
     @objc func zoomPane(_ s: Any?) { model.toggleZoom() }

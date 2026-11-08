@@ -38,7 +38,7 @@ final class LayoutTests: XCTestCase {
 
     /// Each layout turns on only the opt-in parts it is about.
     func testLayoutsTurnOnTheirOwnParts() {
-        XCTAssertEqual(LayoutConfig.builtIn(.aquarium).shown(.views), ["aquarium"])
+        XCTAssertEqual(LayoutConfig.builtIn(.aquarium).shown(.views), [])               // its Home is the aquarium: no strip
         XCTAssertEqual(LayoutConfig.builtIn(.tasks).shown(.views), ["tasks"])
         XCTAssertTrue(LayoutConfig.builtIn(.tasks).has("tasks", in: .sidebar))
         for p in [LayoutPreset.agents, .workday, .tasks] {
