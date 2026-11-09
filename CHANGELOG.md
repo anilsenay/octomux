@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Scenes in Low Power Mode**: Settings → Appearance → Scene → In Low Power Mode: Pause (as before) or Keep playing.
+  The scene's note says what it does right now and why (paused: Low Power Mode, the window is hidden…).
 - **Menu bar icon: an orange dot while an agent waits for your input** (also while the octopus swims for another
   agent). The blue dot for unread notifications shows when none waits.
 - **An agent's browser pages close when the agent is removed** (unless another agent works in one or a tab shows

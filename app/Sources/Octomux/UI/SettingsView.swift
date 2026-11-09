@@ -542,6 +542,7 @@ enum SettingsIndex {
             e(.appearance, "Scene", "backdrop background animation ambient"),
             e(.appearance, "Behind terminals", "scene transparent translucent opacity"),
             e(.appearance, "React to agents", "scene glow working"),
+            e(.appearance, "In Low Power Mode", "scene animation battery low power pause keep playing"),
             e(.appearance, "Your scenes", "custom import template"),
             e(.layout, "Layout", "focus agents review minimal terminal mode preset window arrange"),
             e(.layout, "Status bar", "bottom bar hide show items order customize"),

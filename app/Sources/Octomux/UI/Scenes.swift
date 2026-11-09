@@ -167,6 +167,12 @@ final class AmbientClock: ObservableObject {
     static let backgroundFPS = 6.0
 
     @Published private(set) var fps = AmbientClock.activeFPS
+    /// Why the scene runs or stops right now (see `reason`), for Settings.
+    @Published private(set) var state = "active"
+    /// Settings → Appearance → Scene → In Low Power Mode: "play" keeps scenes moving on battery saving.
+    static let lowPowerKey = "appearance.scene_low_power"
+    static var playsInLowPower: Bool { AppModel.shared.setting(lowPowerKey)?.string == "play" }
+    static var lowPowerOn: Bool { ProcessInfo.processInfo.isLowPowerModeEnabled }
     /// Scene time in seconds; only advances while running (faster while agents work).
     private(set) var time: Double = 1000
     /// What the current workspace's agents are doing; backdrops react to it (see AmbientMood).
@@ -200,7 +206,7 @@ final class AmbientClock: ObservableObject {
         guard let w = (NSApp.delegate as? AppDelegate)?.mainWindow else { return "no window" }
         if screensAsleep || !sessionActive { return "screen off" }
         if w.isMiniaturized || !w.occlusionState.contains(.visible) { return "hidden" }
-        if ProcessInfo.processInfo.isLowPowerModeEnabled { return "low power" }
+        if Self.lowPowerOn && !Self.playsInLowPower { return "low power" }
         if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion { return "reduce motion" }
         return NSApp.isActive ? "active" : "background"
     }
@@ -224,7 +230,9 @@ final class AmbientClock: ObservableObject {
     }
 
     func update() {
-        let f = Self.fps(for: reason)
+        let r = reason
+        if r != state { state = r }
+        let f = Self.fps(for: r)
         if f != fps { fps = f }
         let want = views.count > 0 ? f : 0
         if want == 0 { timer?.invalidate(); timer = nil; return }
@@ -1697,10 +1705,49 @@ struct SceneSettingsCard: View {
                         get: { model.scenesReactToAgents },
                         set: { model.setSetting("appearance.scene_reactive", $0 ? nil : false) }))
                 }
+                SceneLowPowerRow()
+                    .settingAnchor("In Low Power Mode")
                 SettingBlock { UserScenesRow() }
                     .settingAnchor("Your scenes")
             }
         }
-        SettingsFootnote("Animates at \(Int(AmbientClock.activeFPS)) fps while Octomux is in front, \(Int(AmbientClock.backgroundFPS)) fps when it is visible behind another app, and stops when the window is hidden, in Low Power Mode, or with Reduce Motion.")
+        SettingsFootnote("Animates at \(Int(AmbientClock.activeFPS)) fps while Octomux is in front, \(Int(AmbientClock.backgroundFPS)) fps when it is visible behind another app, and stops when the window is hidden, in Low Power Mode (unless you keep it playing), or with Reduce Motion. \(SceneLowPower.now(clock.state))")
+    }
+    @ObservedObject private var clock = AmbientClock.shared
+}
+
+/// Settings → Scene: whether scenes keep moving in Low Power Mode, and what the scene does right now.
+enum SceneLowPower {
+    static func now(_ state: String) -> String {
+        switch state {
+        case "active": return "Now: playing."
+        case "background": return "Now: playing slowly (Octomux is behind another app)."
+        case "hidden": return "Now: paused (the window is hidden)."
+        case "low power": return "Now: paused (Low Power Mode)."
+        case "reduce motion": return "Now: paused (Reduce Motion)."
+        case "screen off": return "Now: paused (the screen is off)."
+        default: return ""
+        }
+    }
+}
+
+struct SceneLowPowerRow: View {
+    @EnvironmentObject var model: AppModel
+    @ObservedObject private var clock = AmbientClock.shared
+    var body: some View {
+        let play = model.setting(AmbientClock.lowPowerKey)?.string == "play"
+        SettingRow("In Low Power Mode", desc: AmbientClock.lowPowerOn
+                   ? (play ? "Low Power Mode is on; the scene keeps playing." : "Low Power Mode is on, so the scene is paused.")
+                   : "Pausing saves battery when macOS's Low Power Mode is on.") {
+            Picker("", selection: Binding(get: { play }, set: { v in
+                model.setSettingLocally(AmbientClock.lowPowerKey, v ? .string("play") : nil, scope: "global")
+                model.setSetting(AmbientClock.lowPowerKey, v ? "play" : nil)
+                AmbientClock.shared.update()
+            })) {
+                Text("Pause").tag(false)
+                Text("Keep playing").tag(true)
+            }
+            .labelsHidden().pickerStyle(.segmented).tint(T.accent).fixedSize()
+        }
     }
 }
