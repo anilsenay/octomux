@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Menu bar icon: an orange dot while an agent waits for your input** (also while the octopus swims for another
+  agent). The blue dot for unread notifications shows when none waits.
 - **An agent's browser pages close when the agent is removed** (unless another agent works in one or a tab shows
   it). Before, each stayed open with its web process until closed by hand, and came back after every launch.
   Pages you opened stay.

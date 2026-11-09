@@ -99,6 +99,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private static let monoFrames = rows.map { makeImage($0, palette: monoPalette, template: true) }
     private static let colorDotted = dotted(colorFrames[0], color: .systemBlue, template: false)
     private static let monoDotted = dotted(monoFrames[0], color: .black, template: true)
+    /// An agent waits for your input: an orange dot (the "Needs input" color), on every frame so it stays while the
+    /// octopus swims for another agent. Mono can't show the color (the menu bar tints it): a dot, the tooltip says why.
+    private static let colorWaitingFrames = colorFrames.map { dotted($0, color: .systemOrange, template: false) }
+    private static let monoWaitingFrames = monoFrames.map { dotted($0, color: .black, template: true) }
     private static let fps: Double = 5
     /// The still icon for Settings' preview of each style (the mono one is a template: tint it like the menu bar).
     static func preview(_ style: Style) -> NSImage? {
@@ -112,12 +116,18 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var working = 0
     private var waiting = 0
 
-    private var frames: [NSImage] { style == .mono ? Self.monoFrames : Self.colorFrames }
+    private var frames: [NSImage] {
+        if waiting > 0 { return style == .mono ? Self.monoWaitingFrames : Self.colorWaitingFrames }
+        return style == .mono ? Self.monoFrames : Self.colorFrames
+    }
     private var unread = 0
     private var unreadSub: AnyCancellable?
     private let menu = NSMenu()
-    /// The still icon: with the dot while there are unread notifications.
-    private var restingImage: NSImage { unread > 0 ? (style == .mono ? Self.monoDotted : Self.colorDotted) : frames[0] }
+    /// The still icon: an orange dot while an agent waits for you, else a blue one while there are unread notifications.
+    private var restingImage: NSImage {
+        if waiting == 0, unread > 0 { return style == .mono ? Self.monoDotted : Self.colorDotted }
+        return frames[0]
+    }
 
     func sync(state: DaemonState) {
         let newStyle = AppModel.shared.setting("menubar.style")?.string.flatMap(Style.init(rawValue:)) ?? .color
@@ -148,9 +158,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 if timer == nil { item?.button?.image = restingImage }
             }
         }
-        if restyled || item?.button?.image == nil { item?.button?.image = timer == nil ? restingImage : frames[frame] }
         working = state.sessions.filter { $0.activity == .working && $0.state == .running }.count
+        let wasWaiting = waiting > 0
         waiting = state.sessions.filter { $0.activity == .needsInput && $0.state == .running }.count
+        if restyled || item?.button?.image == nil || wasWaiting != (waiting > 0) {
+            item?.button?.image = timer == nil ? restingImage : frames[frame]
+        }
         item?.button?.toolTip = tooltip
         if working > 0 { startAnimating() } else { stopAnimating() }
     }
@@ -248,7 +261,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     func debugClick() { clicked() }
     var debugImage: NSImage? { item?.button?.image }
     var debugPanelWindow: NSWindow? { panel }
-    func debugState() -> [String: Any] { ["unread": unread, "animating": timer != nil, "dot": timer == nil && unread > 0, "panel": panel != nil] }
+    func debugState() -> [String: Any] {
+        let dot = waiting > 0 ? "waiting" : (timer == nil && unread > 0 ? "unread" : "none")
+        return ["unread": unread, "waiting": waiting, "animating": timer != nil, "dot": dot, "panel": panel != nil]
+    }
 
     // MARK: Menu
 
