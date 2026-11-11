@@ -396,6 +396,9 @@ enum DebugActions {
             case "open_home", "agents_home", "workday": m.openHome()   // View → Home
             case "home":              // value: agents | workday | board | aquarium (Home's preset, as it ships)
                 if let v = p["value"] as? String, let h = HomePreset(rawValue: v) { m.chooseHomePreset(h) }
+            case "order_front":       // value: true (above other apps' windows, not activated: it renders, keys stay) | false
+                let w = (NSApp.delegate as? AppDelegate)?.mainWindow
+                if (p["value"] as? Bool) ?? true { w?.level = .floating; w?.orderFrontRegardless() } else { w?.level = .normal; w?.orderBack(nil) }
             case "in_front":          // value: true | false — the window counts as in front (watched-read checks)
                 AppModel.debugInFront = (p["value"] as? Bool) ?? true
             case "home_customize":    // value: true (start) | false (Done)

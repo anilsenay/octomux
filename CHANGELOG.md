@@ -20,6 +20,9 @@
 - **Keep Mac awake can keep the display on too**: Settings → Sessions → Keep Mac awake → Keep the display on too
   (also in the cup's panel). Off by default, as before: the display turns off after its usual idle time while the
   Mac keeps working behind it.
+- **Agents panel shows each agent's current state**: an agent that moved to another group (needs input → working,
+  working → finished) could keep the old group's mark (an "input" badge, a spinning ring) until you selected
+  another session.
 
 ## 0.5.0
 

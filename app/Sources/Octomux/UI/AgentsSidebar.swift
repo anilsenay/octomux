@@ -231,7 +231,9 @@ struct AgentsList: View {
                                 let key = "s:\(g.rawValue)"
                                 let open = !collapsed.contains(key)
                                 header(g.title, count: list.count, color: g.color, open: open) { toggle(key) }
-                                if open { ForEach(list) { s in AgentRow(session: s, showProject: true) } }
+                                // Identity per group: a session moving between groups (needs input → working) kept
+                                // its row view in the lazy stack, which went on showing the old state's indicator.
+                                if open { ForEach(list) { s in AgentRow(session: s, showProject: true).id("\(g.rawValue):\(s.id)") } }
                             }
                         }
                         if agents.isEmpty { empty }
