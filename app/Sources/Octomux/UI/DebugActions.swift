@@ -908,7 +908,7 @@ enum DebugActions {
                 r.first?.run()
             case "open_settings":
                 SettingsWindow.show(section: SettingsSection(rawValue: p["value"] as? String ?? "Workspaces"))
-            case "close_settings": SettingsWindow.window?.orderOut(nil)
+            case "close_settings": SettingsWindow.window?.close()
             case "settings_height":   // makes Settings tall enough to see a long page at once (screenshots)
                 if let w = SettingsWindow.window {
                     var f = w.frame; let h = CGFloat((p["value"] as? Double) ?? 1600)

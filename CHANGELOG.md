@@ -12,6 +12,9 @@
 - **Finished reviews no longer keep an agent running**: a review's agent that is still up with nobody in it (brought
   back as a conversation after a restart, or one you asked something and left) is stopped after 30 quiet minutes.
   Go to session → Resume brings the conversation back.
+- **Less CPU after closing Settings**: a closed Settings window stayed alive and kept rendering its pages (the
+  breathing previews in Appearance at 30 fps, and every page on each change): about half a core until Octomux was
+  restarted. Closing it now lets it go; it reopens where it was.
 
 ## 0.5.0
 

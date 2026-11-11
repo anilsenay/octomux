@@ -66,6 +66,19 @@ enum SettingsSection: String, CaseIterable, Identifiable {
 final class SettingsWindow {
     static var window: NSWindow?
     static let selection = SettingsSelection()
+    /// Where the window was when it was last closed (a reopened one comes back there, as before).
+    private static var lastFrame: NSRect?
+    private static var closeToken: Any?
+
+    /// Closing lets the window and its pages go: a closed window kept rendering them — the workspace-mark
+    /// previews in Appearance breathe at 30 fps — and re-rendered every page on each model change (~50% CPU).
+    private static func closed() {
+        guard let w = window else { return }
+        lastFrame = w.frame
+        if let t = closeToken { NotificationCenter.default.removeObserver(t); closeToken = nil }
+        w.contentView = nil
+        window = nil
+    }
 
     static func show(section: SettingsSection? = nil) {
         if let section { selection.section = section; selection.query = ""; selection.project = nil; selection.eventsSession = nil }
@@ -79,8 +92,11 @@ final class SettingsWindow {
             w.isReleasedWhenClosed = false
             w.minSize = NSSize(width: 760, height: 480)
             w.contentView = NSHostingView(rootView: SettingsView().environmentObject(AppModel.shared).environmentObject(selection))
-            w.center()
+            if let f = lastFrame { w.setFrame(f, display: false) } else { w.center() }
             window = w
+            closeToken = NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: w, queue: .main) { _ in
+                MainActor.assumeIsolated { closed() }
+            }
         }
         window?.makeKeyAndOrderFront(nil)
     }
