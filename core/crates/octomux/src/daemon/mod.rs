@@ -511,6 +511,7 @@ impl Daemon {
         let inputs = power::Inputs {
             mode: power::Mode::parse(self.setting("power.keep_awake", None).as_ref()),
             working,
+            display: b("power.display"),
             lid: b("power.lid"),
             lid_on_battery: b("power.lid_on_battery"),
             lid_max: self.lid_hours("power.lid_max_hours", power::DEFAULT_LID_HOURS),

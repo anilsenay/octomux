@@ -11,6 +11,8 @@ final class KeepAwake: ObservableObject {
         var active = false
         var working = 0
         var grace = false
+        /// The display stays on too (`power.display`); otherwise it turns off as usual and only the Mac stays up.
+        var display = false
         var lidEnabled = false
         var lidSetup = false
         var lidActive = false
@@ -62,6 +64,7 @@ final class KeepAwake: ObservableObject {
             let lid = d["lid"] as? [String: Any] ?? [:]
             let s = Status(mode: d["mode"] as? String ?? "off", active: d["active"] as? Bool ?? false,
                            working: (d["working"] as? NSNumber)?.intValue ?? 0, grace: d["grace"] as? Bool ?? false,
+                           display: d["display"] as? Bool ?? false,
                            lidEnabled: lid["enabled"] as? Bool ?? false, lidSetup: lid["setup"] as? Bool ?? false,
                            lidActive: lid["active"] as? Bool ?? false, onAC: lid["on_ac"] as? Bool ?? true,
                            lidOnBattery: lid["on_battery_allowed"] as? Bool ?? false,
@@ -85,6 +88,12 @@ final class KeepAwake: ObservableObject {
     func setLid(_ on: Bool) {
         AppModel.shared.setSetting("power.lid", on ? true : nil)
         status.lidEnabled = on
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { self.refresh() }
+    }
+
+    func setDisplay(_ on: Bool) {
+        AppModel.shared.setSetting("power.display", on ? true : nil)
+        status.display = on
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { self.refresh() }
     }
 
@@ -133,6 +142,7 @@ final class KeepAwake: ObservableObject {
         } else {
             t = "Keep Mac awake while agents work · no agent working now"
         }
+        if s.display && s.active { t += " · display on" }
         if s.lidActive { t += " · also with the lid closed" }
         return t
     }
@@ -268,6 +278,14 @@ struct KeepAwakePanel: View {
                 .padding(.leading, 24)
             }
             .padding(.horizontal, 9).padding(.vertical, 6)
+            HStack(spacing: 8) {
+                Image(systemName: "display").font(T.icon(11)).foregroundStyle(T.text3).frame(width: 16)
+                Text("Keep the display on too").font(.system(size: T.k * 13)).foregroundStyle(s.mode == "off" ? T.text3 : T.text)
+                Spacer(minLength: 4)
+                Toggle("", isOn: Binding(get: { s.display }, set: { awake.setDisplay($0) }))
+                    .toggleStyle(.switch).controlSize(.mini).labelsHidden().tint(T.accent).disabled(s.mode == "off")
+            }
+            .padding(.horizontal, 9).padding(.vertical, 6)
             PanelDivider()
             if s.lidSetup {
                 VStack(alignment: .leading, spacing: 6) {
@@ -327,7 +345,7 @@ struct KeepAwakeSettings: View {
     @EnvironmentObject var model: AppModel
     var body: some View {
         let s = awake.status
-        SettingsGroup("Keep Mac awake", desc: "Stops the Mac from sleeping on its own while agents run, so long jobs finish. The display can still turn off. Also in the status bar (the cup).") {
+        SettingsGroup("Keep Mac awake", desc: "Stops the Mac from sleeping on its own while agents run, so long jobs finish. The display still turns off, unless you keep it on below. Also in the status bar (the cup).") {
             SettingRow("Keep awake", desc: s.mode == "agents" ? "While at least one agent is working, and two minutes after (pauses between steps). An agent waiting for your answer does not count." : nil) {
                 Picker("", selection: Binding(get: { s.mode }, set: { awake.setMode($0) })) {
                     ForEach(KeepAwake.modes, id: \.id) { Text($0.title).tag($0.id) }
@@ -340,6 +358,9 @@ struct KeepAwakeSettings: View {
                     if s.until != nil { Divider(); Button("Stop Now") { awake.stopTimer() } }
                 } label: { Text(s.until.map { "Until \(KeepAwake.clock($0))" } ?? "Choose…").font(.system(size: T.k * 13)) }
                 .menuStyle(.button).fixedSize()
+            }
+            SettingRow("Keep the display on too", desc: "Off: the display turns off after its usual idle time and the Mac keeps working behind it (it does not sleep). On: the display stays on while the Mac is kept awake.") {
+                Toggle("", isOn: Binding(get: { s.display }, set: { awake.setDisplay($0) })).labelsHidden().toggleStyle(.switch).tint(T.accent)
             }
             if s.mode != "off" {
                 SettingRow("Now", desc: nil) {

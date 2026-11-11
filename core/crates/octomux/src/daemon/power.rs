@@ -2,7 +2,8 @@
 //!
 //! `power.keep_awake`: "off" (default), "agents" (while an agent is working, plus a short grace so pauses
 //! between steps don't count) or "always". While active the daemon holds `caffeinate -i -s -w <daemon pid>`:
-//! no idle sleep (the display may still sleep), released by macOS itself if the daemon dies.
+//! no idle sleep (the display may still sleep), released by macOS itself if the daemon dies. `power.display`: the
+//! display stays on too (`-d`).
 //!
 //! `power.lid`: also when the lid is closed. macOS ignores assertions on lid close; only the system-wide
 //! `pmset -a disablesleep 1` (root) holds it, through a sudoers rule limited to that command that the user
@@ -31,6 +32,8 @@ pub struct Keeper {
 #[derive(Default)]
 struct Inner {
     caffeinate: Option<Child>,
+    /// The running caffeinate also holds the display on (`-d`).
+    caffeinate_display: bool,
     /// We set `disablesleep 1` (and must put it back).
     lid_set: bool,
     last_working: Option<Instant>,
@@ -95,9 +98,21 @@ pub fn should_hold(mode: Mode, working: usize, since_working: Option<Duration>) 
     }
 }
 
+/// caffeinate's arguments: no idle or system sleep (and no display sleep with `display`), until `pid` exits.
+pub fn caffeinate_args(pid: u32, display: bool) -> Vec<String> {
+    let mut a: Vec<String> = vec!["-i".into(), "-s".into()];
+    if display {
+        a.push("-d".into());
+    }
+    a.extend(["-w".into(), pid.to_string()]);
+    a
+}
+
 pub struct Inputs {
     pub mode: Mode,
     pub working: usize,
+    /// Keep the display on too while holding (`power.display`).
+    pub display: bool,
     pub lid: bool,
     pub lid_on_battery: bool,
     /// Longest closed-lid time on the power adapter / on battery. None: no limit.
@@ -121,15 +136,22 @@ impl Keeper {
         }
         let hold = should_hold(i.mode, i.working, s.last_working.map(|t| t.elapsed()));
 
-        // caffeinate: started when needed, restarted if it died.
+        // caffeinate: started when needed, restarted if it died or the display choice changed.
         if let Some(c) = s.caffeinate.as_mut() {
             if !matches!(c.try_wait(), Ok(None)) {
                 s.caffeinate = None;
             }
         }
+        if hold && s.caffeinate_display != i.display {
+            if let Some(mut c) = s.caffeinate.take() {
+                let _ = c.kill();
+                let _ = c.wait();
+            }
+        }
         if hold && s.caffeinate.is_none() {
+            s.caffeinate_display = i.display;
             s.caffeinate = Command::new("/usr/bin/caffeinate")
-                .args(["-i", "-s", "-w", &std::process::id().to_string()])
+                .args(caffeinate_args(std::process::id(), i.display))
                 .stdin(Stdio::null())
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
@@ -184,6 +206,7 @@ impl Keeper {
             "active": hold && s.caffeinate.is_some(),
             "working": i.working,
             "grace": i.mode == Mode::Agents && hold && i.working == 0,
+            "display": i.display,
             "lid": { "enabled": i.lid, "setup": setup, "active": s.lid_set, "on_ac": on_ac, "on_battery_allowed": i.lid_on_battery,
                      "max_hours": i.lid_max.map(|d| d.as_secs() / 3600).unwrap_or(0),
                      "max_hours_battery": i.lid_max_battery.map(|d| d.as_secs() / 3600).unwrap_or(0), "stopped": s.tripped },
@@ -398,6 +421,12 @@ fn thermal_pressure() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn caffeinate_keeps_the_display_on_only_when_asked() {
+        assert_eq!(caffeinate_args(42, false), ["-i", "-s", "-w", "42"]);
+        assert_eq!(caffeinate_args(42, true), ["-i", "-s", "-d", "-w", "42"]);
+    }
 
     #[test]
     fn modes_and_grace() {

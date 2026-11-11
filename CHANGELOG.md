@@ -17,6 +17,9 @@
   restarted. Closing it now lets it go; it reopens where it was.
 - **Breathing workspace marks run in Core Animation**: the "Bar, breathing" and "Glow, breathing" marks (and their
   previews in Settings → Appearance) re-rendered the whole window, or the whole Settings page, 30 times a second.
+- **Keep Mac awake can keep the display on too**: Settings → Sessions → Keep Mac awake → Keep the display on too
+  (also in the cup's panel). Off by default, as before: the display turns off after its usual idle time while the
+  Mac keeps working behind it.
 
 ## 0.5.0
 
