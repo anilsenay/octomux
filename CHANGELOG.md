@@ -15,6 +15,8 @@
 - **Less CPU after closing Settings**: a closed Settings window stayed alive and kept rendering its pages (the
   breathing previews in Appearance at 30 fps, and every page on each change): about half a core until Octomux was
   restarted. Closing it now lets it go; it reopens where it was.
+- **Breathing workspace marks run in Core Animation**: the "Bar, breathing" and "Glow, breathing" marks (and their
+  previews in Settings → Appearance) re-rendered the whole window, or the whole Settings page, 30 times a second.
 
 ## 0.5.0
 

@@ -160,3 +160,98 @@ struct SpinningSymbol: NSViewRepresentable {
         }
     }
 }
+
+/// The workspace switcher's breathing mark (WorkspaceMark .barBreathing / .glowBreathing), laid over or behind the
+/// icon's `width` × 24 frame: the bar under it or the glow behind it, fading 0.35 → 1 and back every 2.6 s (the glow
+/// also grows 0.85 → 1). Every mark breathes in step (the phase comes from the clock), like the SwiftUI version did.
+struct BreathingMark: NSViewRepresentable {
+    enum Kind { case bar, glow }
+    let kind: Kind
+    let color: NSColor
+
+    func makeNSView(context: Context) -> MarkView { MarkView(kind: kind) }
+    func updateNSView(_ v: MarkView, context: Context) { v.color = color }
+
+    final class MarkView: NSView {
+        static let period: CFTimeInterval = 2.6
+        let kind: Kind
+        /// Holds the art and breathes (opacity); the glow's blur sits here so the scaled rectangle stays soft.
+        private let holder = CALayer()
+        private let shape = CALayer()
+        var color: NSColor = .clear { didSet { paint() } }
+
+        init(kind: Kind) {
+            self.kind = kind
+            super.init(frame: .zero)
+            wantsLayer = true
+            layer?.masksToBounds = false
+            holder.masksToBounds = false
+            shape.cornerCurve = .continuous
+            holder.addSublayer(shape)
+            layer?.addSublayer(holder)
+            if kind == .glow, let blur = CIFilter(name: "CIGaussianBlur") {
+                layerUsesCoreImageFilters = true
+                blur.setValue(4, forKey: kCIInputRadiusKey)
+                holder.filters = [blur]
+            }
+        }
+        required init?(coder: NSCoder) { fatalError() }
+        override var isFlipped: Bool { true }
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        private func paint() {
+            effectiveAppearance.performAsCurrentDrawingAppearance {
+                let c = NSColor(cgColor: color.cgColor) ?? color
+                shape.backgroundColor = (kind == .glow ? c.withAlphaComponent(c.alphaComponent * 0.32) : c).cgColor
+            }
+        }
+
+        override func viewDidChangeEffectiveAppearance() {
+            super.viewDidChangeEffectiveAppearance()
+            paint()
+        }
+
+        override func layout() {
+            super.layout()
+            CATransaction.begin(); CATransaction.setDisableActions(true)
+            holder.frame = bounds
+            switch kind {
+            case .bar:   // Capsule 10 × 2.5, its bottom 1 pt above the frame's bottom.
+                shape.bounds = CGRect(x: 0, y: 0, width: 10, height: 2.5)
+                shape.cornerRadius = 1.25
+                shape.position = CGPoint(x: bounds.midX, y: bounds.height - 1 - 1.25)
+            case .glow:  // Rounded rectangle (radius 6) inset 3.
+                shape.bounds = CGRect(x: 0, y: 0, width: max(0, bounds.width - 6), height: max(0, bounds.height - 6))
+                shape.cornerRadius = 6
+                shape.position = CGPoint(x: bounds.midX, y: bounds.midY)
+            }
+            CATransaction.commit()
+            animate()
+        }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            paint()
+            animate()
+        }
+
+        private func animate() {
+            guard window != nil, holder.animation(forKey: "breath") == nil else { return }
+            // 0 → 1 → 0 eased like 0.5 − 0.5·cos (sine in-out), starting where the clock says.
+            let ease = CAMediaTimingFunction(controlPoints: 0.37, 0, 0.63, 1)
+            func breathe(_ key: String, _ from: Double, _ to: Double) -> CABasicAnimation {
+                let a = CABasicAnimation(keyPath: key)
+                a.fromValue = from; a.toValue = to
+                a.duration = Self.period / 2
+                a.autoreverses = true
+                a.repeatCount = .infinity
+                a.timingFunction = ease
+                a.timeOffset = CACurrentMediaTime().truncatingRemainder(dividingBy: Self.period)
+                a.isRemovedOnCompletion = false
+                return a
+            }
+            holder.add(breathe("opacity", 0.35, 1), forKey: "breath")
+            if kind == .glow { shape.add(breathe("transform.scale", 0.85, 1), forKey: "breath") }
+        }
+    }
+}
