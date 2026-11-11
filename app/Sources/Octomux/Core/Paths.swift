@@ -10,6 +10,12 @@ enum Paths {
     static let homeVar = "OCTOMUX_HOME"
     /// Whether the data directory was chosen by the environment (dev/fixture runs: no launchd agent).
     static var homeFromEnv: Bool { env("HOME") != nil }
+    /// The data directory is one of the user's real ones (in ~/Library/Application Support), even when the
+    /// environment names it: terminals inside Octomux export the real OCTOMUX_HOME.
+    static var homeIsUsers: Bool {
+        let support = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support")
+        return home.standardizedFileURL.resolvingSymlinksInPath().path.hasPrefix(support.standardizedFileURL.resolvingSymlinksInPath().path + "/")
+    }
 
     /// The "Octomux Dev" build (`OctomuxVariant` = dev in Info.plist): its own data folder, launchd agent and
     /// bundle id, so it runs next to an installed Octomux. Exported as `OCTOMUX_VARIANT=dev` at launch so the

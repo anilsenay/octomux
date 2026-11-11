@@ -102,7 +102,9 @@ final class DaemonClient {
 
     /// Unit tests without their own OCTOMUX_HOME: the default home is the user's, so no call reaches (or starts, or
     /// re-points the launchd agent of) the user's daemon. Settings the tests set stay in the test's model.
-    static let isolated = NSClassFromString("XCTestCase") != nil && !Paths.homeFromEnv
+    /// An OCTOMUX_HOME in Application Support is the user's too: a terminal inside Octomux exports the real one, and
+    /// `swift test` run there wrote the tests' layouts into the user's settings.
+    static let isolated = NSClassFromString("XCTestCase") != nil && (!Paths.homeFromEnv || Paths.homeIsUsers)
 
     /// Points the client at another host; the subscription loop reconnects.
     func switchHost(_ h: Host) {
