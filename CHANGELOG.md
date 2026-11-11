@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.1
 
 - **Scenes in Low Power Mode**: Settings → Appearance → Scene → In Low Power Mode: Pause (as before) or Keep playing.
   The scene's note says what it does right now and why (paused: Low Power Mode, the window is hidden…).
