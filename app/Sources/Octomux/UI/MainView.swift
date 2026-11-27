@@ -396,6 +396,10 @@ struct ErrorBanner: View {
 struct TopBar: View {
     @EnvironmentObject var model: AppModel
     @ObservedObject var git = GitInfo.shared
+    /// The right-hand tools' and the new-session button's measured widths (they grow with the diff count,
+    /// the Open in app and the commit button), so the tabs never push them off the bar.
+    @State private var toolsW: CGFloat = 0
+    @State private var newBtnW: CGFloat = 0
 
     var body: some View {
         GeometryReader { geo in content(width: geo.size.width) }
@@ -406,15 +410,23 @@ struct TopBar: View {
     private func layout(width: CGFloat) -> (chars: Int, compact: Bool, visible: Int, tabW: CGFloat) {
         let leading: CGFloat = model.sidebarVisible ? 8 : TopLeftControls.width + 8
         let compact = width < 820
-        let tools: CGFloat = compact ? 130 : 250          // diff, open in, commit, panel
-        let newBtn: CGFloat = 52
-        let avail = max(120, width - leading - tools - newBtn - 30)
+        // Measured once drawn; the estimates cover the first frame.
+        let tools: CGFloat = toolsW > 0 ? toolsW : (compact ? 130 : 250)   // diff, open in, commit, panel
+        let newBtn: CGFloat = model.currentProject == nil ? 0 : (newBtnW > 0 ? newBtnW : 52)
+        // Trailing padding, the bar's gaps between its groups, the drag area's minimum and the segment style's padding.
+        let gaps: CGFloat = 10 + 6 * 4 + 8 + (T.m.tabStyle == .segment ? 6 : 0)
+        let avail = max(120, width - leading - tools - newBtn - gaps)
         let tabMin: CGFloat = 140, tabMax: CGFloat = 220
+        let spacing: CGFloat = T.m.tabStyle == .underline ? 0 : 4
+        let more: CGFloat = 44 + spacing                    // the "+N" menu
         let pinned = model.currentTabs.filter(model.isPinned).count
         let avail2 = pinned > 0 ? avail - CGFloat(pinned) * (PinnedTabChip.width + 2) - 20 : avail
         let count = model.currentTabs.count - pinned + model.currentDocs.count
-        let visible = max(1, min(max(count, 1), Int(max(avail2, tabMin) / tabMin)))
-        let tabW = max(tabMin, min(tabMax, (max(avail2, tabMin) - (visible < count ? 44 : 0)) / CGFloat(max(1, visible))))
+        func fits(_ room: CGFloat) -> Int { Int((max(room, tabMin) + spacing) / (tabMin + spacing)) }
+        var visible = max(1, min(max(count, 1), fits(avail2)))
+        if visible < count { visible = max(1, fits(avail2 - more)) }
+        let room = max(avail2, tabMin) - (visible < count ? more : 0) - spacing * CGFloat(visible - 1)
+        let tabW = max(tabMin, min(tabMax, room / CGFloat(max(1, visible))))
         return (max(4, Int((tabW - 60) / 7)), compact, visible, tabW)
     }
 
@@ -478,7 +490,10 @@ struct TopBar: View {
             .padding(m.tabStyle == .segment ? 3 : 0)
             .background(m.tabStyle == .segment && !(model.currentTabs.isEmpty && docs.isEmpty) ? RoundedRectangle(cornerRadius: 10, style: .continuous).fill(T.hover) : nil)
             .fixedSize()
-            if model.currentProject != nil { NewSessionButton() }
+            if model.currentProject != nil {
+                NewSessionButton()
+                    .background(GeometryReader { g in Color.clear.onAppear { newBtnW = g.size.width }.onChange(of: g.size.width) { _, w in newBtnW = w } })
+            }
             // Only empty top-bar space moves the window; a window-wide drag view under the tabs would
             // swallow their mouse-down and drag the window instead of the tab.
             WindowDragArea().frame(minWidth: 8, maxWidth: .infinity)
@@ -487,6 +502,7 @@ struct TopBar: View {
                 ForEach(model.layout.shown(.topBar), id: \.self) { id in toolItem(id, compact: fit.compact) }
             }
             .fixedSize()
+            .background(GeometryReader { g in Color.clear.onAppear { toolsW = g.size.width }.onChange(of: g.size.width) { _, w in toolsW = w } })
         }
         .font(.system(size: T.k * 13))
         .foregroundStyle(T.text2)
