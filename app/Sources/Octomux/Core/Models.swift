@@ -32,7 +32,13 @@ struct Project: Codable, Identifiable, Equatable {
 }
 
 enum AgentKind: String, Codable, CaseIterable {
-    case claude, codex, generic
+    case claude, codex, antigravity, generic
+
+    /// A kind this version doesn't know (a newer daemon, e.g. on a remote host) reads as generic, so the whole
+    /// state still decodes.
+    init(from decoder: Decoder) throws {
+        self = AgentKind(rawValue: try decoder.singleValueContainer().decode(String.self)) ?? .generic
+    }
 }
 
 struct Profile: Codable, Identifiable, Equatable {

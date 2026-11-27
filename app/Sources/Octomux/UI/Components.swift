@@ -240,6 +240,11 @@ struct AgentIcon: View {
         case "gemini":
             brand("gemini", AnyShapeStyle(LinearGradient(colors: [Color(hex: "#4796E3"), Color(hex: "#9177C7"), Color(hex: "#CA6673")],
                                                          startPoint: .topLeading, endPoint: .bottomTrailing)))
+        case "antigravity":
+            // No brand mark to use: a plain arch in Google's colors.
+            AntigravityMark().fill(LinearGradient(colors: [Color(hex: "#4285F4"), Color(hex: "#34A853"), Color(hex: "#FBBC04"), Color(hex: "#EA4335")],
+                                                  startPoint: .bottomLeading, endPoint: .bottomTrailing))
+                .frame(width: size, height: size * 0.9)
         case "terminal":
             Image(systemName: "apple.terminal").font(.system(size: T.k * size * 0.92, weight: .regular)).foregroundStyle(T.text2)
                 .frame(width: size + 2, height: size)
@@ -1173,5 +1178,24 @@ struct RowBackground: View {
                     Capsule().fill(T.accent).frame(width: 2.5).padding(.vertical, 6).offset(x: 1)
                 }
             }
+    }
+}
+
+/// The Antigravity agent's icon: an arch (two legs joined by a round top).
+struct AntigravityMark: Shape {
+    func path(in r: CGRect) -> Path {
+        let w = r.width, h = r.height, leg = w * 0.3
+        var p = Path()
+        p.move(to: CGPoint(x: r.minX, y: r.maxY))
+        p.addLine(to: CGPoint(x: r.minX, y: r.minY + w / 2))
+        p.addArc(center: CGPoint(x: r.midX, y: r.minY + w / 2), radius: w / 2, startAngle: .degrees(180), endAngle: .degrees(0), clockwise: false)
+        p.addLine(to: CGPoint(x: r.maxX, y: r.maxY))
+        p.addLine(to: CGPoint(x: r.maxX - leg, y: r.maxY))
+        p.addLine(to: CGPoint(x: r.maxX - leg, y: r.minY + w / 2))
+        p.addArc(center: CGPoint(x: r.midX, y: r.minY + w / 2), radius: w / 2 - leg, startAngle: .degrees(0), endAngle: .degrees(180), clockwise: true)
+        p.addLine(to: CGPoint(x: r.minX + leg, y: r.maxY))
+        p.closeSubpath()
+        _ = h
+        return p
     }
 }

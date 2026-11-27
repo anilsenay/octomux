@@ -506,10 +506,23 @@ final class InboxReviews: ObservableObject {
                     "--permission-mode", "default"]
         case .codex:
             return restricted ? ["exec", "--sandbox", "read-only"] : ["exec"]
+        case .antigravity:
+            // Headless agy refuses what it would have to ask about; these rules let git's reading commands through
+            // (as typed, and with --no-pager). Restricted: plan mode too (no edits). The daemon puts the prompt in -p=.
+            let read = antigravityGit.flatMap { ["command(git \($0))", "command(git --no-pager \($0))"] }
+            let settings = String(decoding: (try? JSONSerialization.data(withJSONObject: ["permissions": ["allow": read]])) ?? Data("{}".utf8), as: UTF8.self)
+            return (restricted ? ["--mode", "plan"] : []) + ["--settings", settings, "-p"]
         default:
             return []
         }
     }
+
+    /// git's reading commands an agy review may run (not `branch`: it also makes branches).
+    static let antigravityGit = ["show", "log", "diff", "status", "blame", "ls-files", "ls-tree", "rev-parse", "grep", "cat-file", "merge-base", "shortlog", "describe"]
+    /// Headless agy ends its turn without an answer at the first command it may not run, and refuses a whole command
+    /// line when any part isn't allowed (`git show && echo`).
+    static let antigravityNote = "\n\nOnly these commands run: " + antigravityGit.map { "git \($0)" }.joined(separator: ", ")
+        + ". Run each on its own, one per tool call: no &&, ;, pipes, redirects or other programs (anything else ends the review without an answer). Read files with your file tools."
 
     /// Fetches the pull request's head and base, checks the head out detached in the review worktree (made once per
     /// pull request, moved to the new head when it is clean), and counts the changed lines.
@@ -581,12 +594,13 @@ final class InboxReviews: ObservableObject {
 
     static func launchAgent(_ r: InboxReviewRun, _ prompt: String, _ select: Bool, _ done: @escaping (String?) -> Void) {
         let model = AppModel.shared
-        let usable = model.enabledProfiles.filter { $0.kind == .claude || $0.kind == .codex }
+        let usable = model.enabledProfiles.filter { $0.kind == .claude || $0.kind == .codex || $0.kind == .antigravity }
         guard let path = r.path,
               let profile = r.profileId.flatMap({ id in usable.first { $0.id == id } })
                 ?? UserDefaults.standard.string(forKey: InboxPrefs.profile).flatMap({ id in usable.first { $0.id == id } })
                 ?? usable.first(where: { $0.kind == .claude }) ?? usable.first
         else { done(nil); return }
+        let prompt = profile.kind == .antigravity ? prompt + antigravityNote : prompt
         model.newSession(profileId: profile.id, projectId: r.projectId, worktree: path, prompt: prompt, chat: true,
                          extraArgs: agentArgs(profile.kind), select: select) { sid in
             ChatFirstMessage.set(sid, prompt)
@@ -627,9 +641,10 @@ final class InboxReviews: ObservableObject {
     static func result(transcriptTail: String) -> InboxReviewResult? {
         for line in transcriptTail.split(separator: "\n").reversed() {
             guard line.contains("findings"), let obj = try? JSONSerialization.jsonObject(with: Data(line.utf8)) else { continue }
-            // Only what the agent said: an assistant message (Claude: type assistant; Codex: role assistant).
+            // Only what the agent said: an assistant message (Claude: type assistant; Codex: role assistant; agy: a
+            // PLANNER_RESPONSE step).
             let text = "\(line)"
-            guard text.contains("\"assistant\"") else { continue }
+            guard text.contains("\"assistant\"") || text.contains("\"PLANNER_RESPONSE\"") else { continue }
             for s in strings(obj).reversed() where s.contains("findings") {
                 if let r = parse(s) { return r }
             }

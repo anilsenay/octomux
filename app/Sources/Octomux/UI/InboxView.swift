@@ -2447,7 +2447,7 @@ struct InboxSettings: View {
             SettingRow("Agent in a new worktree", desc: "In a new tab you pick it on the new-session screen.") {
                 Picker("", selection: $profileId) {
                     Text("The last one used").tag("")
-                    ForEach(model.enabledProfiles.filter { $0.kind == .claude || $0.kind == .codex }) { p in Text(p.name).tag(p.id) }
+                    ForEach(model.enabledProfiles.filter { $0.kind == .claude || $0.kind == .codex || $0.kind == .antigravity }) { p in Text(p.name).tag(p.id) }
                 }.labelsHidden().fixedSize()
             }
             if jiraConnected {
@@ -3423,7 +3423,7 @@ struct InboxRuleEditor: View {
                     Text("Agent").foregroundStyle(T.text2)
                     Picker("", selection: $rule.profileId) {
                         Text("The Inbox's agent").tag(String?.none)
-                        ForEach(model.enabledProfiles.filter { $0.kind == .claude || $0.kind == .codex }) { p in Text(p.name).tag(String?(p.id)) }
+                        ForEach(model.enabledProfiles.filter { $0.kind == .claude || $0.kind == .codex || $0.kind == .antigravity }) { p in Text(p.name).tag(String?(p.id)) }
                     }.labelsHidden()
                 }
             }

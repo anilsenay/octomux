@@ -16,6 +16,9 @@ enum ResumeFlags {
         case .codex:
             return [Shortcut(flag: "--search", title: "Web search"),
                     Shortcut(flag: "--dangerously-bypass-approvals-and-sandbox", title: "No approvals or sandbox")]
+        case .antigravity:
+            return [Shortcut(flag: "--dangerously-skip-permissions", title: "Skip permission prompts"),
+                    Shortcut(flag: "--sandbox", title: "Sandbox terminal commands")]
         default:
             return []
         }
@@ -115,6 +118,7 @@ struct ResumeFlagsView: View {
         switch profile?.kind {
         case .codex: return cmd + " resume " + id
         case .claude: return cmd + " --resume " + id
+        case .antigravity: return cmd + " --conversation " + id
         default: return cmd
         }
     }

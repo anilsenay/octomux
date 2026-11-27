@@ -53,6 +53,7 @@ final class ChatModel: ObservableObject {
         offset = 0
         partial = Data()
         toolIndex = [:]
+        agyPending = []
         pendingContext = ChatContext()
         context = ChatContext()
         poll()
@@ -120,6 +121,14 @@ final class ChatModel: ObservableObject {
 
     private func ingest(_ line: Data, into out: inout [ChatItem]) {
         guard let o = try? JSONSerialization.jsonObject(with: line) as? [String: Any], let type = o["type"] as? String else { return }
+        // agy (Antigravity CLI): numbered steps.
+        if o["step_index"] != nil {
+            lineTs = o["created_at"] as? String ?? ""
+            let start = out.count
+            ingestAntigravity(o, type: type, into: &out)
+            stamp(&out, from: start)
+            return
+        }
         lineTs = o["timestamp"] as? String ?? ""
         let start = out.count
         defer { stamp(&out, from: start) }
@@ -179,6 +188,62 @@ final class ChatModel: ObservableObject {
             }
         default: break
         }
+    }
+
+    /// The agy tool still waiting for its result (`GENERIC` steps follow the calls in order).
+    private var agyPending: [Int] = []
+
+    /// agy transcript steps: the request (inside `<USER_REQUEST>`), the model's replies with thinking and tool calls,
+    /// and `GENERIC` steps carrying each call's result.
+    private func ingestAntigravity(_ o: [String: Any], type: String, into out: inout [ChatItem]) {
+        let content = o["content"] as? String ?? ""
+        switch type {
+        case "USER_INPUT":
+            guard (o["source"] as? String) == "USER_EXPLICIT" else { return }
+            let text = Self.between(content, "<USER_REQUEST>", "</USER_REQUEST>") ?? content
+            appendUser(text, &out)
+        case "PLANNER_RESPONSE":
+            if let m = o["model"] as? String { pendingContext.model = m }
+            let used = Self.int(o["input_tokens"]) + Self.int(o["cache_read_tokens"]) + Self.int(o["output_tokens"])
+            if used > 0 { pendingContext.used = used }
+            let thought = (o["thinking"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if !thought.isEmpty { out.append(ChatItem(id: newId(), kind: .thinking, text: thought)) }
+            let text = content.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !text.isEmpty { out.append(ChatItem(id: newId(), kind: .assistant, text: text)) }
+            for call in (o["tool_calls"] as? [[String: Any]]) ?? [] {
+                let name = call["name"] as? String ?? "tool"
+                let input = Self.antigravityArgs(call["args"] as? [String: Any] ?? [:])
+                agyPending.append(out.count)
+                out.append(ChatItem(id: newId(), kind: .tool, text: name, tool: name, detail: Self.summary(name, input), input: Self.inputJSON(input)))
+            }
+        case "GENERIC":
+            guard !agyPending.isEmpty else { return }
+            let i = agyPending.removeFirst()
+            guard i < out.count else { return }
+            // Each result starts with its run times ("Created At: …", "Completed At: …").
+            let lines = content.components(separatedBy: "\n").drop { $0.hasPrefix("Created At:") || $0.hasPrefix("Completed At:") }
+            out[i].result = lines.joined(separator: "\n")
+            out[i].failed = (o["status"] as? String).map { $0 != "DONE" } ?? false
+        default: break
+        }
+    }
+
+    /// agy writes each argument as JSON text (`"\"/tmp/a.txt\""`); read them back, with the keys the summary knows.
+    static func antigravityArgs(_ args: [String: Any]) -> [String: Any] {
+        let keys = ["Path": "file_path", "AbsolutePath": "file_path", "TargetFile": "file_path", "File": "file_path",
+                    "CommandLine": "command", "Command": "command", "Query": "query", "Pattern": "pattern", "Url": "url", "URL": "url"]
+        var out: [String: Any] = [:]
+        for (k, v) in args {
+            var value: Any = v
+            if let s = v as? String, let d = s.data(using: .utf8), let parsed = try? JSONSerialization.jsonObject(with: d, options: [.fragmentsAllowed]) { value = parsed }
+            out[keys[k] ?? k] = value
+        }
+        return out
+    }
+
+    static func between(_ s: String, _ a: String, _ b: String) -> String? {
+        guard let r1 = s.range(of: a), let r2 = s.range(of: b, range: r1.upperBound..<s.endIndex) else { return nil }
+        return String(s[r1.upperBound..<r2.lowerBound])
     }
 
     /// Codex rollout `response_item`s: messages, function calls and their outputs, reasoning summaries.
@@ -545,7 +610,7 @@ enum ChatFirstMessage {
 extension AppModel {
     /// Agents a chat session can use (the chat view reads Claude and Codex transcripts).
     var chatProfiles: [Profile] {
-        state.profiles.filter { $0.enabled && ($0.kind == .claude || $0.kind == .codex || $0.icon == "claude" || $0.icon == "codex") }
+        state.profiles.filter { $0.enabled && ($0.kind == .claude || $0.kind == .codex || $0.kind == .antigravity || $0.icon == "claude" || $0.icon == "codex") }
             .sorted { $0.sort < $1.sort }
     }
 
@@ -564,7 +629,7 @@ extension AppModel {
     func canChat(_ s: Session?) -> Bool {
         guard let s, s.kind == .agent, (setting("features.chat")?.bool ?? true) else { return false }
         let p = profile(s.profileId)
-        return p?.kind == .claude || p?.kind == .codex || p?.icon == "claude" || p?.icon == "codex"
+        return p?.kind == .claude || p?.kind == .codex || p?.kind == .antigravity || p?.icon == "claude" || p?.icon == "codex"
     }
 
     func toggleChat(_ id: String? = nil) {

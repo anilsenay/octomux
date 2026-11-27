@@ -764,6 +764,11 @@ enum TranscriptLocator {
     /// a Claude conversation's file in the profile's config dir.
     static func path(for s: Session, model: AppModel) -> String? {
         if let p = s.transcriptPath, FileManager.default.fileExists(atPath: p) { return p }
+        // agy: its conversation's log (print-mode runs report no transcript; the daemon finds the conversation).
+        if let id = s.agentSessionId, model.profile(s.profileId)?.kind == .antigravity {
+            let f = NSHomeDirectory() + "/.gemini/antigravity-cli/brain/\(id)/.system_generated/logs/transcript.jsonl"
+            return FileManager.default.fileExists(atPath: f) ? f : nil
+        }
         guard let id = s.agentSessionId, let p = model.profile(s.profileId), p.kind == .claude else { return nil }
         let cfg = p.env["CLAUDE_CONFIG_DIR"].map { NSString(string: $0).expandingTildeInPath } ?? (NSHomeDirectory() + "/.claude")
         let projects = URL(fileURLWithPath: cfg).appendingPathComponent("projects")

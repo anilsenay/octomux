@@ -26,9 +26,9 @@ struct NewChatView: View {
     private var doc: DocTab? { model.docTabs.first { $0.id == docId } }
     private var project: Project? { model.project(doc?.projectId ?? "") }
 
-    /// Agents the chat view can render (Claude and Codex transcripts).
+    /// Agents the chat view can render (Claude, Codex and agy transcripts).
     private var profiles: [Profile] {
-        model.enabledProfiles(forProject: project?.id).filter { $0.kind == .claude || $0.kind == .codex || $0.icon == "claude" || $0.icon == "codex" }
+        model.enabledProfiles(forProject: project?.id).filter { $0.kind == .claude || $0.kind == .codex || $0.kind == .antigravity || $0.icon == "claude" || $0.icon == "codex" }
     }
     private var profile: Profile? {
         let ws = model.defaultChatProfile(workspace: project?.workspaceId)
@@ -166,7 +166,7 @@ struct NewChatView: View {
     private var composer: some View {
         let path = worktree ?? project?.path ?? ""
         let kind = profile?.kind ?? .generic
-        let flags = kind == .claude || kind == .codex
+        let flags = kind == .claude || kind == .codex || kind == .antigravity
         return VStack(alignment: .leading, spacing: 10) {
             AttachmentChips(files: $files)
             ComposerField(text: Binding(

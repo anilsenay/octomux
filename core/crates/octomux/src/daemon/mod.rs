@@ -149,7 +149,7 @@ pub(crate) fn claude_session_record(text: &str, pid: i32, started: i64) -> Optio
 
 /// OSC 7501 `app` names of coding agents (others, like build tools, also report but aren't agents).
 fn is_agent_app(app: &str) -> bool {
-    matches!(app, "claude-code" | "claude" | "codex" | "gemini" | "opencode" | "pi" | "amp" | "cursor-agent" | "copilot" | "kimi" | "kiro" | "grok")
+    matches!(app, "claude-code" | "claude" | "codex" | "antigravity" | "gemini" | "opencode" | "pi" | "amp" | "cursor-agent" | "copilot" | "kimi" | "kiro" | "grok")
 }
 
 /// Display name for an OSC 7501 `app` ("claude-code" → "Claude Code").
@@ -157,6 +157,7 @@ fn app_label(app: &str) -> String {
     match app {
         "claude-code" | "claude" => "Claude Code".into(),
         "codex" => "Codex".into(),
+        "antigravity" => "Antigravity".into(),
         other => other
             .split(['-', '_'])
             .filter(|w| !w.is_empty())
@@ -743,8 +744,13 @@ impl Daemon {
                 (st.profiles.iter().find(|p| p.id == pid).cloned(), st.sessions.iter().find(|s| s.id == id).cloned())
             };
             if let (Some(p), Some(s)) = (prof, sess) {
-                if p.kind == AgentKind::Codex && s.agent_session_id.is_none() {
-                    if let Some(cid) = agents::discover_codex_session(&p, &s.cwd, s.created_at) {
+                if s.agent_session_id.is_none() {
+                    let found = match p.kind {
+                        AgentKind::Codex => agents::discover_codex_session(&p, &s.cwd, s.created_at),
+                        AgentKind::Antigravity => agents::discover_antigravity_session(&s.cwd, s.created_at),
+                        _ => None,
+                    };
+                    if let Some(cid) = found {
                         self.with_session(id, |s| s.agent_session_id = Some(cid));
                     }
                 }
@@ -1485,6 +1491,15 @@ impl Daemon {
                     self.changed();
                 }
                 self.set_activity(id, a);
+                // agy records a conversation once its first turn ends: remember it for resume (Copy Session ID,
+                // History, restore) without waiting for the session to exit.
+                if app == "antigravity" && matches!(state.as_str(), "done" | "idle") {
+                    let want = self.with_session(id, |s| (s.kind == SessionKind::Agent && s.agent_session_id.is_none()).then(|| (s.cwd.clone(), s.created_at))).flatten();
+                    if let Some(cid) = want.and_then(|(cwd, since)| agents::discover_antigravity_session(&cwd, since)) {
+                        self.with_session(id, |s| s.agent_session_id = Some(cid));
+                        self.changed();
+                    }
+                }
             }
             HolderEvent::Notify { title, body } => {
                 let (pid, name) = {
@@ -2404,6 +2419,24 @@ impl Daemon {
                 std::thread::spawn(move || d.poll_claude_usage(ids.as_deref()));
                 self.changed();
                 Ok(json!({ "ok": true }))
+            }
+            "agent.report" => {
+                // From `octomux statusline` (agy): the conversation a session works on, and its transcript.
+                let sid = req("session_id")?;
+                let conv = req("agent_session_id")?;
+                let transcript = p.get("transcript_path").and_then(|v| v.as_str()).map(agents::antigravity_transcript);
+                let changed = self.with_session(&sid, |s| {
+                    let before = (s.agent_session_id.clone(), s.transcript_path.clone());
+                    s.agent_session_id = Some(conv.clone());
+                    if transcript.is_some() {
+                        s.transcript_path = transcript.clone();
+                    }
+                    before != (s.agent_session_id.clone(), s.transcript_path.clone())
+                });
+                if changed == Some(true) {
+                    self.changed();
+                }
+                Ok(json!({ "ok": changed.is_some() }))
             }
             "usage.report" => {
                 // { session_id, rate_limits: { five_hour: {used_percentage, resets_at}, ... } }

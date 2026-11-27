@@ -172,7 +172,7 @@ struct ProjectSettings: View {
 
     private var defaultsGroup: some View {
         let root = model.settingValue("worktrees.root", scope: "global")?.string
-        let agents = model.enabledProfiles.filter { $0.kind == .claude || $0.kind == .codex }
+        let agents = model.enabledProfiles.filter { $0.kind == .claude || $0.kind == .codex || $0.kind == .antigravity }
         let agent = CommitMessageGen.profile(model: model, project: nil)
         let storedModel = model.settingValue("commit_message.model", scope: "global")?.string
         return SettingsGroup("All projects", desc: "Used by every project that doesn't set its own.") {
@@ -191,13 +191,13 @@ struct ProjectSettings: View {
                 SettingSwitch(isOn: Binding(get: { model.settingValue("worktrees.delete_branch", scope: "global")?.bool ?? false },
                                             set: { model.setSetting("worktrees.delete_branch", $0 ? true : nil) }))
             }
-            SettingRow("Commit message agent", desc: "Runs once in the background with the diff (\(agent?.kind == .codex ? "codex exec" : "claude -p"), no tools, nothing saved). The diff goes to its provider like any agent prompt; each message uses a little of your plan.") {
+            SettingRow("Commit message agent", desc: "Runs once in the background with the diff (\(agent?.kind == .codex ? "codex exec" : agent?.kind == .antigravity ? "agy -p, plan mode" : "claude -p"), no tools, nothing saved). The diff goes to its provider like any agent prompt; each message uses a little of your plan.") {
                 Picker("", selection: Binding(get: { agent?.id ?? "" }, set: { model.setSetting("commit_message.profile", $0) })) {
                     ForEach(agents) { a in Text(a.name).tag(a.id) }
                 }
                 .labelsHidden().fixedSize()
             }
-            SettingRow("Commit message model", desc: agent?.kind == .codex ? "The models your Codex offers; Codex default is the one in its config." : "Haiku is fast and enough for a commit message.") {
+            SettingRow("Commit message model", desc: agent?.kind == .codex ? "The models your Codex offers; Codex default is the one in its config." : agent?.kind == .antigravity ? "Gemini 3.8 Flash is fast and enough for a commit message." : "Haiku is fast and enough for a commit message.") {
                 if agent?.kind == .codex, let codexList, !codexList.isEmpty {
                     Picker("", selection: Binding(get: { storedModel ?? "" }, set: { model.setSetting("commit_message.model", $0.isEmpty ? nil : $0) })) {
                         Text("Codex default").tag("")
@@ -210,6 +210,12 @@ struct ProjectSettings: View {
                     TextField(codexList == nil ? "Loading models…" : "default", text: Binding(get: { storedModel ?? "" }, set: { model.setSetting("commit_message.model", $0.isEmpty ? nil : $0) }))
                         .textFieldStyle(.roundedBorder).frame(width: 160)
                         .onAppear { loadCodexModels(agent) }
+                } else if agent?.kind == .antigravity {
+                    Picker("", selection: Binding(get: { storedModel ?? "gemini-3.8-flash" }, set: { model.setSetting("commit_message.model", $0 == "gemini-3.8-flash" ? nil : $0) })) {
+                        ForEach(ChatLaunchOptions.models(.antigravity).compactMap { c in c.id.map { ($0, c.title) } }, id: \.0) { m in Text(m.1).tag(m.0) }
+                        Text("CLI default").tag("default")
+                    }
+                    .labelsHidden().fixedSize()
                 } else {
                     Picker("", selection: Binding(get: { storedModel ?? "haiku" }, set: { model.setSetting("commit_message.model", $0 == "haiku" ? nil : $0) })) {
                         Text("Haiku").tag("haiku"); Text("Sonnet").tag("sonnet"); Text("Opus").tag("opus"); Text("CLI default").tag("default")

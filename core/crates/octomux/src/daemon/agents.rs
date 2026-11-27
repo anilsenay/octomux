@@ -119,17 +119,24 @@ pub fn strip_session_flags(args: &[String], kind: AgentKind) -> Vec<String> {
         let a = args[i].as_str();
         let with_value = match kind {
             AgentKind::Claude => matches!(a, "--resume" | "-r" | "--session-id" | "--settings"),
+            AgentKind::Antigravity => matches!(a, "--conversation" | "--resume" | "-r"),
             _ => false,
         };
         let flag_only = match kind {
             AgentKind::Claude => matches!(a, "--continue" | "-c" | "--fork-session"),
+            AgentKind::Antigravity => matches!(a, "--continue" | "-c"),
             _ => false,
         };
         if with_value {
             i += 2;
             continue;
         }
-        if flag_only || (kind == AgentKind::Claude && (a.starts_with("--resume=") || a.starts_with("--session-id="))) {
+        let joined = match kind {
+            AgentKind::Claude => a.starts_with("--resume=") || a.starts_with("--session-id="),
+            AgentKind::Antigravity => a.starts_with("--conversation=") || a.starts_with("--resume="),
+            _ => false,
+        };
+        if flag_only || joined {
             i += 1;
             continue;
         }
@@ -156,6 +163,19 @@ pub fn drop_unattended_flags(args: &[String], kind: AgentKind) -> Vec<String> {
                 continue;
             }
             AgentKind::Codex if a == "exec" => {
+                i += 1;
+                continue;
+            }
+            // `agy -p <prompt>` (and its print-mode options) take a value; a bare `-p` (the prompt comes as `-p=`) doesn't.
+            AgentKind::Antigravity if matches!(a, "-p" | "--print" | "--prompt") => {
+                i += if args.get(i + 1).is_some_and(|n| !n.starts_with('-')) { 2 } else { 1 };
+                continue;
+            }
+            AgentKind::Antigravity if matches!(a, "--output-format" | "--input-format" | "--print-timeout" | "--json-schema") => {
+                i += 2;
+                continue;
+            }
+            AgentKind::Antigravity if ["--print=", "--prompt=", "--output-format=", "--input-format=", "--print-timeout=", "--json-schema="].iter().any(|f| a.starts_with(f)) => {
                 i += 1;
                 continue;
             }
@@ -282,6 +302,53 @@ pub fn find_rollout(codex_home: &std::path::Path, id: &str, cwd: &str, since: u6
 }
 
 /// Finds the newest Codex rollout for `cwd` created after `since` (seconds).
+/// agy reports its transcript under `~/.gemini/antigravity/brain/…`, where the IDE keeps its own; the CLI's file is
+/// the same path under `antigravity-cli`. The reported one when it exists, else the CLI's.
+pub fn antigravity_transcript(reported: &str) -> String {
+    if std::path::Path::new(reported).exists() {
+        return reported.to_string();
+    }
+    let cli = reported.replacen("/.gemini/antigravity/", "/.gemini/antigravity-cli/", 1);
+    if std::path::Path::new(&cli).exists() { cli } else { reported.to_string() }
+}
+
+/// agy's data folder (`~/.gemini/antigravity-cli`): its conversation index lives there.
+fn antigravity_home() -> std::path::PathBuf {
+    std::path::PathBuf::from(expand_tilde("~/.gemini/antigravity-cli"))
+}
+
+/// The agy conversation started in `cwd` at or after `since` (unix seconds): the newest top-level one whose
+/// workspace is that folder, from agy's conversation index (read only; agy may be writing it).
+pub fn discover_antigravity_session(cwd: &str, since: u64) -> Option<String> {
+    discover_antigravity_session_in(&antigravity_home().join("conversation_summaries.db"), cwd, since)
+}
+
+fn discover_antigravity_session_in(db: &std::path::Path, cwd: &str, since: u64) -> Option<String> {
+    use rusqlite::OpenFlags;
+    if !db.exists() {
+        return None;
+    }
+    let conn = rusqlite::Connection::open_with_flags(db, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX).ok()?;
+    let _ = conn.busy_timeout(std::time::Duration::from_millis(500));
+    // agy stores the real path (/tmp → /private/tmp) as a file URI.
+    let real = std::fs::canonicalize(cwd).map(|p| p.to_string_lossy().into_owned()).unwrap_or_else(|_| cwd.to_string());
+    let uris = [format!("file://{real}"), format!("file://{cwd}")];
+    let mut stmt = conn
+        .prepare("SELECT conversation_id, workspace_uris, CAST(strftime('%s', last_modified_time) AS INTEGER) FROM conversation_summaries WHERE nesting_depth = 0 AND parent_conversation_id = '' ORDER BY last_modified_time DESC LIMIT 200")
+        .ok()?;
+    let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, Option<i64>>(2)?))).ok()?;
+    for (id, ws, modified) in rows.flatten() {
+        if modified.unwrap_or(0) + 5 < since as i64 {
+            break; // newest first: the rest are older
+        }
+        let list: Vec<String> = serde_json::from_str(&ws).unwrap_or_default();
+        if list.iter().any(|u| uris.contains(&u.trim_end_matches('/').to_string())) {
+            return Some(id);
+        }
+    }
+    None
+}
+
 pub fn discover_codex_session(profile: &Profile, cwd: &str, since: u64) -> Option<String> {
     let root = codex_home(profile).join("sessions");
     let mut best: Option<(u64, String)> = None;
@@ -550,7 +617,8 @@ pub fn browser_mcp_args(kind: AgentKind, paths: &Paths, session_id: &str, browse
                 "-c".into(), format!("mcp_servers.octomux.env={{{}={}}}", octomux_proto::HOME_VAR, q(&home)),
             ]
         }
-        AgentKind::Generic => vec![],
+        // agy reads MCP servers from its own mcp_config.json only (no per-launch flag yet).
+        AgentKind::Antigravity | AgentKind::Generic => vec![],
     }
 }
 
@@ -629,6 +697,23 @@ pub fn build_launch_with_prompt(paths: &Paths, session: &Session, profile: Optio
                         }
                     }
                 }
+                AgentKind::Antigravity => {
+                    // Our status line reports the conversation, transcript and quota (and runs the user's own). Not
+                    // when the arguments bring their own --settings (agy takes one): an unattended run (Inbox review).
+                    if profile.statusline && !args.iter().any(|a| a == "--settings" || a.starts_with("--settings=")) {
+                        let exe = std::env::current_exe().map(|e| e.to_string_lossy().into_owned()).unwrap_or_else(|_| "octomux".into());
+                        let line = serde_json::json!({ "statusLine": { "type": "command", "command": format!("{} statusline", shell_quote(&exe)) } });
+                        args.extend(["--settings".into(), line.to_string()]);
+                    }
+                    if restoring && agent_id.is_none() {
+                        agent_id = discover_antigravity_session(&session.cwd, session.created_at);
+                    }
+                    if restoring {
+                        if let Some(id) = &agent_id {
+                            args.extend(["--conversation".into(), id.clone()]);
+                        }
+                    }
+                }
                 AgentKind::Generic => {
                     if restoring && !profile.resume_template.trim().is_empty() {
                         let t = profile.resume_template.replace("{id}", agent_id.as_deref().unwrap_or(""));
@@ -642,8 +727,15 @@ pub fn build_launch_with_prompt(paths: &Paths, session: &Session, profile: Optio
                 }
             }
             if let Some(p) = prompt.filter(|p| !restoring && !p.trim().is_empty()) {
-                if matches!(profile.kind, AgentKind::Claude | AgentKind::Codex) {
-                    args.push(p.to_string());
+                match profile.kind {
+                    AgentKind::Claude | AgentKind::Codex => args.push(p.to_string()),
+                    // A positional prompt isn't one for agy: `-i` runs it, then the conversation goes on; with a bare
+                    // `-p` (print mode, unattended) it becomes `-p=<prompt>`.
+                    AgentKind::Antigravity => match args.iter().position(|a| a == "-p" || a == "--print") {
+                        Some(i) => args[i] = format!("-p={p}"),
+                        None => args.extend(["-i".into(), p.to_string()]),
+                    },
+                    AgentKind::Generic => {}
                 }
             }
             let command = expand_tilde(&profile.command);
@@ -698,7 +790,8 @@ fn out_len_hint(kind: AgentKind) -> i64 {
     match kind {
         AgentKind::Claude => 0,
         AgentKind::Codex => 1,
-        AgentKind::Generic => 2,
+        AgentKind::Antigravity => 2,
+        AgentKind::Generic => 3,
     }
 }
 
@@ -711,7 +804,7 @@ pub const KNOWN_AGENTS: &[(&str, &str, AgentKind)] = &[
     ("opencode", "opencode", AgentKind::Generic),
     ("cursor-agent", "cursor", AgentKind::Generic),
     ("kiro-cli", "kiro", AgentKind::Generic),
-    ("agy", "antigravity", AgentKind::Generic),
+    ("agy", "antigravity", AgentKind::Antigravity),
     ("copilot", "copilot", AgentKind::Generic),
 ];
 
@@ -789,7 +882,8 @@ pub fn alias_agent(value: &str) -> Option<(AgentKind, &'static str)> {
         "claude" => Some((AgentKind::Claude, "claude")),
         "codex" => Some((AgentKind::Codex, "codex")),
         "gemini" => Some((AgentKind::Generic, "gemini")),
-        "amp" | "opencode" | "cursor-agent" | "kiro-cli" | "agy" | "copilot" => Some((AgentKind::Generic, "agent")),
+        "agy" => Some((AgentKind::Antigravity, "antigravity")),
+        "amp" | "opencode" | "cursor-agent" | "kiro-cli" | "copilot" => Some((AgentKind::Generic, "agent")),
         _ => None,
     }
 }
@@ -889,6 +983,74 @@ mod tests {
         assert_eq!(BrowserMcp::from_settings(Some("off"), None, true), BrowserMcp::Off);
         assert_eq!(BrowserMcp::from_settings(Some("ask"), None, false), BrowserMcp::On);
         assert_eq!(BrowserMcp::from_settings(None, None, true), BrowserMcp::OnExceptClaude);
+    }
+
+    #[test]
+    fn antigravity_launch_resume_and_flags() {
+        let v = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(strip_session_flags(&v(&["--model", "m", "--conversation", "x", "-c", "--resume=y", "--effort", "high"]), AgentKind::Antigravity),
+                   v(&["--model", "m", "--effort", "high"]));
+        assert_eq!(drop_unattended_flags(&v(&["-p", "review this", "--output-format", "json", "--mode", "plan"]), AgentKind::Antigravity), v(&["--mode", "plan"]));
+        assert_eq!(drop_unattended_flags(&v(&["--mode", "plan", "-p"]), AgentKind::Antigravity), v(&["--mode", "plan"]));
+        assert_eq!(drop_unattended_flags(&v(&["-p", "--mode", "plan"]), AgentKind::Antigravity), v(&["--mode", "plan"]));
+        assert_eq!(alias_agent("agy --mode plan").map(|a| a.0), Some(AgentKind::Antigravity));
+
+        let paths = Paths { home: PathBuf::from("/tmp/oct home") };
+        let mut session: Session = serde_json::from_value(serde_json::json!({
+            "id": "s9", "project_id": "p1", "kind": "agent", "profile_id": "x", "title": "", "custom_title": "",
+            "cwd": "/tmp", "state": "running", "activity": "idle", "unread": false, "agent_session_id": "conv-1",
+            "created_at": 0, "last_activity_at": 0, "exit_code": null, "placement": "tab"
+        }))
+        .unwrap();
+        let mut agy = default_profiles()[0].clone();
+        agy.kind = AgentKind::Antigravity;
+        agy.command = "agy".into();
+        agy.via_login_shell = false;
+        let with_line = build_launch_with_prompt(&paths, &session, Some(&agy), false, &[], None, BrowserMcp::Off).argv;
+        let i = with_line.iter().position(|a| a == "--settings").expect("status line settings");
+        let line: serde_json::Value = serde_json::from_str(&with_line[i + 1]).unwrap();
+        assert!(line["statusLine"]["command"].as_str().unwrap().ends_with(" statusline"));
+        agy.statusline = false;
+        let new = build_launch_with_prompt(&paths, &session, Some(&agy), false, &[], Some("fix it"), BrowserMcp::On).argv;
+        assert_eq!(new, v(&["agy", "-i", "fix it"]), "no MCP flags, the prompt runs interactively");
+        // An Inbox review: print mode with its own --settings; the prompt goes in -p=, no status line of ours.
+        agy.statusline = true;
+        let mut review = session.clone();
+        review.extra_args = v(&["--mode", "plan", "--settings", "{}", "-p"]);
+        assert_eq!(build_launch_with_prompt(&paths, &review, Some(&agy), false, &[], Some("review"), BrowserMcp::Off).argv,
+                   v(&["agy", "--mode", "plan", "--settings", "{}", "-p=review"]));
+        agy.statusline = false;
+        let restored = build_launch_with_prompt(&paths, &session, Some(&agy), true, &[], Some("fix it"), BrowserMcp::Off);
+        assert_eq!(restored.argv, v(&["agy", "--conversation", "conv-1"]));
+        assert_eq!(restored.agent_session_id.as_deref(), Some("conv-1"));
+        session.agent_session_id = None;
+        session.created_at = u64::MAX / 2; // nothing that new: starts fresh instead of resuming another conversation
+        assert_eq!(build_launch_with_prompt(&paths, &session, Some(&agy), true, &[], None, BrowserMcp::Off).argv, v(&["agy"]));
+    }
+
+    #[test]
+    fn antigravity_conversation_found_by_folder_and_time() {
+        let dir = std::env::temp_dir().join(format!("octomux-agy-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("work")).unwrap();
+        let db = dir.join("conversation_summaries.db");
+        let c = rusqlite::Connection::open(&db).unwrap();
+        c.execute_batch("CREATE TABLE conversation_summaries (conversation_id text, workspace_uris text NOT NULL, last_modified_time datetime NOT NULL, nesting_depth integer NOT NULL DEFAULT 0, parent_conversation_id text NOT NULL DEFAULT '');").unwrap();
+        let work = std::fs::canonicalize(dir.join("work")).unwrap().to_string_lossy().into_owned();
+        let row = |id: &str, ws: &str, t: &str, depth: i64| {
+            c.execute("INSERT INTO conversation_summaries VALUES (?1, ?2, ?3, ?4, ?5)",
+                      rusqlite::params![id, format!("[\"file://{ws}\"]"), t, depth, if depth > 0 { "parent" } else { "" }]).unwrap();
+        };
+        row("old", &work, "2026-11-01 10:00:00.0+00:00", 0);
+        row("mine", &work, "2026-11-27 16:08:52.366103+00:00", 0);
+        row("sub", &work, "2026-11-27 16:09:00.0+00:00", 1);
+        row("other", "/elsewhere", "2026-11-27 16:10:00.0+00:00", 0);
+        let since = 1795773600; // 2026-11-27 10:00 UTC
+        let cwd = dir.join("work").to_string_lossy().into_owned();
+        assert_eq!(discover_antigravity_session_in(&db, &cwd, since).as_deref(), Some("mine"));
+        assert_eq!(discover_antigravity_session_in(&db, &cwd, since + 86_400), None, "nothing since then");
+        assert_eq!(discover_antigravity_session_in(&dir.join("missing.db"), &cwd, 0), None);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

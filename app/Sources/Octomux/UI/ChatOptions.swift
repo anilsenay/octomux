@@ -2,7 +2,8 @@ import AppKit
 import SwiftUI
 
 /// Model, effort and permission choices for a chat session, mapped to the CLIs' own flags
-/// (Claude: --model / --effort / --permission-mode; Codex: -m / -c model_reasoning_effort / -a).
+/// (Claude: --model / --effort / --permission-mode; Codex: -m / -c model_reasoning_effort / -a;
+/// agy: --model <family> / --effort / --mode).
 /// "nil" everywhere means: no flag, the CLI's own settings decide.
 struct ChatLaunchOptions: Codable, Equatable {
     var model: String?
@@ -20,6 +21,17 @@ struct ChatLaunchOptions: Codable, Equatable {
             Choice(id: "sonnet", title: "Sonnet", detail: ""),
             Choice(id: "haiku", title: "Haiku", detail: ""),
         ]
+        // agy takes a model family with a separate --effort (`agy models` lists family-effort pairs).
+        case .antigravity: return [
+            Choice(id: nil, title: "CLI default", detail: "Whatever agy is set to"),
+            Choice(id: "gemini-4-neon", title: "Gemini 4 Neon", detail: ""),
+            Choice(id: "gemini-4-carbon", title: "Gemini 4 Carbon", detail: ""),
+            Choice(id: "gemini-4-argon", title: "Gemini 4 Argon", detail: ""),
+            Choice(id: "gemini-4-hydrogen", title: "Gemini 4 Hydrogen", detail: ""),
+            Choice(id: "gemini-3.8-flash", title: "Gemini 3.8 Flash", detail: ""),
+            Choice(id: "claude-opus-5-5", title: "Claude Opus 5.5", detail: ""),
+            Choice(id: "claude-sonnet-5-5", title: "Claude Sonnet 5.5", detail: ""),
+        ]
         default: return [Choice(id: nil, title: "CLI default", detail: "Whatever Codex is set to")]
         }
     }
@@ -28,6 +40,7 @@ struct ChatLaunchOptions: Codable, Equatable {
         switch kind {
         case .claude: return [Choice(id: nil, title: "Default", detail: "")] + ["low", "medium", "high", "xhigh", "max"].map { Choice(id: $0, title: label($0), detail: "") }
         case .codex: return [Choice(id: nil, title: "Default", detail: "")] + ["low", "medium", "high"].map { Choice(id: $0, title: label($0), detail: "") }
+        case .antigravity: return [Choice(id: nil, title: "Default", detail: "")] + ["low", "medium", "high", "xhigh"].map { Choice(id: $0, title: label($0), detail: "") }
         default: return []
         }
     }
@@ -50,6 +63,13 @@ struct ChatLaunchOptions: Codable, Equatable {
             Choice(id: "never", title: "Never ask", detail: "Failures go back to the model"),
             Choice(id: "bypass", title: "Bypass", detail: "No approvals and no sandbox — use with care", warn: true),
         ]
+        case .antigravity: return [
+            Choice(id: nil, title: "CLI settings", detail: "Use the agent mode from agy's settings"),
+            Choice(id: "auto", title: "Auto", detail: "Edits and safe commands without asking"),
+            Choice(id: "accept-edits", title: "Accept edits", detail: "Edit files without asking; ask for commands"),
+            Choice(id: "plan", title: "Plan", detail: "Read and plan only, no changes"),
+            Choice(id: "bypass", title: "Bypass", detail: "Approve every tool without asking — use with care", warn: true),
+        ]
         default: return []
         }
     }
@@ -59,6 +79,7 @@ struct ChatLaunchOptions: Codable, Equatable {
         switch kind {
         case .claude: return ["--permission-mode", "plan"]
         case .codex: return ["--sandbox", "read-only"]
+        case .antigravity: return ["--mode", "plan"]
         default: return []
         }
     }
@@ -79,6 +100,12 @@ struct ChatLaunchOptions: Codable, Equatable {
             if permission == "bypass" { a += ["--dangerously-bypass-approvals-and-sandbox"] }
             else if let permission { a += ["-a", permission] }
             for i in images { a += ["-i", i] }
+        case .antigravity:
+            if let model { a += ["--model", model] }
+            // agy refuses --effort without a model family to apply it to.
+            if let effort, model != nil { a += ["--effort", effort] }
+            if permission == "bypass" { a += ["--dangerously-skip-permissions"] }
+            else if let permission { a += ["--mode", permission] }
         default: break
         }
         return a
@@ -384,12 +411,16 @@ struct ProfileStartOptions {
     var permission: String? {
         get {
             if kind == .codex { return ArgFlags.has(args, Self.codexBypass) ? "bypass" : ArgFlags.value(args, ["--ask-for-approval", "-a"]) }
+            if kind == .antigravity { return ArgFlags.has(args, "--dangerously-skip-permissions") ? "bypass" : ArgFlags.value(args, ["--mode"]) }
             return ArgFlags.has(args, "--dangerously-skip-permissions") ? "bypassPermissions" : ArgFlags.value(args, ["--permission-mode"])
         }
         set {
             if kind == .codex {
                 args = ArgFlags.setFlag(args, Self.codexBypass, newValue == "bypass")
                 args = ArgFlags.set(args, ["--ask-for-approval", "-a"], newValue == "bypass" ? nil : newValue)
+            } else if kind == .antigravity {
+                args = ArgFlags.setFlag(args, "--dangerously-skip-permissions", newValue == "bypass")
+                args = ArgFlags.set(args, ["--mode"], newValue == "bypass" ? nil : newValue)
             } else {
                 args = ArgFlags.setFlag(args, "--dangerously-skip-permissions", false)
                 args = ArgFlags.set(args, ["--permission-mode"], newValue)

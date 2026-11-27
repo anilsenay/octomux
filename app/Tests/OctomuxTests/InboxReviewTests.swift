@@ -37,6 +37,23 @@ final class InboxReviewTests: XCTestCase {
         XCTAssertEqual(InboxReviews.result(transcriptTail: prompt + "\n" + claude)?.findings.count, 3)
         let codex = line(["type": "response_item", "payload": ["type": "message", "role": "assistant", "content": [["type": "output_text", "text": answer]]]])
         XCTAssertEqual(InboxReviews.result(transcriptTail: prompt + "\n" + codex)?.risk, "medium")
+        // agy: the request is a USER_INPUT step, the answer a PLANNER_RESPONSE step.
+        let agyPrompt = line(["step_index": 0, "type": "USER_INPUT", "source": "USER_EXPLICIT",
+                              "content": "<USER_REQUEST>\nEnd with ```json\n{\"summary\": \"…\", \"risk\": \"low\", \"findings\": []}\n```\n</USER_REQUEST>"])
+        let agy = line(["step_index": 5, "type": "PLANNER_RESPONSE", "source": "MODEL", "content": answer])
+        XCTAssertNil(InboxReviews.result(transcriptTail: agyPrompt))
+        XCTAssertEqual(InboxReviews.result(transcriptTail: agyPrompt + "\n" + agy)?.findings.count, 3)
+    }
+
+    func testAntigravityReviewArgs() {
+        let a = InboxReviews.agentArgs(.antigravity, restricted: true)
+        XCTAssertEqual(Array(a.prefix(2)), ["--mode", "plan"])
+        XCTAssertEqual(a.last, "-p", "the daemon turns it into -p=<prompt>")
+        let i = a.firstIndex(of: "--settings")!
+        let allow = ((try! JSONSerialization.jsonObject(with: Data(a[i + 1].utf8)) as! [String: Any])["permissions"] as! [String: Any])["allow"] as! [String]
+        XCTAssertTrue(allow.contains("command(git diff)") && allow.contains("command(git --no-pager show)"))
+        XCTAssertFalse(allow.contains { $0.contains("branch") || $0.contains("commit") || $0.contains("push") })
+        XCTAssertFalse(InboxReviews.agentArgs(.antigravity, restricted: false).contains("plan"))
     }
 
     func testARealAnswerParses() {

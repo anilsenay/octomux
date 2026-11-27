@@ -60,6 +60,8 @@ pub struct Project {
 pub enum AgentKind {
     Claude,
     Codex,
+    /// Google's Antigravity CLI (`agy`).
+    Antigravity,
     Generic,
 }
 

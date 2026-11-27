@@ -1,15 +1,16 @@
 import AppKit
 
-/// ✨ in the Changes panel: one background run of an agent CLI (`claude -p` / `codex exec`) with the diff on
+/// ✨ in the Changes panel: one background run of an agent CLI (`claude -p` / `codex exec` / `agy -p`) with the diff on
 /// stdin, its plain-text answer put in the message box. Your CLI, login and config; no tools, no session kept,
-/// hooks and MCP servers off, run in an empty folder.
+/// hooks and MCP servers off, run in an empty folder. agy reads no stdin: the prompt goes in `-p=`, in plan mode
+/// (no changes; headless runs can't approve commands), and agy keeps its conversation.
 enum CommitMessageGen {
     static let diffBudget = 80_000
 
     // MARK: Settings (global, or per project)
 
     static func profile(model: AppModel, project: String?) -> Profile? {
-        let usable = model.enabledProfiles.filter { $0.kind == .claude || $0.kind == .codex }
+        let usable = model.enabledProfiles.filter { $0.kind == .claude || $0.kind == .codex || $0.kind == .antigravity }
         if let id = model.setting("commit_message.profile", project: project)?.string, let p = usable.first(where: { $0.id == id }) { return p }
         return usable.first { $0.kind == .claude } ?? usable.first
     }
@@ -17,7 +18,11 @@ enum CommitMessageGen {
     /// nil: the CLI's default model. Claude defaults to Haiku (fast, cheap, plenty for a commit message).
     static func modelName(model: AppModel, project: String?, kind: AgentKind) -> String? {
         if let v = model.setting("commit_message.model", project: project)?.string { return v.isEmpty || v == "default" ? nil : v }
-        return kind == .claude ? "haiku" : nil
+        switch kind {
+        case .claude: return "haiku"
+        case .antigravity: return "gemini-3.8-flash"   // the fast one
+        default: return nil
+        }
     }
 
     /// The models a Codex install offers (`codex debug models`), listed ones only, in its order. Empty when it
@@ -120,9 +125,13 @@ enum CommitMessageGen {
     // MARK: Running
 
     /// The command line for the profile's CLI (run through the login shell, so its PATH and aliases apply).
-    static func commandLine(_ p: Profile, model: String?, lastMessage: String? = nil) -> String {
+    static func commandLine(_ p: Profile, model: String?, lastMessage: String? = nil, prompt: String? = nil) -> String {
         var args: [String]
         switch p.kind {
+        case .antigravity:
+            args = ["--mode", "plan", "--output-format", "text", "--print-timeout", "85s"]
+            if let model { args += ["--model", model] }
+            args += ["-p=" + (prompt ?? "")]
         case .codex:
             args = ["exec", "--ephemeral", "--skip-git-repo-check", "-s", "read-only", "--color", "never"]
             if let model { args += ["-m", model] }
@@ -185,7 +194,8 @@ enum CommitMessageGen {
         p.executableURL = URL(fileURLWithPath: profile.viaLoginShell ? (ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh") : "/bin/sh")
         let last = FileManager.default.temporaryDirectory.appendingPathComponent("octomux-commit-\(UUID().uuidString).last")
         defer { try? FileManager.default.removeItem(at: last) }
-        p.arguments = [profile.viaLoginShell ? "-lc" : "-c", "exec " + commandLine(profile, model: model, lastMessage: profile.kind == .codex ? last.path : nil)]
+        p.arguments = [profile.viaLoginShell ? "-lc" : "-c", "exec " + commandLine(profile, model: model, lastMessage: profile.kind == .codex ? last.path : nil,
+                                                                                           prompt: profile.kind == .antigravity ? prompt : nil)]
         var env = ProcessInfo.processInfo.environment
         for (k, v) in profile.env { env[k] = (v as NSString).expandingTildeInPath }
         p.environment = env

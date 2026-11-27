@@ -1050,16 +1050,17 @@ struct ProfileEditor: View {
                 Picker("Type", selection: $profile.kind) {
                     Text("Claude Code").tag(AgentKind.claude)
                     Text("Codex").tag(AgentKind.codex)
+                    Text("Antigravity").tag(AgentKind.antigravity)
                     Text("Other").tag(AgentKind.generic)
                 }
                 Picker("Icon", selection: $profile.icon) {
-                    ForEach(["claude", "codex", "gemini", "terminal", "agent"], id: \.self) { i in Text(i).tag(i) }
+                    ForEach(["claude", "codex", "antigravity", "gemini", "terminal", "agent"], id: \.self) { i in Text(i).tag(i) }
                 }
                 TextField("Command", text: $profile.command).font(.system(.body, design: .monospaced))
                     .onSubmit(check)
                 if !resolved.isEmpty { Text(resolved).font(.caption).foregroundStyle(T.text2) }
                 TextField("Arguments", text: $argsText).font(.system(.body, design: .monospaced))
-                if profile.kind == .claude || profile.kind == .codex { startOptions }
+                if profile.kind == .claude || profile.kind == .codex || profile.kind == .antigravity { startOptions }
                 VStack(alignment: .leading) {
                     Text("Environment (KEY=value per line)").font(.caption)
                     TextEditor(text: $envText).font(.system(.body, design: .monospaced)).frame(height: 60)
@@ -1067,6 +1068,8 @@ struct ProfileEditor: View {
                 Toggle("Run through my login shell (aliases, PATH)", isOn: $profile.viaLoginShell).tint(T.accent)
                 if profile.kind == .claude {
                     Toggle("Read usage limits through Claude's status line (runs your own status line too)", isOn: $profile.statusline).tint(T.accent)
+                } else if profile.kind == .antigravity {
+                    Toggle("Read the conversation and Gemini quota through agy's status line (runs your own status line too)", isOn: $profile.statusline).tint(T.accent)
                 }
                 if !profile.id.isEmpty {
                     Toggle("Always show usage limits in the status bar (workspaces without their own list)", isOn: Binding(
@@ -1110,7 +1113,7 @@ struct ProfileEditor: View {
                     .font(.system(.body, design: .monospaced))
             }
             choicePicker("Effort", ChatLaunchOptions.efforts(kind), \.effort)
-            choicePicker(kind == .codex ? "Approvals" : "Permission mode", ChatLaunchOptions.permissions(kind), \.permission)
+            choicePicker(kind == .codex ? "Approvals" : kind == .antigravity ? "Agent mode" : "Permission mode", ChatLaunchOptions.permissions(kind), \.permission)
             if kind == .codex { choicePicker("Sandbox", ProfileStartOptions.sandboxes, \.sandbox) }
         } header: {
             Text("Start options").font(.caption)
