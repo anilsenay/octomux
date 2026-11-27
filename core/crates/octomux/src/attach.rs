@@ -79,6 +79,9 @@ fn connect_with_ensure(paths: &Paths, id: &str, cols: u16, rows: u16) -> Result<
 
 pub fn run(paths: Paths, id: String) -> Result<i32> {
     let stdin_fd = std::io::stdin().as_raw_fd();
+    // Listen before connecting: restoring a session can take seconds, and the pane often reaches its real
+    // size meanwhile; a SIGWINCH before the handler existed was lost, leaving the program at the first size.
+    let mut signals = signal_hook::iterator::Signals::new([signal_hook::consts::SIGWINCH])?;
     let (cols, rows) = winsize(stdin_fd).unwrap_or((80, 24));
     let client = match connect_with_ensure(&paths, &id, cols, rows) {
         Ok(c) => c,
@@ -114,10 +117,10 @@ pub fn run(paths: Paths, id: String) -> Result<i32> {
     // SIGWINCH -> resize
     {
         let mut w = stream.try_clone()?;
-        let mut signals = signal_hook::iterator::Signals::new([signal_hook::consts::SIGWINCH])?;
         std::thread::spawn(move || {
             let mut last = (cols, rows);
-            for _ in signals.forever() {
+            // The first pass checks the size once without waiting for a signal (it may have changed while connecting).
+            for _ in std::iter::once(()).chain(signals.forever().map(|_| ())) {
                 if let Some(sz) = winsize(stdin_fd) {
                     if sz != last {
                         last = sz;
