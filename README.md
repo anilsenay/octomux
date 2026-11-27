@@ -20,17 +20,18 @@
 ---
 
 - **Sessions that outlive the app.** Every terminal runs in its own holder process under a launchd daemon. Close the
-  window, quit, update, or crash — reopen and you are exactly where you were. After a reboot, Claude Code and
-  Codex sessions come back with `--resume` and continue the same conversation.
+  window, quit, update, or crash — reopen and you are exactly where you were. After a reboot, Claude Code,
+  Codex and Antigravity sessions come back and continue the same conversation.
 - **Know which agent needs you.** Each agent is marked *working*, *needs input* or *done* in the sidebar, the tab
   and the menu bar. Notifications take you straight to the right pane; ⌘⇧U jumps to the next one waiting.
 - **Built for parallel agents.** Workspaces and projects, tabs, splits, a dock, and one-click git worktrees so
   several agents can work on the same repo without stepping on each other.
 - **Git without leaving the window.** The right panel follows the focused session: changed files, commit &
   push, history with diffs, and a file tree with a code viewer.
-- **Your agents, unwrapped.** Claude Code, Codex and any other CLI agent run as themselves, with your own config
-  and login. Octomux owns the terminal, not the agent. Optional chat view for Claude sessions.
-- **Usage at a glance.** 5-hour and weekly limits for Claude and Codex in the status bar.
+- **Your agents, unwrapped.** Claude Code, Codex, Antigravity and any other CLI agent run as themselves, with your
+  own config and login. Octomux owns the terminal, not the agent. Optional chat view for Claude, Codex and
+  Antigravity sessions.
+- **Usage at a glance.** 5-hour and weekly limits for Claude, Codex and Antigravity in the status bar.
 - **Remote hosts.** Run the daemon on a Linux box over SSH and keep its sessions next to your local ones.
 - **Fast and native.** Swift + AppKit, GPU-rendered terminals by [libghostty](https://github.com/ghostty-org/ghostty),
   a small Rust daemon. No Electron.
@@ -78,7 +79,8 @@ Any CLI agent runs in Octomux, since it is just a terminal. Some get more:
 |---|:-:|:-:|:-:|:-:|:-:|
 | Claude Code | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Codex | ✓ | ✓ (0.164+) | ✓ | ✓ | ✓ |
-| Gemini, Amp, OpenCode, Cursor, Kiro, Antigravity, Copilot, your own | ✓ | — | — | — | — |
+| Antigravity (`agy`) | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Gemini, Amp, OpenCode, Cursor, Kiro, Copilot, your own | ✓ | — | — | — | — |
 
 Installed agents are detected in Settings → Agents, including shell aliases (a second Claude account, say).
 Want deeper support for another agent?

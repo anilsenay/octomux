@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.6.0
+
+- **Antigravity (`agy`) as a first-class agent**, next to Claude Code and Codex: added from Settings → Agents.
+  - Its *working*, *needs input* and *done* states show in the sidebar, tabs and menu bar.
+  - After a restart or a crash it comes back with `agy --conversation` and continues the same conversation.
+  - Its 5-hour and weekly Gemini quota shows in the status bar, like Claude's and Codex's limits. Octomux reads it
+    through agy's status line and still runs your own status line (or draws one like agy's built-in).
+  - **Show as Chat** works for agy sessions, and new chats can start with it, with model, effort and agent mode
+    pickers (also in the agent's settings).
+  - Commit messages (✨) and Inbox reviews can run on agy: once, in the background, with git's reading commands only
+    for reviews (plan mode when reviews are restricted).
+  - Not yet: the Octomux browser and task tools (agy takes MCP servers only from its own settings), and the task
+    assistant, which needs them.
+- **Move to Project**: a session's menu has Move to Project, and a session dragged onto another project's row moves
+  there. It only changes where the session is listed: its process keeps running in its folder, so agents still
+  resume where they started.
+- **Sessions after a crash come back at the right size**: a pane that reached its size while Octomux was restoring
+  its session left the program (Claude Code, say) drawing at the smaller first size until the window was resized.
+- **Tabs no longer push the right panel button off the top bar**: with many tabs and a long diff count, the buttons
+  on the right could slide out of view. The bar now measures them.
+
 ## 0.5.1
 
 - **Scenes in Low Power Mode**: Settings → Appearance → Scene → In Low Power Mode: Pause (as before) or Keep playing.
