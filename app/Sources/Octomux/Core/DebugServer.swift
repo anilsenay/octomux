@@ -119,6 +119,8 @@ final class DebugServer {
             guard let win = NSApp.windows.first(where: { $0.isVisible }) else { throw DebugError.bad("no window") }
             var f = win.frame
             f.size = NSSize(width: w, height: h)
+            // Optional "x", "y": the frame's origin in screen points (AppKit: bottom-left, y up).
+            if let x = p["x"] as? Double, let y = p["y"] as? Double { f.origin = NSPoint(x: x, y: y) }
             win.setFrame(f, display: true)
             return ["ok": true]
         }
