@@ -333,6 +333,11 @@ final class AppModel: ObservableObject {
             focusedSessionId = id
             DispatchQueue.main.async { TerminalHost.shared.focusCurrent() }
         }
+        // A session moved to another project while shown: follow it once its new tab has arrived.
+        if let (id, pid) = pendingMoveFollow, session(id)?.projectId == pid, tab(containing: id)?.projectId == pid {
+            pendingMoveFollow = nil
+            DispatchQueue.main.async { self.selectSession(id) }
+        }
         if let p = pendingSelect, s.projects.contains(where: { $0.id == p }) {
             pendingSelect = nil
             DispatchQueue.main.async { self.selectProject(p) }
@@ -915,6 +920,21 @@ final class AppModel: ObservableObject {
     private var pendingSelect: String?
     /// A session whose tab was closed and is being opened in a new one (`selectSession`).
     private var pendingTabFor: String?
+    private var pendingMoveFollow: (String, String)?
+
+    /// Projects a session can move to: the others on the same host (the session's daemon runs it).
+    func moveTargets(for s: Session) -> [Project] {
+        guard s.worktree == nil else { return [] }
+        let mine = client(for: s.id)
+        return state.projects.filter { !$0.archived && $0.id != s.projectId && client(for: $0.id) === mine }
+    }
+
+    /// Shows the sessions under another project; they keep running in their folder. A shown one is followed.
+    func moveSessions(_ ids: [String], toProject pid: String) {
+        let ids = ids.filter { id in session(id).map { moveTargets(for: $0).contains { $0.id == pid } } ?? false }
+        if let f = focusedSessionId, ids.contains(f) { pendingMoveFollow = (f, pid) }
+        for id in ids { client(for: id).call("session.set_project", ["id": id, "project_id": pid], completion: report) }
+    }
 
     /// `select`: go to the new project (false: stay where you are, e.g. in the Inbox). `done` gets its id, or nil.
     func addProject(path: String, workspaceId: String, select: Bool = true, done: ((String?) -> Void)? = nil) {

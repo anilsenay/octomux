@@ -399,6 +399,8 @@ enum DebugActions {
             case "order_front":       // value: true (above other apps' windows, not activated: it renders, keys stay) | false
                 let w = (NSApp.delegate as? AppDelegate)?.mainWindow
                 if (p["value"] as? Bool) ?? true { w?.level = .floating; w?.orderFrontRegardless() } else { w?.level = .normal; w?.orderBack(nil) }
+            case "move_session":      // id: session, value: project id (Move to Project, as the menu does)
+                if let id = p["id"] as? String, let v = p["value"] as? String { m.moveSessions([id], toProject: v) }
             case "in_front":          // value: true | false — the window counts as in front (watched-read checks)
                 AppModel.debugInFront = (p["value"] as? Bool) ?? true
             case "home_customize":    // value: true (start) | false (Done)

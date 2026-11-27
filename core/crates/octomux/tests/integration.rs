@@ -1171,3 +1171,27 @@ fn mcp_task_tools_for_agents_and_the_assistant() {
     let (err, text) = asst.tool("task_start", json!({ "id": id }));
     assert!(err && text.contains("only planned tasks"), "{text}");
 }
+
+#[test]
+fn session_moves_to_another_project_keeping_its_folder() {
+    let e = Env::new();
+    let p1 = e.project();
+    let sub = e.project_dir.join("sub");
+    std::fs::create_dir_all(&sub).unwrap();
+    let ws = e.workspace();
+    let p2 = e.call("project.create", json!({ "workspace_id": ws, "path": sub }))["id"].as_str().unwrap().to_string();
+    let id = create_terminal(&e, &p1);
+    let cwd = e.session(&id)["cwd"].clone();
+    let r = e.call("session.set_project", json!({ "id": id, "project_id": p2 }));
+    let s = e.session(&id);
+    assert_eq!(s["project_id"], p2.as_str());
+    assert_eq!(s["cwd"], cwd, "the folder stays");
+    assert_eq!(s["state"], "running", "the process keeps running");
+    let st = e.call("state.get", json!({}));
+    let tabs: Vec<&Value> = st["tabs"].as_array().unwrap().iter()
+        .filter(|t| t["layout"].to_string().contains(id.as_str())).collect();
+    assert_eq!(tabs.len(), 1);
+    assert_eq!(tabs[0]["project_id"], p2.as_str());
+    assert_eq!(tabs[0]["id"], r["tab_id"]);
+    assert!(e.try_call("session.set_project", json!({ "id": id, "project_id": "nope" })).is_err());
+}

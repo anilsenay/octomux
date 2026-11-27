@@ -7,6 +7,8 @@ struct SidebarView: View {
     var floating = false
     @ObservedObject var wt = Worktrees.shared
     @State private var collapsed: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "octomux.collapsed") ?? [])
+    /// The project row a dragged session would move to (highlighted while it hovers there).
+    @State private var sessionDropTarget: String?
     @State private var workspaceHover = false
     @State private var workspaceMenu = false
 
@@ -54,7 +56,19 @@ struct SidebarView: View {
                             if collapsed.contains(p.id) { collapsed.remove(p.id) } else { collapsed.insert(p.id) }
                             UserDefaults.standard.set(Array(collapsed), forKey: "octomux.collapsed")
                         }
-                        .reorderable("project", id: p.id) { model.moveProject($0, before: $1) }
+                        .onDrag {
+                            DragItem.current = ("project", p.id)
+                            return NSItemProvider(object: "octomux-project:\(p.id)" as NSString)
+                        }
+                        .onDrop(of: [.text], delegate: ProjectRowDrop(model: model, projectId: p.id, target: $sessionDropTarget))
+                        .modifier(DragSourceGap(id: p.id))
+                        .overlay {
+                            if sessionDropTarget == p.id {
+                                RoundedRectangle(cornerRadius: T.m.rowR, style: .continuous).strokeBorder(T.accent, lineWidth: 1.5)
+                                    .background(RoundedRectangle(cornerRadius: T.m.rowR, style: .continuous).fill(T.accent.opacity(0.12)))
+                                    .allowsHitTesting(false)
+                            }
+                        }
                         .padding(.top, i == 0 ? 0 : 6)
                         if !collapsed.contains(p.id) {
                             let all = model.sessions(ofProject: p.id)
@@ -735,6 +749,7 @@ struct SessionMenu: View {
         if session.placement == .tab {
             Button("Move to Dock") { model.client(for: session.id).call("session.move", ["id": session.id, "placement": "dock"]) }
         }
+        MoveToProjectMenu(session: session)
         if !inTab {
             Divider()
             Button("Remove Session", role: .destructive) { model.remove(session.id) }
@@ -1030,5 +1045,68 @@ struct WorkspacePanel: View {
         v.onHover { h in if h { nav.index = i } else if nav.index == i { nav.index = nil } }
             .onTapGesture { nav.run(i) }
             .panelPointer()
+    }
+}
+
+/// "Move to Project": shows the session under another project of the same host. Its process and folder stay
+/// (agents resume in the folder they started in), which the menu's first line says.
+struct MoveToProjectMenu: View {
+    @EnvironmentObject var model: AppModel
+    let session: Session
+
+    var body: some View {
+        let targets = model.moveTargets(for: session)
+        if !targets.isEmpty {
+            Menu("Move to Project") {
+                Text("Keeps running in \(session.cwd.replacingOccurrences(of: NSHomeDirectory(), with: "~"))")
+                Divider()
+                let spaces = model.state.workspaces.sorted { $0.sort < $1.sort }.filter { w in targets.contains { $0.workspaceId == w.id } }
+                ForEach(spaces) { w in
+                    let list = targets.filter { $0.workspaceId == w.id }.sorted { $0.sort < $1.sort }
+                    if spaces.count > 1 {
+                        Section(w.name) { ForEach(list) { p in item(p) } }
+                    } else {
+                        ForEach(list) { p in item(p) }
+                    }
+                }
+            }
+        }
+    }
+
+    private func item(_ p: Project) -> some View {
+        Button(p.name) { model.moveSessions([session.id], toProject: p.id) }
+    }
+}
+
+/// A project row takes two drags: another project (reorders, as before) and a session from another project
+/// (dropped: the session's tab moves under this project; its processes keep running in their folders).
+struct ProjectRowDrop: DropDelegate {
+    let model: AppModel
+    let projectId: String
+    @Binding var target: String?
+
+    private func movable(_ d: (kind: String, id: String)?) -> [String]? {
+        guard let d, d.kind.hasPrefix("session:"), let s = model.session(d.id),
+              model.moveTargets(for: s).contains(where: { $0.id == projectId }) else { return nil }
+        return model.tab(containing: d.id)?.layout.sessions ?? [d.id]
+    }
+
+    func validateDrop(info: DropInfo) -> Bool { DragItem.current?.kind == "project" || movable(DragItem.current) != nil }
+    func dropEntered(info: DropInfo) {
+        guard let d = DragItem.current else { return }
+        if d.kind == "project" {
+            guard d.id != projectId else { return }
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) { model.moveProject(d.id, before: projectId) }
+        } else if movable(d) != nil {
+            target = projectId
+        }
+    }
+    func dropExited(info: DropInfo) { if target == projectId { target = nil } }
+    func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: .move) }
+    func performDrop(info: DropInfo) -> Bool {
+        if let ids = movable(DragItem.current) { model.moveSessions(ids, toProject: projectId) }
+        target = nil
+        DragItem.current = nil
+        return true
     }
 }

@@ -2124,6 +2124,34 @@ impl Daemon {
                 self.changed();
                 Ok(json!({ "ok": true }))
             }
+            "session.set_project" => {
+                // Shows the session under another project. Its process and folder stay as they are: agents
+                // resume in the folder they started in (Claude and Codex keep conversations per folder).
+                let id = req("id")?;
+                let project_id = req("project_id")?;
+                {
+                    let st = self.state.lock().unwrap();
+                    if !st.projects.iter().any(|x| x.id == project_id) {
+                        bail!("no project {project_id}");
+                    }
+                    let s = st.sessions.iter().find(|s| s.id == id).ok_or_else(|| anyhow!("no such session"))?;
+                    if s.worktree.is_some() {
+                        bail!("a worktree session stays with the project whose repository holds the worktree");
+                    }
+                    if s.project_id == project_id {
+                        return Ok(json!({ "ok": true }));
+                    }
+                }
+                let placement = self.with_session(&id, |s| {
+                    s.project_id = project_id.clone();
+                    s.placement
+                });
+                let Some(placement) = placement else { bail!("no such session") };
+                self.detach_from_tabs(&id);
+                let tab_id = (placement == Placement::Tab).then(|| self.new_tab(&project_id, &id).id);
+                self.changed();
+                Ok(json!({ "ok": true, "tab_id": tab_id }))
+            }
             "session.input" => {
                 let id = req("id")?;
                 let data = req("data")?;
