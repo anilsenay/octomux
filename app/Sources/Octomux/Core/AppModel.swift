@@ -1103,7 +1103,7 @@ extension AppModel {
     func usageProfilesShown() -> [(Profile, [UsageReading])] {
         usageProfileIds.compactMap { id in
             guard let p = profile(id) else { return nil }
-            let r = usage(of: id).filter { $0.window == "five_hour" || $0.window == "seven_day" || $0.window == "spend_limit" }
+            let r = usage(of: id).filter(\.isMainWindow).sorted { UsageReading.order($0.window) < UsageReading.order($1.window) }
             return r.isEmpty ? nil : (p, Array(r.prefix(2)))
         }
     }

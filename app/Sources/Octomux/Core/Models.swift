@@ -319,9 +319,11 @@ struct UsageReading: Codable, Equatable, Identifiable {
         case "five_hour": return "5h"
         case "seven_day": return "week"
         case "spend_limit": return "spend"
-        default: return window
+        default: return Self.days(window).map { "\($0)d" } ?? window
         }
     }
+    /// `30_day` (a Codex free plan's window) → 30.
+    static func days(_ w: String) -> Int? { w.hasSuffix("_day") ? Int(w.dropLast(4)) : nil }
     var longName: String {
         switch window {
         case "five_hour": return "5-hour window"
@@ -330,10 +332,13 @@ struct UsageReading: Codable, Equatable, Identifiable {
         default:
             // Per-model weekly limits from `/usage` ("seven_day_fable" → "Weekly · Fable").
             if window.hasPrefix("seven_day_") { return "Weekly · " + window.dropFirst(10).replacingOccurrences(of: "_", with: " ").capitalized }
+            if let d = Self.days(window) { return "\(d)-day window" }
             return window.capitalized
         }
     }
-    static func order(_ w: String) -> Int { ["five_hour": 0, "seven_day": 1, "spend_limit": 2][w] ?? 3 }
+    static func order(_ w: String) -> Int { ["five_hour": 0, "seven_day": 1, "spend_limit": 2][w] ?? (days(w) != nil ? 2 : 3) }
+    /// The limits the status bar shows: 5-hour, weekly, a spend limit, and other plans' day windows (not per-model ones).
+    var isMainWindow: Bool { ["five_hour", "seven_day", "spend_limit"].contains(window) || Self.days(window) != nil }
 }
 
 struct AppNotification: Codable {

@@ -251,6 +251,8 @@ fn rate_limits_in(path: &Path) -> Vec<(String, f64, Option<i64>)> {
             let name = match w.get("window_minutes").and_then(|x| x.as_i64()) {
                 Some(300) => "five_hour".to_string(),
                 Some(10080) => "seven_day".to_string(),
+                // Other plans have other windows (a free plan: one of 30 days, 43200 minutes).
+                Some(m) if m > 0 && m % 1440 == 0 => format!("{}_day", m / 1440),
                 _ => key.to_string(),
             };
             out.push((name, pct, w.get("resets_at").and_then(|x| x.as_i64())));
@@ -983,6 +985,16 @@ mod tests {
         assert_eq!(BrowserMcp::from_settings(Some("off"), None, true), BrowserMcp::Off);
         assert_eq!(BrowserMcp::from_settings(Some("ask"), None, false), BrowserMcp::On);
         assert_eq!(BrowserMcp::from_settings(None, None, true), BrowserMcp::OnExceptClaude);
+    }
+
+    #[test]
+    fn codex_windows_of_other_plans_are_named() {
+        let dir = std::env::temp_dir().join(format!("octomux-codex-rl-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("rollout.jsonl");
+        std::fs::write(&f, r#"{"type":"event_msg","payload":{"type":"token_count","rate_limits":{"primary":{"used_percent":3.0,"window_minutes":43200,"resets_at":1796368350},"secondary":null}}}"#).unwrap();
+        assert_eq!(rate_limits_in(&f), vec![("30_day".to_string(), 3.0, Some(1796368350))]);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
