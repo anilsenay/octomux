@@ -398,6 +398,23 @@ fn strip_title(t: &str) -> String {
     t.trim_start_matches(|c: char| !c.is_alphanumeric() && c != '~' && c != '/' && c != '.' && c != '(').trim().to_string()
 }
 
+/// An agent's title without the parts that only name its folder or project: Codex titles its terminal with the
+/// folder (with a spinner, optionally its thread title), which says nothing the sidebar doesn't already show and
+/// replaced the agent's name. None when nothing else is left (the session keeps the title it has).
+fn agent_title(t: &str, folders: &[&str]) -> Option<String> {
+    let names: Vec<String> = folders.iter().filter(|f| !f.is_empty()).map(|f| f.to_lowercase()).collect();
+    let mut parts: Vec<&str> = vec![t];
+    for sep in [" · ", " | ", " — ", " – ", " - "] {
+        parts = parts.iter().flat_map(|p| p.split(sep)).collect();
+    }
+    let kept: Vec<String> = parts
+        .iter()
+        .map(|p| strip_title(p))
+        .filter(|p| !p.is_empty() && !names.contains(&p.to_lowercase()))
+        .collect();
+    (!kept.is_empty()).then(|| kept.join(" · "))
+}
+
 impl Daemon {
     fn refresh_shell_env(&self) {
         if let Some(p) = agents::login_shell_path() {
@@ -1433,7 +1450,24 @@ impl Daemon {
     fn on_holder_event(&self, id: &str, ev: HolderEvent) {
         match ev {
             HolderEvent::Title { title } => {
-                let t = strip_title(&title);
+                let mut t = strip_title(&title);
+                let folders = {
+                    let st = self.state.lock().unwrap();
+                    st.sessions.iter().find(|s| s.id == id).filter(|s| s.kind == SessionKind::Agent).map(|s| {
+                        let p = st.projects.iter().find(|p| p.id == s.project_id);
+                        let base = |x: &str| std::path::Path::new(x).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                        let profile = st.profiles.iter().find(|p| Some(&p.id) == s.profile_id.as_ref()).map(|p| p.name.clone()).unwrap_or_default();
+                        ([base(&s.cwd), p.map(|p| base(&p.path)).unwrap_or_default(), p.map(|p| p.name.clone()).unwrap_or_default()], profile, s.title.clone())
+                    })
+                };
+                if let Some((f, profile, current)) = &folders {
+                    let f: Vec<&str> = f.iter().map(String::as_str).collect();
+                    t = agent_title(&t, &f).unwrap_or_default();
+                    // A title that only named the folder (set before this was dropped) goes back to the agent's name.
+                    if t.is_empty() && !current.is_empty() && agent_title(current, &f).is_none() {
+                        t = profile.clone();
+                    }
+                }
                 let changed = self.with_session(id, |s| {
                     // Actions keep their name; the shell inside would otherwise rename them.
                     if s.kind != SessionKind::Action && s.title != t && !t.is_empty() {
@@ -2769,5 +2803,24 @@ mod lock_tests {
         drop(first);
         assert!(acquire_lock(&path, Duration::from_millis(250)).is_ok(), "the lock is free once the first one goes");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod title_tests {
+    use super::agent_title;
+
+    #[test]
+    fn folder_only_agent_titles_are_dropped() {
+        let f = ["storefront", "storefront", "Storefront"];
+        // Codex's default: a spinner and the folder.
+        assert_eq!(agent_title("storefront", &f), None);
+        assert_eq!(agent_title("⠋ storefront", &f), None);
+        // With its thread title the thread title stays.
+        assert_eq!(agent_title("storefront · Fix the checkout test", &f).as_deref(), Some("Fix the checkout test"));
+        assert_eq!(agent_title("⠙ storefront | Fix it", &f).as_deref(), Some("Fix it"));
+        // Claude's own titles are untouched, also when they mention the project.
+        assert_eq!(agent_title("Fix storefront checkout", &f).as_deref(), Some("Fix storefront checkout"));
+        assert_eq!(agent_title("Claude Code", &f).as_deref(), Some("Claude Code"));
     }
 }
