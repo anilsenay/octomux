@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.1
+
+- **Codex sessions keep their name**: newer Codex versions title the terminal with the project folder, which
+  replaced "Codex" (or the session's first message) in the sidebar and tabs. A title that only names the folder is
+  now ignored; Codex's thread title still shows when it sets one.
+- **Codex usage on plans with other limits**: a plan that reports a 30-day window (the free plan, for one) showed no
+  usage in the status bar and only Codex's name in the usage popover. Such windows now show as **30d**.
+
 ## 0.6.0
 
 - **Antigravity (`agy`) as a first-class agent**, next to Claude Code and Codex: added from Settings → Agents.
